@@ -249,6 +249,8 @@ func _ready() -> void:
 			_on_slot("storage")
 		"scrapyard":
 			_on_slot("scrapyard")
+		"scout":
+			open_fight_popup()   # Gus explained scouting: back to the pre-fight window
 
 
 func tab_list() -> Array:
@@ -355,7 +357,7 @@ func refresh() -> void:
 		elif not core.is_empty() and GameData.hp_ratio(core) < 0.35:
 			fight_button.text += tr(" - core damaged!")
 
-	scout_button.visible = GameData.scout_key() != "" and GameData.unlocked("scout")
+	scout_button.visible = false   # scouting lives in the pre-fight popup now
 	scout_button.text = star(tr("Scout report") if GameData.scouted() else tr("Scout $%d") % GameData.scout_cost(), "scout")
 	preview.look = GameData.player_look()
 	body_map.health = body_health()
@@ -1797,6 +1799,7 @@ func _on_open_scout() -> void:
 		msg = GameData.do_scout()
 		if GameData.money == before:
 			say(msg, "error")
+			open_fight_popup()
 			return
 		Sfx.play("buy")
 		refresh()
@@ -1859,6 +1862,23 @@ func _on_open_scout() -> void:
 	info.add_child(ml)
 	if weak != "":
 		info.add_child(UI.label(tr("Weak point: %s - aim there!") % tr(GameData.SLOT_NAMES[weak]), 15, Color(1.0, 0.9, 0.3)))
+	var nav := HBoxContainer.new()
+	nav.add_theme_constant_override("separation", 10)
+	col.add_child(nav)
+	var back := UI.button("< Back", open_fight_popup, 17, Vector2(0, 48))
+	back.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	nav.add_child(back)
+	var go := UI.button(tr("FIGHT!"), _on_fight_from_report, 19, Vector2(0, 48))
+	go.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	nav.add_child(go)
+
+
+## From the scouting report: still warn about damage before the bell.
+func _on_fight_from_report() -> void:
+	if damage_report().is_empty():
+		_start_fight()
+	else:
+		open_fight_popup()
 
 
 func _on_buy(id: String) -> void:
@@ -2080,31 +2100,60 @@ func damage_report() -> Array:
 	return out
 
 
+## Fight! Always a last look first: who it is, a chance to scout them, and what's wrong with your robot.
 func _on_fight() -> void:
+	open_fight_popup()
+
+
+func open_fight_popup() -> void:
+	var o := GameData.current_opponent()
+	var col := open_popup(tr("NEXT FIGHT"))
+	col.custom_minimum_size = Vector2(640, 0)
+	var who := str(o.get("pilot", ""))
+	var head := UI.label(GameData.fight_title() + "\n" + (tr("%s, piloted by %s") % [o.get("name", "?"), who] if who != "" else str(o.get("name", "?"))) + "   " + tr("Purse: $%d") % GameData.current_reward(), 18, Color(1.0, 0.85, 0.4))
+	head.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	col.add_child(head)
+	# scouting: pay a kid with a camera to look at their robot first
+	if GameData.scout_key() != "" and GameData.unlocked("scout"):
+		var srow := HBoxContainer.new()
+		srow.add_theme_constant_override("separation", 10)
+		col.add_child(srow)
+		var sl := UI.label(tr("You know what they're bringing.") if GameData.scouted() else tr("Scout them first? A kid at the docks sneaks a camera into their garage."), 15, Color(0.75, 0.85, 1.0))
+		sl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		sl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		srow.add_child(sl)
+		var sb := UI.button(star(tr("Scouting report") if GameData.scouted() else tr("Scout $%d") % GameData.scout_cost(), "scout"), _on_open_scout, 16, Vector2(170, 46))
+		sb.disabled = not GameData.scouted() and GameData.money < GameData.scout_cost()
+		srow.add_child(sb)
+	# damage: missing limbs, a hurt core, parts hanging off
 	var issues := damage_report()
 	if not issues.is_empty():
-		var col := open_popup(tr("YOUR ROBOT IS DAMAGED"))
+		col.add_child(UI.label(tr("YOUR ROBOT IS DAMAGED"), 17, Color(1.0, 0.45, 0.35)))
 		for line in issues:
-			col.add_child(UI.label("• " + str(line), 18, Color(1.0, 0.55, 0.45)))
-		var hint := UI.label(tr("GUS: Fight like this and it's going to hurt. Your call, kid."), 15, Color(0.95, 0.75, 0.45))
+			col.add_child(UI.label("• " + str(line), 16, Color(1.0, 0.55, 0.45)))
+		var hint := UI.label(tr("GUS: Fight like this and it's going to hurt. Your call, kid."), 14, Color(0.95, 0.75, 0.45))
 		hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		col.add_child(hint)
-		var row := HBoxContainer.new()
-		row.add_theme_constant_override("separation", 10)
-		col.add_child(row)
-		var cost := GameData.repair_all_cost()
-		if cost > 0 and GameData.can_repair(cost):
-			var rb := UI.button(tr("Repair all $%d") % cost, _on_repair_then_close, 17, Vector2(0, 50))
-			rb.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-			row.add_child(rb)
-		var back := UI.button("Back to the bay", close_popup, 17, Vector2(0, 50))
-		back.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		row.add_child(back)
-		var go := UI.button("Fight anyway", _start_fight, 17, Vector2(0, 50))
-		go.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		row.add_child(go)
-		return
-	_start_fight()
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 10)
+	col.add_child(row)
+	var cost := GameData.repair_all_cost()
+	if not issues.is_empty() and cost > 0 and GameData.can_repair(cost):
+		var rb := UI.button(tr("Repair all $%d") % cost, _on_repair_then_fight_popup, 17, Vector2(0, 50))
+		rb.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		row.add_child(rb)
+	var back := UI.button("Back to the bay", close_popup, 17, Vector2(0, 50))
+	back.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.add_child(back)
+	var go := UI.button(tr("FIGHT!") if issues.is_empty() else tr("Fight anyway"), _start_fight, 19, Vector2(0, 50))
+	go.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.add_child(go)
+
+
+func _on_repair_then_fight_popup() -> void:
+	close_popup()
+	_on_repair_all()
+	open_fight_popup()
 
 
 func _on_repair_then_close() -> void:
