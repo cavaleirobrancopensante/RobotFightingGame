@@ -2490,6 +2490,10 @@ func draw_hud() -> void:
 			if phase_timer < 1.0 and opp.has("team_label"):
 				draw_string(font, Vector2(0, cy - 70), str(opp["team_label"]), HORIZONTAL_ALIGNMENT_CENTER, screen.x, fs(26), Color(1.0, 0.85, 0.2))
 			draw_string(font, Vector2(0, cy), t, HORIZONTAL_ALIGNMENT_CENTER, screen.x, fs(72), Color(1.0, 0.3, 0.2))
+			if mode == "story" or mode == "exhibition":
+				var who := str(opp.get("pilot", ""))
+				draw_string(font, Vector2(0, cy + 78), ("Pilot: %s" % who) if who != "" else "No pilot - Kane Dynamics fight program",
+						HORIZONTAL_ALIGNMENT_CENTER, screen.x, fs(18), Color(1.0, 0.8, 0.5))
 			draw_string(font, Vector2(0, cy + 44), "%s  -  %s" % [Arena.ARENAS[arena_id]["name"].to_upper(), Arena.CROWDS[crowd_id]["name"]],
 					HORIZONTAL_ALIGNMENT_CENTER, screen.x, fs(18), Color(0.85, 0.85, 0.9))
 		"ko":
