@@ -1089,7 +1089,7 @@ const PLAN_COLORS := {"league": Color(0.35, 0.6, 1.0), "playoff": Color(1.0, 0.7
 
 func build_season_tab() -> void:
 	var bar := action_bar()
-	var views := [["calendar", "Calendar"], ["table", "League table"]]
+	var views := [["calendar", "Calendar"], ["table", "League table"], ["pilots", "Pilots"]]
 	if GameData.bet_target() != "":
 		views.append(["bets", tr("Bets")])
 	elif season_view == "bets":
@@ -1104,6 +1104,8 @@ func build_season_tab() -> void:
 			build_calendar()
 		"bets":
 			build_bets()
+		"pilots":
+			build_pilots_view()
 		_:
 			build_league_view()
 
@@ -1202,7 +1204,7 @@ var bet_stake := 50
 ## Bets: put money on yourself, or on anyone else's fight this round. Odds come from the table.
 func build_bets() -> void:
 	var ev := GameData.bet_event()
-	section("This round's fights. Odds come from everyone's record - a pilot nobody rates pays big. Bets need real cash.")
+	section("This round's fights. Odds come from records and robots - a pilot nobody rates pays big. Bets need real cash. Watch a fight and its result is the real one.")
 	var bar := action_bar()
 	bar.add_child(UI.label("Stake:", 16))
 	for st in [10, 50, 100, 250, 500]:
@@ -1221,6 +1223,8 @@ func build_bets() -> void:
 		vs.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		row.add_child(vs)
 		bet_side(row, ev, b, a)
+		if a != 0:
+			row_button(row, "Watch", _on_watch.bind(a, b), GameData.can_watch(ev, a, b), 80)
 	var mine: Array = GameData.bets.filter(func(x): return x["on"] == GameData.bet_target() and int(x["round"]) == int(ev["round"]))
 	if not mine.is_empty():
 		section("Your bets this round:")
@@ -1243,6 +1247,49 @@ func bet_side(row: HBoxContainer, ev: Dictionary, id: int, other: int) -> void:
 	box.add_child(l)
 	if other != 0:
 		row_button(box, "Bet", _on_bet.bind(id, other), GameData.money >= bet_stake, 64)
+
+
+func _on_watch(a: int, b: int) -> void:
+	GameData.start_watch(a, b)
+	Sfx.play("click")
+	get_tree().change_scene_to_file("res://fight.tscn")
+
+
+## Every pilot in Port Ferrum: who's on top, who's broke, who's moved up, who retired - and the news.
+func build_pilots_view() -> void:
+	var World = GameData.World
+	section("Port Ferrum's pilots. Between fights they earn, repair, upgrade, sell parts - and some retire.")
+	var news: Array = GameData.world.get("news", [])
+	if not news.is_empty():
+		section("NEWS")
+		for k in range(news.size() - 1, maxi(-1, news.size() - 9), -1):
+			var n: Dictionary = news[k]
+			var l := UI.label(tr("Y%d W%d  %s") % [int(n["y"]), int(n["w"]), World.news_text(n)], 13, Color(0.85, 0.85, 0.9))
+			l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+			list_box.add_child(l)
+	var order: Array = [GameData.rank] + World.TIERS.filter(func(t): return t != GameData.rank)
+	var widths := [34, 0, 70, 78, 96]
+	for tier in order:
+		section(tr(Career.STAGES[tier]["name"]).to_upper())
+		table_row(["#", "PILOT - ROBOT", "W-L", "PARTS", "WALLET"], widths, Color(0.7, 0.7, 0.75), Color(0, 0, 0, 0))
+		var pool: Array = World.by_rating(tier)
+		pool.reverse()
+		for k in pool.size():
+			var p: Dictionary = pool[k]
+			var cash := int(p["cash"])
+			var living: int = World.LIVING[tier]
+			var wallet := tr("in debt") if cash < 0 else (tr("rich") if cash > living * 12 else (tr("comfortable") if cash > living * 3 else tr("getting by")))
+			var col := Color(1, 0.55, 0.5) if cash < 0 else Color(0.9, 0.9, 0.95)
+			table_row([str(k + 1), tr("%s - %s") % [p["name"], p["bot"]["name"]], "%d-%d" % [int(p["w"]), int(p["l"])],
+					"$%d" % int(World.bot_value(p["bot"])), wallet], widths, col, Color(0, 0, 0, 0))
+	var gone: Array = GameData.world.get("pilots", {}).values().filter(func(p): return p["retired"])
+	if not gone.is_empty():
+		gone.sort_custom(func(a, b): return int(a.get("ret_y", 0)) * 100 + int(a.get("ret_w", 0)) > int(b.get("ret_y", 0)) * 100 + int(b.get("ret_w", 0)))
+		section("RETIRED")
+		for p in gone.slice(0, 12):
+			var why: String = {"broke": "broke", "rich": "cashed out", "old": "hung it up"}.get(str(p.get("ret_why", "old")), "")
+			table_row(["", tr("%s (retired)") % p["name"], "%d-%d" % [int(p["w"]), int(p["l"])], tr("year %d") % int(p.get("ret_y", 1)), tr(why)],
+					widths, Color(0.6, 0.6, 0.65), Color(0, 0, 0, 0))
 
 
 func _on_stake(st: int) -> void:
@@ -1307,7 +1354,7 @@ func show_table(ev: Dictionary) -> void:
 			col = Color(0.65, 1.0, 0.7)
 		var medal := Career.medal_of(ev, id)
 		var mark: String = tr(["", " (GOLD)", " (SILVER)", " (BRONZE)"][medal])
-		table_row([str(pos) + ("*" if pos <= zone else "tr("), who(ev, id) + mark, ")%d-%d" % [t[0], t[1]], str(t[2]), str(t[3])], widths, col, bg)
+		table_row([str(pos) + ("*" if pos <= zone else ""), who(ev, id) + mark, "%d-%d" % [t[0], t[1]], str(t[2]), str(t[3])], widths, col, bg)
 
 
 func show_bracket(ev: Dictionary) -> void:

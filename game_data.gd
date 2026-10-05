@@ -25,6 +25,7 @@ const START_MONEY_OPTIONS := [1000, 300, 0, -1000, -2000, -3000]
 const LIVING_COST_OPTIONS := [0, 250, 500, 1000, 1500, 2000]
 const DEFAULT_ROBOT := "ECHO"
 const Career = preload("res://career.gd")
+const World = preload("res://world.gd")
 const PILOT_NAMES := ["Rook", "Marisol", "Dex", "Kit", "Juno", "Tavi", "Bram", "Nia", "Otto", "Zara", "Lio", "Mags",
 		"Finn", "Ines", "Cass", "Rafa", "Wren", "Bo", "Sully", "Pia", "Grit", "Nova", "Ash", "Teo"]
 const ROBOT_FIRST := ["ECHO", "RUSTY", "BOLT", "PISTON", "SPARKY", "TANK", "GIZMO", "COPPER", "TORQUE", "DYNAMO",
@@ -275,6 +276,9 @@ var circuit_offers: Array = []  # championships you can enter
 var circuits_won := 0
 var exhibition := false       # an OVERLORD rematch is queued
 var pickup := {}              # a scrapyard pickup fight in a quiet week: {enemy, week, year}
+var world := {}               # every computer pilot, their money and robots (see world.gd)
+var watching := {}            # a computer-vs-computer fight you're watching: {on, round, a, b}
+var last_enemy_hp := {}       # the enemy's part health when the last fight ended: {slot: [hp, max]}
 var quick := {}               # Quick Fight from the menu: {player, enemy} random bots, never saved
 var setups: Array = []        # saved builds: {} or {name, equipped, chips, paint}
 var custom_parts: Array = []  # part definitions you designed in the workshop
@@ -481,6 +485,8 @@ func new_game() -> void:
 	rank = "scrap"
 	trophies = []
 	career_stats = {"heads": 0, "arms": 0, "legs": 0, "cores": 0, "parts": 0}
+	watching = {}
+	World.create(randi())
 	event = Career.new_event("scrap", 1, randi())
 	wins = 0
 	losses = 0
@@ -975,6 +981,8 @@ func global_traits(ids: Dictionary) -> Array:
 func fight_mode() -> String:
 	if not quick.is_empty():
 		return "quick"
+	if not watching.is_empty():
+		return "watch"
 	if not circuit.is_empty() and circuit.get("phase", "") != "done":
 		return "circuit"
 	if not event.is_empty() and event.get("phase", "") != "done" and Career.player_opponent(event) != -1 \
@@ -1001,6 +1009,8 @@ func current_opponent_index() -> int:
 func current_opponent() -> Dictionary:
 	if fight_mode() == "quick":
 		return quick["enemy"]
+	if fight_mode() == "watch":
+		return watch_robot(1)
 	var o: Dictionary
 	match fight_mode():
 		"circuit":
@@ -1008,7 +1018,10 @@ func current_opponent() -> Dictionary:
 		"story":
 			o = Career.robot_of(event, Career.player_opponent(event))
 		"pickup":
-			o = (pickup["enemy"] as Dictionary).duplicate(true)
+			if pickup.has("wid") and not World.pilot(int(pickup["wid"])).is_empty():
+				o = World.robot(int(pickup["wid"]))
+			else:
+				o = (pickup["enemy"] as Dictionary).duplicate(true)
 		"exhibition":
 			o = OPPONENTS[OPPONENTS.size() - 1].duplicate(true)
 			o["pilot"] = ""
@@ -1141,6 +1154,9 @@ func fight_title() -> String:
 	match fight_mode():
 		"quick":
 			return tr("QUICK FIGHT")
+		"watch":
+			var wev := watch_event()
+			return tr("%s VS %s") % [str(watch_robot(0)["pilot"]), str(watch_robot(1)["pilot"])] + " - " + (tr(str(wev["name"])).to_upper() if wev["stage"] == "cup" else tr(Career.STAGES[wev["stage"]]["short"]))
 		"circuit":
 			return tr("%s - %s") % [str(circuit["name"]).to_upper(), tr(Career.round_name(circuit))]
 		"exhibition":
@@ -1168,6 +1184,10 @@ func current_arena() -> Array:
 	match fight_mode():
 		"story":
 			return Arena.career_venue(event["stage"], Career.round_name(event))
+		"watch":
+			if watching["on"] == "event":
+				return Arena.career_venue(event["stage"], Career.round_name(event))
+			rng.seed = int(circuit["seed"]) + int(circuit["round"]) * 7
 		"pickup":
 			return ["scrap_ring", "scrappers"]
 		"exhibition":
@@ -1184,6 +1204,12 @@ func start_pickup() -> void:
 	var rng := RandomNumberGenerator.new()
 	rng.seed = year * 1000 + week
 	var lv := 0.3 + rank_index() * 0.8
+	# someone from your tier hanging around the scrapyard (not one of this week's league pilots)
+	var busy := World.busy_ids()
+	var p := World.pick_pickup(rng, rank, busy.keys())
+	if not p.is_empty():
+		pickup = {"wid": int(p["wid"]), "enemy": World.robot(int(p["wid"])), "week": week, "year": year}
+		return
 	var bot := random_bot(rng, 300.0 + rank_index() * 500.0, lv)
 	bot["pilot"] = Career.PILOT_NAMES[rng.randi() % Career.PILOT_NAMES.size()]
 	pickup = {"enemy": bot, "week": week, "year": year}
@@ -1194,6 +1220,7 @@ func start_pickup() -> void:
 ## The week moves on (after every fight, or when you rest). New leagues start on their week.
 func advance_week(n: int = 1) -> void:
 	for k in n:
+		World.week_passed(year, week, World.busy_ids())   # the rest of Port Ferrum fights and shops too
 		if week % MONTH_WEEKS == 0:
 			money -= living_cost()   # end of the month: cost of living
 			bills_note += living_cost()
@@ -1376,6 +1403,82 @@ func settle_bets(on: String, ev: Dictionary) -> Dictionary:
 	return out
 
 
+# ---------------------------------------------------------------- watching other pilots' fights
+
+## Can you watch a & b fight this round? Computer pilots only, once per match, and Kane Dynamics
+## keeps OVERLORD's fights behind closed doors.
+func can_watch(ev: Dictionary, a: int, b: int) -> bool:
+	if ev.is_empty() or a == 0 or b == 0:
+		return false
+	for id in [a, b]:
+		if int(Career.pilot(ev, id).get("rival", -1)) == OPPONENTS.size() - 1 or Career.retired(ev, id):
+			return false
+	for f in ev.get("forced", []):
+		if int(f["round"]) == int(ev["round"]) and ((int(f["a"]) == a and int(f["b"]) == b) or (int(f["a"]) == b and int(f["b"]) == a)):
+			return false
+	return true
+
+
+func start_watch(a: int, b: int) -> void:
+	var ev := bet_event()
+	watching = {"on": bet_target(), "round": int(ev["round"]), "a": a, "b": b}
+
+
+func watch_event() -> Dictionary:
+	if watching.is_empty():
+		return {}
+	return event if watching["on"] == "event" else circuit
+
+
+## side 0 = the pilot on the left (a), 1 = the right (b)
+func watch_robot(side: int) -> Dictionary:
+	var ev := watch_event()
+	var id: int = watching["a"] if side == 0 else watching["b"]
+	var o := Career.robot_of(ev, id)
+	if str(o.get("pilot", "")) == "":
+		o["pilot"] = str(Career.pilot(ev, id).get("pilot", ""))
+	o["reward"] = 0
+	return o
+
+
+## A watched fight is over: it's the real result. Their robots keep the damage from the ring,
+## money and records move, and the round will count it when it's played.
+func record_watch(a_won: bool, hp: Array, ripped: Array) -> Dictionary:
+	var ev := watch_event()
+	var a: int = watching["a"]
+	var b: int = watching["b"]
+	var w := a if a_won else b
+	var l := b if a_won else a
+	if not ev.has("forced"):
+		ev["forced"] = []
+	ev["forced"].append({"round": int(ev["round"]), "a": a, "b": b, "w": w})
+	var rng := RandomNumberGenerator.new()
+	rng.randomize()
+	var stage := "cup" if watching["on"] == "cup" else str(ev["stage"])
+	var pw := World.pilot(int(Career.pilot(ev, w).get("wid", -1)))
+	var pl := World.pilot(int(Career.pilot(ev, l).get("wid", -1)))
+	World.after_fight(rng, pw, pl, stage)
+	for side in 2:
+		var p := World.pilot(int(Career.pilot(ev, a if side == 0 else b).get("wid", -1)))
+		if p.is_empty():
+			continue
+		p["wear"] = {}
+		for slot in hp[side]:
+			var mx: float = hp[side][slot][1]
+			if mx > 0.0 and float(hp[side][slot][0]) < mx:
+				p["wear"][slot] = clampf(float(hp[side][slot][0]) / mx, 0.15, 1.0)
+		for sv in ripped[side]:
+			for s2 in p["bot"]["parts"]:
+				if p["bot"]["parts"][s2] == str(sv.get("id", "")) and s2 != "torso":
+					if rng.randf() < 0.6:
+						World.lose_part(rng, p, s2)
+					break
+	var winner_name := str(Career.robot_of(ev, w).get("pilot", Career.pilot(ev, w).get("pilot", "?")))
+	watching = {}
+	save_game()
+	return {"winner": winner_name}
+
+
 func cups_unlocked() -> bool:
 	return champion or rank_index() >= 1 or not trophies.is_empty() or wins + losses >= 5
 
@@ -1431,6 +1534,12 @@ func current_opponent_team() -> Array:
 
 ## Specs for the player's side: you, plus your wingmen in team fights.
 func fight_player_team() -> Array:
+	if fight_mode() == "watch":
+		var wa := watch_robot(0)
+		var ws: Array = [opponent_spec_from(wa, 1.0)]
+		for b in wa.get("team", []):
+			ws.append(opponent_spec_from(b, 1.0))
+		return ws
 	if fight_mode() == "quick":
 		var out: Array = []
 		for b in quick.get("players", [quick["player"]]):
@@ -1757,7 +1866,8 @@ func opponent_spec_from(o: Dictionary, _unused: float) -> Dictionary:
 			"head":
 				c = body.lerp(Color(d["color"]), 0.3)
 		var mx: float = d["hp"] * o["hp"]
-		parts[slot] = {"id": d["id"], "hp": mx, "max_hp": mx, "armor": d["armor"] + o.get("armor_bonus", 0),
+		var now: float = mx * clampf(float(o.get("wear", {}).get(slot, 1.0)), 0.15, 1.0)   # it arrives with last fight's dents
+		parts[slot] = {"id": d["id"], "hp": now, "max_hp": mx, "armor": d["armor"] + o.get("armor_bonus", 0),
 				"damage": d["damage"], "speed": d["speed"], "aim": d["aim"], "draw": float(d["draw"]),
 				"shape": d["shape"], "size": d["size"], "color": c,
 				"trait": d["trait"], "trait_lv": d["trait_lv"]}
@@ -1875,6 +1985,15 @@ func record_result(won: bool, part_hp: Dictionary, destroyed: int, salvage_ids: 
 		cards.append({"id": id, "what": "trophy", "health": 1.0 if UNDAMAGEABLE.has(d["kind"]) else 0.5})
 		trophy = d["name"]
 
+	# the pilot you fought lives on: their robot keeps the dents, their wallet moves
+	if o.has("wid"):
+		var stage := "pickup"
+		match fight_mode():
+			"story":
+				stage = str(event["stage"])
+			"circuit":
+				stage = "cup"
+		World.after_player_fight(int(o["wid"]), won, last_enemy_hp, salvage_ids, stage)
 	digs_left = DIGS_PER_FIGHT   # the scrapyard pile gets fresh junk after every fight
 	var was_champion := champion
 	var mode := fight_mode()
@@ -2323,7 +2442,7 @@ func save_game() -> bool:
 		"owned_chips": owned_chips, "chips": chips, "circuit": circuit, "circuit_offers": circuit_offers,
 		"circuits_won": circuits_won, "pickup": pickup, "setups": setups, "custom_parts": custom_parts,
 		"year": year, "week": week, "rank": rank, "event": event, "trophies": trophies, "career_stats": career_stats,
-		"style": style, "shop_stock": shop_stock, "scout": scout, "wingmen": wingmen, "sending": sending, "pilot_look": pilot_look, "owned_controllers": owned_controllers, "tips_seen": tips_seen, "digs_left": digs_left, "bills_note": bills_note, "fight_log": fight_log, "bets": bets,
+		"style": style, "shop_stock": shop_stock, "scout": scout, "wingmen": wingmen, "sending": sending, "pilot_look": pilot_look, "owned_controllers": owned_controllers, "tips_seen": tips_seen, "digs_left": digs_left, "bills_note": bills_note, "fight_log": fight_log, "bets": bets, "world": world,
 	}
 	var f := FileAccess.open(slot_path(save_slot), FileAccess.WRITE)
 	if f == null:
@@ -2428,6 +2547,8 @@ func load_game(slot: int = -1) -> String:
 	circuit_offers = data.get("circuit_offers", [])
 	circuits_won = int(data.get("circuits_won", 0))
 	pickup = data.get("pickup", {})
+	if pickup.has("wid"):
+		pickup["wid"] = int(pickup["wid"])
 	trophies = data.get("trophies", [])
 	career_stats = {"heads": 0, "arms": 0, "legs": 0, "cores": 0, "parts": 0}
 	if typeof(data.get("career_stats")) == TYPE_DICTIONARY:
@@ -2447,12 +2568,35 @@ func load_game(slot: int = -1) -> String:
 		event = {} if champion else Career.new_event(rank, year, randi())
 		if champion:
 			week = 42
+	if typeof(data.get("world")) == TYPE_DICTIONARY and not (data["world"] as Dictionary).get("pilots", {}).is_empty():
+		world = data["world"]
+		_fix_world()
+	# (an older save keeps the fresh world new_game() made)
 	var saved_setups: Array = data.get("setups", [])
 	for k in mini(saved_setups.size(), SETUP_SLOTS):
 		setups[k] = saved_setups[k]
 	if champion and circuit.is_empty() and circuit_offers.is_empty():
 		make_offers()
 	return ""
+
+
+## JSON turned the world's whole numbers into floats.
+func _fix_world() -> void:
+	world["next"] = int(world.get("next", 1))
+	for p in world["pilots"].values():
+		for k in ["wid", "cash", "age", "w", "l", "sw", "sl", "ret_y", "ret_w"]:
+			if p.has(k):
+				p[k] = int(p[k])
+		p["skill"] = float(p.get("skill", 0.3))
+		p["retired"] = bool(p.get("retired", false))
+		if typeof(p.get("wear")) != TYPE_DICTIONARY:
+			p["wear"] = {}
+		for slot in p["bot"]["parts"].keys():
+			if part_def(str(p["bot"]["parts"][slot])).is_empty() and str(p["bot"]["parts"][slot]) != "":
+				p["bot"]["parts"][slot] = World.cheapest(RandomNumberGenerator.new(), SLOT_KIND.get(slot, "head"))
+	for n in world.get("news", []):
+		n["y"] = int(n["y"])
+		n["w"] = int(n["w"])
 
 
 ## JSON turns every number into a float; the career code wants whole numbers for ids and rounds.
@@ -2468,6 +2612,14 @@ func _fix_numbers(ev: Dictionary) -> void:
 		e["id"] = int(e["id"])
 		if e.has("rival"):
 			e["rival"] = int(e["rival"])
+		if e.has("wid"):
+			e["wid"] = int(e["wid"])
+	if typeof(ev.get("forced")) == TYPE_ARRAY:
+		for f in ev["forced"]:
+			for k in f:
+				f[k] = int(f[k])
+	else:
+		ev.erase("forced")
 	for key in ev.get("table", {}):
 		ev["table"][key] = ev["table"][key].map(func(v): return int(v))
 	if not ev.get("bracket", {}).is_empty():

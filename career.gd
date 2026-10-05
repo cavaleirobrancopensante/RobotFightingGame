@@ -15,6 +15,7 @@ extends RefCounted
 ## Pilot id 0 is always you.
 
 const I18n = preload("res://i18n.gd")
+const World = preload("res://world.gd")
 const WEEKS_PER_YEAR := 52
 
 const STAGES := {
@@ -44,13 +45,10 @@ static func new_event(stage: String, year: int, seed_value: int) -> Dictionary:
 	var rng := RandomNumberGenerator.new()
 	rng.seed = seed_value
 	var pilots: Array = [{"id": 0, "pilot": "YOU", "player": true, "str": 1.0}]
-	var names := PILOT_NAMES.duplicate()
-	for k in range(names.size() - 1, 0, -1):
-		var j := rng.randi_range(0, k)
-		var tmp = names[k]
-		names[k] = names[j]
-		names[j] = tmp
 	var n: int = info["size"]
+	# the rest of the league comes from the pilots of this tier, weakest first: they fill the
+	# rounds in order, so the season gets harder as it goes on
+	var picks: Array = World.pick_for_league(rng, stage, n - 1 - info["rivals"].size())
 	for i in range(1, n):
 		var e := {"id": i}
 		var r := i - 1
@@ -59,13 +57,16 @@ static func new_event(stage: String, year: int, seed_value: int) -> Dictionary:
 			e["rival"] = idx
 			e["pilot"] = str(GameData.OPPONENTS[idx].get("pilot", "")) if str(GameData.OPPONENTS[idx].get("pilot", "")) != "" else "KANE DYNAMICS"
 			e["str"] = 0.6 + idx * 0.22
+		elif r - info["rivals"].size() < picks.size():
+			var p: Dictionary = picks[r - info["rivals"].size()]
+			e["wid"] = int(p["wid"])
+			e["pilot"] = p["name"]
 		else:
 			var lv: float = lerpf(info["level"][0], info["level"][1], rng.randf())
 			var budget: float = lerpf(info["budget"][0], info["budget"][1], rng.randf())
-			var bot: Dictionary = GameData.random_bot(rng, budget, lv)
-			e["bot"] = bot
-			e["pilot"] = names[r % names.size()]
-			e["str"] = 0.5 + lv * 0.45 + rng.randf() * 0.3
+			e["bot"] = World.build_bot(rng, budget * 4.0, lv / 3.6)
+			e["pilot"] = PILOT_NAMES[rng.randi() % PILOT_NAMES.size()]
+			e["str"] = 0.5 + lv * 0.45
 		pilots.append(e)
 	# your league schedule: you fight everyone once; story rivals on their story rounds
 	var others: Array = []
@@ -94,19 +95,31 @@ static func new_event(stage: String, year: int, seed_value: int) -> Dictionary:
 static func new_cup(name: String, tier: int, seed_value: int, start_week: int, year: int, prize: int) -> Dictionary:
 	var rng := RandomNumberGenerator.new()
 	rng.seed = seed_value
+	var exclude: Array = []
+	if not GameData.event.is_empty() and GameData.event.get("phase", "") != "done":
+		for e in GameData.event["pilots"]:
+			if e.has("wid"):
+				exclude.append(int(e["wid"]))
+	var picks: Array = World.pick_for_cup(rng, tier, exclude)
 	var pilots: Array = [{"id": 0, "pilot": "YOU", "player": true, "str": 1.0}]
 	for i in range(1, 8):
+		if i - 1 < picks.size():
+			pilots.append({"id": i, "wid": int(picks[i - 1]["wid"]), "pilot": picks[i - 1]["name"]})
+			continue
 		var lv := clampf(tier - 1 + rng.randf() * 1.2, 0.0, 5.0)
-		var budget: float = GameData.TIER_BUDGET[clampi(tier - 1, 0, 4)] * rng.randf_range(0.75, 1.25)
-		var bot: Dictionary = GameData.random_bot(rng, budget, lv)
+		var budget: float = GameData.TIER_BUDGET[clampi(tier - 1, 0, 4)] * rng.randf_range(2.0, 4.0)
+		var bot: Dictionary = World.build_bot(rng, budget, lv / 5.0)
 		if rng.randf() < 0.25:
-			bot = GameData.random_team(rng, budget, lv, 2 if rng.randf() < 0.55 else 3)
+			bot = GameData.random_team(rng, budget / 4.0, lv, 2 if rng.randf() < 0.55 else 3)
 		pilots.append({"id": i, "pilot": PILOT_NAMES[(seed_value + i * 7) % PILOT_NAMES.size()], "bot": bot, "str": 0.5 + lv * 0.45})
 	var ev := {"stage": "cup", "name": name, "tier": tier, "year": year, "seed": seed_value, "prize": prize,
 			"weeks": [start_week, start_week + 1, start_week + 2], "round": 0, "phase": "playoffs", "pilots": pilots,
 			"schedule": [], "table": {}, "bracket": {}, "medals": {}, "news": []}
-	var seeds: Array = range(8)
-	seeds.shuffle()
+	# seeded by strength: the favourites are kept apart until late, so the cup gets harder as you
+	# go (you're the 2nd or 3rd seed: an underdog first, the big names in the semis and final)
+	var seeds: Array = range(1, 8)
+	seeds.sort_custom(func(a, b): return rating_of(ev, a) > rating_of(ev, b))
+	seeds.insert(rng.randi_range(1, 2), 0)
 	start_bracket(ev, seeds)
 	return ev
 
@@ -130,6 +143,10 @@ static func robot_of(ev: Dictionary, id: int) -> Dictionary:
 	var o: Dictionary
 	if e.has("rival"):
 		o = GameData.OPPONENTS[int(e["rival"])].duplicate(true)
+	elif e.has("wid") and not World.pilot(int(e["wid"])).is_empty():
+		o = World.robot(int(e["wid"]))
+		o["pilot"] = World.shown_name(int(e["wid"]), str(e.get("pilot", "")))
+		return o
 	elif e.has("bot"):
 		o = (e["bot"] as Dictionary).duplicate(true)
 	else:
@@ -199,7 +216,8 @@ static func odds(ev: Dictionary, a: int, b: int) -> float:
 		ra = 0.95   # everyone knows OVERLORD
 	if pilot(ev, b).get("rival", -1) == 9:
 		rb = 0.95
-	var p := clampf(ra / (ra + rb), 0.08, 0.92)
+	# the bookmaker looks at the robots and pilots too, not just the table
+	var p := clampf(0.4 * ra / (ra + rb) + 0.6 * World.win_chance(rating_of(ev, a), rating_of(ev, b)), 0.08, 0.92)
 	return snappedf(maxf(1.05, 0.9 / p), 0.05)
 
 
@@ -271,17 +289,51 @@ static func standings(ev: Dictionary) -> Array:
 
 # ---------------------------------------------------------------- results
 
-## Who wins a fight between two computer pilots.
+## How strong a pilot in this event is (robot + skill). You count as average for your tier.
+static func rating_of(ev: Dictionary, id: int) -> float:
+	var e := pilot(ev, id)
+	if id == 0:
+		var spec := {"parts": GameData.equipped_ids(), "hp": 1.0, "damage": 1.0}
+		return World.rating(spec, 0.5)
+	if e.has("rival"):
+		var idx := int(e["rival"])
+		return World.rating(GameData.OPPONENTS[idx], 0.25 + idx * 0.075)
+	var o := robot_of(ev, id)
+	if o.is_empty():
+		return 10.0
+	if e.has("wid"):
+		return World.rating(o, float(World.pilot(int(e["wid"])).get("skill", 0.3)))
+	return World.rating(o, clampf(float(e.get("str", 1.0)) / 2.0, 0.0, 1.0))
+
+
+static func retired(ev: Dictionary, id: int) -> bool:
+	var e := pilot(ev, id)
+	return e.has("wid") and bool(World.pilot(int(e["wid"])).get("retired", false))
+
+
+## Who wins a fight between two computer pilots: their robots and skill decide (a watched fight
+## has already been decided in the ring). The fight wears their robots and moves their money.
 static func simulate(ev: Dictionary, a: int, b: int, rng: RandomNumberGenerator) -> int:
 	var pa := pilot(ev, a)
 	var pb := pilot(ev, b)
+	for f in ev.get("forced", []):
+		if int(f["round"]) == int(ev["round"]) and ((int(f["a"]) == a and int(f["b"]) == b) or (int(f["a"]) == b and int(f["b"]) == a)):
+			return int(f["w"])   # watched: the world side was already updated by the fight
+	var w := -1
 	if pa.get("rival", -1) == 9:
-		return a   # OVERLORD doesn't lose to computer pilots
-	if pb.get("rival", -1) == 9:
-		return b
-	var sa: float = pa.get("str", 1.0)
-	var sb: float = pb.get("str", 1.0)
-	return a if rng.randf() < sa / (sa + sb) else b
+		w = a   # OVERLORD doesn't lose to computer pilots
+	elif pb.get("rival", -1) == 9:
+		w = b
+	elif retired(ev, a) != retired(ev, b):
+		w = b if retired(ev, a) else a   # a retired pilot doesn't turn up: walkover
+	else:
+		w = a if rng.randf() < World.win_chance(rating_of(ev, a), rating_of(ev, b)) else b
+	var l := b if w == a else a
+	var pw := pilot(ev, w)
+	var pl := pilot(ev, l)
+	if not retired(ev, l):
+		World.after_fight(rng, World.pilot(int(pw.get("wid", -1))), World.pilot(int(pl.get("wid", -1))), str(ev["stage"]))
+	return w
 
 
 static func add_result(ev: Dictionary, winner: int, loser: int, parts: int) -> void:
@@ -352,6 +404,7 @@ static func finish_league(ev: Dictionary) -> void:
 		for k in mini(3, order.size()):
 			ev["medals"][str(order[k])] = k + 1
 		ev["phase"] = "done"
+		award_world(ev)
 		return
 	var n: int = info["playoff"]
 	var seeds: Array = order.slice(0, n)
@@ -436,6 +489,24 @@ static func run_out(ev: Dictionary, rng: RandomNumberGenerator) -> void:
 	while ev["phase"] == "playoffs" and guard < 8:
 		play_round(ev, rng)
 		guard += 1
+
+
+## Computer pilots who took medals get their prize money.
+static func award_world(ev: Dictionary) -> void:
+	for id in ev["medals"]:
+		var e := pilot(ev, int(id))
+		var p := World.pilot(int(e.get("wid", -1)))
+		if p.is_empty():
+			continue
+		var m := int(ev["medals"][id])
+		var prize := 0
+		if ev["stage"] == "cup":
+			prize = int(int(ev.get("prize", 1000)) * [0.0, 1.0, 0.5, 0.25][m])
+		else:
+			prize = int(STAGES[ev["stage"]]["prizes"][m - 1])
+		p["cash"] = int(p["cash"]) + prize
+		if m == 1:
+			World.news("%s won the %s.", [p["name"], ("stage:" + str(ev["stage"])) if ev["stage"] != "cup" else str(ev["name"])])
 
 
 static func medal_of(ev: Dictionary, id: int) -> int:

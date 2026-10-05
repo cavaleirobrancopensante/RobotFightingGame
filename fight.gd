@@ -353,7 +353,7 @@ func _ready() -> void:
 		team_p[k].pos = Vector2(screen.x * (0.3 - 0.085 * k), floor_y)
 	for k in team_c.size():
 		team_c[k].pos = Vector2(screen.x * (0.7 + 0.085 * k), floor_y)
-	var diff: int = GameData.settings["difficulty"]
+	var diff: int = GameData.settings["difficulty"] if mode != "watch" else 1   # a watched fight is a fair fight
 	for f in team_c:
 		f.dmg_mult *= DIFF_DAMAGE[diff]
 		f.foe = player
@@ -365,6 +365,24 @@ func _ready() -> void:
 		ai_save(f)
 	for f in team_p:
 		f.foe = cpu
+	# Gus spots a part that's far better than the rest of an enemy robot
+	for f in team_c:
+		var ids := {}
+		for slot in BODY_PARTS:
+			if not f.parts[slot].is_empty():
+				ids[slot] = str(f.parts[slot]["id"])
+		f.spec["standout"] = GameData.World.standout_slot(ids)
+	if mode == "watch":
+		# both corners are computer pilots: the left robot gets a brain too
+		var left_o: Dictionary = GameData.watch_robot(0)
+		for f in team_p:
+			f.ai = {"timer": randf() * 0.3, "plan": {}, "think": float(left_o.get("think", 0.4)),
+					"block": minf(0.85, float(left_o.get("block", 0.2))), "smart": float(left_o.get("smart", 0.0)),
+					"special_cd": 3.0 + randf(), "gadget_cd": 1.5 + randf(), "kit": {}}
+			ai_load(f)
+			ai_build_kit()
+			ai_save(f)
+		assign_foes()
 	cpu = team_c[0]
 	player = team_p[0]
 	var venue: Array = GameData.current_arena()
@@ -507,8 +525,11 @@ func handle_tap(p: Vector2) -> bool:
 		quit_fight()
 		return true
 	if moves_rect.has_point(p):
-		toggle_pause()
+		if mode != "watch":
+			toggle_pause()
 		return true
+	if mode == "watch":
+		return false
 	for b in buttons + gadget_buttons:
 		if p.distance_to(b["pos"]) <= b["r"] * 1.2:
 			return false
@@ -1219,6 +1240,10 @@ func _process(delta: float) -> void:
 
 	assign_foes()
 	var p_ins: Array = read_player_input()
+	if mode == "watch":
+		for k in team_p.size():
+			p_ins[k] = ai_input_for(team_p[k], delta)
+		assign_foes()
 	var c_ins: Array = []
 	for f in team_c:
 		c_ins.append(ai_input_for(f, delta))
@@ -1344,6 +1369,21 @@ func end_by(winner: Fighter, title: String) -> void:
 
 
 func finish_match() -> void:
+	if mode == "watch":
+		var hp := [{}, {}]
+		var torn := [[], []]
+		for side in 2:
+			var f: Fighter = (team_p if side == 0 else team_c)[0]
+			for slot in BODY_PARTS:
+				if not f.parts[slot].is_empty():
+					hp[side][slot] = [float(f.parts[slot]["hp"]), float(f.parts[slot]["max_hp"])]
+			torn[side] = f.ripped
+		result = GameData.record_watch(won, hp, torn)
+		result["watch"] = true
+		phase = "results"
+		phase_timer = 0.0
+		Sfx.play("victory")
+		return
 	if mode == "quick":
 		result = {"won": won, "reward": 0}
 		phase = "results"
@@ -1367,6 +1407,12 @@ func finish_match() -> void:
 	for f in team_c:
 		ripped += f.ripped
 	GameData.last_ko = ko_text
+	var ehp := {}
+	for slot in BODY_PARTS:
+		var ep: Dictionary = team_c[0].parts[slot]
+		if not ep.is_empty():
+			ehp[slot] = [float(ep["hp"]), float(ep["max_hp"])]
+	GameData.last_enemy_hp = ehp
 	result = GameData.record_result(won, part_hp, ripped.size(), ripped, team_hp)
 	phase = "results"
 	phase_timer = 0.0
@@ -1375,6 +1421,11 @@ func finish_match() -> void:
 
 func leave_after_results() -> void:
 	Sfx.play("click")
+	if mode == "watch":
+		GameData.watching = {}
+		GameData.last_result = {}
+		get_tree().change_scene_to_file("res://garage.tscn")
+		return
 	if mode == "quick":
 		GameData.quick = {}
 		get_tree().change_scene_to_file("res://main.tscn")
@@ -1392,6 +1443,10 @@ func leave_after_results() -> void:
 
 func quit_fight() -> void:
 	Sfx.play("error")
+	if mode == "watch":
+		GameData.watching = {}   # walked out: the round will decide it on paper
+		get_tree().change_scene_to_file("res://garage.tscn")
+		return
 	if mode == "quick":
 		GameData.quick = {}
 		get_tree().change_scene_to_file("res://main.tscn")
@@ -2417,7 +2472,7 @@ func _draw() -> void:
 
 	draw_hud()
 	draw_coach()
-	if phase == "intro" or phase == "fight":
+	if (phase == "intro" or phase == "fight") and mode != "watch":
 		draw_buttons()
 	if paused:
 		draw_moves_list()
@@ -2848,7 +2903,7 @@ func draw_hud() -> void:
 	var bw := minf(gap_r - gap_l, 420.0)
 	draw_title_board(Rect2(screen.x * 0.5 - bw * 0.5, 6.0, bw, minf(quit_rect.position.y - 12.0, 70.0)))
 	if phase == "intro" or phase == "fight":
-		for rr in [[quit_rect, "QUIT"], [moves_rect, "MOVES"]]:
+		for rr in ([[quit_rect, "LEAVE"]] if mode == "watch" else [[quit_rect, "QUIT"], [moves_rect, "MOVES"]]):
 			draw_rect(rr[0], Color(1, 1, 1, 0.1))
 			draw_rect(rr[0], Color(1, 1, 1, 0.4), false, 2.0)
 			draw_string(font, (rr[0] as Rect2).position + Vector2(0, 31), tr(rr[1]), HORIZONTAL_ALIGNMENT_CENTER, (rr[0] as Rect2).size.x, fs(19), Color(1, 1, 1, 0.75))
@@ -2871,7 +2926,7 @@ func draw_hud() -> void:
 			draw_string(font, Vector2(0, cy), big, HORIZONTAL_ALIGNMENT_CENTER, screen.x, fs(84), Color(1.0, 0.2, 0.1))
 			var sub := tr(ko_text) if ko_text != "TIME!" else tr("Judges' decision")
 			draw_string(font, Vector2(0, cy + 55), sub, HORIZONTAL_ALIGNMENT_CENTER, screen.x, fs(26), Color.WHITE)
-			var winner_name: String = (team_p[0].label if team_p.size() == 1 else tr("YOUR TEAM")) if won else str(opp["name"])
+			var winner_name: String = (team_p[0].label if team_p.size() == 1 or mode == "watch" else tr("YOUR TEAM")) if won else str(opp["name"])
 			draw_string(font, Vector2(0, cy + 100), tr("%s WINS") % winner_name, HORIZONTAL_ALIGNMENT_CENTER, screen.x, fs(32), Color(1.0, 0.85, 0.2))
 			if phase_timer > 2.0:
 				draw_string(font, Vector2(0, cy + 145), tr("Tap to continue"), HORIZONTAL_ALIGNMENT_CENTER, screen.x, fs(22), Color(0.8, 0.8, 0.8))
@@ -2883,10 +2938,14 @@ func draw_results() -> void:
 	draw_rect(Rect2(Vector2.ZERO, screen), Color(0, 0, 0, 0.7))
 	var y := screen.y * 0.2
 	var title := tr("VICTORY!") if won else tr("DEFEAT")
-	draw_string(font, Vector2(0, y), title, HORIZONTAL_ALIGNMENT_CENTER, screen.x, fs(72), Color(1.0, 0.85, 0.2) if won else Color(0.9, 0.3, 0.3))
+	if mode == "watch":
+		title = tr("%s WINS") % str(result.get("winner", "?"))
+	draw_string(font, Vector2(0, y), title, HORIZONTAL_ALIGNMENT_CENTER, screen.x, fs(72 if mode != "watch" else 54), Color(1.0, 0.85, 0.2) if won or mode == "watch" else Color(0.9, 0.3, 0.3))
 	y += 60.0
 	var lines: Array = []
-	if mode == "quick":
+	if mode == "watch":
+		lines.append([tr("That's the result on the books - bets on it pay when the round is over."), Color(0.8, 0.8, 0.85)])
+	elif mode == "quick":
 		lines.append([tr("Quick fight - nothing saved. Tap to go back to the menu."), Color(0.8, 0.8, 0.85)])
 	else:
 		var pay: int = result.get("reward", 0)
@@ -3038,8 +3097,15 @@ var pilots: Array = []   # one per side: {team, look, auto, bubble, bubble_t, je
 
 func setup_pilots() -> void:
 	var mine: Dictionary = GameData.pilot_look
+	var mine_auto := false
 	if mode == "quick":
 		mine = random_pilot_look(str(GameData.quick["player"]["name"]))
+	elif mode == "watch":
+		var lp := str(GameData.watch_robot(0).get("pilot", ""))
+		mine_auto = lp == "" or lp == "KANE DYNAMICS"
+		mine = Story.SPEAKERS.get(lp, {}).get("face", {})
+		if mine.is_empty():
+			mine = random_pilot_look(lp + str(team_p[0].label))
 	var theirs := {}
 	var auto := false
 	if mode != "quick":
@@ -3049,7 +3115,7 @@ func setup_pilots() -> void:
 	if theirs.is_empty():
 		theirs = random_pilot_look(str(opp["name"]))
 	pilots = [
-		{"team": 0, "look": mine, "auto": false, "bubble": "", "bubble_t": 0.0, "jerk": 0.0, "talk_cd": 0.0, "chatter_t": randf_range(5.0, 8.0)},
+		{"team": 0, "look": mine, "auto": mine_auto, "bubble": "", "bubble_t": 0.0, "jerk": 0.0, "talk_cd": 0.0, "chatter_t": randf_range(5.0, 8.0)},
 		{"team": 1, "look": theirs, "auto": auto, "bubble": "", "bubble_t": 0.0, "jerk": 0.0, "talk_cd": 0.0, "chatter_t": randf_range(6.0, 9.0)},
 	]
 
@@ -3205,7 +3271,7 @@ var coach_t := 0.0
 
 
 func coach(id: String, text: String) -> void:
-	if mode == "quick" or GameData.tips_seen.has(id) or id == coach_id:
+	if mode == "quick" or mode == "watch" or GameData.tips_seen.has(id) or id == coach_id:
 		return
 	for q in coach_queue:
 		if q["id"] == id:
@@ -3337,6 +3403,12 @@ func live_coach(delta: float) -> void:
 			shout("finisher", tr("%s! %s") % [tr(m["name"]), Specials.seq_text(m["seq"])], tr("He's dazed - hit him with your %s: %s") % [tr(m["name"]), Specials.seq_text(m["seq"])], 2, 1, 7.0)
 		else:
 			shout("dazed", tr("He's dazed - P, P, K!"), tr("He's dazed! Punch, punch, kick - chain it!"), 2, 1, 6.0)
+	# --- a part that's much better than the rest of his robot
+	var so: String = cpu.spec.get("standout", "")
+	if so != "" and cpu.alive(so) and phase_timer > 1.5:
+		var pname: String = GameData.part_def(str(cpu.parts[so]["id"]))["name"]
+		shout("standout", tr("Watch it for that %s! It's a powerful piece.") % pname,
+				tr("Watch it for that %s! It's a powerful piece - way better than the rest of his robot. Block it, or aim at it and tear it off!") % pname, 2, 1, 30.0)
 	# --- aiming and parts
 	for slot in ["head", "arm_front", "arm_back", "leg_front", "leg_back"]:
 		var r := cpu.ratio(slot)
@@ -3394,7 +3466,7 @@ const GUS_LOOK := {"skin": "#6b4530", "hair": "#33507a", "hat": "cap", "beard": 
 
 
 func gus_here() -> bool:
-	return mode != "quick"
+	return mode != "quick" and mode != "watch"
 
 
 ## Gus stands just behind your pilot in the corner, looking over their shoulder (so he never
