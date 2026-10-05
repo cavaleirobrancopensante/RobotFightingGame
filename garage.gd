@@ -146,7 +146,11 @@ func _ready() -> void:
 
 
 func tab_list() -> Array:
-	var t := ["Build", "Shop", "Workshop", "Moves"]
+	var t := ["Build", "Shop"]
+	if GameData.unlocked("workshop"):
+		t.append("Workshop")
+	if GameData.unlocked("moves"):
+		t.append("Moves")
 	if GameData.champion:
 		t.append("Cups")
 	if GameData.team_unlocked():
@@ -227,7 +231,7 @@ func refresh() -> void:
 		elif not core.is_empty() and GameData.hp_ratio(core) < 0.35:
 			fight_button.text += " - core damaged!"
 
-	scout_button.visible = GameData.scout_key() != ""
+	scout_button.visible = GameData.scout_key() != "" and GameData.unlocked("scout")
 	scout_button.text = "Scout report" if GameData.scouted() else "Scout $%d" % GameData.scout_cost()
 	preview.look = GameData.player_look()
 	preview.highlight = selected if tab == "Build" else ""
@@ -235,7 +239,9 @@ func refresh() -> void:
 	for c in tabs_box.get_children():
 		c.queue_free()
 	for t in tab_list():
-		var b := UI.button(t, _on_tab.bind(t), 18, Vector2(0, 46))
+		# a star marks a tab you haven't opened yet
+		var fresh: bool = not t in ["Build", "Shop"] and not GameData.tips_seen.has("tab_" + t)
+		var b := UI.button(t + (" ★" if fresh else ""), _on_tab.bind(t), 18, Vector2(0, 46))
 		b.toggle_mode = true
 		b.button_pressed = t == tab
 		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -414,11 +420,17 @@ func build_overview() -> void:
 	var total := GameData.repair_all_cost()
 	var bar := action_bar()
 	row_button(bar, "Repair all $%d" % total if total > 0 else "All repaired", _on_repair_all, total > 0, 150)
-	row_button(bar, "Randomize", _on_randomize, true, 120)
-	row_button(bar, "Setups", _on_open_setups, true, 100)
-	row_button(bar, "Paint", _on_open_paint, true, 85)
-	row_button(bar, "Pilot", _on_open_pilot, true, 80)
-	row_button(bar, "Style: %s" % Catalog.STYLES[GameData.style]["name"], _on_open_style, true, 150)
+	# more buttons appear as the story goes on (see GameData.UNLOCKS)
+	if GameData.unlocked("randomize"):
+		row_button(bar, "Randomize", _on_randomize, true, 120)
+	if GameData.unlocked("setups"):
+		row_button(bar, "Setups", _on_open_setups, true, 100)
+	if GameData.unlocked("paint"):
+		row_button(bar, "Paint", _on_open_paint, true, 85)
+	if GameData.unlocked("pilot"):
+		row_button(bar, "Pilot", _on_open_pilot, true, 80)
+	if GameData.unlocked("style"):
+		row_button(bar, "Style: %s" % Catalog.STYLES[GameData.style]["name"], _on_open_style, true, 150)
 	row_button(bar, "Storage (%d)" % GameData.spares().size(), _on_slot.bind("storage"), true, 125)
 
 	for slot in GameData.SLOTS:
@@ -738,8 +750,9 @@ func build_shop_tab() -> void:
 		var tag := "  [%s]" % str(d["kind"]).to_upper()
 		var row := make_row(part_icon(d), d["name"] + tag, GameData.part_stat_text(d))
 		row_button(row, "Buy $%d" % d["cost"], _on_buy.bind(id), GameData.money >= d["cost"], 115)
-	section("PILOT GEAR - controllers change how your robots fight:")
-	for id in PilotArt.CONTROLLERS:
+	for id in (PilotArt.CONTROLLERS if GameData.unlocked("pilot") else []):
+		if id == PilotArt.CONTROLLERS[0]:
+			section("PILOT GEAR - controllers change how your robots fight:")
 		var cinfo: Dictionary = GameData.CONTROLLER_INFO[id]
 		var icon := ControllerIcon.new()
 		icon.kind = id

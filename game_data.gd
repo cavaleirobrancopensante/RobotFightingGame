@@ -1114,7 +1114,7 @@ func sending_name() -> String:
 
 ## Backup robots and the Team tab unlock after the second story fight.
 func team_unlocked() -> bool:
-	return champion or fight_index >= 2
+	return unlocked("team")
 
 
 ## True the first time a tip is asked for (then it's marked as seen).
@@ -1125,18 +1125,30 @@ func tip_once(id: String) -> bool:
 	return true
 
 
+# The garage opens up slowly so new players aren't buried in menus: feature -> story fights won.
+const UNLOCKS := {"style": 1, "scout": 1, "team": 2, "moves": 3, "workshop": 4, "pilot": 5, "paint": 5, "setups": 6, "randomize": 6}
+
+
+func unlocked(feature: String) -> bool:
+	return champion or fight_index >= int(UNLOCKS.get(feature, 0))
+
+
 ## One garage tip from Gus per visit, the first one that applies and hasn't been shown.
+## New features get a "NEW:" tip the first time you see them.
 func garage_tip() -> String:
 	var tips := [
-		["pilot", true, "Tap Pilot (in Build) to design yourself. Better controllers are in the Shop."],
-		["style", fight_index >= 1 or champion, "Pick a fighting style with the Style button: Tank, Striker, Mechanic or Specialist. Each gets a free signature move."],
-		["repair", repair_all_cost() > 0, "Damage carries over between fights. Hit Repair all before the next one."],
-		["scout", fight_index >= 1 and scout_key() != "", "Want an edge? Scout the next robot. Careful - their crew might spot you and change their setup."],
-		["backup", team_unlocked(), "New: the Team tab. Build a backup robot from spare parts, then use Send to put it in the ring when ECHO's too banged up."],
+		["repair", repair_all_cost() > 0, "Damage carries over between fights. Hit Repair all before the next one - or fix parts one by one."],
+		["style", unlocked("style"), "NEW: the Style button. Pick how ECHO fights - Tank, Striker, Mechanic or Specialist. Each gets a free signature move."],
+		["scout", unlocked("scout") and scout_key() != "", "NEW: Scout. Pay to peek at the next robot. Careful - their crew might spot you and change their setup."],
+		["backup", unlocked("team"), "NEW: the Team tab. Build a backup robot from spare parts, then use Send to put it in the ring when ECHO's too banged up."],
+		["moves", unlocked("moves"), "NEW: the Moves tab. Training chips teach special moves like Rocket Punch."],
+		["workshop", unlocked("workshop"), "NEW: the Workshop. Design your own parts - pricier than the dealer, but exactly what you want."],
+		["pilot", unlocked("pilot"), "NEW: Pilot and Paint. Design yourself and your robot's colors. Controllers in the Shop change how you fight."],
+		["setups", unlocked("setups"), "NEW: Setups saves whole builds, Randomize throws one together from your spares."],
 	]
 	for t in tips:
 		if t[1] and tip_once(t[0]):
-			return "GUS: " + t[2]
+			return "GUS: " + str(t[2]).replace("ECHO", robot_name)
 	return ""
 
 
