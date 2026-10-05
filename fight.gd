@@ -284,6 +284,12 @@ var result := {}
 var fight_called := false
 
 var shake := 0.0
+# Demo mode (set before the scene enters the tree): a little looping showcase of one special move,
+# shown in the garage. Your robot does the move on a training dummy, over and over.
+var demo_move := ""
+var demo_specs: Array = []
+var demo_t := 0.0
+var demo_fired := false
 var hitstop := 0.0          # tiny freeze on big hits
 var slowmo := 0.0           # slow motion after a knockout
 var wall_l := 80.0
@@ -306,6 +312,9 @@ func fs(size: float) -> int:
 
 func _ready() -> void:
 	font = ThemeDB.fallback_font
+	if demo_move != "":
+		setup_demo()
+		return
 	touch_device = DisplayServer.is_touchscreen_available()
 	fight_idx = GameData.current_opponent_index()
 	mode = GameData.fight_mode()
@@ -406,6 +415,8 @@ func _ready() -> void:
 ## Robots point at each other (foe), which would keep them alive forever after the fight.
 ## Break those links when the fight screen closes so the memory is freed.
 func _exit_tree() -> void:
+	if demo_move != "":
+		Sfx.quiet = maxi(0, Sfx.quiet - 1)
 	for f in team_p + team_c:
 		f.foe = null
 		f.ai.clear()
@@ -490,6 +501,8 @@ func layout() -> void:
 # ---------------------------------------------------------------- input
 
 func _input(event: InputEvent) -> void:
+	if demo_move != "":
+		return
 	if event is InputEventScreenTouch:
 		if event.pressed:
 			if handle_tap(event.position):
@@ -1227,6 +1240,9 @@ func ai_pick_target() -> void:
 # ---------------------------------------------------------------- game loop
 
 func _process(delta: float) -> void:
+	if demo_move != "":
+		demo_process(delta)
+		return
 	layout()
 	if tut_pause:
 		queue_redraw()
@@ -2426,9 +2442,10 @@ func _draw() -> void:
 
 	if arena_layer:
 		arena_layer.position = off * 0.6   # screen shake moves the whole arena
-	draw_gus(off)   # Gus stands behind your pilot, so draw him first
-	for pd in pilots:
-		draw_pilot(pd, off)
+	if demo_move == "":
+		draw_gus(off)   # Gus stands behind your pilot, so draw him first
+		for pd in pilots:
+			draw_pilot(pd, off)
 	draw_cables(off)
 	# knocked-out robots first, so the ones still fighting are drawn on top
 	for f in all_fighters():
@@ -2477,6 +2494,8 @@ func _draw() -> void:
 		c.a = 1.0 - t * t
 		draw_string(font, p["pos"] + Vector2(-260, -40.0 - t * 50.0), p["text"], HORIZONTAL_ALIGNMENT_CENTER, 520, fs(26), c)
 
+	if demo_move != "":
+		return   # the move showcase: just the robots
 	draw_hud()
 	draw_coach()
 	if (phase == "intro" or phase == "fight") and mode != "watch":
@@ -3288,7 +3307,7 @@ var coach_t := 0.0
 
 
 func coach(id: String, text: String) -> void:
-	if mode == "quick" or mode == "watch" or GameData.tips_seen.has(id) or id == coach_id:
+	if mode == "quick" or mode == "watch" or mode == "demo" or GameData.tips_seen.has(id) or id == coach_id:
 		return
 	for q in coach_queue:
 		if q["id"] == id:
@@ -3497,7 +3516,7 @@ const GUS_LOOK := {"skin": "#6b4530", "hair": "#33507a", "hat": "cap", "beard": 
 
 
 func gus_here() -> bool:
-	return mode != "quick" and mode != "watch"
+	return mode != "quick" and mode != "watch" and mode != "demo"
 
 
 ## Gus stands just behind your pilot in the corner, looking over their shoulder (so he never
@@ -3609,3 +3628,109 @@ func draw_coach() -> void:
 	draw_rect(Rect2(x, y, w, size + 18.0), Color(0.95, 0.65, 0.35, 0.8 * a), false, 2.0)
 	draw_string(font, Vector2(x + 14, y + size + 6), label, HORIZONTAL_ALIGNMENT_LEFT, -1, size, Color(0.95, 0.65, 0.35, a))
 	draw_string(font, Vector2(x + 14 + lw, y + size + 6), coach_text, HORIZONTAL_ALIGNMENT_LEFT, w - lw - 28.0, size, Color(1, 1, 1, a))
+
+
+# ---------------------------------------------------------------- move showcase (garage)
+
+func setup_demo() -> void:
+	mode = "demo"
+	Sfx.quiet += 1   # the garage shouldn't sound like a fight
+	var m: Dictionary = Specials.MOVES[demo_move]
+	var ps: Dictionary = GameData.player_spec()
+	ps["specials"] = [demo_move]
+	ps["style"] = str(m.get("style", GameData.style))
+	ps["gadgets"] = []
+	opp = GameData.OPPONENTS[0].duplicate(true)
+	opp["pilot"] = ""
+	var dummy: Dictionary = GameData.opponent_spec_from(opp, 1.0)
+	dummy["name"] = tr("DUMMY")
+	dummy["gadgets"] = []
+	dummy["specials"] = []
+	dummy["style"] = ""
+	demo_specs = [ps, dummy]
+	screen = get_viewport_rect().size
+	floor_y = screen.y * 0.82
+	wall_l = screen.x * 0.04
+	wall_r = screen.x * 0.96
+	arena_id = "docks"
+	crowd_id = "dockers"
+	crowd = []
+	demo_reset()
+	setup_pilots()
+	arena_layer = ArenaLayer.new()
+	arena_layer.fight = self
+	arena_layer.show_behind_parent = true
+	add_child(arena_layer)
+	phase = "fight"
+	fight_called = true
+
+
+## Fresh robots for the next loop: yours on the left, a tough dummy on the right.
+func demo_reset() -> void:
+	team_p = [make_fighter(demo_specs[0])]
+	team_c = [make_fighter(demo_specs[1])]
+	var me: Fighter = team_p[0]
+	var dummy: Fighter = team_c[0]
+	me.team = 0
+	dummy.team = 1
+	dummy.facing = -1
+	for f in [me, dummy]:
+		f.scale = maxf(f.scale, BOT_SCALE)
+		f.spec["scale"] = f.scale
+		f.look_dirty = true
+	for slot in dummy.parts:
+		if not dummy.parts[slot].is_empty():
+			dummy.parts[slot]["hp"] = dummy.parts[slot]["hp"] * 40.0   # it takes the move all day long
+			dummy.parts[slot]["max_hp"] = dummy.parts[slot]["max_hp"] * 40.0
+	me.foe = dummy
+	dummy.foe = me
+	player = me
+	cpu = dummy
+	var gap := screen.x * (0.24 if Specials.MOVES[demo_move].get("ranged", false) else 0.17)
+	me.pos = Vector2(screen.x * 0.5 - gap, floor_y)
+	dummy.pos = Vector2(screen.x * 0.5 + gap * 0.6, floor_y)
+	projectiles.clear()
+	debris.clear()
+	popups.clear()
+	demo_t = 0.7
+	demo_fired = false
+
+
+func demo_process(delta: float) -> void:
+	clock += delta
+	phase_timer += delta
+	time_left = FIGHT_TIME
+	if hitstop > 0.0:
+		hitstop -= delta
+		queue_redraw()
+		return
+	if slowmo > 0.0:
+		slowmo -= delta
+		delta *= 0.35
+	var m: Dictionary = Specials.MOVES[demo_move]
+	demo_t -= delta
+	if not demo_fired and demo_t <= 0.0:
+		var air: bool = m.get("air", false)
+		if air and player.on_ground:
+			player.vel.y = -JUMP_SPEED   # air moves start with a jump
+			player.on_ground = false
+		elif not air or player.vel.y > -250.0:
+			player.cooldowns.erase(demo_move)
+			player.power = player.power_max
+			if can_special(player, demo_move):
+				start_special(player, demo_move)
+				demo_fired = true
+				demo_t = 2.4
+	elif demo_fired and demo_t <= 0.0 and player.state != "special":
+		demo_reset()
+	update_fighter(player, cpu, empty_input(), delta)
+	update_fighter(cpu, player, empty_input(), delta)
+	separate()
+	update_projectiles(delta)
+	update_effects(delta)
+	arena_redraw_t -= delta
+	if arena_redraw_t <= 0.0 and arena_layer:
+		arena_redraw_t = 1.0 / ARENA_FPS
+		arena_layer.queue_redraw()
+	queue_redraw()
+

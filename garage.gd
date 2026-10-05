@@ -7,6 +7,7 @@ const PilotArt = preload("res://pilot_art.gd")
 const RobotPreview = preload("res://robot_preview.gd")
 const Specials = preload("res://specials.gd")
 const UI = preload("res://ui.gd")
+const MoveDemo = preload("res://move_demo.gd")
 ## Garage, organised in sections:
 ##   BUILD    - your robot slot by slot. Tap a slot (or a part on the robot picture) to swap,
 ##              repair or remove it. Setups, Paint and Storage open as popups.
@@ -1058,9 +1059,28 @@ func build_workshop() -> void:
 
 # ---------------------------------------------------------------- MOVES & CUPS
 
+var demo_chip := ""   # the move looping at the top of the Moves tab
+
+
 func build_moves_tab() -> void:
 	section("Training chips teach special moves. Chip slots used: %d/%d (better heads have more). Inputs: → toward the enemy, ← away, ↓ down. Tap them quickly, then P or K."
 			% [GameData.active_chips().size(), GameData.chip_slots()])
+	var chip_ids: Array = Specials.MOVES.keys().filter(func(x): return not Specials.MOVES[x].has("style"))
+	if demo_chip == "" or not chip_ids.has(demo_chip):
+		demo_chip = GameData.chips[0] if not GameData.chips.is_empty() else (GameData.owned_chips[0] if not GameData.owned_chips.is_empty() else chip_ids[0])
+	# the selected move, looping: see it before you buy it, and get used to it before a fight
+	var top := HBoxContainer.new()
+	top.add_theme_constant_override("separation", 12)
+	list_box.add_child(top)
+	var demo := MoveDemo.new()
+	demo.custom_minimum_size = Vector2(320, 180)
+	demo.move = demo_chip
+	top.add_child(demo)
+	var dm: Dictionary = Specials.MOVES[demo_chip]
+	var info := UI.label(tr("%s\n%s\n\n%s") % [tr(dm["name"]).to_upper(), Specials.seq_text(dm["seq"]), tr(dm["desc"])], 15, Color(0.5, 0.9, 1.0))
+	info.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	info.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	top.add_child(info)
 	for id in Specials.MOVES:
 		var m: Dictionary = Specials.MOVES[id]
 		if m.has("style"):
@@ -1070,12 +1090,18 @@ func build_moves_tab() -> void:
 		var icon := ChipIcon.new()
 		icon.installed = installed
 		var row := make_row(icon, tr("%s    %s") % [tr(m["name"]), Specials.seq_text(m["seq"])], tr("%s  Cooldown %ds.") % [tr(m["desc"]), int(m["cd"])])
+		row_button(row, "Watching" if id == demo_chip else "See it", _on_chip_demo.bind(id), id != demo_chip, 100)
 		if not owned:
 			row_button(row, tr("Buy $%d") % m["cost"], _on_buy_chip.bind(id), GameData.money >= m["cost"], 115)
 		elif installed:
 			row_button(row, "Remove", _on_uninstall_chip.bind(id), true, 115)
 		else:
 			row_button(row, "Install", _on_install_chip.bind(id), GameData.chips.size() < GameData.chip_slots(), 115)
+
+
+func _on_chip_demo(id: String) -> void:
+	demo_chip = id
+	refresh()
 
 
 func build_cups_tab() -> void:
@@ -1616,24 +1642,56 @@ func _on_open_style() -> void:
 		return
 	var col := open_popup(tr("FIGHTING STYLE"))
 	section("Your style changes how ECHO fights and gives it a free signature move.", col)
+	var body := HBoxContainer.new()
+	body.add_theme_constant_override("separation", 14)
+	col.add_child(body)
+	# left: the signature move, looping, so you know what it looks like before a fight
+	var left := VBoxContainer.new()
+	body.add_child(left)
+	style_demo = MoveDemo.new()
+	style_demo.custom_minimum_size = Vector2(400, 225)
+	left.add_child(style_demo)
+	style_demo_label = UI.label("", 14, Color(0.5, 0.9, 1.0))
+	style_demo_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	style_demo_label.custom_minimum_size = Vector2(400, 0)
+	left.add_child(style_demo_label)
+	var list := VBoxContainer.new()
+	list.add_theme_constant_override("separation", 6)
+	body.add_child(list)
 	for id in Catalog.STYLES:
 		var st: Dictionary = Catalog.STYLES[id]
 		var sig: Dictionary = Specials.MOVES[st["signature"]]
 		var row := HBoxContainer.new()
-		row.add_theme_constant_override("separation", 10)
-		col.add_child(row)
+		row.add_theme_constant_override("separation", 8)
+		list.add_child(row)
 		var text := VBoxContainer.new()
 		text.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		row.add_child(text)
-		text.add_child(UI.label(tr(st["name"]).to_upper() + ("   (current)" if id == GameData.style else ""), 18, Color(st["color"]).lightened(0.3)))
-		var d := UI.label(tr(st["desc"]), 13)
+		text.add_child(UI.label(tr(st["name"]).to_upper() + ("   (current)" if id == GameData.style else ""), 17, Color(st["color"]).lightened(0.3)))
+		var d := UI.label(tr(st["desc"]), 12)
 		d.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		d.custom_minimum_size = Vector2(380, 0)
+		d.custom_minimum_size = Vector2(330, 0)
 		text.add_child(d)
-		text.add_child(UI.label(tr("Signature: %s  %s") % [tr(sig["name"]), Specials.seq_text(sig["seq"])], 13, Color(0.5, 0.9, 1.0)))
-		var b := UI.button("Pick", _on_pick_style.bind(id), 16, Vector2(90, 46))
+		text.add_child(UI.label(tr("Signature: %s  %s") % [tr(sig["name"]), Specials.seq_text(sig["seq"])], 12, Color(0.5, 0.9, 1.0)))
+		var btns := VBoxContainer.new()
+		row.add_child(btns)
+		btns.add_child(UI.button("See it", _on_style_demo.bind(id), 14, Vector2(84, 38)))
+		var b := UI.button("Pick", _on_pick_style.bind(id), 14, Vector2(84, 38))
 		b.disabled = id == GameData.style
-		row.add_child(b)
+		btns.add_child(b)
+	_on_style_demo(GameData.style)
+
+
+var style_demo: Control
+var style_demo_label: Label
+
+
+## Loop a style's signature move in the popup's little window.
+func _on_style_demo(id: String) -> void:
+	var st: Dictionary = Catalog.STYLES[id]
+	var sig: Dictionary = Specials.MOVES[st["signature"]]
+	style_demo.show_move(st["signature"])
+	style_demo_label.text = tr("%s - %s: %s") % [tr(st["name"]).to_upper(), tr(sig["name"]), Specials.seq_text(sig["seq"])]
 
 
 func _on_pick_style(id: String) -> void:
