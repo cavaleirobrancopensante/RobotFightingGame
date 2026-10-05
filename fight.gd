@@ -14,8 +14,9 @@ extends Node2D
 ## Keyboard: A/D move, W jump, S crouch, J punch, K kick, L block, H grab, U/I/O gadgets, M moves, Esc quit
 
 const GRAVITY := 2200.0
-const WALK_SPEED := 260.0
-const JUMP_SPEED := 860.0
+const WALK_SPEED := 300.0
+const JUMP_SPEED := 950.0
+const BOT_SCALE := 1.3        # fighters are drawn this much bigger than in the garage
 const FIGHT_TIME := 90.0
 const UI_SCALE := 1.25
 const BUTTON_SCALES := [0.8, 1.0, 1.25]
@@ -91,6 +92,7 @@ class Fighter:
 	var boost_hit := false
 	var jet_t := 0.0
 	var air_jumps := 0
+	var squash := 0.0        # landing squash timer (animation)
 
 	func alive(slot: String) -> bool:
 		return parts.has(slot) and not parts[slot].is_empty() and parts[slot]["hp"] > 0.0
@@ -200,6 +202,10 @@ var result := {}
 var fight_called := false
 
 var shake := 0.0
+var hitstop := 0.0          # tiny freeze on big hits
+var slowmo := 0.0           # slow motion after a knockout
+var wall_l := 80.0
+var wall_r := 1000.0
 var cheer := 0.0
 var sparks: Array = []
 var debris: Array = []
@@ -262,7 +268,7 @@ func make_fighter(spec: Dictionary) -> Fighter:
 	f.eff = spec["efficiency"]
 	f.dmg_mult = spec["damage_mult"]
 	f.spd_mult = spec["speed_mult"]
-	f.scale = spec["scale"]
+	f.scale = minf(spec["scale"] * BOT_SCALE, 1.5)   # cap so giants still fit under the HUD
 	f.specials = spec.get("specials", []).duplicate()
 	f.gadgets = spec.get("gadgets", []).duplicate()
 	return f
@@ -271,6 +277,8 @@ func make_fighter(spec: Dictionary) -> Fighter:
 func layout() -> void:
 	screen = get_viewport_rect().size
 	floor_y = screen.y * 0.68
+	wall_l = screen.x * 0.07
+	wall_r = screen.x * 0.93
 	var h := screen.y
 	var w := screen.x
 	var r: float = clampf(h * 0.085, 34.0, 60.0) * BUTTON_SCALES[GameData.settings["button_size"]] * UI_SCALE
@@ -625,6 +633,13 @@ func _process(delta: float) -> void:
 	if paused:
 		queue_redraw()
 		return
+	if hitstop > 0.0:
+		hitstop -= delta
+		queue_redraw()
+		return
+	if slowmo > 0.0:
+		slowmo -= delta
+		delta *= 0.35
 	clock += delta
 	phase_timer += delta
 
@@ -1085,6 +1100,9 @@ func update_fighter(f: Fighter, o: Fighter, i: Dictionary, delta: float) -> void
 		f.vel.y = 0.0
 		if not f.on_ground:
 			Sfx.play("land", 0.15, -6.0)
+			f.squash = 0.18
+			for k in 2:
+				add_spark(Vector2(f.pos.x + (k * 2 - 1) * 30.0 * f.scale, floor_y - 6.0), Color(0.6, 0.6, 0.6, 0.6), 16.0 * f.scale)
 			if f.state == "jump":
 				f.state = "idle"
 			if f.state == "special" and Specials.MOVES[f.special_id].get("air", false):
@@ -1092,7 +1110,8 @@ func update_fighter(f: Fighter, o: Fighter, i: Dictionary, delta: float) -> void
 		f.on_ground = true
 	else:
 		f.on_ground = false
-	f.pos.x = clampf(f.pos.x, 50.0, screen.x - 50.0)
+	f.pos.x = clampf(f.pos.x, wall_l + 55.0 * f.scale, wall_r - 55.0 * f.scale)
+	f.squash = maxf(0.0, f.squash - delta)
 
 
 func choose_part(att: Fighter, d: Fighter, zone_name: String, sure: bool = false) -> String:
@@ -1214,6 +1233,7 @@ func apply_hit(att: Fighter, d: Fighter, a: Dictionary, at: Vector2) -> void:
 			add_spark(hit_at, Color(0.7, 0.55, 1.0), 40.0)
 		d.flash = 0.12
 		shake = maxf(shake, 8.0 + minf(dmg, 20.0) * 0.3)
+		hitstop = maxf(hitstop, 0.04 + minf(dmg, 25.0) * 0.004)
 		add_spark(spark_pos, Color(1.0, 0.85, 0.3), 30.0)
 		Sfx.play("hit_big" if dmg >= 12.0 else "hit", 0.15)
 
@@ -1253,6 +1273,7 @@ func rip_off(f: Fighter, slot: String) -> void:
 	if f.blocking and f.arms() == 0:
 		f.blocking = false
 	shake = 16.0
+	hitstop = maxf(hitstop, 0.14)
 	cheer = maxf(cheer, 1.5)
 	Sfx.play("break")
 	Sfx.play("crowd_ooh", 0.1)
@@ -1262,7 +1283,9 @@ func knockout(att: Fighter, d: Fighter, why: String) -> void:
 	d.state = "ko"
 	d.vel = Vector2(att.facing * 400.0, -500.0)
 	d.on_ground = false
-	shake = 14.0
+	shake = 18.0
+	hitstop = 0.22
+	slowmo = 1.3
 	Sfx.play("ko")
 	end_by(att, why)
 
@@ -1273,8 +1296,8 @@ func separate() -> void:
 	if absf(dx) < gap and absf(cpu.pos.y - player.pos.y) < 120.0:
 		var push := (gap - absf(dx)) * 0.5
 		var s := 1.0 if dx >= 0.0 else -1.0
-		player.pos.x = clampf(player.pos.x - push * s, 50.0, screen.x - 50.0)
-		cpu.pos.x = clampf(cpu.pos.x + push * s, 50.0, screen.x - 50.0)
+		player.pos.x = clampf(player.pos.x - push * s, wall_l + 55.0 * player.scale, wall_r - 55.0 * player.scale)
+		cpu.pos.x = clampf(cpu.pos.x + push * s, wall_l + 55.0 * cpu.scale, wall_r - 55.0 * cpu.scale)
 
 
 func add_spark(p: Vector2, c: Color, size: float) -> void:
@@ -1353,9 +1376,16 @@ func draw_arena(off: Vector2) -> void:
 		draw_circle(Vector2(screen.x * (k + 0.5) / 14.0, screen.y * 0.21), 5.0, Color(1.0, 0.9, 0.6, 0.45))
 	draw_rect(Rect2(Vector2(0, floor_y) + off, Vector2(screen.x, screen.y - floor_y + 20.0)), Color(0.17, 0.17, 0.21))
 	draw_line(Vector2(0, floor_y) + off, Vector2(screen.x, floor_y) + off, Color(0.55, 0.55, 0.65), 3.0)
+	# ring: corner posts mark the walls, ropes run between them
+	var post_top := floor_y - 190.0
 	for k in range(3):
-		var y := floor_y - 70.0 - k * 45.0
-		draw_line(Vector2(0, y) + off, Vector2(screen.x, y) + off, Color(0.65, 0.1, 0.1, 0.55), 3.0)
+		var y := floor_y - 70.0 - k * 50.0
+		draw_line(Vector2(wall_l, y) + off, Vector2(wall_r, y) + off, Color(0.75, 0.12, 0.12, 0.7), 4.0)
+	for x in [wall_l, wall_r]:
+		draw_rect(Rect2(Vector2(x - 9.0, post_top) + off, Vector2(18.0, floor_y - post_top)), Color(0.5, 0.5, 0.56))
+		draw_rect(Rect2(Vector2(x - 12.0, post_top - 10.0) + off, Vector2(24.0, 14.0)), Color(0.85, 0.2, 0.2))
+		for k in range(3):
+			draw_rect(Rect2(Vector2(x - 11.0, floor_y - 76.0 - k * 50.0) + off, Vector2(22.0, 12.0)), Color(0.9, 0.9, 0.95))
 
 
 func draw_cables(off: Vector2) -> void:
@@ -1418,12 +1448,81 @@ func draw_fighter(f: Fighter, off: Vector2) -> void:
 		extended = f.timer >= a["startup"] * 0.6 and f.timer <= a["startup"] + a["active"] + a["recovery"] * 0.5
 		if state == "grab":
 			state = "punch"
+	# --- exaggerated animation: lean, lunge, recoil, squash & stretch
+	var sx := 1.0
+	var sy := 1.0
+	var lean := 0.0
+	var dx := 0.0
+	var swoosh := false
+	var phase_t := 0.0   # 0..1 progress through the attack's startup, then >1 once it's live
+	if f.state == "special" or ATTACKS.has(f.state):
+		var a: Dictionary = Specials.MOVES[f.special_id] if f.state == "special" else ATTACKS[f.state]
+		var st: float = maxf(0.01, a["startup"])
+		var act: float = a["active"]
+		phase_t = f.timer / st
+		if f.timer < st:
+			# wind-up: lean back, coil
+			lean = -f.facing * 0.16 * phase_t
+			dx = -f.facing * 10.0 * phase_t * f.scale
+			sy = 1.0 - 0.05 * phase_t
+		elif f.timer <= st + act + a.get("recovery", 0.2) * 0.5:
+			swoosh = f.timer <= st + act + 0.05
+			match state:
+				"kick":
+					lean = -f.facing * 0.16
+					dx = f.facing * 8.0 * f.scale
+				"uppercut":
+					lean = -f.facing * 0.12
+					sy = 1.14
+					sx = 0.92
+				"sweep":
+					lean = f.facing * 0.12
+				"block":
+					lean = f.facing * 0.22
+					dx = f.facing * 16.0 * f.scale
+				_:
+					lean = f.facing * 0.22
+					dx = f.facing * 18.0 * f.scale
+					sx = 1.08
+	elif f.state == "hit":
+		var k := clampf(f.timer / 0.45, 0.0, 1.0)
+		lean = -f.facing * 0.38 * k
+		dx = -f.facing * 12.0 * k * f.scale
+		sx = 1.0 - 0.08 * k
+	elif f.state == "walk":
+		lean = signf(f.vel.x) * 0.08
+		base.y -= absf(sin(f.walk_phase)) * 4.0 * f.scale
+	elif f.blocking:
+		lean = -f.facing * 0.07
+	elif f.on_ground and f.state != "ko":
+		sy = 1.0 + sin(clock * 3.5 + (0.0 if f == player else 1.7)) * 0.018   # breathing
+	if not f.on_ground and f.state != "ko":
+		if f.vel.y < 0.0:
+			sy *= 1.12
+			sx *= 0.9
+		else:
+			sy *= 1.04
+	if f.squash > 0.0:
+		var q := f.squash / 0.18
+		sy *= 1.0 - 0.22 * q
+		sx *= 1.0 + 0.16 * q
+	if rot == 0.0:
+		rot = lean
+	base.x += dx
 	if f.state == "ko":
 		if f.on_ground:
 			rot = -f.facing * PI / 2.0
 			base.y -= 18.0 * f.scale
 		else:
-			rot = -f.facing * PI / 4.0
+			rot = -f.facing * (PI / 4.0 + clock * 3.0)
+	if swoosh and extended:
+		var g := RobotArt.geom(f.get_look())
+		var low := state == "kick" or state == "sweep"
+		var pivot: Vector2 = g["hip_front"] if low else g["shoulder_front"]
+		var c := to_world_point(f, pivot) + Vector2(dx, 0)
+		var a0 := 0.0 if f.facing == 1 else PI
+		var span := -0.9 if state == "uppercut" else (0.5 if state == "sweep" else -0.5)
+		draw_arc(c, 100.0 * f.scale, a0 + span * f.facing - 0.35, a0 + span * f.facing + 0.35, 14, Color(1, 1, 1, 0.28), 14.0 * f.scale)
 	var fist_out: Array = f.fist_out.keys()
 	RobotArt.draw(self, base, f.get_look(), {
 		"facing": f.facing, "state": state, "extended": extended, "attack_limb": f.attack_limb,
@@ -1432,7 +1531,7 @@ func draw_fighter(f: Fighter, off: Vector2) -> void:
 		"flash": f.flash > 0.0, "rot": rot, "time": clock, "fist_out": fist_out,
 		"shield": f.shield_t > 0.0, "overcharge": f.over_t > 0.0, "stunned": f.stun_t > 0.0,
 		"jet": f.jet_t > 0.0 or (not f.on_ground and f.vel.y < -400.0 and f.has_gadget("double_jump")),
-		"boost": f.boost_t > 0.0,
+		"boost": f.boost_t > 0.0, "sx": sx, "sy": sy,
 	})
 
 

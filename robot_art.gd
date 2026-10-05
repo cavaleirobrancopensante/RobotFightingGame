@@ -111,7 +111,9 @@ static func draw(ci: CanvasItem, base: Vector2, look: Dictionary, pose: Dictiona
 	var sc: float = pose.get("scale", 1.0) * look.get("scale", 1.0)
 	var t: float = pose.get("time", 0.0)
 
-	ci.draw_set_transform(base, rot, Vector2(facing * sc, (0.7 if crouch else 1.0) * sc))
+	var sx: float = pose.get("sx", 1.0)
+	var sy: float = pose.get("sy", 1.0)
+	ci.draw_set_transform(base, rot, Vector2(facing * sc * sx, (0.7 if crouch else 1.0) * sc * sy))
 	var g := geom(look)
 	var trim: Color = Color.WHITE if flash else look["trim"]
 	var eye: Color = look["eye"]
@@ -202,11 +204,11 @@ static func _draw_arm(ci: CanvasItem, look: Dictionary, slot: String, s: Vector2
 	var h := s
 	match pose:
 		"punch":
-			e = s + Vector2(40, 2)
-			h = s + Vector2(82, 4)
+			e = s + Vector2(48, 0)
+			h = s + Vector2(100, 2)
 		"uppercut":
-			e = s + Vector2(18, -12)
-			h = s + Vector2(16, -66)
+			e = s + Vector2(22, -16)
+			h = s + Vector2(20, -84)
 		"block":
 			e = s + Vector2(20 if not back else 26, 20)
 			h = s + Vector2(24 if not back else 30, -26)
@@ -361,9 +363,9 @@ static func _draw_leg(ci: CanvasItem, look: Dictionary, slot: String, hip: Vecto
 	var foot := Vector2(hip.x + swing, 0.0)
 	match pose:
 		"kick":
-			foot = hip + Vector2(88, -6)
+			foot = hip + Vector2(104, -18)
 		"sweep":
-			foot = Vector2(hip.x + 100.0, -10.0)
+			foot = Vector2(hip.x + 118.0, -10.0)
 	var c := _col(p, flash, back)
 	var tc := trim.darkened(0.3) if back else trim
 	var dir := (foot - hip).normalized()
