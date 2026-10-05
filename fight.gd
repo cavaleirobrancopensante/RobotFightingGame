@@ -594,7 +594,10 @@ func read_ai_input(delta: float) -> Dictionary:
 		var pdx: float = cpu.pos.x - p["pos"].x
 		if absf(pdx) < 300.0 and signf(pdx) == signf(p["vel"].x):
 			p["ai_seen"] = true
-			if randf() < 0.25 + ai_smart * 0.6 and cpu.state in ["idle", "walk"]:
+			if not cpu.on_ground and cpu.air_jumps > 0 and randf() < 0.4 + ai_smart * 0.5:
+				ai_plan = {"hold": ["up", away], "fresh": true, "air": true, "air_in": false, "dj_now": true}   # jet over it
+				ai_timer = 0.4
+			elif randf() < 0.25 + ai_smart * 0.6 and cpu.state in ["idle", "walk"]:
 				var sh := ai_gadget("shield")
 				if not sh.is_empty():
 					use_gadget(cpu, sh)
@@ -616,15 +619,33 @@ func read_ai_input(delta: float) -> Dictionary:
 		i[ai_plan["tap"]] = true
 	ai_plan["fresh"] = false
 	var melee := 82.0 * cpu.scale + 25.0 * player.scale
-	# hook follow-up: reel them in, then punish
-	if ai_plan.get("follow", "") != "" and (player.state == "hit" or dist < melee) and dist < melee + 30.0 and cpu.state in ["idle", "walk"]:
-		i[ai_plan["follow"]] = true
+	# follow-up after a hook / EMP / booster: they're helpless, so hit them with the best thing we have
+	if ai_plan.get("follow", "") != "" and (player.state == "hit" or player.stun_t > 0.0 or dist < melee) and dist < melee + 40.0 and cpu.state in ["idle", "walk"]:
+		var punish := ai_pick_special(dist, false, true)
+		if punish != "":
+			start_special(cpu, punish)
+		else:
+			i[ai_plan["follow"]] = true
 		ai_plan["follow"] = ""
-	# jet packs: second jump at the top of the first one
-	if ai_plan.get("air", false) and not cpu.on_ground and cpu.air_jumps > 0 and cpu.vel.y > -150.0 and randf() < 0.25:
+	# jet packs: second jump at the top of the first one (or right now, to hop over a shot)
+	if ai_plan.get("air", false) and not cpu.on_ground and cpu.air_jumps > 0 and (ai_plan.get("dj_now", false) or (cpu.vel.y > -150.0 and randf() < 0.25)):
 		i["up_press"] = true
+		ai_plan["dj_now"] = false
 		var ad := toward if ai_plan.get("air_in", true) else away
 		i[ad] = true
+	# booster in the air: rocket down onto them from above
+	if not cpu.on_ground and cpu.state == "jump" and ai_plan.get("air_in", false) and dist < 300.0 and dist > 90.0:
+		var bo := ai_gadget("booster")
+		if not bo.is_empty() and randf() < 0.1 + ai_smart * 0.1:
+			use_gadget(cpu, bo)
+	# combo cancel: a normal that landed flows straight into a special
+	if ATTACKS.has(cpu.state) and cpu.landed and not ai_plan.get("cancel_tried", false) \
+			and cpu.timer >= ATTACKS[cpu.state]["startup"] + ATTACKS[cpu.state]["active"]:
+		ai_plan["cancel_tried"] = true
+		if randf() < 0.15 + ai_smart * 0.55:
+			var chain := ai_pick_special(dist, false, true)
+			if chain != "":
+				start_special(cpu, chain)
 	# in the air above the enemy: dive stomp if we know it
 	if not cpu.on_ground and cpu.state == "jump" and dist < 200.0 and cpu.specials.has("dive_stomp") and can_special(cpu, "dive_stomp") and randf() < 0.08 + ai_smart * 0.15:
 		start_special(cpu, "dive_stomp")
@@ -640,7 +661,17 @@ func ai_decide(dist: float, toward: String, away: String) -> Dictionary:
 	var can_punch := cpu.arms() > 0
 	var can_kick := cpu.legs() > 0
 	var melee := 82.0 * cpu.scale + 25.0 * player.scale
-	var threatened: bool = ATTACKS.has(player.state) or (player.state == "special" and not Specials.MOVES[player.special_id].get("nohit", false))
+	# threatened = their attack is still coming; once it's in recovery they're open to a punish
+	var threatened := false
+	var p_open := player.stun_t > 0.0
+	if ATTACKS.has(player.state):
+		var pa: Dictionary = ATTACKS[player.state]
+		threatened = player.timer <= pa["startup"] + pa["active"]
+		p_open = p_open or not threatened
+	elif player.state == "special":
+		var pm: Dictionary = Specials.MOVES[player.special_id]
+		threatened = not pm.get("nohit", false) and player.timer <= pm["startup"] + pm["active"]
+		p_open = p_open or not threatened
 	var hurt := cpu.ratio("torso")
 	var aggro: bool = cpu.over_t > 0.0 or cpu.haste_t > 0.0 or cpu.style == "striker"
 	var r := randf()
@@ -657,10 +688,18 @@ func ai_decide(dist: float, toward: String, away: String) -> Dictionary:
 		if special != "":
 			start_special(cpu, special)
 			return {}
+	# punish a whiffed attack
+	if p_open and dist < melee + 20.0 and randf() < 0.45 + ai_smart * 0.45:
+		if can_punch and (randf() < 0.6 or not can_kick):
+			return {"tap": "punch"}
+		if can_kick:
+			return {"tap": "kick"}
 	# 3) defend
 	if threatened and dist < 170.0 * cpu.scale:
 		if cpu.arms() > 0 and (randf() < ai_block or (cpu.style == "tank" and randf() < 0.5)):
 			return {"hold": ["block"]}
+		if aggro and dist < melee and can_punch and randf() < 0.4:
+			return {"tap": "punch"}   # strikers trade blows
 		if ai_kit["air"] and can_kick and randf() < 0.45:
 			return {"hold": ["up", away], "air": true, "air_in": false}   # jump away
 		return {"hold": [away]}
@@ -682,6 +721,10 @@ func ai_decide(dist: float, toward: String, away: String) -> Dictionary:
 			return {"hold": [toward]}
 		if dist > melee:
 			return {"hold": ["down"]} if randf() < 0.3 else {}   # wait for the gadget, duck under high shots
+	# cornered: jump gadgets vault right over the enemy
+	var cornered := (cpu.pos.x < wall_l + 130.0 * cpu.scale and toward == "right") or (cpu.pos.x > wall_r - 130.0 * cpu.scale and toward == "left")
+	if cornered and dist < 220.0 * cpu.scale and ai_kit["air"] and cpu.on_ground and randf() < 0.3 + ai_smart * 0.4:
+		return {"hold": ["up", toward], "air": true, "air_in": true}
 	# 6) jumpers come in from above
 	if ai_kit["air"] and can_kick and dist > melee and dist < 420.0 and randf() < 0.35:
 		return {"hold": ["up", toward], "air": true, "air_in": true}
@@ -692,8 +735,8 @@ func ai_decide(dist: float, toward: String, away: String) -> Dictionary:
 			plan["tap"] = "up_press"
 		return plan
 	# 8) up close
-	if cpu.has_gadget("thorns") and randf() < 0.3:
-		return {"hold": ["block"]} if cpu.arms() > 0 else {}   # spiky bots let you hit them
+	if cpu.has_gadget("thorns") and not threatened and randf() < 0.3:
+		return {"hold": ["down"]} if randf() < 0.3 else {}   # spiky bots stand there and dare you to hit the spikes
 	var atk := 0.68 if aggro else 0.55
 	if cpu.style == "tank":
 		atk = 0.45
@@ -714,39 +757,113 @@ func ai_decide(dist: float, toward: String, away: String) -> Dictionary:
 	return {"hold": [away]}
 
 
-func ai_pick_special(dist: float, threatened: bool = false) -> String:
-	if cpu.specials.is_empty() or ai_special_cd > 0.0 or randf() > 0.14 + ai_smart * 0.25:
+func ai_pick_special(dist: float, threatened: bool = false, punish: bool = false) -> String:
+	if cpu.specials.is_empty() or (ai_special_cd > 0.0 and not punish):
 		return ""
-	var options: Array = []
+	var best := ""
+	var best_score := 0.0
+	var total := 0.0
+	var scores := {}
 	for id in cpu.specials:
 		if not can_special(cpu, id):
 			continue
-		var m: Dictionary = Specials.MOVES[id]
-		var reach: float = m.get("reach", 0.0) + m.get("dash", 0.0) * m.get("active", 0.0) * 0.6
-		if m.get("nohit", false):
-			if m.get("effect", "") == "repair" and cpu.ratio("torso") < 0.6 and dist > 160.0:
-				options.append(id)
-			elif m.get("effect", "") == "overclock" and dist > 200.0:
-				for g in cpu.gadgets:
-					if cpu.cooldowns.get(g["id"], 0.0) > 2.0:
-						options.append(id)
-						break
-		elif m.has("counter"):
-			if threatened and dist < 160.0 * cpu.scale:
-				options.append(id)
-		elif m.get("air", false):
-			continue   # handled while jumping
-		elif m.has("projectile"):
-			if dist > 200.0:
-				options.append(id)
-		elif dist < (reach + 40.0) * cpu.scale:
-			if m.get("effect", "") == "armor_up" and not threatened and randf() < 0.5:
-				continue
-			options.append(id)
-	if options.is_empty():
+		var sc := ai_special_score(id, dist, threatened, punish)
+		if sc > 0.0:
+			scores[id] = sc
+			total += sc
+			if sc > best_score:
+				best_score = sc
+				best = id
+	if best == "":
 		return ""
-	ai_special_cd = randf_range(2.0, 4.0) - ai_smart
-	return options[randi() % options.size()]
+	# situational moves (anti-air, counters, punishes) get used much more often than "just because"
+	var gate := 0.35 + ai_smart * 0.45 if best_score >= 3.0 else 0.1 + ai_smart * 0.2
+	if not punish and randf() > gate:
+		return ""
+	var pick := best
+	if randf() > 0.4 + ai_smart * 0.5:
+		var r := randf() * total
+		for id in scores:
+			r -= scores[id]
+			if r <= 0.0:
+				pick = id
+				break
+	ai_special_cd = randf_range(1.6, 3.5) - ai_smart
+	return pick
+
+
+## How good a special move is right now (0 = don't).
+func ai_special_score(id: String, dist: float, threatened: bool, punish: bool) -> float:
+	var m: Dictionary = Specials.MOVES[id]
+	var reach: float = (m.get("reach", 0.0) + m.get("dash", 0.0) * m.get("active", 0.0) * 0.6) * cpu.scale + 30.0 * player.scale
+	var in_reach := dist < reach
+	var p_air := not player.on_ground
+	var p_open: bool = punish or player.state == "hit" or player.stun_t > 0.0 \
+			or (ATTACKS.has(player.state) and player.timer > ATTACKS[player.state]["startup"] + ATTACKS[player.state]["active"])
+	var lined := absf(player.pos.y - cpu.pos.y) < 120.0
+	var behind_wall := (player.pos.x < wall_l + 160.0 and player.pos.x < cpu.pos.x) or (player.pos.x > wall_r - 160.0 and player.pos.x > cpu.pos.x)
+	if m.get("air", false):
+		return 0.0   # dive stomp is used while jumping
+	match id:
+		"field_repair":
+			return 3.5 if cpu.ratio("torso") < 0.55 and dist > 240.0 and not punish else 0.0
+		"overclock":
+			if punish or dist < 180.0:
+				return 0.0
+			for g in cpu.gadgets:
+				if Specials.GADGETS[g["id"]]["active"] and cpu.cooldowns.get(g["id"], 0.0) > 2.0:
+					return 3.0
+			return 0.0
+		"counter_protocol":
+			return 4.5 if threatened and dist < 170.0 * cpu.scale else 0.0
+		"rising_piston":
+			if p_air and dist < 170.0 * cpu.scale:
+				return 4.5   # anti-air
+			if p_open and in_reach:
+				return 2.5
+			return 2.0 if threatened and dist < 140.0 * cpu.scale else 0.0
+		"grab_slam":
+			if not in_reach:
+				return 0.0
+			return 4.0 if player.blocking else (1.5 if p_open else 0.6)
+		"emp_pulse":
+			if not in_reach:
+				return 0.0
+			return 3.5 if player.blocking or threatened else 0.8
+		"scissor_sweep":
+			if not in_reach or p_air or player.crouching:
+				return 0.0
+			return 3.0 if player.blocking else 1.2   # standing guard can't stop a low
+		"haymaker":
+			if not in_reach:
+				return 0.0
+			return 4.0 if p_open else 0.5   # slow wind-up: only when it can't be punished
+		"shoulder_charge", "bulwark_slam":
+			if not in_reach:
+				return 0.0
+			if behind_wall:
+				return 3.5   # pin them against the ropes
+			if id == "bulwark_slam" and (threatened or cpu.ratio("torso") < 0.5):
+				return 3.0
+			return 1.0
+		"rocket_punch":
+			if not in_reach:
+				return 0.0
+			return 3.0 if dist > 150.0 * cpu.scale else (2.0 if p_open else 0.8)   # gap closer
+		"bolt_toss":
+			if punish:
+				return 0.0
+			return 2.5 if dist > 230.0 and lined else 0.0
+	# generic: projectiles at range, multi-hit combos up close
+	if m.has("projectile"):
+		return 2.0 if dist > 230.0 and lined and not punish else 0.0
+	if m.get("nohit", false) or m.has("counter"):
+		return 0.0
+	if not in_reach:
+		return 0.0
+	if m.get("hits", 1) > 1:
+		return 3.5 if p_open else 1.2   # combo extenders
+	return 2.0 if p_open else 1.0
 
 
 func ai_gadget(id: String) -> Dictionary:
@@ -759,7 +876,7 @@ func ai_gadget(id: String) -> Dictionary:
 
 
 func ai_ranged_ready() -> bool:
-	for id in ["rocket_fist", "laser", "cannon"]:
+	for id in ["rocket_fist", "laser", "cannon", "grapple"]:
 		for g in cpu.gadgets:
 			if g["id"] == id and cpu.gadget_working(g) and cpu.cooldowns.get(id, 0.0) < 1.2:
 				return true
@@ -788,7 +905,8 @@ func ai_use_gadgets(dist: float, threatened: bool, toward: String) -> Dictionary
 			use_gadget(cpu, g)
 			return {}
 	g = ai_gadget("booster")
-	if not g.is_empty() and dist > 220.0 and dist < 620.0 and lined_up and randf() < 0.6:
+	var whiffed: bool = ATTACKS.has(player.state) and player.timer > ATTACKS[player.state]["startup"] + ATTACKS[player.state]["active"]
+	if not g.is_empty() and dist > 160.0 and dist < 620.0 and lined_up and (whiffed or player.stun_t > 0.0 or randf() < 0.45):
 		use_gadget(cpu, g)
 		return {"follow": "kick"}
 	g = ai_gadget("overcharge")
@@ -813,6 +931,8 @@ func ai_build_kit() -> void:
 				ai_kit["air"] = true
 	if cpu.specials.has("bolt_toss"):
 		ai_kit["range"] = maxf(ai_kit["range"], 380.0)
+	if cpu.specials.has("rocket_punch") or cpu.specials.has("shoulder_charge"):
+		ai_kit["dash"] = true
 	if cpu.specials.has("dive_stomp"):
 		ai_kit["air"] = true
 
@@ -1310,6 +1430,8 @@ func update_fighter(f: Fighter, o: Fighter, i: Dictionary, delta: float) -> void
 		if f.timer <= 0.0 and f.on_ground:
 			f.state = "idle"
 			f.recovered_at = clock
+			if f == cpu:
+				ai_timer = minf(ai_timer, randf_range(0.02, 0.1) + ai_think * 0.15)   # react right after recovering
 	elif f.state == "special":
 		update_special(f, o, delta)
 	elif ATTACKS.has(f.state):
