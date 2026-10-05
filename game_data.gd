@@ -1612,31 +1612,43 @@ func unlocked(feature: String) -> bool:
 	return champion or wins >= int(UNLOCKS.get(feature, 0))
 
 
-## Gus's garage tips. Every feature you've just unlocked gets its own line (normally one, since
-## each win opens one thing); if nothing is new, the first other tip that applies.
+## The order things open in the garage, and the Gus scene that explains each one.
+## [feature, garage tab to open afterwards, the old tip id (saves from before these scenes)]
+const UNLOCK_SCENES := [["style", "", "style"], ["shop", "Shop", "shop"], ["season", "Season", "season"],
+		["scout", "", "scout"], ["moves", "Moves", "moves"], ["cups", "Cups", ""], ["team", "Team", "backup"],
+		["workshop", "Workshop", "workshop"], ["pilot", "", "pilot"], ["paint", "", "pilot"],
+		["setups", "", "setups"], ["randomize", "", "setups"]]
+var open_tab := ""   # a garage tab to show after an unlock scene
+
+
+## Gus scenes for everything that has opened up since the last visit. Saves from before these
+## scenes skip the ones the old one-line tips already explained.
+func unlock_scenes() -> Array:
+	var keys: Array = []
+	for u in UNLOCK_SCENES:
+		var f: String = u[0]
+		var key: String = "unlock_" + f
+		if story_seen.has(key):
+			continue
+		var open: bool = cups_unlocked() if f == "cups" else unlocked(f)
+		if f == "scout":
+			open = open and scout_key() != ""
+		if not open:
+			continue
+		if u[2] != "" and tips_seen.has(u[2]):
+			story_seen.append(key)
+			continue
+		keys.append(key)
+		if u[1] != "":
+			open_tab = u[1]
+	return keys
+
+
+## Gus's one-line garage tips (the bigger news gets a scene of its own, see unlock_scenes).
 func garage_tip() -> String:
-	var news := [
-		["scrapyard", unlocked("scrapyard"), "The Scrapyard's out back. One dig after every fight, one part per dig. Mostly rust, sometimes treasure."],
-		["style", unlocked("style"), "NEW: the Style button, in the bay. Pick how ECHO fights - Tank, Striker, Mechanic or Specialist. Each style comes with a free signature move."],
-		["shop", unlocked("shop"), "NEW: the Shop. We've got a bit of prize money now - the dealer sells real parts, and his stock changes after every fight."],
-		["season", unlocked("season"), "NEW: the Season tab. A wall calendar with your fight nights and rent days - plus the league table, the other pilots and the betting."],
-		["scout", unlocked("scout") and scout_key() != "", "NEW: Scout. Pay to peek at the next robot. Careful - their crew might spot you and change their setup."],
-		["moves", unlocked("moves"), "NEW: the Moves tab. Training chips teach special moves like Rocket Punch."],
-		["cups", cups_unlocked(), "NEW: the Cups tab. Three-week knockouts in the quiet weeks between leagues - eight pilots, medals for the top three."],
-		["backup", unlocked("team"), "NEW: the Team tab. Build a backup robot from spare parts, then use Send to put it in the ring when ECHO's too banged up."],
-		["workshop", unlocked("workshop"), "NEW: the Workshop. Design your own parts - pricier than the dealer, but exactly what you want."],
-		["pilot", unlocked("pilot"), "NEW: the Pilot button. Design yourself - face, hair, jacket. And the Shop sells controllers now: each one changes how you fight."],
-		["paint", unlocked("paint"), "NEW: the Paint button. Give ECHO some colour - the crowd remembers a robot they can recognise."],
-		["setups", unlocked("setups"), "NEW: Setups. Save a whole build - parts, chips and paint - and swap back to it in one tap."],
-		["randomize", unlocked("randomize"), "NEW: Randomize. Throws a robot together from your spare parts - handy when you need a build fast."],
-	]
-	var lines: Array = []
-	for t in news:
-		if t[1] and tip_once(t[0]):
-			lines.append(tr("GUS: ") + tr(str(t[2])).replace("ECHO", robot_name))
-	if lines.is_empty() and repair_all_cost() > 0 and tip_once("repair"):
-		lines.append(tr("GUS: ") + tr("Damage carries over between fights. Hit Repair all before the next one - or fix parts one by one."))
-	return "\n".join(lines)
+	if repair_all_cost() > 0 and unlocked("shop") and tip_once("repair"):
+		return tr("GUS: ") + tr("Damage carries over between fights. Hit Repair all before the next one - or fix parts one by one.")
+	return ""
 
 
 const TAB_TIPS := {

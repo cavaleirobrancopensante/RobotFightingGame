@@ -104,9 +104,16 @@ class ChipIcon extends Control:
 
 func _ready() -> void:
 	# first time in the bay after a fight: Gus explains how things work around here
-	if GameData.wins + GameData.losses > 0 and GameData.queue_story("first_garage", "res://garage.tscn"):
-		get_tree().change_scene_to_file.call_deferred("res://story.tscn")
-		return
+	# and every time something new opens up, Gus explains it in a scene of its own
+	if GameData.wins + GameData.losses > 0:
+		var keys: Array = ["first_garage"] + GameData.unlock_scenes()
+		if GameData.queue_stories(keys, "res://garage.tscn"):
+			get_tree().change_scene_to_file.call_deferred("res://story.tscn")
+			return
+	if GameData.open_tab != "" and tab_list().has(GameData.open_tab):
+		tab = GameData.open_tab
+		GameData.tip_once("tab_" + tab)   # Gus just explained it
+	GameData.open_tab = ""
 	if not GameData.unlocked("shop") and GameData.unlocked("scrapyard") and not GameData.tips_seen.has("tab_Scrapyard"):
 		tab = "Scrapyard"
 	Sfx.music("garage")
@@ -195,19 +202,19 @@ func _ready() -> void:
 func tab_list() -> Array:
 	var t := ["Build"]
 	if GameData.unlocked("scrapyard"):
-		t.append(tr("Scrapyard"))
+		t.append("Scrapyard")
 	if GameData.unlocked("shop"):
-		t.append(tr("Shop"))
+		t.append("Shop")
 	if GameData.unlocked("season"):
-		t.append(tr("Season"))
+		t.append("Season")
 	if GameData.unlocked("workshop"):
-		t.append(tr("Workshop"))
+		t.append("Workshop")
 	if GameData.unlocked("moves"):
-		t.append(tr("Moves"))
+		t.append("Moves")
 	if GameData.cups_unlocked():
-		t.append(tr("Cups"))
+		t.append("Cups")
 	if GameData.team_unlocked():
-		t.append(tr("Team"))
+		t.append("Team")
 	return t
 
 

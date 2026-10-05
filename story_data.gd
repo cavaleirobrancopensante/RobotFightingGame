@@ -53,7 +53,7 @@ const SCENES := {
 	]},
 	"post_1": {"place": "THE SCRAP HEAP RING", "lines": [
 		["BRUNO", "...Paid in full. And kid - Kane's people came asking about you. I told 'em nothing. For your father."],
-		["GUS", "Dents cost money. Some weeks we'll be broke - so build a backup robot from your spares. I'll show you in the garage."],
+		["GUS", "Dents cost money. Some weeks we'll be broke and the robot will be a mess. One day we'll want a backup."],
 		["GUS", "(muttering) I used to build backups for a living. For... somebody else."],
 	]},
 
@@ -214,5 +214,65 @@ const SCENES := {
 		["GUS", "We didn't make the playoffs. OVERLORD keeps its belt another year."],
 		["YOU", "Next year."],
 		["GUS", "Next year. Same week, same arena. We'll be ready."],
+	]},
+	# ---- Gus explains each part of the garage the first time it opens (one per win)
+	"unlock_style": {"place": "GUS'S BAY", "lines": [
+		["GUS", "I watched you out there tonight. You fight like your dad did - all fists, no plan."],
+		["YOU", "Is that bad?"],
+		["GUS", "It's a style. Every pilot's got one. Tanks soak it up, Strikers hit first, Mechanics keep the thing running, Specialists play dirty tricks."],
+		["GUS", "Pick yours with the Style button. Each one comes with a signature move - I'll wire it into ECHO for free."],
+	]},
+	"unlock_shop": {"place": "GUS'S BAY", "lines": [
+		["GUS", "Two wins. That's enough prize money to walk into the dealer's without getting laughed out."],
+		["GUS", "Parts-R-Us, down by the docks. Kane's leftovers, salvage off the cargo ships, the odd arm that fell off a truck. I don't ask."],
+		["GUS", "His stock changes after every fight. Mini parts sip power. Heavy parts hit like a truck but drink the battery dry. The Shop's open."],
+	]},
+	"unlock_season": {"place": "GUS'S BAY", "lines": [
+		["GUS", "Pinned a calendar on the wall. Fight nights are Saturdays. Rent's the last Sunday of the month - I circled those in red."],
+		["YOU", "You circled all of them."],
+		["GUS", "Because I have to pay all of them. Flip it over: the league table, the other pilots, and the bookies' odds. It's all under Season."],
+		["GUS", "Half this town bets on fight night. If you want to see what you're betting on, you can go and watch the other fights too."],
+	]},
+	"unlock_scout": {"place": "GUS'S BAY", "lines": [
+		["GUS", "There's a kid at the docks who can sneak into any garage in Port Ferrum with a camera. Sixty bucks, and you see the next robot before you fight it."],
+		["GUS", "Thing is, crews talk. If they catch him snooping, they'll change their setup just to spite us. Scout's there when you want it."],
+	]},
+	"unlock_moves": {"place": "GUS'S BAY", "lines": [
+		["GUS", "Your dad used to swear by these. Training chips. Each one teaches the robot a special move - rocket punches, sweeps, slams."],
+		["GUS", "They plug into the head, and a better head holds more of them. The Moves tab is where you buy them and slot them in."],
+		["YOU", "And then I just... do the move?"],
+		["GUS", "You punch in the combo on the controller. Practise it. A move you can't pull off is just an expensive paperweight."],
+	]},
+	"unlock_cups": {"place": "GUS'S BAY", "lines": [
+		["GUS", "Phone's been ringing. People want to know who's piloting the dead man's robot."],
+		["GUS", "That means the cup promoters will take our entry fee. Cups run in the quiet weeks between leagues - eight pilots, three weeks, straight knockout."],
+		["GUS", "Pilots from the bigger leagues show up to those. Good money, good beatings. Have a look under Cups."],
+	]},
+	"unlock_team": {"place": "GUS'S BAY", "lines": [
+		["GUS", "Look at that spares shelf. That's half a robot sitting there doing nothing."],
+		["GUS", "Back when I worked for... a big outfit, I built backup robots. When the main one's too beat up to fight, the backup goes in the ring."],
+		["GUS", "Build one from your spares on the Team tab, then hit Send to put it in. Some cups even let you fight as a team."],
+	]},
+	"unlock_workshop": {"place": "GUS'S BAY", "lines": [
+		["GUS", "The dealer sells what the dealer's got. Sometimes you want a part nobody sells."],
+		["GUS", "So I cleared the workbench. Tell me the shape, the size, what it should do, and I'll build it from scratch. Costs more than buying - but it's exactly what you want."],
+		["GUS", "That's the Workshop. And don't touch the welder without gloves."],
+	]},
+	"unlock_pilot": {"place": "GUS'S BAY", "lines": [
+		["GUS", "People recognise you in the street now, kid. Time you looked like a pilot and not like my nephew."],
+		["GUS", "Use the Pilot button - get a jacket, a haircut, whatever. And the dealer's started carrying controllers. The fancy ones change how the robot handles."],
+	]},
+	"unlock_paint": {"place": "GUS'S BAY", "lines": [
+		["GUS", "We're still running ECHO in your dad's old primer. The crowd cheers for robots they can pick out from the cheap seats."],
+		["GUS", "I got some paint off a Kane shipping container. Don't ask. It's under the Paint button."],
+	]},
+	"unlock_setups": {"place": "GUS'S BAY", "lines": [
+		["GUS", "You keep swapping the same parts back and forth before every fight. I'm getting old watching you."],
+		["GUS", "So I'll write your builds on the chalkboard. Save one under Setups and I'll bolt the whole thing back on in one go - parts, chips and paint."],
+	]},
+	"unlock_randomize": {"place": "GUS'S BAY", "lines": [
+		["GUS", "When you're in a hurry, just say Randomize. I'll grab whatever's on the spares shelf and bolt it onto ECHO."],
+		["YOU", "Will it work?"],
+		["GUS", "It won't be pretty. Might even win."],
 	]},
 }
