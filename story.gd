@@ -167,7 +167,7 @@ func show_line() -> void:
 	name_label.text = "" if who == "NARRATOR" else shown_name
 	name_label.add_theme_color_override("font_color", Color(info["color"]))
 	# the story was written for ECHO: use whatever the player named their robot
-	text_label.text = str(lines[index][1]).replace("ECHO", GameData.robot_name)
+	text_label.text = tr(str(lines[index][1])).replace("ECHO", GameData.robot_name)
 	text_label.add_theme_color_override("font_color", Color(0.75, 0.75, 0.8) if who == "NARRATOR" else Color.WHITE)
 	text_label.visible_characters = 0
 	shown = 0.0

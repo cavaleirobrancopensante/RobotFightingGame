@@ -14,6 +14,7 @@ extends RefCounted
 ##    table: {id: [wins, losses, points, parts]}, bracket: {...}, medals: {id: 1/2/3}}
 ## Pilot id 0 is always you.
 
+const I18n = preload("res://i18n.gd")
 const WEEKS_PER_YEAR := 52
 
 const STAGES := {
@@ -237,7 +238,7 @@ static func week_of_round(ev: Dictionary) -> int:
 
 static func round_name(ev: Dictionary) -> String:
 	if ev["phase"] == "league":
-		return "League round %d/%d" % [int(ev["round"]) + 1, ev["schedule"].size()]
+		return I18n.t("League round %d/%d") % [int(ev["round"]) + 1, ev["schedule"].size()]
 	var br: Dictionary = ev["bracket"]
 	if br.is_empty():
 		return ""
@@ -445,7 +446,7 @@ static func medal_of(ev: Dictionary, id: int) -> int:
 static func finish_text(ev: Dictionary) -> String:
 	var m := medal_of(ev, 0)
 	if m > 0:
-		return "%s MEDAL" % MEDALS[m]
+		return I18n.t("%s MEDAL") % I18n.t(MEDALS[m])
 	var br: Dictionary = ev.get("bracket", {})
 	if not br.is_empty():
 		# knocked out: in which round?
@@ -461,6 +462,6 @@ static func finish_text(ev: Dictionary) -> String:
 			if mine:
 				last = {4: "quarterfinal", 2: "semifinal", 1: "final"}.get(main, "playoffs")
 		if last != "":
-			return "out in the " + last
+			return I18n.t("out in the %s") % I18n.t(last)
 	var pos := standings(ev).find(0) + 1
-	return "finished %d%s" % [pos, ["th", "st", "nd", "rd"][pos] if pos < 4 else "th"]
+	return I18n.t("finished %d%s") % [pos, ["th", "st", "nd", "rd"][pos] if pos < 4 else "th"]

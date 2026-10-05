@@ -7,6 +7,7 @@ extends RefCounted
 ##   dots:  a red dot-matrix LED board (Championship)
 
 ## 5x7 dot font: each glyph is 7 rows of 5 bits.
+const I18n = preload("res://i18n.gd")
 const GLYPHS := {
 	"0": ["01110", "10001", "10011", "10101", "11001", "10001", "01110"],
 	"1": ["00100", "01100", "00100", "00100", "00100", "00100", "01110"],
@@ -173,6 +174,8 @@ static func flap_row(ci: CanvasItem, area: Rect2, text: String, font: Font, ink:
 	var n := maxi(1, text.length())
 	var cell := minf(area.size.y * 0.74, (area.size.x - n * gap) / n)
 	var size := int(minf(cell * 1.5, area.size.y * 0.86))
+	if size < 6:
+		return
 	for k in n:
 		var ch := text.substr(k, 1)
 		if ch != " ":
@@ -223,7 +226,7 @@ static func dot_text(ci: CanvasItem, text: String, x: float, y: float, p: float,
 		var gx := x + k * 6 * p
 		if gx > clip_r or gx + 5 * p < clip_l:
 			continue
-		var g: Array = GLYPHS.get(text.substr(k, 1), [])
+		var g: Array = GLYPHS.get(plain(text.substr(k, 1)), [])
 		for row in g.size():
 			var bits: String = g[row]
 			for col in 5:
@@ -232,6 +235,14 @@ static func dot_text(ci: CanvasItem, text: String, x: float, y: float, p: float,
 					if px >= clip_l and px + d <= clip_r:
 						ci.draw_rect(Rect2(px - p * 0.2, y + row * p - p * 0.2, d + p * 0.4, d + p * 0.4), Color(lit, 0.22))
 						ci.draw_rect(Rect2(px, y + row * p, d, d), lit)
+
+
+## LED glyphs are plain A-Z: accented letters (translations) light up as their base letter.
+static func plain(ch: String) -> String:
+	const FROM := "ÁÀÂÃÄÇÉÈÊËÍÌÎÏÑÓÒÔÕÖÚÙÛÜ"
+	const TO := "AAAAACEEEEIIIINOOOOOUUUU"
+	var i := FROM.find(ch.to_upper())
+	return TO[i] if i >= 0 else ch.to_upper()
 
 
 ## The dark, unlit dots that fill the panel.

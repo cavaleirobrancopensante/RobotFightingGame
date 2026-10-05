@@ -195,19 +195,19 @@ func _ready() -> void:
 func tab_list() -> Array:
 	var t := ["Build"]
 	if GameData.unlocked("scrapyard"):
-		t.append("Scrapyard")
+		t.append(tr("Scrapyard"))
 	if GameData.unlocked("shop"):
-		t.append("Shop")
+		t.append(tr("Shop"))
 	if GameData.unlocked("season"):
-		t.append("Season")
+		t.append(tr("Season"))
 	if GameData.unlocked("workshop"):
-		t.append("Workshop")
+		t.append(tr("Workshop"))
 	if GameData.unlocked("moves"):
-		t.append("Moves")
+		t.append(tr("Moves"))
 	if GameData.cups_unlocked():
-		t.append("Cups")
+		t.append(tr("Cups"))
 	if GameData.team_unlocked():
-		t.append("Team")
+		t.append(tr("Team"))
 	return t
 
 
@@ -215,43 +215,43 @@ func show_last_result() -> void:
 	var r := GameData.last_result
 	var bills := ""
 	if GameData.bills_note > 0:
-		bills = " End of the month: rent and food, -$%d." % GameData.bills_note
+		bills = tr(" End of the month: rent and food, -$%d.") % GameData.bills_note
 		GameData.bills_note = 0
 	if r.is_empty():
-		msg_label.text = "Tap a part of your robot (or a row) to swap, repair or remove it." + bills
+		msg_label.text = tr("Tap a part of your robot (or a row) to swap, repair or remove it.") + bills
 		return
 	if r.get("quit", false):
-		msg_label.text = "You walked out on %s. No pay, and the dents came home with you." % r["opponent"]
+		msg_label.text = tr("You walked out on %s. No pay, and the dents came home with you.") % r["opponent"]
 	else:
 		var bits: Array = []
 		if r.get("champion", false):
-			bits.append("CHAMPION! You beat %s!" % r["opponent"])
+			bits.append(tr("CHAMPION! You beat %s!") % r["opponent"])
 		elif r["won"]:
-			bits.append("Beat %s!" % r["opponent"])
+			bits.append(tr("Beat %s!") % r["opponent"])
 		else:
-			bits.append("Lost to %s." % r["opponent"])
+			bits.append(tr("Lost to %s.") % r["opponent"])
 		var total: int = r["reward"] + r.get("bonus", 0)
 		if total < 0:
-			bits.append("Paid the winner $%d." % -total)
+			bits.append(tr("Paid the winner $%d.") % -total)
 		elif total > 0:
-			bits.append("Earned $%d." % total)
+			bits.append(tr("Earned $%d.") % total)
 		var bt: Dictionary = r.get("bets", {})
 		if not bt.is_empty() and int(bt.get("staked", 0)) > 0:
-			bits.append("Bets: %s." % ", ".join(bt["lines"]))
+			bits.append(tr("Bets: %s.") % ", ".join(bt["lines"]))
 		if r.get("cup_done", "") != "":
-			bits.append("CUP OVER - %s." % r["cup_done"])
+			bits.append(tr("CUP OVER - %s.") % r["cup_done"])
 		if r.get("event_done", "") != "":
-			bits.append("SEASON OVER - %s. See the Season tab." % r["event_done"])
+			bits.append(tr("SEASON OVER - %s. See the Season tab.") % r["event_done"])
 		if r.get("trophy", "") != "":
-			bits.append("Trophy part: %s." % r["trophy"])
+			bits.append(tr("Trophy part: %s.") % r["trophy"])
 		if not r.get("lost", []).is_empty():
-			bits.append("Lost: %s." % ", ".join(r["lost"]))
+			bits.append(tr("Lost: %s.") % ", ".join(r["lost"]))
 		if not r.get("wrecked", []).is_empty():
-			bits.append("Wrecked: %s (rebuild in Storage)." % ", ".join(r["wrecked"]))
+			bits.append(tr("Wrecked: %s (rebuild in Storage).") % ", ".join(r["wrecked"]))
 		if not r.get("salvaged", []).is_empty():
-			bits.append("Salvaged: %s." % ", ".join(r["salvaged"]))
+			bits.append(tr("Salvaged: %s.") % ", ".join(r["salvaged"]))
 		if r.get("out_of_debt", false):
-			bits.append("OUT OF THE HOLE - you don't owe Gus a cent!")
+			bits.append(tr("OUT OF THE HOLE - you don't owe Gus a cent!"))
 		msg_label.text = " ".join(bits) + bills
 	GameData.last_result = {}
 
@@ -271,7 +271,7 @@ func refresh() -> void:
 	if mode == "open":
 		GameData.start_pickup()   # a quiet week: there's always a pickup fight down at the scrapyard
 		mode = GameData.fight_mode()
-	title_label.text = "GARAGE - Year %d, week %d - %s" % [GameData.year, GameData.week, GameData.fight_title()]
+	title_label.text = tr("GARAGE - Year %d, week %d - %s") % [GameData.year, GameData.week, GameData.fight_title()]
 	var o := GameData.current_opponent()
 	var core := GameData.equipped_inst("torso")
 	# which robot goes in: your main robot, or a backup robot (1-on-1 fights only)
@@ -282,7 +282,7 @@ func refresh() -> void:
 	if GameData.sending >= 0 and not backups.has(GameData.sending):
 		GameData.sending = -1
 	send_button.visible = not backups.is_empty() and not GameData.is_team_fight()
-	send_button.text = "Send: %s" % ("main robot" if GameData.sending < 0 else GameData.WINGMAN_NAMES[GameData.sending])
+	send_button.text = tr("Send: %s") % (tr("main robot") if GameData.sending < 0 else GameData.WINGMAN_NAMES[GameData.sending])
 	if not GameData.can_send():
 		fight_button.text = "Need a head and a torso"
 		fight_button.disabled = true
@@ -290,16 +290,16 @@ func refresh() -> void:
 		fight_button.disabled = false
 		var label: String = {"story": "FIGHT: %s ($%d)", "circuit": "CUP FIGHT: %s ($%d)", "exhibition": "REMATCH: %s ($%d)",
 				"pickup": "PICKUP FIGHT: %s ($%d)"}.get(mode, "FIGHT: %s ($%d)")
-		fight_button.text = label % [o["name"], GameData.current_reward()]
+		fight_button.text = tr(label) % [o["name"], GameData.current_reward()]
 		if o.has("team_label"):
-			fight_button.text += " - %s" % o["team_label"]
+			fight_button.text += tr(" - %s") % o["team_label"]
 		if GameData.sending >= 0 and not GameData.is_team_fight():
-			fight_button.text = "%s fights %s ($%d)" % [GameData.sending_name(), o["name"], GameData.current_reward()]
+			fight_button.text = tr("%s fights %s ($%d)") % [GameData.sending_name(), o["name"], GameData.current_reward()]
 		elif not core.is_empty() and GameData.hp_ratio(core) < 0.35:
-			fight_button.text += " - core damaged!"
+			fight_button.text += tr(" - core damaged!")
 
 	scout_button.visible = GameData.scout_key() != "" and GameData.unlocked("scout")
-	scout_button.text = "Scout report" if GameData.scouted() else "Scout $%d" % GameData.scout_cost()
+	scout_button.text = tr("Scout report") if GameData.scouted() else tr("Scout $%d") % GameData.scout_cost()
 	preview.look = GameData.player_look()
 	set_scene_for_tab()
 	preview.highlight = selected if tab == "Build" else ""
@@ -309,7 +309,7 @@ func refresh() -> void:
 	for t in tab_list():
 		# a star marks a tab you haven't opened yet
 		var fresh: bool = not t in ["Build", "Scrapyard"] and not GameData.tips_seen.has("tab_" + t)
-		var b := UI.button(t + (" ★" if fresh else ""), _on_tab.bind(t), 18, Vector2(0, 46))
+		var b := UI.button(tr(t) + (" ★" if fresh else ""), _on_tab.bind(t), 18, Vector2(0, 46))
 		b.toggle_mode = true
 		b.button_pressed = t == tab
 		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -358,12 +358,12 @@ func refresh_stats() -> void:
 	add_stat("Power", s["power_used"], s["power_output"], "%d/%d" % [s["power_used"], s["power_output"]],
 			Color(1.0, 0.35, 0.2) if over else POWER_COLOR)
 	if over:
-		stats_box.add_child(UI.label("OVERLOADED: %d%% performance!" % int(s["efficiency"] * 100), 13, Color(1.0, 0.5, 0.3)))
+		stats_box.add_child(UI.label(tr("OVERLOADED: %d%% performance!") % int(s["efficiency"] * 100), 13, Color(1.0, 0.5, 0.3)))
 	var tank: float = float(s["power_output"]) * (1.25 if GameData.style == "tank" else 1.0)
-	var pl := UI.label("Fight power %d - a punch costs ~1 per arm power, a kick ~2.6" % int(tank), 12, POWER_COLOR)
+	var pl := UI.label(tr("Fight power %d - a punch costs ~1 per arm power, a kick ~2.6") % int(tank), 12, POWER_COLOR)
 	pl.tooltip_text = "In a fight your power output is your tank. Every move spends some; it refills when you stop attacking. Empty = burnout."
 	stats_box.add_child(pl)
-	var wl := UI.label("%s  (%d power)" % [GameData.weight_class(s["power_used"]), s["power_used"]], 13, Color(0.8, 0.8, 0.9))
+	var wl := UI.label(tr("%s  (%d power)") % [tr(GameData.weight_class(s["power_used"])), s["power_used"]], 13, Color(0.8, 0.8, 0.9))
 	wl.tooltip_text = "Weight class = the power your parts draw. Teams share one heavyweight's power."
 	stats_box.add_child(wl)
 
@@ -487,7 +487,7 @@ func health_text(p: Dictionary) -> String:
 	var d := GameData.part_def(p["id"])
 	if GameData.UNDAMAGEABLE.has(d["kind"]):
 		return GameData.part_stat_text(d)
-	return "Condition %d/%d  %s" % [ceili(p["hp"]), d["hp"], GameData.part_stat_text(d)]
+	return tr("Condition %d/%d  %s") % [ceili(p["hp"]), d["hp"], GameData.part_stat_text(d)]
 
 
 # ---------------------------------------------------------------- BUILD
@@ -495,7 +495,7 @@ func health_text(p: Dictionary) -> String:
 func build_overview() -> void:
 	var total := GameData.repair_all_cost()
 	var bar := action_bar()
-	row_button(bar, "Repair all $%d" % total if total > 0 else "All repaired", _on_repair_all, total > 0, 150)
+	row_button(bar, tr("Repair all $%d") % total if total > 0 else tr("All repaired"), _on_repair_all, total > 0, 150)
 	# more buttons appear as the story goes on (see GameData.UNLOCKS)
 	if GameData.unlocked("randomize"):
 		row_button(bar, "Randomize", _on_randomize, true, 120)
@@ -506,20 +506,20 @@ func build_overview() -> void:
 	if GameData.unlocked("pilot"):
 		row_button(bar, "Pilot", _on_open_pilot, true, 80)
 	if GameData.unlocked("style"):
-		row_button(bar, "Style: %s" % Catalog.STYLES[GameData.style]["name"], _on_open_style, true, 150)
-	row_button(bar, "Storage (%d)" % GameData.spares().size(), _on_slot.bind("storage"), true, 125)
+		row_button(bar, tr("Style: %s") % tr(Catalog.STYLES[GameData.style]["name"]), _on_open_style, true, 150)
+	row_button(bar, tr("Storage (%d)") % GameData.spares().size(), _on_slot.bind("storage"), true, 125)
 
 	for slot in GameData.SLOTS:
 		if not GameData.slot_available(slot):
 			continue   # extra heads/arms need a torso with mounts for them
 		var p := GameData.equipped_inst(slot)
-		var slot_name: String = GameData.SLOT_NAMES[slot]
+		var slot_name: String = tr(GameData.SLOT_NAMES[slot])
 		if p.is_empty():
 			var opt: bool = slot == "back" or GameData.EXTRA_SLOTS.has(slot)
-			make_tap_row(part_icon({}), "%s: empty" % slot_name, "Tap to fit or buy one" + (" (optional)" if opt else ""), _on_slot.bind(slot))
+			make_tap_row(part_icon({}), tr("%s: empty") % slot_name, "Tap to fit or buy one" + (" (optional)" if opt else ""), _on_slot.bind(slot))
 			continue
 		var d := GameData.part_def(p["id"])
-		var row := make_tap_row(part_icon(d, GameData.hp_ratio(p)), "%s: %s" % [slot_name, d["name"]], GameData.part_stat_text(d), _on_slot.bind(slot))
+		var row := make_tap_row(part_icon(d, GameData.hp_ratio(p)), tr("%s: %s") % [slot_name, d["name"]], GameData.part_stat_text(d), _on_slot.bind(slot))
 		if not GameData.UNDAMAGEABLE.has(d["kind"]):
 			var col := VBoxContainer.new()
 			col.custom_minimum_size = Vector2(120, 0)
@@ -533,7 +533,7 @@ func build_overview() -> void:
 			row.add_child(col)
 			var c := GameData.repair_cost(p)
 			if c > 0:
-				row_button(row, "Fix $%d" % c, _on_repair.bind(p["uid"]), GameData.can_repair(c), 95)
+				row_button(row, tr("Fix $%d") % c, _on_repair.bind(p["uid"]), GameData.can_repair(c), 95)
 
 
 func build_slot(slot: String) -> void:
@@ -553,7 +553,7 @@ func build_slot(slot: String) -> void:
 		var row := make_row(part_icon(d, GameData.hp_ratio(p)), d["name"], health_text(p))
 		var c := GameData.repair_cost(p)
 		if c > 0:
-			row_button(row, "Fix $%d" % c, _on_repair.bind(p["uid"]), GameData.can_repair(c), 95)
+			row_button(row, tr("Fix $%d") % c, _on_repair.bind(p["uid"]), GameData.can_repair(c), 95)
 		if slot != "reactor":
 			row_button(row, "Remove", _on_unequip.bind(slot), true, 95)
 
@@ -562,19 +562,19 @@ func build_slot(slot: String) -> void:
 	for sp in GameData.spares():
 		if GameData.part_def(sp["id"])["kind"] == kind:
 			(wrecks if GameData.is_wreck(sp) else options).append(sp)
-	section("Swap in from storage:" if not options.is_empty() else "No spare %s in storage." % str(GameData.KIND_NAMES[kind]).to_lower())
+	section("Swap in from storage:" if not options.is_empty() else tr("No spare %s in storage.") % str(GameData.KIND_NAMES[kind]).to_lower())
 	for sp in options:
 		var d := GameData.part_def(sp["id"])
-		var row := make_row(part_icon(d, GameData.hp_ratio(sp)), d["name"] + ("" if d["shop"] else "  (rare)"), health_text(sp))
+		var row := make_row(part_icon(d, GameData.hp_ratio(sp)), d["name"] + ("" if d["shop"] else tr("  (rare)")), health_text(sp))
 		row_button(row, "Fit", _on_equip.bind(sp["uid"], slot), true, 80)
 		var v := GameData.sell_value(sp)
-		row_button(row, "Sell $%d" % v, _on_sell.bind(sp["uid"]), true, 95)
+		row_button(row, tr("Sell $%d") % v, _on_sell.bind(sp["uid"]), true, 95)
 	for sp in wrecks:
 		var d := GameData.part_def(sp["id"])
 		var c := GameData.repair_cost(sp)
-		var row := make_row(part_icon(d, 0.0), d["name"] + "  (WRECKED)", "Rebuild it to use it again.")
-		row_button(row, "Rebuild $%d" % c, _on_repair.bind(sp["uid"]), GameData.can_repair(c), 130)
-		row_button(row, "Sell $%d" % GameData.sell_value(sp), _on_sell.bind(sp["uid"]), true, 95)
+		var row := make_row(part_icon(d, 0.0), d["name"] + tr("  (WRECKED)"), "Rebuild it to use it again.")
+		row_button(row, tr("Rebuild $%d") % c, _on_repair.bind(sp["uid"]), GameData.can_repair(c), 130)
+		row_button(row, tr("Sell $%d") % GameData.sell_value(sp), _on_sell.bind(sp["uid"]), true, 95)
 	# never stuck: if this slot is empty and there's nothing to fit, Gus has some junk lying around
 	if p.is_empty() and options.is_empty() and slot in ["head", "torso"]:
 		section("Gus's emergency junk:")
@@ -589,7 +589,7 @@ func build_slot(slot: String) -> void:
 		for id in for_sale:
 			var d := GameData.part_def(id)
 			var row := make_row(part_icon(d), d["name"], GameData.part_stat_text(d))
-			row_button(row, "Buy $%d" % d["cost"], _on_buy.bind(id), GameData.money >= d["cost"], 115)
+			row_button(row, tr("Buy $%d") % d["cost"], _on_buy.bind(id), GameData.money >= d["cost"], 115)
 	var more := action_bar()
 	if GameData.unlocked("shop"):
 		row_button(more, "Dealer's stock", _on_go_shop.bind(kind), true, 200)
@@ -613,13 +613,13 @@ func build_storage() -> void:
 	for p in list:
 		var d := GameData.part_def(p["id"])
 		var wreck := GameData.is_wreck(p)
-		var tag := "  (WRECKED)" if wreck else ("" if d["shop"] else "  (rare)")
-		var row := make_row(part_icon(d, GameData.hp_ratio(p)), "%s%s  [%s]" % [d["name"], tag, d["kind"]], health_text(p))
+		var tag := tr("  (WRECKED)") if wreck else ("" if d["shop"] else tr("  (rare)"))
+		var row := make_row(part_icon(d, GameData.hp_ratio(p)), tr("%s%s  [%s]") % [d["name"], tag, tr(str(d["kind"]).to_upper())], health_text(p))
 		var c := GameData.repair_cost(p)
 		if c > 0:
 			row_button(row, ("Rebuild $%d" if wreck else "Fix $%d") % c, _on_repair.bind(p["uid"]), GameData.can_repair(c), 125)
 		var v := GameData.sell_value(p)
-		row_button(row, "Sell $%d" % v, _on_sell.bind(p["uid"]), true, 95)
+		row_button(row, tr("Sell $%d") % v, _on_sell.bind(p["uid"]), true, 95)
 
 
 # ---------------------------------------------------------------- popups (setups, paint)
@@ -691,12 +691,12 @@ func close_popup() -> void:
 
 
 func _on_open_setups() -> void:
-	var col := open_popup("SAVED SETUPS")
+	var col := open_popup(tr("SAVED SETUPS"))
 	section("A setup remembers your parts, chips and paint.", col)
 	for k in GameData.SETUP_SLOTS:
 		var st: Dictionary = GameData.setups[k]
 		var row := action_bar(col)
-		var name := UI.label("Setup %d: %s" % [k + 1, "empty" if st.is_empty() else "saved"], 16)
+		var name := UI.label(tr("Setup %d: %s") % [k + 1, "empty" if st.is_empty() else "saved"], 16)
 		name.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		row.add_child(name)
 		row_button(row, "Save here", _on_save_setup.bind(k), true, 120)
@@ -708,7 +708,7 @@ const StoryScript = preload("res://story.gd")
 
 ## Design your pilot: they stand in your corner during fights and appear in the story.
 func _on_open_pilot() -> void:
-	var col := open_popup("YOUR PILOT")
+	var col := open_popup(tr("YOUR PILOT"))
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 12)
 	col.add_child(row)
@@ -728,13 +728,13 @@ func _on_open_pilot() -> void:
 			extras.append(e.replace("_", " "))
 	var eye_i := maxi(0, PilotArt.EYES.find(look.get("eyes", PilotArt.EYES[0])))
 	var lines := [
-		["Skin", "skin", "%d / %d" % [PilotArt.SKINS.find(look["skin"]) + 1, PilotArt.SKINS.size()], ""],
-		["Eyes", "eyes", PilotArt.EYE_NAMES[eye_i], look.get("eyes", "")],
+		["Skin", "skin", tr("%d / %d") % [PilotArt.SKINS.find(look["skin"]) + 1, PilotArt.SKINS.size()], ""],
+		["Eyes", "eyes", tr(PilotArt.EYE_NAMES[eye_i]), look.get("eyes", "")],
 		["Hair & hat", "hair", "", look["hair"]],
 		["Jacket", "outfit", "", look["outfit"]],
-		["Headwear", "hat", PilotArt.HAT_NAMES.get(look["hat"], "?"), ""],
-		["Beard", "beard", PilotArt.BEARD_NAMES.get(look["beard"], "?"), ""],
-		["Glasses", "glasses", PilotArt.GLASSES_NAMES.get(look["glasses"], "?"), ""],
+		["Headwear", "hat", tr(PilotArt.HAT_NAMES.get(look["hat"], "?")), ""],
+		["Beard", "beard", tr(PilotArt.BEARD_NAMES.get(look["beard"], "?")), ""],
+		["Glasses", "glasses", tr(PilotArt.GLASSES_NAMES.get(look["glasses"], "?")), ""],
 		["Extras", "extras", "none" if extras.is_empty() else " + ".join(extras), ""],
 	]
 	for l in lines:
@@ -763,7 +763,7 @@ func _on_open_pilot() -> void:
 		row_button(bar, ">", _on_pilot_change.bind(l[1], 1), true, 44)
 	var last := action_bar(col)
 	var ctl: String = look.get("controller", "gamepad")
-	var cl := UI.label("Controller: %s - %s  (buy more in the Shop)" % [PilotArt.CONTROLLER_NAMES[ctl], GameData.CONTROLLER_INFO[ctl]["desc"]], 13, Color(0.5, 0.85, 1.0))
+	var cl := UI.label(tr("Controller: %s - %s  (buy more in the Shop)") % [tr(PilotArt.CONTROLLER_NAMES[ctl]), tr(GameData.CONTROLLER_INFO[ctl]["desc"])], 13, Color(0.5, 0.85, 1.0))
 	cl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	cl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	last.add_child(cl)
@@ -838,7 +838,7 @@ func set_scene_for_tab() -> void:
 
 
 func _on_open_paint() -> void:
-	var col := open_popup("PAINT JOB")
+	var col := open_popup(tr("PAINT JOB"))
 	paint_open = true
 	set_scene_for_tab()
 	(overlay as ColorRect).color = Color(0, 0, 0, 0.2)   # keep the painting scene visible
@@ -849,7 +849,7 @@ func _on_open_paint() -> void:
 	col.add_child(grid)
 	for k in GameData.PAINTS.size():
 		var paint: Dictionary = GameData.PAINTS[k]
-		var b := UI.button(paint["name"], _on_paint.bind(k), 15, Vector2(110, 52))
+		var b := UI.button(tr(paint["name"]), _on_paint.bind(k), 15, Vector2(110, 52))
 		var sb := StyleBoxFlat.new()
 		sb.bg_color = Color(paint["color"]).darkened(0.35)
 		sb.border_color = Color.WHITE if k == GameData.paint else Color(paint["color"])
@@ -868,62 +868,62 @@ func build_shop_tab() -> void:
 	info.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	info.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	bar.add_child(info)
-	row_button(bar, "Restock $%d" % GameData.REROLL_COST, _on_reroll, GameData.money >= GameData.REROLL_COST, 150)
+	row_button(bar, tr("Restock $%d") % GameData.REROLL_COST, _on_reroll, GameData.money >= GameData.REROLL_COST, 150)
 	var stock: Array = GameData.shop_stock.duplicate()
 	stock.sort_custom(func(a, b): return GameData.KINDS.find(GameData.part_def(a)["kind"]) < GameData.KINDS.find(GameData.part_def(b)["kind"]))
 	if stock.is_empty():
 		section("Sold out! New stock arrives after your next fight (or pay to restock now).")
 	for id in stock:
 		var d := GameData.part_def(id)
-		var tag := "  [%s]" % str(d["kind"]).to_upper()
+		var tag := tr("  [%s]") % tr(str(d["kind"]).to_upper())
 		var row := make_row(part_icon(d), d["name"] + tag, GameData.part_stat_text(d))
-		row_button(row, "Buy $%d" % d["cost"], _on_buy.bind(id), GameData.money >= d["cost"], 115)
+		row_button(row, tr("Buy $%d") % d["cost"], _on_buy.bind(id), GameData.money >= d["cost"], 115)
 	for id in (PilotArt.CONTROLLERS if GameData.unlocked("pilot") else []):
 		if id == PilotArt.CONTROLLERS[0]:
 			section("PILOT GEAR - controllers change how your robots fight:")
 		var cinfo: Dictionary = GameData.CONTROLLER_INFO[id]
 		var icon := ControllerIcon.new()
 		icon.kind = id
-		var row := make_row(icon, PilotArt.CONTROLLER_NAMES[id], cinfo["desc"])
+		var row := make_row(icon, tr(PilotArt.CONTROLLER_NAMES[id]), tr(cinfo["desc"]))
 		var using: bool = GameData.pilot_look.get("controller", "gamepad") == id
 		if using:
 			row_button(row, "In use", _on_controller.bind(id), false, 115)
 		elif GameData.owned_controllers.has(id):
 			row_button(row, "Use", _on_controller.bind(id), true, 115)
 		else:
-			row_button(row, "Buy $%d" % cinfo["cost"], _on_controller.bind(id), GameData.money >= int(cinfo["cost"]), 115)
+			row_button(row, tr("Buy $%d") % cinfo["cost"], _on_controller.bind(id), GameData.money >= int(cinfo["cost"]), 115)
 
 
 
 ## The scrapyard: a mountain of dead robots. Dig for free (beaten-up) parts, a few digs per fight.
 func build_scrapyard_tab() -> void:
 	var bar := action_bar()
-	var info := UI.label("THE SCRAPYARD - a mountain of dead robots. One dig after every fight, one part per dig - %s. Mostly junk, sometimes something good, always beaten up (15-50%% health). Fix it up in the bay." % ("ready to dig" if GameData.digs_left > 0 else "already dug, come back after your next fight"), 15, Color(1.0, 0.8, 0.4))
+	var info := UI.label(tr("THE SCRAPYARD - a mountain of dead robots. One dig after every fight, one part per dig - %s. Mostly junk, sometimes something good, always beaten up (15-50%% health). Fix it up in the bay.") % ("ready to dig" if GameData.digs_left > 0 else "already dug, come back after your next fight"), 15, Color(1.0, 0.8, 0.4))
 	info.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	info.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	bar.add_child(info)
-	row_button(bar, "Dig!" if GameData.digs_left > 0 else "Rest", _on_dig, GameData.digs_left > 0, 130)
+	row_button(bar, tr("Dig!") if GameData.digs_left > 0 else tr("Rest"), _on_dig, GameData.digs_left > 0, 130)
 	# what the pile has given you so far (spare parts that still need fixing)
 	var finds: Array = GameData.spares().filter(func(p): return GameData.hp_ratio(p) < 1.0)
 	if not finds.is_empty():
 		section("Dug up and waiting in Storage - fit them in the bay, or sell them (damaged parts sell cheaper):")
 		for p in finds:
 			var d := GameData.part_def(p["id"])
-			var row := make_row(part_icon(d, GameData.hp_ratio(p)), "%s  [%s]  %d%%" % [d["name"], str(d["kind"]).to_upper(), int(GameData.hp_ratio(p) * 100)], GameData.part_stat_text(d))
-			row_button(row, "Sell $%d" % GameData.sell_value(p), _on_sell.bind(p["uid"]), true, 110)
+			var row := make_row(part_icon(d, GameData.hp_ratio(p)), tr("%s  [%s]  %d%%") % [d["name"], tr(str(d["kind"]).to_upper()), int(GameData.hp_ratio(p) * 100)], GameData.part_stat_text(d))
+			row_button(row, tr("Sell $%d") % GameData.sell_value(p), _on_sell.bind(p["uid"]), true, 110)
 
 
 func _on_emergency_junk(slot: String) -> void:
 	var uid := GameData.add_part(GameData.STARTER[slot], 0.4)
 	GameData.equip(uid, slot)
-	say("Gus digs a rusty %s out from under the bench. \"It'll hold. Probably.\"" % GameData.part_def(GameData.STARTER[slot])["name"], "equip")
+	say(tr("Gus digs a rusty %s out from under the bench. \"It'll hold. Probably.\"") % GameData.part_def(GameData.STARTER[slot])["name"], "equip")
 	refresh()
 
 
 func _on_dig() -> void:
 	var res := GameData.dig_scrap()
 	dig_at = Time.get_ticks_msec() / 1000.0
-	dig_found = "Found something!" if res["part"] != "" else ""
+	dig_found = tr("Found something!") if res["part"] != "" else ""
 	say(res["text"], "break" if res["part"] != "" else "land")
 	GameData.save_game()
 	refresh()
@@ -944,7 +944,7 @@ func build_workshop() -> void:
 	var d := GameData.custom_def(ws)
 	var left := grade_points() - GameData.custom_points_used(ws)
 	var head := make_row(part_icon(d), d["name"], GameData.part_stat_text(d))
-	var forge := row_button(head, "FORGE $%d" % d["cost"], _on_forge, GameData.money >= d["cost"], 150)
+	var forge := row_button(head, tr("FORGE $%d") % d["cost"], _on_forge, GameData.money >= d["cost"], 150)
 	forge.add_theme_color_override("font_color", Color(1.0, 0.8, 0.3))
 
 	section("Part type")
@@ -989,12 +989,12 @@ func build_workshop() -> void:
 	var grades := action_bar()
 	for g in GameData.CUSTOM_GRADES.size():
 		var gr: Dictionary = GameData.CUSTOM_GRADES[g]
-		var b := row_button(grades, "%s (%d pts)" % [gr["name"], gr["points"]], _on_ws_grade.bind(g), true, 0)
+		var b := row_button(grades, tr("%s (%d pts)") % [tr(gr["name"]), gr["points"]], _on_ws_grade.bind(g), true, 0)
 		b.toggle_mode = true
 		b.button_pressed = g == ws["grade"]
 		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 
-	section("Stats - %d point%s left" % [left, "" if left == 1 else "s"])
+	section(tr("Stats - %d point%s left") % [left, "" if left == 1 else "s"])
 	for stat in GameData.CUSTOM_KINDS[ws["kind"]]["stats"]:
 		var n: int = ws["alloc"].get(stat, 0)
 		var row := action_bar()
@@ -1006,14 +1006,14 @@ func build_workshop() -> void:
 		row.add_child(bar)
 		row_button(row, "+", _on_ws_stat.bind(stat, 1), left > 0 and n < GameData.CUSTOM_MAX_PER_STAT, 54)
 
-	section("Gadget (+$%d)" % GameData.CUSTOM_GADGET_PRICE)
+	section(tr("Gadget (+$%d)") % GameData.CUSTOM_GADGET_PRICE)
 	var gad := action_bar()
 	var none := row_button(gad, "None", _on_ws_set.bind("gadget", ""), true, 0)
 	none.toggle_mode = true
 	none.button_pressed = ws["gadget"] == ""
 	none.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	for g in GameData.CUSTOM_KINDS[ws["kind"]]["gadgets"]:
-		var b := row_button(gad, Specials.GADGETS[g]["name"], _on_ws_set.bind("gadget", g), true, 0)
+		var b := row_button(gad, tr(Specials.GADGETS[g]["name"]), _on_ws_set.bind("gadget", g), true, 0)
 		b.toggle_mode = true
 		b.button_pressed = ws["gadget"] == g
 		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -1032,9 +1032,9 @@ func build_moves_tab() -> void:
 		var installed := GameData.chips.has(id)
 		var icon := ChipIcon.new()
 		icon.installed = installed
-		var row := make_row(icon, "%s    %s" % [m["name"], Specials.seq_text(m["seq"])], "%s  Cooldown %ds." % [m["desc"], int(m["cd"])])
+		var row := make_row(icon, tr("%s    %s") % [tr(m["name"]), Specials.seq_text(m["seq"])], tr("%s  Cooldown %ds.") % [tr(m["desc"]), int(m["cd"])])
 		if not owned:
-			row_button(row, "Buy $%d" % m["cost"], _on_buy_chip.bind(id), GameData.money >= m["cost"], 115)
+			row_button(row, tr("Buy $%d") % m["cost"], _on_buy_chip.bind(id), GameData.money >= m["cost"], 115)
 		elif installed:
 			row_button(row, "Remove", _on_uninstall_chip.bind(id), true, 115)
 		else:
@@ -1045,7 +1045,7 @@ func build_cups_tab() -> void:
 	var c := GameData.circuit
 	if not c.is_empty():
 		var bar := action_bar()
-		var l := UI.label("%s %s - %s - gold $%d" % [c["name"], "★".repeat(int(c["tier"])), Career.round_name(c), int(c["prize"])], 16, Color(1.0, 0.8, 0.4))
+		var l := UI.label(tr("%s %s - %s - gold $%d") % [c["name"], "★".repeat(int(c["tier"])), tr(Career.round_name(c)), int(c["prize"])], 16, Color(1.0, 0.8, 0.4))
 		l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		bar.add_child(l)
@@ -1066,12 +1066,12 @@ func build_cups_tab() -> void:
 	for k in GameData.circuit_offers.size():
 		var off: Dictionary = GameData.circuit_offers[k]
 		var preview_cup := Career.new_cup(off["name"], int(off["tier"]), int(off["seed"]), GameData.week, GameData.year, int(off["prize"]))
-		var row := make_row(bot_preview(Career.robot_of(preview_cup, 1 + int(off["seed"]) % 7)), "%s  %s" % [off["name"], "★".repeat(int(off["tier"]))],
-				"8 pilots, 3 weeks. Gold $%d + a new part, silver $%d, bronze $%d." % [int(off["prize"]), int(off["prize"] * 0.5), int(off["prize"] * 0.3)])
+		var row := make_row(bot_preview(Career.robot_of(preview_cup, 1 + int(off["seed"]) % 7)), tr("%s  %s") % [off["name"], "★".repeat(int(off["tier"]))],
+				tr("8 pilots, 3 weeks. Gold $%d + a new part, silver $%d, bronze $%d.") % [int(off["prize"]), int(off["prize"] * 0.5), int(off["prize"] * 0.3)])
 		row_button(row, "Enter", _on_enter_cup.bind(k), free and fits, 100)
 	if GameData.champion:
 		var row := make_row(bot_preview(GameData.OPPONENTS[GameData.OPPONENTS.size() - 1]), "OVERLORD rematch",
-				"Exhibition bout in the Grand Hall for $%d. Takes a week." % GameData.EXHIBITION_REWARD)
+				tr("Exhibition bout in the Grand Hall for $%d. Takes a week.") % GameData.EXHIBITION_REWARD)
 		row_button(row, "Book it", _on_rematch, free and not GameData.exhibition, 100)
 
 
@@ -1091,7 +1091,7 @@ func build_season_tab() -> void:
 	var bar := action_bar()
 	var views := [["calendar", "Calendar"], ["table", "League table"]]
 	if GameData.bet_target() != "":
-		views.append(["bets", "Bets"])
+		views.append(["bets", tr("Bets")])
 	elif season_view == "bets":
 		season_view = "calendar"
 	for v in views:
@@ -1124,7 +1124,7 @@ func build_calendar() -> void:
 	head.add_theme_constant_override("separation", 8)
 	list_box.add_child(head)
 	head.add_child(UI.button("<", _on_cal_month.bind(-1), 18, Vector2(56, 36)))
-	var t := UI.label("%s  -  YEAR %d" % [MONTH_NAMES[cal_month], GameData.year], 19, Color(1.0, 0.8, 0.4))
+	var t := UI.label(tr("%s  -  YEAR %d") % [tr(MONTH_NAMES[cal_month]), GameData.year], 19, Color(1.0, 0.8, 0.4))
 	t.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	t.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	head.add_child(t)
@@ -1148,21 +1148,21 @@ func build_calendar() -> void:
 			var col := Color(0.85, 0.85, 0.9)
 			var bg := Color(0.14, 0.14, 0.18, 0.9)
 			if day == 5:   # Saturday: fight night
-				text = plan["text"]
+				text = tr(str(plan["text"]))
 				if plan["kind"] == "done":
 					col = Color(0.5, 1.0, 0.6) if plan["won"] else Color(1.0, 0.45, 0.4)
 				else:
 					col = PLAN_COLORS.get(plan["kind"], col)
 				if this_week and plan["kind"] != "done":
-					text = "TONIGHT\n" + (text if mode == "open" or mode == "pickup" else GameData.fight_title())
+					text = tr("TONIGHT\n") + (text if mode == "open" or mode == "pickup" else GameData.fight_title())
 				bg = Color(0.2, 0.18, 0.12, 0.95)
 			elif day == 6 and row == GameData.MONTH_WEEKS - 1 and GameData.living_cost() > 0:
-				text = "RENT & FOOD\n-$%d" % GameData.living_cost()
+				text = tr("RENT & FOOD\n-$%d") % GameData.living_cost()
 				col = Color(1.0, 0.45, 0.4)
 			if this_week:
 				bg = bg.lightened(0.08)
 			grid.add_child(day_cell(row * 7 + day + 1, text, col, bg, this_week and day == 5))
-	var info := "Record %d-%d.  Medals %d." % [GameData.wins, GameData.losses, GameData.trophies.size()]
+	var info := tr("Record %d-%d.  Medals %d.") % [GameData.wins, GameData.losses, GameData.trophies.size()]
 	section(info)
 	if mode == "pickup" or mode == "open":
 		var nxt := GameData.next_event_info()
@@ -1170,7 +1170,7 @@ func build_calendar() -> void:
 		var bar := action_bar()
 		row_button(bar, "Rest a week", _on_rest, true, 150)
 		if str(nxt[0]) != "" and int(nxt[2]) > 1:
-			row_button(bar, "Skip to the %s" % Career.STAGES[nxt[0]]["short"].capitalize(), _on_skip, true, 0)
+			row_button(bar, tr("Skip to the %s") % tr(Career.STAGES[nxt[0]]["short"]).capitalize(), _on_skip, true, 0)
 
 
 func day_cell(n: int, text: String, col: Color, bg: Color, today: bool) -> PanelContainer:
@@ -1226,7 +1226,7 @@ func build_bets() -> void:
 		section("Your bets this round:")
 		for x in mine:
 			var who: String = GameData.pilot_name if x["pick"] == 0 else str(Career.pilot(ev, x["pick"]).get("pilot", "?"))
-			section("  $%d on %s at %.2fx  ->  pays $%d" % [x["stake"], who, x["odds"], int(x["stake"] * x["odds"])])
+			section(tr("  $%d on %s at %.2fx  ->  pays $%d") % [x["stake"], who, x["odds"], int(x["stake"] * x["odds"])])
 
 
 ## One side of a match: pilot, robot, record, odds and a Bet button.
@@ -1237,7 +1237,7 @@ func bet_side(row: HBoxContainer, ev: Dictionary, id: int, other: int) -> void:
 	row.add_child(box)
 	var t: Array = ev["table"].get(str(id), [0, 0, 0, 0])
 	var odds := Career.odds(ev, id, other)
-	var l := UI.label("%s\n%d-%d   %.2fx" % [who(ev, id), t[0], t[1], odds], 13, Color(1.0, 0.85, 0.3) if id == 0 else Color(0.9, 0.9, 0.95))
+	var l := UI.label(tr("%s\n%d-%d   %.2fx") % [who(ev, id), t[0], t[1], odds], 13, Color(1.0, 0.85, 0.3) if id == 0 else Color(0.9, 0.9, 0.95))
 	l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	l.clip_text = true
 	box.add_child(l)
@@ -1268,14 +1268,14 @@ func build_league_view() -> void:
 		section("You're not in a league right now.")
 		return
 	var info: Dictionary = Career.STAGES[ev["stage"]]
-	var status := "%s, year %d - " % [ev["name"], int(ev["year"])]
+	var status := tr("%s, year %d - ") % [ev["name"], int(ev["year"])]
 	match ev["phase"]:
 		"league":
-			status += Career.round_name(ev)
+			status += tr(Career.round_name(ev))
 		"playoffs":
-			status += "PLAYOFFS: " + Career.round_name(ev)
+			status += tr("PLAYOFFS: ") + tr(Career.round_name(ev))
 		_:
-			status += "FINAL RESULT: you " + Career.finish_text(ev)
+			status += tr("FINAL RESULT: you ") + Career.finish_text(ev)
 	section(status)
 	var rule := "Top 3 win medals - a medal gets you into the Regional." if int(info["playoff"]) == 0 else \
 			("Top 4 go to the playoffs - reaching the semifinals gets you into the Championship." if ev["stage"] == "regional" else
@@ -1306,8 +1306,8 @@ func show_table(ev: Dictionary) -> void:
 		elif pos <= zone:
 			col = Color(0.65, 1.0, 0.7)
 		var medal := Career.medal_of(ev, id)
-		var mark: String = ["", " (GOLD)", " (SILVER)", " (BRONZE)"][medal]
-		table_row([str(pos) + ("*" if pos <= zone else ""), who(ev, id) + mark, "%d-%d" % [t[0], t[1]], str(t[2]), str(t[3])], widths, col, bg)
+		var mark: String = tr(["", " (GOLD)", " (SILVER)", " (BRONZE)"][medal])
+		table_row([str(pos) + ("*" if pos <= zone else "tr("), who(ev, id) + mark, ")%d-%d" % [t[0], t[1]], str(t[2]), str(t[3])], widths, col, bg)
 
 
 func show_bracket(ev: Dictionary) -> void:
@@ -1315,14 +1315,14 @@ func show_bracket(ev: Dictionary) -> void:
 	for r in br["rounds"].size():
 		var rnd: Array = br["rounds"][r]
 		var main := rnd.filter(func(m): return not m.get("bronze", false)).size()
-		section({4: "QUARTERFINALS", 2: "SEMIFINALS", 1: "FINAL + BRONZE MATCH" if rnd.size() == 2 else "FINAL"}.get(main, "ROUND"))
+		section(tr({4: "QUARTERFINALS", 2: "SEMIFINALS", 1: "FINAL + BRONZE MATCH" if rnd.size() == 2 else "FINAL"}.get(main, "ROUND")))
 		for m in rnd:
 			var a: int = m["a"]
 			var b: int = m["b"]
 			var w: int = m["w"]
-			var txt := "%s%s  vs  %s" % ["BRONZE: " if m.get("bronze", false) else "", who(ev, a), who(ev, b)]
+			var txt := tr("%s%s  vs  %s") % ["BRONZE: " if m.get("bronze", false) else "", who(ev, a), who(ev, b)]
 			if w >= 0:
-				txt += "   ->  %s wins" % (GameData.pilot_name if w == 0 else str(Career.pilot(ev, w).get("pilot", "?")))
+				txt += tr("   ->  %s wins") % (GameData.pilot_name if w == 0 else str(Career.pilot(ev, w).get("pilot", "?")))
 			var mine := a == 0 or b == 0
 			var col := Color(1.0, 0.85, 0.3) if mine else (Color(0.8, 0.8, 0.85) if w >= 0 else Color(1, 1, 1))
 			table_row([txt], [0], col, Color(1.0, 0.7, 0.2, 0.15) if mine else Color(0, 0, 0, 0))
@@ -1331,13 +1331,13 @@ func show_bracket(ev: Dictionary) -> void:
 ## "PILOT - ROBOT" for the table.
 func who(ev: Dictionary, id: int) -> String:
 	if id == 0:
-		return "%s - %s" % [GameData.pilot_name.to_upper(), GameData.robot_name]
+		return tr("%s - %s") % [GameData.pilot_name.to_upper(), GameData.robot_name]
 	var e := Career.pilot(ev, id)
 	var o := Career.robot_of(ev, id)
 	var pilot: String = str(o.get("pilot", e.get("pilot", "")))
 	if pilot == "":
 		pilot = str(e.get("pilot", "?"))
-	return "%s - %s" % [pilot, o.get("name", "?")]
+	return tr("%s - %s") % [pilot, o.get("name", "?")]
 
 
 func table_row(cells: Array, widths: Array, col: Color, bg: Color) -> void:
@@ -1371,7 +1371,7 @@ func _on_skip() -> void:
 func bills_text() -> String:
 	if GameData.bills_note <= 0:
 		return ""
-	var t := " Rent and food: -$%d." % GameData.bills_note
+	var t := tr(" Rent and food: -$%d.") % GameData.bills_note
 	GameData.bills_note = 0
 	return t
 	refresh()
@@ -1389,10 +1389,10 @@ func build_team_tab() -> void:
 	section("BACKUP ROBOTS are built from your spare parts and keep their damage, just like your robot. Main robot too beaten up and no cash to fix it? Use the Send button to put a backup robot in a 1-on-1 and earn some money. In cups they also fight beside you against tag teams and swarms.")
 	var ms := GameData.stats()
 	section("WEIGHT CLASSES: a robot fighting alone can be as heavy as its reactor allows. A team shares one heavyweight's power (%d): 2 robots get %d each, 3 get %d. Your robot now: %s, %d power. Mini parts are light, Heavy parts drink power - a team robot over its share gets overloaded."
-			% [int(GameData.TEAM_POWER), int(GameData.team_share(2)), int(GameData.team_share(3)), GameData.weight_class(ms["power_used"]), ms["power_used"]])
+			% [int(GameData.TEAM_POWER), int(GameData.team_share(2)), int(GameData.team_share(3)), tr(GameData.weight_class(ms["power_used"])), ms["power_used"]])
 	var bar := action_bar()
 	var split: bool = GameData.settings.get("team_controls", "split") == "split"
-	var b := row_button(bar, "Team controls: %s" % ("SPLIT - each robot gets its own movement pad" if split else "LINKED - every robot follows one pad"), _on_team_controls, true, 0)
+	var b := row_button(bar, tr("Team controls: %s") % ("SPLIT - each robot gets its own movement pad" if split else "LINKED - every robot follows one pad"), _on_team_controls, true, 0)
 	b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	for k in GameData.wingmen.size():
 		var w: Dictionary = GameData.wingmen[k]
@@ -1407,20 +1407,20 @@ func build_team_tab() -> void:
 				if w.has(slot):
 					var p := GameData.inst(int(w[slot]))
 					if not p.is_empty():
-						names.append("%s %d%%" % [GameData.part_def(p["id"])["name"], int(GameData.hp_ratio(p) * 100)])
+						names.append(tr("%s %d%%") % [GameData.part_def(p["id"])["name"], int(GameData.hp_ratio(p) * 100)])
 			var ws := GameData.stats(w)
 			var share := GameData.team_share(2)
-			var power := "%s, %d power. In a team of 2 each robot gets %d power, in a team of 3 only %d%s. " % [
-					GameData.weight_class(ws["power_used"]), ws["power_used"], int(share), int(GameData.team_share(3)),
+			var power := tr("%s, %d power. In a team of 2 each robot gets %d power, in a team of 3 only %d%s. ") % [
+					tr(GameData.weight_class(ws["power_used"])), ws["power_used"], int(share), int(GameData.team_share(3)),
 					" - too heavy, it will be overloaded!" if ws["power_used"] > share else ""]
-			sub = ("READY. " if GameData.wingman_ready(k) else "CAN'T FIGHT - missing a head or torso. ") + power + ", ".join(names)
+			sub = tr("READY. " if GameData.wingman_ready(k) else "CAN'T FIGHT - missing a head or torso. ") + power + ", ".join(names)
 		else:
 			pv.look = {}
 		var row := make_row(pv, name, sub)
-		row_button(row, "Rebuild" if not w.is_empty() else "Build", _on_build_wingman.bind(k), true, 100)
+		row_button(row, tr("Rebuild") if not w.is_empty() else tr("Build"), _on_build_wingman.bind(k), true, 100)
 		if not w.is_empty():
 			var c := GameData.wingman_repair_cost(k)
-			row_button(row, "Fix $%d" % c if c > 0 else "OK", _on_repair_wingman.bind(k), c > 0 and GameData.can_repair(c), 95)
+			row_button(row, tr("Fix $%d") % c if c > 0 else tr("OK"), _on_repair_wingman.bind(k), c > 0 and GameData.can_repair(c), 95)
 			row_button(row, "Disband", _on_disband_wingman.bind(k), true, 100)
 
 
@@ -1428,7 +1428,7 @@ func _on_team_controls() -> void:
 	var split: bool = GameData.settings.get("team_controls", "split") == "split"
 	GameData.settings["team_controls"] = "linked" if split else "split"
 	GameData.save_settings()
-	say("Team controls: %s." % ("LINKED - all your robots follow one movement pad" if split else "SPLIT - one movement pad per robot, shared attack buttons. Move the pads in Settings > Edit controls"), "click")
+	say(tr("Team controls: %s.") % ("LINKED - all your robots follow one movement pad" if split else "SPLIT - one movement pad per robot, shared attack buttons. Move the pads in Settings > Edit controls"), "click")
 	refresh()
 
 
@@ -1444,7 +1444,7 @@ func _on_repair_wingman(k: int) -> void:
 
 func _on_disband_wingman(k: int) -> void:
 	GameData.clear_wingman(k)
-	say("%s's parts went back to your Spares." % GameData.wingman_name(k), "click")
+	say(tr("%s's parts went back to your Spares.") % GameData.wingman_name(k), "click")
 	refresh()
 
 
@@ -1505,7 +1505,7 @@ func _on_reroll() -> void:
 
 
 func _on_open_style() -> void:
-	var col := open_popup("FIGHTING STYLE")
+	var col := open_popup(tr("FIGHTING STYLE"))
 	section("Your style changes how ECHO fights and gives it a free signature move.", col)
 	for id in Catalog.STYLES:
 		var st: Dictionary = Catalog.STYLES[id]
@@ -1516,12 +1516,12 @@ func _on_open_style() -> void:
 		var text := VBoxContainer.new()
 		text.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		row.add_child(text)
-		text.add_child(UI.label(st["name"].to_upper() + ("   (current)" if id == GameData.style else ""), 18, Color(st["color"]).lightened(0.3)))
-		var d := UI.label(st["desc"], 13)
+		text.add_child(UI.label(tr(st["name"]).to_upper() + ("   (current)" if id == GameData.style else ""), 18, Color(st["color"]).lightened(0.3)))
+		var d := UI.label(tr(st["desc"]), 13)
 		d.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		d.custom_minimum_size = Vector2(380, 0)
 		text.add_child(d)
-		text.add_child(UI.label("Signature: %s  %s" % [sig["name"], Specials.seq_text(sig["seq"])], 13, Color(0.5, 0.9, 1.0)))
+		text.add_child(UI.label(tr("Signature: %s  %s") % [tr(sig["name"]), Specials.seq_text(sig["seq"])], 13, Color(0.5, 0.9, 1.0)))
 		var b := UI.button("Pick", _on_pick_style.bind(id), 16, Vector2(90, 46))
 		b.disabled = id == GameData.style
 		row.add_child(b)
@@ -1530,7 +1530,7 @@ func _on_open_style() -> void:
 func _on_pick_style(id: String) -> void:
 	GameData.style = id
 	close_popup()
-	say("Fighting style: %s. Signature move: %s." % [Catalog.STYLES[id]["name"], Specials.MOVES[Catalog.STYLES[id]["signature"]]["name"]], "equip")
+	say(tr("Fighting style: %s. Signature move: %s.") % [tr(Catalog.STYLES[id]["name"]), tr(Specials.MOVES[Catalog.STYLES[id]["signature"]]["name"])], "equip")
 	refresh()
 
 
@@ -1546,9 +1546,9 @@ func _on_open_scout() -> void:
 		refresh()
 	var o := GameData.current_opponent()
 	var spec := GameData.current_opponent_spec()
-	var col := open_popup("SCOUTING REPORT: " + str(o["name"]))
+	var col := open_popup(tr("SCOUTING REPORT: ") + str(o["name"]))
 	if msg == "":
-		msg = "Their crew spotted your scout! They %s." % GameData.scout["change"]["text"] if GameData.scout.get("spied_back", false) else "Clean scouting run - they never saw you."
+		msg = tr("Their crew spotted your scout! They %s.") % tr(GameData.scout["change"]["text"]) if GameData.scout.get("spied_back", false) else "Clean scouting run - they never saw you."
 	var m := UI.label(msg, 15, Color(1.0, 0.5, 0.3) if GameData.scout.get("spied_back", false) else Color(0.5, 1.0, 0.6))
 	m.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	col.add_child(m)
@@ -1564,7 +1564,7 @@ func _on_open_scout() -> void:
 	info.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	row.add_child(info)
 	var st: String = spec.get("style", "striker")
-	info.add_child(UI.label("Style: %s" % Catalog.STYLES[st]["name"], 16, Color(Catalog.STYLES[st]["color"]).lightened(0.3)))
+	info.add_child(UI.label(tr("Style: %s") % tr(Catalog.STYLES[st]["name"]), 16, Color(Catalog.STYLES[st]["color"]).lightened(0.3)))
 	var weak := ""
 	var weak_v := 1e9
 	for slot in GameData.BODY_SLOTS:
@@ -1572,11 +1572,11 @@ func _on_open_scout() -> void:
 		if p.is_empty():
 			continue
 		var d := GameData.part_def(p["id"])
-		var line := "%s: %s  (HP %d, armor %d)" % [GameData.SLOT_NAMES[slot], d["name"], int(p["max_hp"]), int(p["armor"])]
+		var line := tr("%s: %s  (HP %d, armor %d)") % [tr(GameData.SLOT_NAMES[slot]), d["name"], int(p["max_hp"]), int(p["armor"])]
 		if d.get("trait", "") != "":
-			line += "  - " + Catalog.TRAITS[d["trait"]]["name"]
+			line += "  - " + tr(Catalog.TRAITS[d["trait"]]["name"])
 		if d["gimmick"] != "":
-			line += "  - " + Specials.GADGETS[d["gimmick"]]["name"]
+			line += "  - " + tr(Specials.GADGETS[d["gimmick"]]["name"])
 		var l := UI.label(line, 12)
 		l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		info.add_child(l)
@@ -1590,19 +1590,19 @@ func _on_open_scout() -> void:
 			var d := GameData.part_def(o["parts"][slot])
 			var extra := ""
 			if d.get("trait", "") != "":
-				extra = "  - " + Catalog.TRAITS[d["trait"]]["name"]
+				extra = "  - " + tr(Catalog.TRAITS[d["trait"]]["name"])
 			elif d["gimmick"] != "":
-				extra = "  - " + Specials.GADGETS[d["gimmick"]]["name"]
-			info.add_child(UI.label("%s: %s%s" % [GameData.SLOT_NAMES[slot], d["name"], extra], 12))
+				extra = "  - " + tr(Specials.GADGETS[d["gimmick"]]["name"])
+			info.add_child(UI.label(tr("%s: %s%s") % [tr(GameData.SLOT_NAMES[slot]), d["name"], extra], 12))
 	var moves: Array = []
 	for id in o["specials"]:
-		moves.append(Specials.MOVES[id]["name"])
-	moves.append(Specials.MOVES[Catalog.STYLES[st]["signature"]]["name"] + " (signature)")
+		moves.append(tr(Specials.MOVES[id]["name"]))
+	moves.append(tr(Specials.MOVES[Catalog.STYLES[st]["signature"]]["name"]) + tr(" (signature)"))
 	var ml := UI.label("Moves: " + ", ".join(moves), 13, Color(0.5, 0.9, 1.0))
 	ml.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	info.add_child(ml)
 	if weak != "":
-		info.add_child(UI.label("Weak point: %s - aim there!" % GameData.SLOT_NAMES[weak], 15, Color(1.0, 0.9, 0.3)))
+		info.add_child(UI.label(tr("Weak point: %s - aim there!") % tr(GameData.SLOT_NAMES[weak]), 15, Color(1.0, 0.9, 0.3)))
 
 
 func _on_buy(id: String) -> void:
@@ -1619,7 +1619,7 @@ func _on_equip(uid: int, slot: String) -> void:
 
 func _on_unequip(slot: String) -> void:
 	GameData.unequip(slot)
-	say("Removed the %s. It's in Storage." % GameData.SLOT_NAMES[slot], "equip")
+	say(tr("Removed the %s. It's in Storage.") % tr(GameData.SLOT_NAMES[slot]), "equip")
 	refresh()
 
 
@@ -1681,7 +1681,7 @@ func _on_uninstall_chip(id: String) -> void:
 
 func _on_paint(k: int) -> void:
 	GameData.paint = k
-	say("Painted %s." % GameData.PAINTS[k]["name"], "equip")
+	say(tr("Painted %s.") % tr(GameData.PAINTS[k]["name"]), "equip")
 	refresh()
 	_on_open_paint()
 
@@ -1726,7 +1726,7 @@ func _on_forge() -> void:
 func _on_enter_cup(k: int) -> void:
 	GameData.enter_circuit(k)
 	GameData.save_game()
-	say("Entered the %s! First opponent: %s." % [GameData.circuit["name"], GameData.current_opponent()["name"]], "fight")
+	say(tr("Entered the %s! First opponent: %s.") % [GameData.circuit["name"], GameData.current_opponent()["name"]], "fight")
 	refresh()
 
 
@@ -1754,8 +1754,8 @@ func _on_send() -> void:
 		if GameData.wingman_ready(k):
 			options.append(k)
 	GameData.sending = options[(options.find(GameData.sending) + 1) % options.size()]
-	say("%s will fight the next 1-on-1. %s" % [GameData.sending_name(),
-			"Its damage stays on it - your main robot sits this one out." if GameData.sending >= 0 else ""], "click")
+	say(tr("%s will fight the next 1-on-1. %s") % [GameData.sending_name(),
+			tr("Its damage stays on it - your main robot sits this one out.") if GameData.sending >= 0 else ""], "click")
 	refresh()
 
 

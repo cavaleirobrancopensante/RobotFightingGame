@@ -157,7 +157,7 @@ func use_tool(t: String) -> void:
 		"pads":
 			pads = pads % 3 + 1
 			selected = ""
-			say("Editing the layout for %s" % ["one robot", "a team of 2 (split controls)", "a team of 3 (split controls)"][pads - 1])
+			say(tr("Editing the layout for %s") % ["one robot", "a team of 2 (split controls)", "a team of 3 (split controls)"][pads - 1])
 		"reset":
 			Controls.reset(pads)
 			say("Back to the default layout")
@@ -203,7 +203,7 @@ func _draw() -> void:
 
 	for t in TOOLS:
 		var r: Rect2 = tool_rects[t]
-		var label: String = "%d PAD%s" % [pads, "" if pads == 1 else "S"] if t == "pads" else TOOL_LABELS[t]
+		var label: String = tr("%d PAD%s") % [pads, "" if pads == 1 else "S"] if t == "pads" else tr(TOOL_LABELS[t])
 		var on: bool = t == "done" or ((t == "smaller" or t == "bigger") and selected != "")
 		draw_rect(r, Color(0.1, 0.1, 0.14, 0.85))
 		draw_rect(r, Color(1.0, 0.45, 0.2) if t == "done" else (Color(1, 1, 1, 0.7) if on or not t in ["smaller", "bigger"] else Color(1, 1, 1, 0.3)), false, 2.0)
@@ -211,7 +211,7 @@ func _draw() -> void:
 
 	var hint := "Drag a button to move it. Tap one, then SMALLER / BIGGER to resize it."
 	if selected != "":
-		hint = "%s: size %d%%" % [find(selected).get("label", selected), int(round(Controls.size_factor(selected, pads) * 100))]
+		hint = tr("%s: size %d%%") % [tr(str(find(selected).get("label", selected))), int(round(Controls.size_factor(selected, pads) * 100))]
 	if flash_t > 0.0:
 		hint = flash
-	draw_string(font, Vector2(0, 96), hint, HORIZONTAL_ALIGNMENT_CENTER, screen.x, 22, Color(1, 1, 1, 0.9))
+	draw_string(font, Vector2(0, 96), tr(hint), HORIZONTAL_ALIGNMENT_CENTER, screen.x, 22, Color(1, 1, 1, 0.9))

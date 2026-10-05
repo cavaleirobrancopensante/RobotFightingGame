@@ -3,6 +3,7 @@ extends RefCounted
 ## workbench, the scrapyard, the paint job, training, the team and the trophy wall.
 ## draw_back() draws behind the robot, draw_front() draws the people and props in front.
 
+const I18n = preload("res://i18n.gd")
 const PilotArt = preload("res://pilot_art.gd")
 const RobotArt = preload("res://robot_art.gd")
 
@@ -72,7 +73,7 @@ static func _props_back(ci: CanvasItem, size: Vector2, scene: String, t: float, 
 				var x := pb.position.x + 10 + k * (pb.size.x - 20) / 3.0
 				ci.draw_line(Vector2(x, pb.position.y + 8), Vector2(x, pb.position.y + 8 + 22 + k % 2 * 10), Color(0.6, 0.6, 0.65), 3.0)
 			ci.draw_circle(pb.get_center() + Vector2(0, 16), 7, Color(0.75, 0.2, 0.2))
-			_sign(ci, Vector2(size.x * 0.62, 30), "GUS'S BAY", Color(0.95, 0.65, 0.35))
+			_sign(ci, Vector2(size.x * 0.62, 30), I18n.t("GUS'S BAY"), Color(0.95, 0.65, 0.35))
 			_bay_trophies(ci, size, info)
 			_lamp(ci, Vector2(size.x * 0.62, 0), size, t)
 			# behind the robot: a stepladder, and your pilot up it checking the robot's head
@@ -108,7 +109,7 @@ static func _props_back(ci: CanvasItem, size: Vector2, scene: String, t: float, 
 					ci.draw_rect(Rect2(bx + 4, w.end.y - bh + 6, 3, 3), Color(1.0, 0.85, 0.4))
 			ci.draw_rect(w, Color(0.35, 0.35, 0.4), false, 3.0)
 		"workshop":
-			_sign(ci, Vector2(size.x * 0.3, 30), "WORKSHOP", Color(0.6, 0.85, 1.0))
+			_sign(ci, Vector2(size.x * 0.3, 30), I18n.t("WORKSHOP"), Color(0.6, 0.85, 1.0))
 			# shelves of parts
 			for row in 2:
 				var y := 50.0 + row * 34.0
@@ -137,11 +138,11 @@ static func _props_back(ci: CanvasItem, size: Vector2, scene: String, t: float, 
 			ci.draw_rect(b, Color(0.1, 0.22, 0.15))
 			ci.draw_rect(b, Color(0.5, 0.35, 0.2), false, 4.0)
 			var f := ThemeDB.fallback_font
-			ci.draw_string(f, b.position + Vector2(8, 24), "↓ → P", HORIZONTAL_ALIGNMENT_LEFT, -1, 18, Color(0.9, 0.9, 0.85))
-			ci.draw_string(f, b.position + Vector2(8, 48), "← → K", HORIZONTAL_ALIGNMENT_LEFT, -1, 18, Color(0.9, 0.9, 0.85, 0.8))
+			ci.draw_string(f, b.position + Vector2(8, 24), I18n.t("↓ → P"), HORIZONTAL_ALIGNMENT_LEFT, -1, 18, Color(0.9, 0.9, 0.85))
+			ci.draw_string(f, b.position + Vector2(8, 48), I18n.t("← → K"), HORIZONTAL_ALIGNMENT_LEFT, -1, 18, Color(0.9, 0.9, 0.85, 0.8))
 			ci.draw_rect(Rect2(size.x * 0.45, floor_y - 6, size.x * 0.4, 6), Color(0.3, 0.3, 0.35))   # practice mat
 		"team":
-			_sign(ci, Vector2(size.x * 0.5, 30), "TEAM", Color(0.5, 0.8, 1.0))
+			_sign(ci, Vector2(size.x * 0.5, 30), I18n.t("TEAM"), Color(0.5, 0.8, 1.0))
 		"cups":
 			# trophy shelf: the cup trophies you've won
 			var cups: Array = info.get("medals", []).filter(func(x): return x.get("kind", "") == "cup")
@@ -152,7 +153,7 @@ static func _props_back(ci: CanvasItem, size: Vector2, scene: String, t: float, 
 			for k in 2:
 				var p := Rect2(16 + k * 70, 90, 56, 70)
 				ci.draw_rect(p, Color.from_hsv(0.05 + k * 0.5, 0.5, 0.45))
-				ci.draw_string(ThemeDB.fallback_font, p.position + Vector2(4, 20), "CUP", HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Color(1, 1, 1, 0.8))
+				ci.draw_string(ThemeDB.fallback_font, p.position + Vector2(4, 20), I18n.t("CUP"), HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Color(1, 1, 1, 0.8))
 		_:
 			pass
 
@@ -189,7 +190,7 @@ static func _front(ci: CanvasItem, size: Vector2, scene: String, t: float, info:
 			var scr := mon.grow(-4)
 			ci.draw_rect(scr, Color(0.9, 0.93, 0.97))
 			ci.draw_rect(Rect2(scr.position, Vector2(scr.size.x, 9 * s)), Color(0.9, 0.45, 0.2))
-			ci.draw_string(ThemeDB.fallback_font, scr.position + Vector2(3, 8 * s), "PARTS-R-US", HORIZONTAL_ALIGNMENT_LEFT, -1, int(8 * s), Color.WHITE)
+			ci.draw_string(ThemeDB.fallback_font, scr.position + Vector2(3, 8 * s), I18n.t("PARTS-R-US"), HORIZONTAL_ALIGNMENT_LEFT, -1, int(8 * s), Color.WHITE)
 			var scroll := fmod(t * 6.0, 14.0 * s)
 			for k in 6:
 				var tile := Rect2(scr.position.x + 4 + (k % 3) * scr.size.x / 3.0, scr.position.y + 12 * s + int(k / 3.0) * 20 * s - scroll + 14 * s,
@@ -419,9 +420,9 @@ static func _scoreboard(ci: CanvasItem, r: Rect2, info: Dictionary) -> void:
 	var f := ThemeDB.fallback_font
 	var fs := clampi(int(r.size.x / 11.5), 8, 13)
 	var lines := [
-		["W %d" % int(info.get("wins", 0)), "L %d" % int(info.get("losses", 0)), Color(0.3, 1.0, 0.4), Color(1.0, 0.35, 0.25)],
-		["HEADS %d" % int(st.get("heads", 0)), "ARMS %d" % int(st.get("arms", 0)), Color(1.0, 0.75, 0.2), Color(1.0, 0.75, 0.2)],
-		["LEGS %d" % int(st.get("legs", 0)), "CORES %d" % int(st.get("cores", 0)), Color(1.0, 0.75, 0.2), Color(1.0, 0.45, 0.2)],
+		[I18n.t("W %d") % int(info.get("wins", 0)), I18n.t("L %d") % int(info.get("losses", 0)), Color(0.3, 1.0, 0.4), Color(1.0, 0.35, 0.25)],
+		[I18n.t("HEADS %d") % int(st.get("heads", 0)), I18n.t("ARMS %d") % int(st.get("arms", 0)), Color(1.0, 0.75, 0.2), Color(1.0, 0.75, 0.2)],
+		[I18n.t("LEGS %d") % int(st.get("legs", 0)), I18n.t("CORES %d") % int(st.get("cores", 0)), Color(1.0, 0.75, 0.2), Color(1.0, 0.45, 0.2)],
 	]
 	for k in lines.size():
 		var y := r.position.y + (k + 1) * r.size.y / 3.0 - 5.0

@@ -1,4 +1,5 @@
 extends RefCounted
+const I18n = preload("res://i18n.gd")
 ## Extra content: manufacturer brands (with signature traits), fighting styles,
 ## and the generator that turns brands into parts.
 ##
@@ -120,6 +121,7 @@ static func generate() -> Array:
 					"draw": base["draw"][tier],
 					"shape": b["shapes"][kind][tier], "color": b["colors"][tier],
 					"size": 1.0 if tier == 0 else 1.08, "brand": b["id"],
+					"brand_name": b["name"], "model": b["models"][kind], "tier_x": tier > 0,
 				}
 				if base.has("damage"):
 					d["damage"] = base["damage"][tier] + mods.get("damage", 0)
@@ -151,4 +153,4 @@ static func trait_text(d: Dictionary) -> String:
 	if t == "":
 		return ""
 	var info: Dictionary = TRAITS[t]
-	return "%s: %s" % [info["name"], info["desc"] % trait_value(d)]
+	return "%s: %s" % [I18n.t(info["name"]), I18n.t(info["desc"]) % trait_value(d)]

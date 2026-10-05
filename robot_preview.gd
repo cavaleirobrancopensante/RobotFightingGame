@@ -64,7 +64,7 @@ func _draw() -> void:
 				world = world.abs()
 				draw_rect(world.grow(4.0), Color(1.0, 0.85, 0.2, 0.9 + 0.1 * sin(t * 6.0)), false, 3.0)
 	if interactive:
-		draw_string(ThemeDB.fallback_font, Vector2(6, 22), "Tap a part", HORIZONTAL_ALIGNMENT_LEFT, -1, 16, Color(1, 1, 1, 0.45))
+		draw_string(ThemeDB.fallback_font, Vector2(6, 22), tr("Tap a part"), HORIZONTAL_ALIGNMENT_LEFT, -1, 16, Color(1, 1, 1, 0.45))
 
 
 func _regions() -> Array:

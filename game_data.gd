@@ -2,6 +2,7 @@ extends Node
 
 # helper scripts, loaded by path so the game also runs without an editor scan
 const Arena = preload("res://arena.gd")
+const I18n = preload("res://i18n.gd")
 const Catalog = preload("res://catalog.gd")
 const PilotArt = preload("res://pilot_art.gd")
 const RobotArt = preload("res://robot_art.gd")
@@ -298,8 +299,9 @@ var chips: Array = []         # chips installed (only the first chip_slots() of 
 var last_result := {}       # handed from the fight to the garage
 var story_key := ""         # which story scene to show next
 var story_return := ""      # scene to go to after the story
-var settings := {"sound": true, "music": true, "shake": true, "button_size": 1, "difficulty": 1, "layout": {}, "team_controls": "split", "battery_saver": false,
-		"start_money": START_MONEY, "living_cost": LIVING_COST, "coaching": 2}
+const DEFAULT_SETTINGS := {"sound": true, "music": true, "shake": true, "button_size": 1, "difficulty": 1, "layout": {}, "team_controls": "split", "battery_saver": false,
+		"start_money": START_MONEY, "living_cost": LIVING_COST, "coaching": 2, "lang": "en"}
+var settings := DEFAULT_SETTINGS.duplicate(true)
 
 
 # ---------------------------------------------------------------- error log
@@ -319,7 +321,7 @@ class ErrorCatcher extends Logger:
 	func _log_error(function: String, file: String, line: int, code: String, rationale: String,
 			_editor_notify: bool, error_type: int, script_backtraces: Array) -> void:
 		var kinds := ["ERROR", "WARNING", "SCRIPT ERROR", "SHADER ERROR"]
-		var text := "[%s] %s: %s\n    at %s:%d (%s)" % [Time.get_time_string_from_system(), kinds[clampi(error_type, 0, 3)],
+		var text := tr("[%s] %s: %s\n    at %s:%d (%s)") % [Time.get_time_string_from_system(), kinds[clampi(error_type, 0, 3)],
 				rationale if rationale != "" else code, file, line, function]
 		for bt in script_backtraces:
 			if bt != null and bt.has_method("format"):
@@ -328,7 +330,7 @@ class ErrorCatcher extends Logger:
 
 	func _log_message(message: String, error: bool) -> void:
 		if error:
-			add("[%s] %s" % [Time.get_time_string_from_system(), message.strip_edges()])
+			add(tr("[%s] %s") % [Time.get_time_string_from_system(), message.strip_edges()])
 
 	func add(text: String) -> void:
 		mutex.lock()
@@ -391,7 +393,7 @@ func write_project_log() -> void:
 ## Everything for the Error log screen: this session, then the previous one.
 func error_log_text() -> String:
 	var now: Array = error_catcher.snapshot()
-	var text := "ROBOT FIGHTING GAME - error log (%s, Godot %s)\n\n== THIS SESSION: %d ==\n" % [
+	var text := tr("ROBOT FIGHTING GAME - error log (%s, Godot %s)\n\n== THIS SESSION: %d ==\n") % [
 			Time.get_datetime_string_from_system(false, true), Engine.get_version_info()["string"], now.size()]
 	text += "\n\n".join(now) if not now.is_empty() else "(no errors)"
 	if FileAccess.file_exists(ERROR_LOG_OLD_PATH):
@@ -447,7 +449,10 @@ func _ready() -> void:
 				var v := sized_variant(d, c)
 				PARTS[v["id"]] = v
 				ALL_PARTS.append(v["id"])
+	for id in PARTS:
+		PARTS[id]["name_en"] = PARTS[id]["name"]
 	load_settings()
+	set_language(str(settings.get("lang", "en")))
 	apply_performance()
 	migrate_old_save()
 	get_tree().root.theme = UI.make_theme()
@@ -623,7 +628,7 @@ func roll_stock() -> void:
 
 func reroll_stock() -> String:
 	if money < REROLL_COST:
-		return "Restocking costs $%d." % REROLL_COST
+		return tr("Restocking costs $%d.") % REROLL_COST
 	money -= REROLL_COST
 	roll_stock()
 	return "The dealer wheeled in a fresh load of parts."
@@ -663,8 +668,8 @@ func buy(id: String) -> String:
 	for slot in SLOTS:
 		if SLOT_KIND[slot] == d["kind"] and equipped[slot] == -1 and slot_available(slot):
 			equipped[slot] = uid
-			return "Bought %s and fitted it to the %s." % [d["name"], SLOT_NAMES[slot]]
-	return "Bought %s. It's in your Spares - equip it from there." % d["name"]
+			return tr("Bought %s and fitted it to the %s.") % [d["name"], tr(SLOT_NAMES[slot])]
+	return tr("Bought %s. It's in your Spares - equip it from there.") % d["name"]
 
 
 func equip(uid: int, slot: String) -> String:
@@ -674,18 +679,18 @@ func equip(uid: int, slot: String) -> String:
 	release_from_wingman(uid)
 	var d := part_def(p["id"])
 	if is_wreck(p):
-		return "%s is a wreck. Rebuild it first." % d["name"]
+		return tr("%s is a wreck. Rebuild it first.") % d["name"]
 	if SLOT_KIND[slot] != d["kind"]:
-		return "A %s doesn't fit the %s." % [d["name"], SLOT_NAMES[slot]]
+		return tr("A %s doesn't fit the %s.") % [d["name"], tr(SLOT_NAMES[slot])]
 	if not slot_available(slot):
-		return "Your torso has no mount for a %s." % str(SLOT_NAMES[slot]).to_lower()
+		return tr("Your torso has no mount for a %s.") % str(SLOT_NAMES[slot]).to_lower()
 	var old_slot := slot_of_uid(uid)
 	if old_slot != "":
 		equipped[old_slot] = equipped[slot] if old_slot != slot else -1
 	equipped[slot] = uid
 	if slot == "torso":
 		drop_unmounted()
-	return "Fitted %s to the %s." % [d["name"], SLOT_NAMES[slot]]
+	return tr("Fitted %s to the %s.") % [d["name"], tr(SLOT_NAMES[slot])]
 
 
 func unequip(slot: String) -> void:
@@ -718,7 +723,7 @@ func repair(uid: int) -> String:
 		return "Not enough cash - no repairs on credit. Fight with the dents and win some money."
 	money -= c
 	p["hp"] = float(part_def(p["id"])["hp"])
-	return "Repaired %s for $%d." % [part_def(p["id"])["name"], c]
+	return tr("Repaired %s for $%d.") % [part_def(p["id"])["name"], c]
 
 
 func repair_all_cost() -> int:
@@ -735,13 +740,13 @@ func repair_all() -> String:
 	if c == 0:
 		return "Your robot is in perfect shape."
 	if not can_repair(c):
-		return "Repairing everything costs $%d. You don't have the cash - fix the worst parts one at a time, or fight with the dents." % c
+		return tr("Repairing everything costs $%d. You don't have the cash - fix the worst parts one at a time, or fight with the dents.") % c
 	for slot in BODY_SLOTS:
 		var p := equipped_inst(slot)
 		if not p.is_empty():
 			p["hp"] = float(part_def(p["id"])["hp"])
 	money -= c
-	return "Fully repaired for $%d." % c
+	return tr("Fully repaired for $%d.") % c
 
 
 ## Damaged parts sell for less; even junk and wrecks are worth something as scrap metal.
@@ -759,41 +764,41 @@ func sell(uid: int) -> String:
 	var v := sell_value(p)
 	money += v
 	inventory.erase(p)
-	return "Sold %s for $%d." % [part_def(p["id"])["name"], v]
+	return tr("Sold %s for $%d.") % [part_def(p["id"])["name"], v]
 
 
 func part_stat_text(d: Dictionary) -> String:
 	var g := gimmick_text(d)
 	if d["kind"] == "reactor":
-		return "Power output %d" % d["output"] + g + trait_line(d)
+		return tr("Power output %d") % d["output"] + g + trait_line(d)
 	if d["kind"] == "back":
 		var b: Array = []
 		if d["output"] > 0:
-			b.append("Power +%d" % d["output"])
+			b.append(tr("Power +%d") % d["output"])
 		if d["draw"] > 0:
-			b.append("Power %d" % d["draw"])
+			b.append(tr("Power %d") % d["draw"])
 		return "  ".join(b) + g + trait_line(d)
-	var bits: Array = ["HP %d" % d["hp"]]
+	var bits: Array = [tr("HP %d") % d["hp"]]
 	if d["armor"] != 0:
-		bits.append("ARM %d%%" % d["armor"])
+		bits.append(tr("ARM %d%%") % d["armor"])
 	if d["damage"] != 0:
-		bits.append("DMG %+d%%" % d["damage"])
+		bits.append(tr("DMG %+d%%") % d["damage"])
 	if d["speed"] != 0:
-		bits.append("SPD %+d%%" % d["speed"])
+		bits.append(tr("SPD %+d%%") % d["speed"])
 	if d["aim"] != 0:
-		bits.append("AIM %+d%%" % d["aim"])
+		bits.append(tr("AIM %+d%%") % d["aim"])
 	if d["output"] != 0:
-		bits.append("PWR +%d" % d["output"])
+		bits.append(tr("PWR +%d") % d["output"])
 	if d["kind"] == "head" and d["chips"] > 0:
-		bits.append("CHIPS %d" % d["chips"])
+		bits.append(tr("CHIPS %d") % d["chips"])
 	if d["kind"] in ["head", "torso", "arm", "leg"]:
-		bits.append(SIZE_NAMES.get(d.get("size_class", "M"), "Medium"))
-	bits.append("Power %d" % d["draw"])
+		bits.append(tr(SIZE_NAMES.get(d.get("size_class", "M"), "Medium")))
+	bits.append(tr("Power %d") % d["draw"])
 	if not d["mounts"].is_empty():
 		var m: Array = []
 		for slot in d["mounts"]:
-			m.append(str(SLOT_NAMES[slot]).to_lower())
-		bits.append("| Mounts: " + ", ".join(m))
+			m.append(tr(str(SLOT_NAMES[slot])).to_lower())
+		bits.append(tr("| Mounts: ") + ", ".join(m))
 	return "  ".join(bits) + g + trait_line(d)
 
 
@@ -804,7 +809,7 @@ func trait_line(d: Dictionary) -> String:
 func gimmick_text(d: Dictionary) -> String:
 	if d["gimmick"] == "":
 		return ""
-	return "  |  " + Specials.GADGETS[d["gimmick"]]["desc"]
+	return "  |  " + tr(Specials.GADGETS[d["gimmick"]]["desc"])
 
 
 # ---------------------------------------------------------------- chips (special moves)
@@ -827,15 +832,15 @@ func active_chips() -> Array:
 func buy_chip(id: String) -> String:
 	var m: Dictionary = Specials.MOVES[id]
 	if owned_chips.has(id):
-		return "You already own %s." % m["name"]
+		return tr("You already own %s.") % tr(m["name"])
 	if money < m["cost"]:
 		return "Not enough money."
 	money -= m["cost"]
 	owned_chips.append(id)
 	if chips.size() < chip_slots():
 		chips.append(id)
-		return "Downloaded %s into %s. Input: %s" % [m["name"], robot_name, Specials.seq_text(m["seq"])]
-	return "Bought %s. Your chip slots are full - uninstall a chip to make room." % m["name"]
+		return tr("Downloaded %s into %s. Input: %s") % [tr(m["name"]), robot_name, Specials.seq_text(m["seq"])]
+	return tr("Bought %s. Your chip slots are full - uninstall a chip to make room.") % tr(m["name"])
 
 
 func install_chip(id: String) -> String:
@@ -844,12 +849,12 @@ func install_chip(id: String) -> String:
 	if chips.size() >= chip_slots():
 		return "No free chip slots. A better head has more slots."
 	chips.append(id)
-	return "Installed %s." % Specials.MOVES[id]["name"]
+	return tr("Installed %s.") % tr(Specials.MOVES[id]["name"])
 
 
 func uninstall_chip(id: String) -> String:
 	chips.erase(id)
-	return "Removed %s." % Specials.MOVES[id]["name"]
+	return tr("Removed %s.") % tr(Specials.MOVES[id]["name"])
 
 
 # ---------------------------------------------------------------- stats
@@ -1054,7 +1059,7 @@ func do_scout() -> String:
 		return "You already have a scouting report."
 	var cost := scout_cost()
 	if money < cost:
-		return "Scouting costs $%d." % cost
+		return tr("Scouting costs $%d.") % cost
 	money -= cost
 	var o := current_opponent()
 	scout = {"key": scout_key(), "spied_back": false, "change": {}}
@@ -1076,14 +1081,14 @@ func do_scout() -> String:
 					better = id
 			if better != "":
 				change = {"type": "part", "slot": slot, "id": better,
-						"text": "swapped their %s for a %s" % [str(SLOT_NAMES[slot]).to_lower(), part_def(better)["name"]]}
+						"text": tr("swapped their %s for a %s") % [str(SLOT_NAMES[slot]).to_lower(), part_def(better)["name"]]}
 		if change.is_empty() and r < 0.75:
 			change = {"type": "armor", "text": "bolted extra armor plates onto every part"}
 		if change.is_empty():
 			change = {"type": "smart", "text": "studied your robot - they'll block more and aim at your weak spots"}
 		scout["spied_back"] = true
 		scout["change"] = change
-		return "Their crew spotted your scout! They %s." % change["text"]
+		return tr("Their crew spotted your scout! They %s.") % change["text"]
 	return "Clean scouting run - they never saw you."
 
 
@@ -1135,20 +1140,29 @@ func current_reward_for(o: Dictionary) -> int:
 func fight_title() -> String:
 	match fight_mode():
 		"quick":
-			return "QUICK FIGHT"
+			return tr("QUICK FIGHT")
 		"circuit":
-			return "%s - %s" % [str(circuit["name"]).to_upper(), Career.round_name(circuit)]
+			return tr("%s - %s") % [str(circuit["name"]).to_upper(), tr(Career.round_name(circuit))]
 		"exhibition":
-			return "EXHIBITION"
+			return tr("EXHIBITION")
 		"pickup":
-			return "SCRAPYARD PICKUP FIGHT"
+			return tr("SCRAPYARD PICKUP FIGHT")
 		"story":
-			return "%s - %s" % [Career.STAGES[event["stage"]]["short"], Career.round_name(event).to_upper()]
-	return "YEAR %d, WEEK %d" % [year, week]
+			return tr("%s - %s") % [tr(Career.STAGES[event["stage"]]["short"]), tr(Career.round_name(event)).to_upper()]
+	return tr("YEAR %d, WEEK %d") % [year, week]
 
 
 ## Arena and crowd for the next fight: story rivals in their own venues, league fights in the
 ## league's venues, cups and quick fights anywhere.
+func fight_is_final() -> bool:
+	match fight_mode():
+		"story":
+			return Career.round_name(event) == "FINAL"
+		"circuit":
+			return Career.round_name(circuit) == "FINAL"
+	return false
+
+
 func current_arena() -> Array:
 	var rng := RandomNumberGenerator.new()
 	match fight_mode():
@@ -1252,7 +1266,7 @@ func rest_week() -> String:
 	advance_week(1)
 	digs_left = DIGS_PER_FIGHT
 	save_game()
-	return "A quiet week. Year %d, week %d." % [year, week]
+	return tr("A quiet week. Year %d, week %d.") % [year, week]
 
 
 func skip_to_next_event() -> String:
@@ -1263,7 +1277,7 @@ func skip_to_next_event() -> String:
 	advance_week(int(nxt[2]))
 	digs_left = DIGS_PER_FIGHT
 	save_game()
-	return "Skipped ahead to week %d: the %s." % [week, Career.STAGES[event.get("stage", nxt[0])]["name"]]
+	return tr("Skipped ahead to week %d: the %s.") % [week, tr(Career.STAGES[event.get("stage", nxt[0])]["name"])]
 
 
 ## Will you play this league this year? (You only see leagues you've qualified for.)
@@ -1280,27 +1294,27 @@ func enters_stage(stage: String) -> bool:
 func week_plan(y: int, w: int) -> Dictionary:
 	for e in fight_log:
 		if int(e["y"]) == y and int(e["w"]) == w:
-			return {"kind": "done", "won": e["won"], "text": ("WON vs %s" if e["won"] else "LOST vs %s") % e["opp"], "title": e["title"]}
+			return {"kind": "done", "won": e["won"], "text": tr("WON vs %s" if e["won"] else "LOST vs %s") % e["opp"], "title": e["title"]}
 	if y < year or (y == year and w < week):
 		return {"kind": "past", "text": ""}
 	if not circuit.is_empty() and circuit.get("phase", "") != "done" and circuit["weeks"].has(w):
 		return {"kind": "cup", "text": "%s" % circuit["name"]}
 	if not event.is_empty() and event.get("phase", "") != "done" and int(event.get("year", year)) == y and event["weeks"].has(w):
 		var k: int = event["weeks"].find(w)
-		var short: String = Career.STAGES[event["stage"]]["short"]
+		var short: String = tr(Career.STAGES[event["stage"]]["short"])
 		if k < event["schedule"].size():
 			var o := Career.robot_of(event, int(event["schedule"][k]))
-			return {"kind": "league", "text": "%s R%d\nvs %s" % [short, k + 1, o.get("name", "?")]}
+			return {"kind": "league", "text": tr("%s R%d\nvs %s") % [short, k + 1, o.get("name", "?")]}
 		if event["phase"] == "playoffs" or Career.player_opponent(event) != -1:
-			return {"kind": "playoff", "text": "%s\nPLAYOFFS" % short}
-		return {"kind": "playoff", "text": "%s\nplayoffs (if you qualify)" % short}
+			return {"kind": "playoff", "text": tr("%s\nPLAYOFFS") % short}
+		return {"kind": "playoff", "text": tr("%s\nplayoffs (if you qualify)") % short}
 	if y == year:
 		for stage in Career.ORDER:
 			var info: Dictionary = Career.STAGES[stage]
 			var start: int = info["start"]
 			var length: int = int(info["size"]) - 1 + Career.playoff_rounds(int(info["playoff"]))
 			if w >= start and w < start + length and w > week and enters_stage(stage) and (event.is_empty() or event.get("phase", "") == "done" or event["stage"] != stage):
-				return {"kind": "league", "text": "%s\n(qualified)" % info["short"]}
+				return {"kind": "league", "text": tr("%s\n(qualified)") % tr(info["short"])}
 	return {"kind": "open", "text": "pickup fight"}
 
 
@@ -1328,12 +1342,12 @@ func place_bet(pick: int, vs: int, stake: int) -> String:
 	if vs == 0:
 		return "Betting against yourself? Gus would never speak to you again."
 	if money < stake:
-		return "You need $%d in cash to place that bet." % stake
+		return tr("You need $%d in cash to place that bet.") % stake
 	var o := Career.odds(ev, pick, vs)
 	money -= stake
 	bets.append({"on": bet_target(), "round": int(ev["round"]), "pick": pick, "vs": vs, "stake": stake, "odds": o})
 	var who: String = pilot_name if pick == 0 else str(Career.pilot(ev, pick).get("pilot", "?"))
-	return "$%d on %s at %.2fx - pays $%d if they win." % [stake, who, o, int(stake * o)]
+	return tr("$%d on %s at %.2fx - pays $%d if they win.") % [stake, who, o, int(stake * o)]
 
 
 ## After the round: pay out winning bets. Returns {won, lost, net, lines}.
@@ -1355,9 +1369,9 @@ func settle_bets(on: String, ev: Dictionary) -> Dictionary:
 			var pay := int(b["stake"] * b["odds"])
 			money += pay
 			out["paid"] += pay
-			out["lines"].append("Bet on %s: +$%d" % [who, pay])
+			out["lines"].append(tr("Bet on %s: +$%d") % [who, pay])
 		else:
-			out["lines"].append("Bet on %s: lost $%d" % [who, b["stake"]])
+			out["lines"].append(tr("Bet on %s: lost $%d") % [who, b["stake"]])
 	bets = keep
 	return out
 
@@ -1390,7 +1404,7 @@ func random_team(rng: RandomNumberGenerator, budget: float, level: float, size: 
 		team.append(b)
 	var lead: Dictionary = team[0].duplicate(true)
 	var word: String = BOT_SUFFIX[rng.randi() % BOT_SUFFIX.size()].strip_edges()
-	lead["name"] = ("THE %sS" % word.to_upper()) if size == 3 else "%s & %s" % [team[0]["name"], team[1]["name"]]
+	lead["name"] = (tr("THE %sS") % word.to_upper()) if size == 3 else tr("%s & %s") % [team[0]["name"], team[1]["name"]]
 	lead["bot_name"] = team[0]["name"]
 	lead["team"] = team.slice(1)   # the lead's own fields describe bot 1; "team" holds the others
 	lead["team_label"] = mods["label"]
@@ -1506,7 +1520,7 @@ func garage_tip() -> String:
 	]
 	for t in tips:
 		if t[1] and tip_once(t[0]):
-			return "GUS: " + str(t[2]).replace("ECHO", robot_name)
+			return tr("GUS: ") + tr(str(t[2])).replace("ECHO", robot_name)
 	return ""
 
 
@@ -1523,7 +1537,7 @@ const TAB_TIPS := {
 
 func tab_tip(tab: String) -> String:
 	if TAB_TIPS.has(tab) and tip_once("tab_" + tab):
-		return TAB_TIPS[tab]
+		return tr(TAB_TIPS[tab]).replace("ECHO", robot_name)
 	return ""
 
 
@@ -1559,28 +1573,28 @@ func dig_scrap() -> Dictionary:
 	var name: String = part_def(id)["name"]
 	match grade:
 		"good":
-			return {"text": "Jackpot! A %s, buried under a dead robot. Banged up, but it's real gear (in Storage)." % name, "part": id, "grade": grade}
+			return {"text": tr("Jackpot! A %s, buried under a dead robot. Banged up, but it's real gear (in Storage).") % name, "part": id, "grade": grade}
 		"decent":
-			return {"text": "Found a %s. Dented, but decent (in Storage)." % name, "part": id, "grade": grade}
+			return {"text": tr("Found a %s. Dented, but decent (in Storage).") % name, "part": id, "grade": grade}
 	var meh := ["More junk: a %s. Rusty, but it bolts on.", "A %s, half eaten by rust. Better than nothing.", "Dug out a %s. Gus says he's seen worse. Not much worse."]
-	return {"text": (meh[randi() % meh.size()] % name) + " (in Storage)", "part": id, "grade": grade}
+	return {"text": (tr(meh[randi() % meh.size()]) % name) + tr(" (in Storage)"), "part": id, "grade": grade}
 
 
 func buy_controller(id: String) -> String:
 	var info: Dictionary = CONTROLLER_INFO[id]
 	if owned_controllers.has(id):
 		pilot_look["controller"] = id
-		return "Your pilot picks up the %s." % PilotArt.CONTROLLER_NAMES[id]
+		return tr("Your pilot picks up the %s.") % tr(PilotArt.CONTROLLER_NAMES[id])
 	if money < int(info["cost"]):
-		return "The %s costs $%d." % [PilotArt.CONTROLLER_NAMES[id], info["cost"]]
+		return tr("The %s costs $%d.") % [tr(PilotArt.CONTROLLER_NAMES[id]), info["cost"]]
 	money -= int(info["cost"])
 	owned_controllers.append(id)
 	pilot_look["controller"] = id
-	return "Bought the %s! %s" % [PilotArt.CONTROLLER_NAMES[id], info["desc"]]
+	return tr("Bought the %s! %s") % [tr(PilotArt.CONTROLLER_NAMES[id]), tr(info["desc"])]
 
 
 func wingman_name(k: int) -> String:
-	return "%s %s" % [robot_name, WINGMAN_NAMES[k]]
+	return tr("%s %s") % [robot_name, WINGMAN_NAMES[k]]
 
 
 func wingman_ready(k: int) -> bool:
@@ -1633,7 +1647,7 @@ func build_wingman(k: int) -> String:
 		wingmen[k] = {}
 		return "Not enough spare parts: a wingman needs at least a head and a torso from your Spares."
 	var n := w.size()
-	return "%s is built from %d spare parts." % [wingman_name(k), n]
+	return tr("%s is built from %d spare parts.") % [wingman_name(k), n]
 
 
 func clear_wingman(k: int) -> void:
@@ -1654,15 +1668,15 @@ func wingman_repair_cost(k: int) -> int:
 func repair_wingman(k: int) -> String:
 	var c := wingman_repair_cost(k)
 	if c == 0:
-		return "%s is in perfect shape." % wingman_name(k)
+		return tr("%s is in perfect shape.") % wingman_name(k)
 	if not can_repair(c):
-		return "Repairing %s costs $%d." % [wingman_name(k), c]
+		return tr("Repairing %s costs $%d.") % [wingman_name(k), c]
 	money -= c
 	for slot in wingmen[k]:
 		var p := inst(int(wingmen[k][slot]))
 		if not p.is_empty():
 			p["hp"] = float(part_def(p["id"])["hp"])
-	return "Repaired %s for $%d." % [wingman_name(k), c]
+	return tr("Repaired %s for $%d.") % [wingman_name(k), c]
 
 
 ## After a team fight: wingmen keep their damage, destroyed parts can be lost.
@@ -1682,7 +1696,7 @@ func apply_wingman_damage(k: int, part_hp: Dictionary, lost: Array, wrecked: Arr
 				wrecked.append(part_def(p["id"])["name"])
 				cards.append({"id": p["id"], "what": "wrecked", "health": 0.0})
 			else:
-				lost.append("%s (%s)" % [part_def(p["id"])["name"], wingman_name(k)])
+				lost.append(tr("%s (%s)") % [part_def(p["id"])["name"], wingman_name(k)])
 				cards.append({"id": p["id"], "what": "lost", "health": 0.0})
 				inventory.erase(p)
 
@@ -1831,7 +1845,7 @@ func record_result(won: bool, part_hp: Dictionary, destroyed: int, salvage_ids: 
 				wrecked.append(part_def(p["id"])["name"])
 				cards.append({"id": p["id"], "what": "wrecked", "health": 0.0})
 			else:
-				lost.append("%s (%s)" % [part_def(p["id"])["name"], SLOT_NAMES[slot]])
+				lost.append(tr("%s (%s)") % [part_def(p["id"])["name"], tr(SLOT_NAMES[slot])])
 				cards.append({"id": p["id"], "what": "lost", "health": 0.0})
 				inventory.erase(p)
 
@@ -1849,7 +1863,7 @@ func record_result(won: bool, part_hp: Dictionary, destroyed: int, salvage_ids: 
 			if randf() < chance:
 				add_part(sv["id"], 0.35 if sv["aimed"] else 0.2)
 				cards.append({"id": sv["id"], "what": "salvaged", "health": 0.35 if sv["aimed"] else 0.2})
-				salvaged.append(part_def(sv["id"])["name"] + (" (aimed)" if sv["aimed"] else ""))
+				salvaged.append(part_def(sv["id"])["name"] + (tr(" (aimed)") if sv["aimed"] else ""))
 
 	# trophy: sometimes the beaten robot's crew hands over one of its parts
 	var trophy := ""
@@ -1915,12 +1929,12 @@ func record_result(won: bool, part_hp: Dictionary, destroyed: int, salvage_ids: 
 func finish_event(ev: Dictionary) -> String:
 	var info: Dictionary = Career.STAGES[ev["stage"]]
 	var m := Career.medal_of(ev, 0)
-	var text := "%s: %s" % [ev["name"], Career.finish_text(ev)]
+	var text := tr("%s: %s") % [ev["name"], Career.finish_text(ev)]
 	if m > 0:
 		var prize: int = info["prizes"][m - 1]
 		money += prize
 		trophies.append({"kind": ev["stage"], "medal": m, "name": ev["name"], "year": year})
-		text += " - prize $%d and a trophy for the bay!" % prize
+		text += tr(" - prize $%d and a trophy for the bay!") % prize
 	match ev["stage"]:
 		"scrap":
 			if m > 0 and rank_index() < 1:
@@ -1943,19 +1957,19 @@ func finish_event(ev: Dictionary) -> String:
 
 func finish_cup() -> String:
 	var m := Career.medal_of(circuit, 0)
-	var text := "%s: %s" % [circuit["name"], Career.finish_text(circuit)]
+	var text := tr("%s: %s") % [circuit["name"], Career.finish_text(circuit)]
 	if m > 0:
 		var prize: int = int(int(circuit["prize"]) * [0, 1.0, 0.5, 0.3][m])
 		money += prize
 		trophies.append({"kind": "cup", "medal": m, "name": circuit["name"], "year": year})
-		text += " - $%d" % prize
+		text += tr(" - $%d") % prize
 		if m == 1:
 			circuits_won += 1
 			var rng := RandomNumberGenerator.new()
 			rng.seed = int(circuit["seed"]) + 1
 			var part := random_part_id(rng, ["head", "torso", "arm", "leg", "back", "reactor"][rng.randi() % 6], 99999)
 			add_part(part)
-			text += " and a brand new %s!" % part_def(part)["name"]
+			text += tr(" and a brand new %s!") % part_def(part)["name"]
 	circuit = {}
 	make_offers()
 	return text
@@ -2030,7 +2044,9 @@ func sized_variant(d: Dictionary, c: String) -> Dictionary:
 	var m: Dictionary = SIZE_CLASSES[c]
 	var v := d.duplicate(true)
 	v["id"] = "%s~%s" % [d["id"], c]
-	v["name"] = "%s %s" % [m["name"], d["name"]]
+	v["name"] = tr("%s %s") % [tr(m["name"]), d["name"]]
+	v["variant_of"] = d["id"]
+	v["size_prefix"] = tr(m["name"])
 	v["size_class"] = c
 	v["hp"] = maxi(10, int(d["hp"] * m["hp"]))
 	v["armor"] = maxi(0, int(d["armor"]) + int(m["armor"]))
@@ -2048,8 +2064,8 @@ func sized_variant(d: Dictionary, c: String) -> Dictionary:
 static func weight_class(power: float) -> String:
 	for w in WEIGHT_CLASSES:
 		if power <= w[1]:
-			return w[0]
-	return "HEAVYWEIGHT"
+			return I18n.t(w[0])
+	return I18n.t("HEAVYWEIGHT")
 
 
 func random_part_id(rng: RandomNumberGenerator, kind: String, budget: float, sizes: Array = []) -> String:
@@ -2109,7 +2125,7 @@ func custom_def(cfg: Dictionary) -> Dictionary:
 		"shape": shape, "size": cfg["size"], "color": cfg["color"], "gimmick": cfg["gadget"],
 	}
 	if d["name"] == "":
-		d["name"] = "Custom %s %s" % [shape.capitalize(), kind.capitalize()]
+		d["name"] = tr("Custom %s %s") % [shape.capitalize(), kind.capitalize()]
 	# workshop parts are sized by the size slider: small, medium or large
 	d["size_class"] = "S" if cfg["size"] < 0.9 else ("L" if cfg["size"] > 1.1 else "M")
 	return fill_defaults(d)
@@ -2141,7 +2157,7 @@ func custom_price(cfg: Dictionary) -> int:
 func forge_custom(cfg: Dictionary) -> String:
 	var d := custom_def(cfg)
 	if money < d["cost"]:
-		return "Not enough money - this design costs $%d." % d["cost"]
+		return tr("Not enough money - this design costs $%d.") % d["cost"]
 	money -= d["cost"]
 	d["id"] = "custom_%d_%d" % [Time.get_unix_time_from_system(), randi() % 100000]
 	custom_parts.append(d)
@@ -2150,8 +2166,8 @@ func forge_custom(cfg: Dictionary) -> String:
 	for slot in SLOTS:
 		if SLOT_KIND[slot] == d["kind"] and equipped[slot] == -1:
 			equipped[slot] = uid
-			return "Forged %s and fitted it to the %s!" % [d["name"], SLOT_NAMES[slot]]
-	return "Forged %s! It's in your storage - fit it from the Build tab." % d["name"]
+			return tr("Forged %s and fitted it to the %s!") % [d["name"], tr(SLOT_NAMES[slot])]
+	return tr("Forged %s! It's in your storage - fit it from the Build tab.") % d["name"]
 
 
 # ---------------------------------------------------------------- randomize & saved setups
@@ -2199,8 +2215,8 @@ func randomize_robot() -> String:
 
 
 func save_setup(k: int) -> String:
-	setups[k] = {"name": "Setup %d" % (k + 1), "equipped": equipped.duplicate(), "chips": chips.duplicate(), "paint": paint}
-	return "Saved this build as Setup %d." % (k + 1)
+	setups[k] = {"name": tr("Setup %d") % (k + 1), "equipped": equipped.duplicate(), "chips": chips.duplicate(), "paint": paint}
+	return tr("Saved this build as Setup %d.") % (k + 1)
 
 
 func load_setup(k: int) -> String:
@@ -2215,7 +2231,7 @@ func load_setup(k: int) -> String:
 		if uid == -1:
 			equipped[slot] = -1
 		elif p.is_empty() or is_wreck(p) or taken.has(uid):
-			missing.append(SLOT_NAMES[slot])
+			missing.append(tr(SLOT_NAMES[slot]))
 			equipped[slot] = -1 if slot != "reactor" else equipped[slot]
 		else:
 			equipped[slot] = uid
@@ -2226,8 +2242,8 @@ func load_setup(k: int) -> String:
 			chips.append(id)
 	paint = int(st.get("paint", paint))
 	if missing.is_empty():
-		return "Loaded Setup %d." % (k + 1)
-	return "Loaded Setup %d, but these parts are gone or wrecked: %s." % [k + 1, ", ".join(missing)]
+		return tr("Loaded Setup %d.") % (k + 1)
+	return tr("Loaded Setup %d, but these parts are gone or wrecked: %s.") % [k + 1, ", ".join(missing)]
 
 
 # ---------------------------------------------------------------- story
@@ -2284,7 +2300,7 @@ func slot_info(slot: int) -> Dictionary:
 	var data = JSON.parse_string(f.get_as_text())
 	if typeof(data) != TYPE_DICTIONARY:
 		return {"broken": true}
-	var progress := "Champion" if data.get("champion", false) else "Year %d, week %d" % [int(data.get("year", 1)), int(data.get("week", 1))]
+	var progress := "Champion" if data.get("champion", false) else tr("Year %d, week %d") % [int(data.get("year", 1)), int(data.get("week", 1))]
 	if data.has("event") and typeof(data["event"]) == TYPE_DICTIONARY and not data["event"].is_empty() and not data.get("champion", false):
 		progress += " - " + str(Career.STAGES.get(str(data["event"].get("stage", "")), {}).get("short", "")).capitalize()
 	return {"pilot": data.get("pilot_name", "Rook"), "robot": data.get("robot_name", DEFAULT_ROBOT), "progress": progress,
@@ -2496,6 +2512,35 @@ func save_settings() -> void:
 		f.store_string(JSON.stringify(settings))
 
 
+## Back to how the game came out of the box (keeps the language).
+func reset_settings() -> void:
+	var lang: String = settings.get("lang", "en")
+	settings = DEFAULT_SETTINGS.duplicate(true)
+	settings["lang"] = lang
+	save_settings()
+	apply_performance()
+
+
+func set_language(lang: String) -> void:
+	if not I18n.LANGS.has(lang):
+		lang = "en"
+	settings["lang"] = lang
+	I18n.setup(lang)
+	# brand parts: the brand stays, the model is translated; then Mini / Heavy versions
+	for id in PARTS:
+		var d: Dictionary = PARTS[id]
+		if d.has("variant_of") or d.get("custom", false):
+			continue
+		if d.has("model"):
+			d["name"] = "%s %s%s" % [d["brand_name"], I18n.t(str(d["model"])), " X" if d.get("tier_x", false) else ""]
+		else:
+			d["name"] = I18n.t(str(d.get("name_en", d["name"])))
+	for id in PARTS:
+		var d: Dictionary = PARTS[id]
+		if d.has("variant_of") and PARTS.has(d["variant_of"]):
+			d["name"] = "%s %s" % [I18n.t(str(d["size_prefix"])), PARTS[d["variant_of"]]["name"]]
+
+
 func load_settings() -> void:
 	if not FileAccess.file_exists(SETTINGS_PATH):
 		return
@@ -2512,5 +2557,6 @@ func load_settings() -> void:
 		settings["start_money"] = int(settings["start_money"])
 		settings["living_cost"] = int(settings["living_cost"])
 		settings["coaching"] = int(settings["coaching"])
+		settings["lang"] = str(settings.get("lang", "en"))
 		if typeof(settings["layout"]) != TYPE_DICTIONARY:
 			settings["layout"] = {}

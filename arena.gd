@@ -5,6 +5,7 @@ extends RefCounted
 ## Each arena draws its own backdrop and floor and sets the ring colors.
 ## Each crowd has its own people (size, colors, hats, props) and its own way of cheering.
 
+const I18n = preload("res://i18n.gd")
 const ARENAS := {
 	"fish_market": {"name": "The Fish Market Pit", "sky": ["#0d1a1f", "#16303a"], "floor": "#2a3a3e", "rope": "#c0392b", "post": "#7f8c8d", "light": "#ffe7a0"},
 	"docks": {"name": "Dock 9 Arena", "sky": ["#05070f", "#141c33"], "floor": "#4a3a2a", "rope": "#f39c12", "post": "#34495e", "light": "#fff2c0"},
@@ -69,6 +70,14 @@ static func career_venue(stage: String, round_name: String) -> Array:
 
 
 ## Scrap piles the scrapyard crowd stands on (height above the row's floor at x).
+## Font size that fits a (translated) sign text into its board.
+static func fit(text: String, width: float, size: int) -> int:
+	var s := size
+	while s > 9 and ThemeDB.fallback_font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, s).x > width - 6.0:
+		s -= 1
+	return s
+
+
 static func pile_bump(x: float, w: float, row: int) -> float:
 	var h := 0.0
 	var centers := [0.06, 0.27, 0.5, 0.72, 0.94]
@@ -178,7 +187,7 @@ static func draw_backdrop(ci: CanvasItem, id: String, screen: Vector2, floor_y: 
 			ci.draw_rect(Rect2(0, 138, w, 2), Color(0.1, 0.1, 0.1))
 			ci.draw_circle(Vector2(w * 0.5, 30) + o, 22.0, Color(0.1, 0.1, 0.18))
 			ci.draw_arc(Vector2(w * 0.5, 30) + o, 22.0, 0, TAU, 32, Color(0.88, 0.72, 0.29), 3.0)
-			ci.draw_string(ThemeDB.fallback_font, Vector2(w * 0.5 - 20, 40) + o, "K", HORIZONTAL_ALIGNMENT_CENTER, 40, 26, Color(0.88, 0.72, 0.29))
+			ci.draw_string(ThemeDB.fallback_font, Vector2(w * 0.5 - 20, 40) + o, I18n.t("K"), HORIZONTAL_ALIGNMENT_CENTER, 40, 26, Color(0.88, 0.72, 0.29))
 			for k in 4:
 				var x := w * (0.1 + k * 0.27)
 				ci.draw_colored_polygon(PackedVector2Array([Vector2(x - 10, 0), Vector2(x + 10, 0), Vector2(x + 90, floor_y), Vector2(x - 90, floor_y)]), Color(1, 1, 1, 0.06))
@@ -282,7 +291,7 @@ static func draw_backdrop(ci: CanvasItem, id: String, screen: Vector2, floor_y: 
 			ci.draw_rect(Rect2(w * 0.62, 104, 150, 34), Color(0.35, 0.36, 0.33))   # hand-painted sign on tin
 			for k in 6:
 				ci.draw_line(Vector2(w * 0.62 + k * 25, 104), Vector2(w * 0.62 + k * 25, 138), Color(0.28, 0.29, 0.27), 2.0)
-			ci.draw_string(ThemeDB.fallback_font, Vector2(w * 0.62, 128), "SCRAP RING", HORIZONTAL_ALIGNMENT_CENTER, 150, 20, Color(0.85, 0.25, 0.15))
+			ci.draw_string(ThemeDB.fallback_font, Vector2(w * 0.62, 128), I18n.t("SCRAP RING"), HORIZONTAL_ALIGNMENT_CENTER, 150, fit(I18n.t("SCRAP RING"), 150, 20), Color(0.85, 0.25, 0.15))
 		"regional_hall", "regional_final":
 			var fin := id == "regional_final"
 			ci.draw_rect(Rect2(0, 0, w, floor_y * 0.12), Color(0.12, 0.14, 0.18))
@@ -292,7 +301,7 @@ static func draw_backdrop(ci: CanvasItem, id: String, screen: Vector2, floor_y: 
 				ci.draw_line(Vector2(x - 34, 46), Vector2(x + 34, 46), Color(0.12, 0.14, 0.18), 3.0)
 				ci.draw_line(Vector2(x, 26), Vector2(x, 66), Color(0.12, 0.14, 0.18), 3.0)
 			ci.draw_rect(Rect2(w * 0.3, 118, w * 0.4, 28), Color(0.12, 0.25, 0.55) if not fin else Color(0.55, 0.1, 0.12))
-			ci.draw_string(ThemeDB.fallback_font, Vector2(w * 0.3, 139), "PORT FERRUM REGIONAL" if not fin else "REGIONAL FINAL", HORIZONTAL_ALIGNMENT_CENTER, w * 0.4, 20, Color(1, 1, 1) if not fin else Color(1.0, 0.85, 0.4))
+			ci.draw_string(ThemeDB.fallback_font, Vector2(w * 0.3, 139), I18n.t("PORT FERRUM REGIONAL") if not fin else I18n.t("REGIONAL FINAL"), HORIZONTAL_ALIGNMENT_CENTER, w * 0.4, fit(I18n.t("PORT FERRUM REGIONAL") if not fin else I18n.t("REGIONAL FINAL"), w * 0.4, 20), Color(1, 1, 1) if not fin else Color(1.0, 0.85, 0.4))
 			ci.draw_rect(Rect2(w * 0.05, 114, 90, 34), Color(0.05, 0.05, 0.05))   # the hall's scoreboard clock
 			ci.draw_string(ThemeDB.fallback_font, Vector2(w * 0.05, 139), "%02d:%02d" % [int(t / 60.0) % 60, int(t) % 60], HORIZONTAL_ALIGNMENT_CENTER, 90, 22, Color(1.0, 0.3, 0.2))
 			if fin:
@@ -319,7 +328,7 @@ static func draw_backdrop(ci: CanvasItem, id: String, screen: Vector2, floor_y: 
 				var sc := Rect2(w * side, 104, w * 0.2, 40)
 				ci.draw_rect(sc.grow(4), Color(0.08, 0.08, 0.1))
 				ci.draw_rect(sc, Color(0.05, 0.1, 0.25))
-				ci.draw_string(ThemeDB.fallback_font, sc.position + Vector2(0, 27), "KANE CHAMPIONSHIP", HORIZONTAL_ALIGNMENT_CENTER, sc.size.x, 20, Color(0.4, 0.75, 1.0))
+				ci.draw_string(ThemeDB.fallback_font, sc.position + Vector2(0, 27), I18n.t("KANE CHAMPIONSHIP"), HORIZONTAL_ALIGNMENT_CENTER, sc.size.x, fit(I18n.t("KANE CHAMPIONSHIP"), sc.size.x, 20), Color(0.4, 0.75, 1.0))
 			# LED ribbon board scrolling round the arena
 			ci.draw_rect(Rect2(0, 148, w, 18), Color(0.02, 0.02, 0.05))
 			var msg := "  KANE DYNAMICS  *  CHAMPIONSHIP SEASON  *  PORT FERRUM  *"
@@ -354,12 +363,12 @@ static func draw_backdrop(ci: CanvasItem, id: String, screen: Vector2, floor_y: 
 					ci.draw_circle(p, 3.0, Color(1.0, 0.95, 0.75, 0.6 + 0.4 * sin(t * 4.0 + j + k * 3)))
 			ci.draw_rect(Rect2(w * 0.32, 118, w * 0.36, 28), Color(0.12, 0.04, 0.06))   # gold-lettered banner
 			ci.draw_rect(Rect2(w * 0.32, 118, w * 0.36, 28), Color(0.85, 0.7, 0.3), false, 2.0)
-			ci.draw_string(ThemeDB.fallback_font, Vector2(w * 0.32, 138), "THE KANE CHAMPIONSHIP", HORIZONTAL_ALIGNMENT_CENTER, w * 0.36, 18, Color(0.95, 0.8, 0.4))
+			ci.draw_string(ThemeDB.fallback_font, Vector2(w * 0.32, 138), I18n.t("THE KANE CHAMPIONSHIP"), HORIZONTAL_ALIGNMENT_CENTER, w * 0.36, fit(I18n.t("THE KANE CHAMPIONSHIP"), w * 0.36, 18), Color(0.95, 0.8, 0.4))
 		"main_event":
 			var sc := Rect2(w * 0.38, 96, w * 0.24, 46)   # jumbotron
 			ci.draw_rect(sc.grow(5), Color(0.1, 0.1, 0.12))
 			ci.draw_rect(sc, Color(0.05, 0.08, 0.2))
-			ci.draw_string(ThemeDB.fallback_font, sc.position + Vector2(0, 33), "MAIN EVENT", HORIZONTAL_ALIGNMENT_CENTER, sc.size.x, 24, Color.from_hsv(fmod(t * 0.2, 1.0), 0.6, 1.0))
+			ci.draw_string(ThemeDB.fallback_font, sc.position + Vector2(0, 33), I18n.t("MAIN EVENT"), HORIZONTAL_ALIGNMENT_CENTER, sc.size.x, fit(I18n.t("MAIN EVENT"), sc.size.x, 24), Color.from_hsv(fmod(t * 0.2, 1.0), 0.6, 1.0))
 			for k in 4:   # sweeping spotlights
 				var bx := w * (0.1 + k * 0.27)
 				var sway := sin(t * 0.9 + k * 1.7) * 220.0
@@ -584,7 +593,7 @@ static func draw_floor(ci: CanvasItem, id: String, screen: Vector2, floor_y: flo
 			ci.draw_set_transform(Vector2(w * 0.5, floor_y + 70) + off, 0.0, Vector2(1.0, 0.3))
 			ci.draw_arc(Vector2.ZERO, 220.0, 0, TAU, 48, Color(0.95, 0.8, 0.2, 0.7), 10.0)
 			ci.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
-			ci.draw_string(ThemeDB.fallback_font, Vector2(w * 0.5 - 40, floor_y + 92) + off, "H", HORIZONTAL_ALIGNMENT_CENTER, 80, 40, Color(0.95, 0.8, 0.2, 0.7))
+			ci.draw_string(ThemeDB.fallback_font, Vector2(w * 0.5 - 40, floor_y + 92) + off, I18n.t("H"), HORIZONTAL_ALIGNMENT_CENTER, 80, 40, Color(0.95, 0.8, 0.2, 0.7))
 		"main_event":
 			ci.draw_set_transform(Vector2(w * 0.5, floor_y + 70) + off, 0.0, Vector2(1.0, 0.3))
 			ci.draw_circle(Vector2.ZERO, 200.0, Color(1.0, 0.18, 0.4, 0.18))
@@ -622,5 +631,5 @@ static func draw_floor(ci: CanvasItem, id: String, screen: Vector2, floor_y: flo
 			ci.draw_arc(Vector2.ZERO, 200.0, 0, TAU, 48, Color(0.85, 0.7, 0.3, 0.8), 6.0)
 			ci.draw_arc(Vector2.ZERO, 180.0, 0, TAU, 48, Color(0.85, 0.7, 0.3, 0.4), 2.0)
 			ci.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
-			ci.draw_string(ThemeDB.fallback_font, Vector2(w * 0.5 - 40, floor_y + 90) + off, "K", HORIZONTAL_ALIGNMENT_CENTER, 80, 40, Color(0.85, 0.7, 0.3, 0.7))
+			ci.draw_string(ThemeDB.fallback_font, Vector2(w * 0.5 - 40, floor_y + 90) + off, I18n.t("K"), HORIZONTAL_ALIGNMENT_CENTER, 80, 40, Color(0.85, 0.7, 0.3, 0.7))
 	ci.draw_line(Vector2(0, floor_y) + off, Vector2(w, floor_y) + off, fc.lightened(0.35), 3.0)

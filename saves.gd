@@ -59,13 +59,13 @@ func show_slots() -> void:
 		text.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		row.add_child(text)
 		if info.is_empty():
-			text.add_child(UI.label("Slot %d - empty" % slot, 20))
+			text.add_child(UI.label(tr("Slot %d - empty") % slot, 20))
 		elif info.get("broken", false):
-			text.add_child(UI.label("Slot %d - damaged file" % slot, 20, Color(1.0, 0.5, 0.4)))
+			text.add_child(UI.label(tr("Slot %d - damaged file") % slot, 20, Color(1.0, 0.5, 0.4)))
 		else:
-			text.add_child(UI.label("Slot %d - %s & %s" % [slot, info["pilot"], info["robot"]], 20))
-			var cups := ", %d cups" % info["cups"] if info["cups"] > 0 else ""
-			text.add_child(UI.label("%s%s  -  %s  -  saved %s" % [info["progress"], cups, GameData.money_text(info["money"]), info["saved"]], 14, Color(0.72, 0.72, 0.78)))
+			text.add_child(UI.label(tr("Slot %d - %s & %s") % [slot, info["pilot"], info["robot"]], 20))
+			var cups := tr(", %d cups") % info["cups"] if info["cups"] > 0 else ""
+			text.add_child(UI.label(tr("%s%s  -  %s  -  saved %s") % [info["progress"], cups, GameData.money_text(info["money"]), info["saved"]], 14, Color(0.72, 0.72, 0.78)))
 		var waiting: String = confirm.get(slot, "")
 		if mode == "new":
 			if info.is_empty():
@@ -87,7 +87,7 @@ func show_slots() -> void:
 func show_names() -> void:
 	clear()
 	GameData.new_game()   # a fresh draft: the default pilot and ECHO in its usual junk
-	title("NEW GAME - slot %d" % chosen_slot)
+	title(tr("NEW GAME - slot %d") % chosen_slot)
 	var names := HBoxContainer.new()
 	names.add_theme_constant_override("separation", 16)
 	col.add_child(names)
@@ -194,15 +194,15 @@ func build_pilot_editor() -> void:
 			"skin":
 				swatch = look["skin"]
 			"eyes":
-				value = PilotArt.EYE_NAMES[maxi(0, PilotArt.EYES.find(look.get("eyes", PilotArt.EYES[0])))]
+				value = tr(PilotArt.EYE_NAMES[maxi(0, PilotArt.EYES.find(look.get("eyes", PilotArt.EYES[0])))])
 			"hair", "outfit":
 				swatch = look[key]
 			"hat":
-				value = PilotArt.HAT_NAMES.get(look["hat"], "?")
+				value = tr(PilotArt.HAT_NAMES.get(look["hat"], "?"))
 			"beard":
-				value = PilotArt.BEARD_NAMES.get(look["beard"], "?")
+				value = tr(PilotArt.BEARD_NAMES.get(look["beard"], "?"))
 			"glasses":
-				value = PilotArt.GLASSES_NAMES.get(look["glasses"], "?")
+				value = tr(PilotArt.GLASSES_NAMES.get(look["glasses"], "?"))
 			"extras":
 				var ex := []
 				for e in ["long_hair", "scar"]:
@@ -278,7 +278,7 @@ func build_robot_editor() -> void:
 	for r in ROBOT_ROWS:
 		var kind: String = r[1]
 		choice_row(rows, r[0], GameData.part_def(GameData.starter_id(kind))["name"], _on_robot_step.bind(kind, -1), _on_robot_step.bind(kind, 1))
-	choice_row(rows, "Paint", GameData.PAINTS[GameData.paint]["name"], _on_paint_step.bind(-1), _on_paint_step.bind(1), "")
+	choice_row(rows, "Paint", tr(GameData.PAINTS[GameData.paint]["name"]), _on_paint_step.bind(-1), _on_paint_step.bind(1), "")
 	var note := UI.label("All junk to start with - every choice is just as weak. Better parts come from the scrapyard and the shop.", 12, Color(0.65, 0.65, 0.72))
 	note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	rows.add_child(note)
