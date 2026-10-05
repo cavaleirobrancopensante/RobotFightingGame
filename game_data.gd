@@ -1018,7 +1018,7 @@ func fight_mode() -> String:
 		return "watch"
 	if day == "wed" and cup_round_this_week():
 		return "circuit"
-	if not event.is_empty() and event.get("phase", "") != "done" and Career.player_opponent(event) != -1 \
+	if day == "sat" and not event.is_empty() and event.get("phase", "") != "done" and Career.player_opponent(event) != -1 \
 			and week >= Career.week_of_round(event):
 		return "story"
 	if exhibition:
@@ -1253,10 +1253,13 @@ func cup_round_this_week() -> bool:
 			and Career.week_of_round(circuit) == week
 
 
-## A Wednesday with no cup round just slides on to Saturday.
-func settle_day() -> void:
-	if day == "wed" and not cup_round_this_week():
-		day = "sat"
+## Not in a cup (or don't fancy Wednesday's pickup)? Go straight to Saturday.
+func skip_wednesday() -> String:
+	refund_self_bets()
+	pickup = {}
+	day = "sat"
+	save_game()
+	return "You sat Wednesday out. Saturday's next."
 
 
 ## The week moves on (after Saturday's fight, or when you rest). Sunday: the dealer restocks and the
@@ -1276,7 +1279,6 @@ func advance_week(n: int = 1) -> void:
 		roll_stock()
 		digs_left = DIGS_PER_FIGHT
 		day = "wed"
-		settle_day()
 
 
 func living_cost() -> int:
@@ -1379,6 +1381,8 @@ func week_plan(y: int, w: int, d: String = "sat") -> Dictionary:
 		if y == year and not circuit.is_empty() and circuit.get("phase", "") != "done" and circuit["weeks"].has(w) \
 				and Career.player_opponent(circuit) != -1:
 			return {"kind": "cup", "text": "%s" % circuit["name"]}
+		if y == year and w == week and day == "wed":
+			return {"kind": "open", "text": "pickup fight"}
 		return {"kind": "none", "text": ""}
 	if not event.is_empty() and event.get("phase", "") != "done" and int(event.get("year", year)) == y and event["weeks"].has(w):
 		var k: int = event["weeks"].find(w)
@@ -2227,7 +2231,10 @@ func record_result(won: bool, part_hp: Dictionary, destroyed: int, salvage_ids: 
 			day = "sat"   # Wednesday's done: Saturday's next, same week
 		"exhibition", "pickup":
 			bet_result = settle_self_bets(won)
-			advance_week(1)
+			if day == "wed":
+				day = "sat"   # a Wednesday pickup: Saturday's still to come this week
+			else:
+				advance_week(1)
 	exhibition = false
 	pickup = {}
 	scout = {}
@@ -2331,7 +2338,10 @@ func enter_circuit(k: int) -> void:
 	var off: Dictionary = circuit_offers[k]
 	circuit = Career.new_cup(off["name"], int(off["tier"]), int(off["seed"]), cup_start_week(), year, int(off["prize"]))
 	circuit_offers.remove_at(k)
-	settle_day()
+	if day == "wed":
+		# entered on a Wednesday: round one is tonight, instead of the pickup fight
+		refund_self_bets()
+		pickup = {}
 
 
 func abandon_circuit() -> void:
@@ -2766,7 +2776,6 @@ func load_game(slot: int = -1) -> String:
 		var shift := week - Career.week_of_round(circuit)
 		for i in circuit["weeks"].size():
 			circuit["weeks"][i] = int(circuit["weeks"][i]) + shift
-	settle_day()
 	circuit_offers = data.get("circuit_offers", [])
 	circuits_won = int(data.get("circuits_won", 0))
 	pickup = data.get("pickup", {})
