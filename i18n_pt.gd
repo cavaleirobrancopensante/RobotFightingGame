@@ -452,6 +452,7 @@ const T := {
 	"Their crew spotted your scout! They'll swap something before the bell - one thing in this report won't be what shows up.": "A equipe deles pegou seu espião! Eles vão trocar alguma coisa antes do sino - uma coisa neste relatório não vai ser o que aparece.",
 	"New %s - that's not what the scout saw!": "%s novo - não foi isso que o espião viu!",
 	"They swapped in a %s - that's not what the scout saw! Watch it.": "Eles trocaram por: %s - não foi isso que o espião viu! Cuidado.",
+	"PARTS DESTROYED": "PEÇAS DESTRUÍDAS",
 	"Tap a part of %s to aim at it - %s hits where you point.": "Toque numa peça de %s para mirar - %s acerta onde você apontar.",
 	"See the yellow diamond? That's its weakest part - hits there do extra damage.": "Tá vendo o losango amarelo? É a parte mais fraca - golpes ali causam dano extra.",
 	"That blue bar under your health is POWER. Every move costs some - kicks cost the most. Run it dry and you burn out!": "Essa barra azul embaixo da vida é a ENERGIA. Todo golpe gasta um pouco - chutes gastam mais. Se secar, dá pane!",

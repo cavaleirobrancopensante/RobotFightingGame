@@ -70,7 +70,7 @@ static func _props_back(ci: CanvasItem, size: Vector2, scene: String, t: float, 
 	match scene:
 		"build":
 			# pegboard of tools
-			var pb := Rect2(10, 96, size.x * 0.34, size.y * 0.2)
+			var pb := Rect2(10, 118, size.x * 0.34, size.y * 0.2)
 			ci.draw_rect(pb, Color(0.42, 0.33, 0.22))
 			for k in 4:
 				var x := pb.position.x + 10 + k * (pb.size.x - 20) / 3.0
@@ -402,7 +402,7 @@ static func _bay_trophies(ci: CanvasItem, size: Vector2, info: Dictionary) -> vo
 		var tr: Dictionary = list[list.size() - shown + k]   # the newest ones
 		var x := x0 + 14.0 + (k % per_shelf) * 26.0
 		draw_trophy(ci, Vector2(x, shelf_y), str(tr.get("kind", "cup")), int(tr.get("medal", 1)), 1.0)
-	_scoreboard(ci, Rect2(10, 24, size.x * 0.4, 62), info)
+	_scoreboard(ci, Rect2(10, 24, size.x * 0.4, 82), info)
 	# the championship belt hangs on the wall under the scoreboard
 	if info.get("champion", false):
 		var gold: Color = MEDAL_COLORS[1]
@@ -469,10 +469,16 @@ static func _scoreboard(ci: CanvasItem, r: Rect2, info: Dictionary) -> void:
 	var fs := clampi(int(r.size.x / 11.5), 8, 13)
 	var lines := [
 		[I18n.t("W %d") % int(info.get("wins", 0)), I18n.t("L %d") % int(info.get("losses", 0)), Color(0.3, 1.0, 0.4), Color(1.0, 0.35, 0.25)],
+		[I18n.t("PARTS DESTROYED"), "", Color(0.75, 0.75, 0.8), Color.WHITE],
 		[I18n.t("HEADS %d") % int(st.get("heads", 0)), I18n.t("ARMS %d") % int(st.get("arms", 0)), Color(1.0, 0.75, 0.2), Color(1.0, 0.75, 0.2)],
 		[I18n.t("LEGS %d") % int(st.get("legs", 0)), I18n.t("CORES %d") % int(st.get("cores", 0)), Color(1.0, 0.75, 0.2), Color(1.0, 0.45, 0.2)],
 	]
 	for k in lines.size():
-		var y := r.position.y + (k + 1) * r.size.y / 3.0 - 5.0
+		var y := r.position.y + (k + 1) * r.size.y / lines.size() - 5.0
+		if lines[k][1] == "":
+			# a heading across the whole board
+			ci.draw_line(Vector2(r.position.x + 4, y - fs * 0.4), Vector2(r.end.x - 4, y - fs * 0.4), Color(0.25, 0.25, 0.3), 1.0)
+			ci.draw_string(f, Vector2(r.position.x + 4, y), lines[k][0], HORIZONTAL_ALIGNMENT_CENTER, r.size.x - 8, fs - 1, lines[k][2])
+			continue
 		ci.draw_string(f, Vector2(r.position.x + 4, y), lines[k][0], HORIZONTAL_ALIGNMENT_LEFT, r.size.x * 0.5, fs, lines[k][2])
 		ci.draw_string(f, Vector2(r.position.x + r.size.x * 0.5, y), lines[k][1], HORIZONTAL_ALIGNMENT_LEFT, r.size.x * 0.5 - 2, fs, lines[k][3])
