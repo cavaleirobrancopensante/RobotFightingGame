@@ -263,6 +263,7 @@ var story_queue: Array = [] # more story scenes to show after the current one
 var pending_stories: Array = []   # scenes the last result unlocked (shown after the fight)
 var last_ko := ""
 var bills_note := 0         # living costs charged since the garage last showed them
+var fight_log: Array = []   # every fight: {y, w, opp, won, mode, title} - for the calendar
 var wins := 0
 var losses := 0
 var champion := false
@@ -494,6 +495,7 @@ func new_game() -> void:
 	exhibition = false
 	pickup = {}
 	bills_note = 0
+	fight_log = []
 	setups = []
 	for k in SETUP_SLOTS:
 		setups.append({})
@@ -740,8 +742,10 @@ func repair_all() -> String:
 	return "Fully repaired for $%d." % c
 
 
+## Damaged parts sell for less; even junk and wrecks are worth something as scrap metal.
 func sell_value(p: Dictionary) -> int:
-	return int(part_def(p["id"])["cost"] * 0.4 * hp_ratio(p))
+	var h := hp_ratio(p)
+	return maxi(int(part_def(p["id"])["cost"] * 0.4 * h), int(10 + 15 * h))
 
 
 func sell(uid: int) -> String:
@@ -1241,6 +1245,44 @@ func skip_to_next_event() -> String:
 	return "Skipped ahead to week %d: the %s." % [week, Career.STAGES[event.get("stage", nxt[0])]["name"]]
 
 
+## Will you play this league this year? (You only see leagues you've qualified for.)
+func enters_stage(stage: String) -> bool:
+	var idx := Career.ORDER.find(stage)
+	var rk := rank_index()
+	if stage == "scrap":
+		return idx == rk
+	return idx <= rk and not (stage == "regional" and rk >= 2)
+
+
+## What's on your calendar in a week of this year: {kind, text}
+##   kind: done (a fight you had), league, playoff, cup, open (quiet week), past (nothing happened)
+func week_plan(y: int, w: int) -> Dictionary:
+	for e in fight_log:
+		if int(e["y"]) == y and int(e["w"]) == w:
+			return {"kind": "done", "won": e["won"], "text": ("WON vs %s" if e["won"] else "LOST vs %s") % e["opp"], "title": e["title"]}
+	if y < year or (y == year and w < week):
+		return {"kind": "past", "text": ""}
+	if not circuit.is_empty() and circuit.get("phase", "") != "done" and circuit["weeks"].has(w):
+		return {"kind": "cup", "text": "%s" % circuit["name"]}
+	if not event.is_empty() and event.get("phase", "") != "done" and int(event.get("year", year)) == y and event["weeks"].has(w):
+		var k: int = event["weeks"].find(w)
+		var short: String = Career.STAGES[event["stage"]]["short"]
+		if k < event["schedule"].size():
+			var o := Career.robot_of(event, int(event["schedule"][k]))
+			return {"kind": "league", "text": "%s R%d\nvs %s" % [short, k + 1, o.get("name", "?")]}
+		if event["phase"] == "playoffs" or Career.player_opponent(event) != -1:
+			return {"kind": "playoff", "text": "%s\nPLAYOFFS" % short}
+		return {"kind": "playoff", "text": "%s\nplayoffs (if you qualify)" % short}
+	if y == year:
+		for stage in Career.ORDER:
+			var info: Dictionary = Career.STAGES[stage]
+			var start: int = info["start"]
+			var length: int = int(info["size"]) - 1 + Career.playoff_rounds(int(info["playoff"]))
+			if w >= start and w < start + length and w > week and enters_stage(stage) and (event.is_empty() or event.get("phase", "") == "done" or event["stage"] != stage):
+				return {"kind": "league", "text": "%s\n(qualified)" % info["short"]}
+	return {"kind": "open", "text": "pickup fight"}
+
+
 func cups_unlocked() -> bool:
 	return champion or rank_index() >= 1 or not trophies.is_empty() or wins + losses >= 5
 
@@ -1373,7 +1415,7 @@ func garage_tip() -> String:
 		["repair", repair_all_cost() > 0, "Damage carries over between fights. Hit Repair all before the next one - or fix parts one by one."],
 		["scrapyard", unlocked("scrapyard"), "The Scrapyard's out back. One dig after every fight, one part per dig. Mostly rust, sometimes treasure."],
 		["shop", unlocked("shop"), "NEW: the Shop. We've got a bit of prize money now - the dealer sells real parts, and his stock changes after every fight."],
-		["season", unlocked("season"), "NEW: the Season tab. The league table, the calendar and who you fight next."],
+		["season", unlocked("season"), "NEW: the Season tab. Your calendar - who you fight and when rent's due - and the league table."],
 		["style", unlocked("style"), "NEW: the Style button. Pick how ECHO fights - Tank, Striker, Mechanic or Specialist. Each gets a free signature move."],
 		["scout", unlocked("scout") and scout_key() != "", "NEW: Scout. Pay to peek at the next robot. Careful - their crew might spot you and change their setup."],
 		["backup", unlocked("team"), "NEW: the Team tab. Build a backup robot from spare parts, then use Send to put it in the ring when ECHO's too banged up."],
@@ -1394,7 +1436,7 @@ const TAB_TIPS := {
 	"Workshop": "GUS: Design your own part here. Costs more than the dealer, but it's exactly what you want.",
 	"Moves": "GUS: Training chips teach special moves. Better heads hold more chips.",
 	"Cups": "GUS: Cups are three-week knockouts in the quiet weeks. Eight pilots, medals for the top three. Some come in tag teams and swarms - your backups fight beside you then.",
-	"Season": "GUS: This is the season. League tables, playoff brackets and the calendar. A win is 3 points; the top of the table goes through.",
+	"Season": "GUS: The calendar. Fight nights are Saturdays, rent's due the last Sunday of the month. The league table's the other button - a win is 3 points.",
 	"Team": "GUS: Teams share one heavyweight's power, so team robots run small. Mini parts are your friend here.",
 }
 
@@ -1677,6 +1719,9 @@ func record_result(won: bool, part_hp: Dictionary, destroyed: int, salvage_ids: 
 	var bonus := destroyed * 75
 	var was_in_debt := money < 0
 	money += reward + bonus
+	fight_log.append({"y": year, "w": week, "opp": str(o.get("name", "?")), "won": won, "mode": fight_mode(), "title": fight_title()})
+	if fight_log.size() > 400:
+		fight_log.pop_front()
 
 	# carry the damage over, lose destroyed parts
 	var lost: Array = []
@@ -2169,7 +2214,7 @@ func save_game() -> bool:
 		"owned_chips": owned_chips, "chips": chips, "circuit": circuit, "circuit_offers": circuit_offers,
 		"circuits_won": circuits_won, "pickup": pickup, "setups": setups, "custom_parts": custom_parts,
 		"year": year, "week": week, "rank": rank, "event": event, "trophies": trophies, "career_stats": career_stats,
-		"style": style, "shop_stock": shop_stock, "scout": scout, "wingmen": wingmen, "sending": sending, "pilot_look": pilot_look, "owned_controllers": owned_controllers, "tips_seen": tips_seen, "digs_left": digs_left, "bills_note": bills_note,
+		"style": style, "shop_stock": shop_stock, "scout": scout, "wingmen": wingmen, "sending": sending, "pilot_look": pilot_look, "owned_controllers": owned_controllers, "tips_seen": tips_seen, "digs_left": digs_left, "bills_note": bills_note, "fight_log": fight_log,
 	}
 	var f := FileAccess.open(slot_path(save_slot), FileAccess.WRITE)
 	if f == null:
@@ -2238,6 +2283,11 @@ func load_game(slot: int = -1) -> String:
 	tips_seen = data.get("tips_seen", []).duplicate()
 	digs_left = int(data.get("digs_left", DIGS_PER_FIGHT))
 	bills_note = int(data.get("bills_note", 0))
+	fight_log = []
+	for e in data.get("fight_log", []):
+		if typeof(e) == TYPE_DICTIONARY:
+			fight_log.append({"y": int(e.get("y", 1)), "w": int(e.get("w", 1)), "opp": str(e.get("opp", "?")), "won": bool(e.get("won", false)),
+					"mode": str(e.get("mode", "")), "title": str(e.get("title", ""))})
 	owned_controllers = ["gamepad"]
 	for c in data.get("owned_controllers", []):
 		if CONTROLLER_INFO.has(str(c)) and not owned_controllers.has(str(c)):

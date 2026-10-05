@@ -556,13 +556,13 @@ func build_slot(slot: String) -> void:
 		var row := make_row(part_icon(d, GameData.hp_ratio(sp)), d["name"] + ("" if d["shop"] else "  (rare)"), health_text(sp))
 		row_button(row, "Fit", _on_equip.bind(sp["uid"], slot), true, 80)
 		var v := GameData.sell_value(sp)
-		row_button(row, "Sell $%d" % v if v > 0 else "Scrap", _on_sell.bind(sp["uid"]), true, 95)
+		row_button(row, "Sell $%d" % v, _on_sell.bind(sp["uid"]), true, 95)
 	for sp in wrecks:
 		var d := GameData.part_def(sp["id"])
 		var c := GameData.repair_cost(sp)
 		var row := make_row(part_icon(d, 0.0), d["name"] + "  (WRECKED)", "Rebuild it to use it again.")
 		row_button(row, "Rebuild $%d" % c, _on_repair.bind(sp["uid"]), GameData.can_repair(c), 130)
-		row_button(row, "Scrap", _on_sell.bind(sp["uid"]), true, 80)
+		row_button(row, "Sell $%d" % GameData.sell_value(sp), _on_sell.bind(sp["uid"]), true, 95)
 	# never stuck: if this slot is empty and there's nothing to fit, Gus has some junk lying around
 	if p.is_empty() and options.is_empty() and slot in ["head", "torso"]:
 		section("Gus's emergency junk:")
@@ -607,7 +607,7 @@ func build_storage() -> void:
 		if c > 0:
 			row_button(row, ("Rebuild $%d" if wreck else "Fix $%d") % c, _on_repair.bind(p["uid"]), GameData.can_repair(c), 125)
 		var v := GameData.sell_value(p)
-		row_button(row, "Sell $%d" % v if v > 0 else "Scrap", _on_sell.bind(p["uid"]), true, 95)
+		row_button(row, "Sell $%d" % v, _on_sell.bind(p["uid"]), true, 95)
 
 
 # ---------------------------------------------------------------- popups (setups, paint)
@@ -894,10 +894,11 @@ func build_scrapyard_tab() -> void:
 	# what the pile has given you so far (spare parts that still need fixing)
 	var finds: Array = GameData.spares().filter(func(p): return GameData.hp_ratio(p) < 1.0)
 	if not finds.is_empty():
-		section("Dug up and waiting in Storage:")
+		section("Dug up and waiting in Storage - fit them in the bay, or sell them (damaged parts sell cheaper):")
 		for p in finds:
 			var d := GameData.part_def(p["id"])
-			make_row(part_icon(d, GameData.hp_ratio(p)), "%s  [%s]  %d%%" % [d["name"], str(d["kind"]).to_upper(), int(GameData.hp_ratio(p) * 100)], GameData.part_stat_text(d))
+			var row := make_row(part_icon(d, GameData.hp_ratio(p)), "%s  [%s]  %d%%" % [d["name"], str(d["kind"]).to_upper(), int(GameData.hp_ratio(p) * 100)], GameData.part_stat_text(d))
+			row_button(row, "Sell $%d" % GameData.sell_value(p), _on_sell.bind(p["uid"]), true, 110)
 
 
 func _on_emergency_junk(slot: String) -> void:
@@ -1064,56 +1065,127 @@ func build_cups_tab() -> void:
 
 # ---------------------------------------------------------------- season
 
-## The year at a glance: a cell per week, colored by what's on.
-class CalendarStrip extends Control:
-	const COLORS := {"scrap": Color(0.6, 0.38, 0.2), "regional": Color(0.25, 0.45, 0.8), "championship": Color(0.85, 0.68, 0.2)}
+var season_view := "calendar"   # Season tab: "calendar" (main) or "table" (league table / bracket)
+var cal_month := -1              # month shown on the calendar (0-12); -1 = this month
 
-	func _draw() -> void:
-		var n: int = Career.WEEKS_PER_YEAR
-		var cw := size.x / n
-		var f := ThemeDB.fallback_font
-		for stage in Career.ORDER:
-			var info: Dictionary = Career.STAGES[stage]
-			var start: int = info["start"]
-			var length: int = int(info["size"]) - 1 + Career.playoff_rounds(int(info["playoff"]))
-			var c: Color = COLORS[stage]
-			ci_rect(Rect2((start - 1) * cw, 6, length * cw, 18), c)
-			draw_string(f, Vector2((start - 1) * cw, 40), str(info["short"]), HORIZONTAL_ALIGNMENT_LEFT, maxf(40.0, length * cw + 40.0), 11, c.lightened(0.3))
-		var cup: Dictionary = GameData.circuit
-		if not cup.is_empty():
-			for w in cup["weeks"]:
-				ci_rect(Rect2((int(w) - 1) * cw, 6, cw, 18), Color(0.65, 0.35, 0.85))
-		for k in n:
-			draw_line(Vector2(k * cw, 6), Vector2(k * cw, 24), Color(0, 0, 0, 0.35), 1.0)
-		var x := (GameData.week - 1) * cw
-		draw_rect(Rect2(x - 1, 2, cw + 2, 26), Color(1, 1, 1), false, 2.0)
-		draw_string(f, Vector2(x - 20, 52), "NOW", HORIZONTAL_ALIGNMENT_CENTER, 40 + cw, 11, Color(1, 1, 1))
-
-	func ci_rect(r: Rect2, c: Color) -> void:
-		draw_rect(r, Color(c, 0.85))
+const MONTH_NAMES := ["JANUARY", "FEBRUARY", "MARCH", "APRIL", "MAY", "JUNE", "JULY", "AUGUST", "SEPTEMBER",
+		"OCTOBER", "NOVEMBER", "DECEMBER", "YEAR'S END"]
+const DAY_NAMES := ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"]
+const PLAN_COLORS := {"league": Color(0.35, 0.6, 1.0), "playoff": Color(1.0, 0.75, 0.25), "cup": Color(0.75, 0.5, 1.0),
+		"open": Color(0.6, 0.55, 0.45), "past": Color(0.4, 0.4, 0.45)}
 
 
 func build_season_tab() -> void:
-	var cal := CalendarStrip.new()
-	cal.custom_minimum_size = Vector2(0, 56)
-	list_box.add_child(cal)
-	var ev: Dictionary = GameData.event
+	var bar := action_bar()
+	for v in [["calendar", "Calendar"], ["table", "League table"]]:
+		var b := row_button(bar, v[1], _on_season_view.bind(v[0]), true, 0)
+		b.toggle_mode = true
+		b.button_pressed = season_view == v[0]
+		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	if season_view == "calendar":
+		build_calendar()
+	else:
+		build_league_view()
+
+
+func _on_season_view(v: String) -> void:
+	season_view = v
+	refresh()
+
+
+## A wall calendar: 4-week months, fights on Saturday nights, rent on the last Sunday.
+## Only what you're actually in shows up - leagues you haven't qualified for aren't there.
+func build_calendar() -> void:
+	var cur_month := (GameData.week - 1) / GameData.MONTH_WEEKS
+	if cal_month < 0:
+		cal_month = cur_month
 	var mode := GameData.fight_mode()
-	var nxt := GameData.next_event_info()
-	var head := "YEAR %d, WEEK %d.  Record %d-%d.  Medals: %d." % [GameData.year, GameData.week, GameData.wins, GameData.losses, GameData.trophies.size()]
-	if GameData.living_cost() > 0:
-		head += "  Rent & food ($%d) due in %d week%s." % [GameData.living_cost(), GameData.weeks_to_bills(), "" if GameData.weeks_to_bills() == 1 else "s"]
+	var head := HBoxContainer.new()
+	head.add_theme_constant_override("separation", 8)
+	list_box.add_child(head)
+	head.add_child(UI.button("<", _on_cal_month.bind(-1), 18, Vector2(56, 36)))
+	var t := UI.label("%s  -  YEAR %d" % [MONTH_NAMES[cal_month], GameData.year], 19, Color(1.0, 0.8, 0.4))
+	t.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	t.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	head.add_child(t)
+	head.add_child(UI.button(">", _on_cal_month.bind(1), 18, Vector2(56, 36)))
+	var grid := GridContainer.new()
+	grid.columns = 7
+	grid.add_theme_constant_override("h_separation", 3)
+	grid.add_theme_constant_override("v_separation", 3)
+	list_box.add_child(grid)
+	for d in DAY_NAMES:
+		var l := UI.label(d, 13, Color(1.0, 0.8, 0.4) if d == "SAT" else Color(0.7, 0.7, 0.75))
+		l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		grid.add_child(l)
+	for row in GameData.MONTH_WEEKS:
+		var w: int = cal_month * GameData.MONTH_WEEKS + row + 1
+		var this_week := w == GameData.week
+		var plan := GameData.week_plan(GameData.year, w)
+		for day in 7:
+			var text := ""
+			var col := Color(0.85, 0.85, 0.9)
+			var bg := Color(0.14, 0.14, 0.18, 0.9)
+			if day == 5:   # Saturday: fight night
+				text = plan["text"]
+				if plan["kind"] == "done":
+					col = Color(0.5, 1.0, 0.6) if plan["won"] else Color(1.0, 0.45, 0.4)
+				else:
+					col = PLAN_COLORS.get(plan["kind"], col)
+				if this_week and plan["kind"] != "done":
+					text = "TONIGHT\n" + (text if mode == "open" or mode == "pickup" else GameData.fight_title())
+				bg = Color(0.2, 0.18, 0.12, 0.95)
+			elif day == 6 and row == GameData.MONTH_WEEKS - 1 and GameData.living_cost() > 0:
+				text = "RENT & FOOD\n-$%d" % GameData.living_cost()
+				col = Color(1.0, 0.45, 0.4)
+			if this_week:
+				bg = bg.lightened(0.08)
+			grid.add_child(day_cell(row * 7 + day + 1, text, col, bg, this_week and day == 5))
+	var info := "Record %d-%d.  Medals %d." % [GameData.wins, GameData.losses, GameData.trophies.size()]
+	section(info)
 	if mode == "pickup" or mode == "open":
-		if str(nxt[0]) != "":
-			head += "  Next: the %s in %d week%s." % [Career.STAGES[nxt[0]]["name"], int(nxt[2]), "" if int(nxt[2]) == 1 else "s"]
-	section(head)
-	if mode == "pickup" or mode == "open":
-		section("A quiet week. Pick up a fight at the scrapyard for a few dollars (Fight button), enter a cup, or let the week pass.")
+		var nxt := GameData.next_event_info()
+		section("No league fight this week. Take a pickup fight at the scrapyard for a few dollars (Fight button), enter a cup if you can, or let the week pass.")
 		var bar := action_bar()
 		row_button(bar, "Rest a week", _on_rest, true, 150)
 		if str(nxt[0]) != "" and int(nxt[2]) > 1:
 			row_button(bar, "Skip to the %s" % Career.STAGES[nxt[0]]["short"].capitalize(), _on_skip, true, 0)
+
+
+func day_cell(n: int, text: String, col: Color, bg: Color, today: bool) -> PanelContainer:
+	var p := PanelContainer.new()
+	p.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	p.custom_minimum_size = Vector2(0, 50)
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = bg
+	sb.set_content_margin_all(2)
+	if today:
+		sb.border_color = Color(1.0, 0.85, 0.3)
+		sb.set_border_width_all(2)
+	p.add_theme_stylebox_override("panel", sb)
+	var v := VBoxContainer.new()
+	v.add_theme_constant_override("separation", 0)
+	p.add_child(v)
+	v.add_child(UI.label(str(n), 10, Color(0.6, 0.6, 0.65)))
+	if text != "":
+		var l := UI.label(text, 11, col)
+		l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		v.add_child(l)
+	return p
+
+
+func _on_cal_month(step: int) -> void:
+	cal_month = clampi(cal_month + step, 0, MONTH_NAMES.size() - 1)
+	refresh()
+
+
+## Secondary view: the league you're in - table and bracket.
+func build_league_view() -> void:
+	var ev: Dictionary = GameData.event
 	if ev.is_empty():
+		section("You're not in a league right now.")
 		return
 	var info: Dictionary = Career.STAGES[ev["stage"]]
 	var status := "%s, year %d - " % [ev["name"], int(ev["year"])]
