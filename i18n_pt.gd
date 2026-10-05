@@ -461,6 +461,7 @@ const T := {
 	"Order your own part": "Encomendar sua peça",
 	"CUSTOM ORDERS": "ENCOMENDAS",
 	"You'll find it in the Shop: Order your own part. And don't touch the welder without gloves.": "Está na Loja: Encomendar sua peça. E não encosta na solda sem luva.",
+	"LOADING...": "CARREGANDO...",
 	"Tap a part of %s to aim at it - %s hits where you point.": "Toque numa peça de %s para mirar - %s acerta onde você apontar.",
 	"See the yellow diamond? That's its weakest part - hits there do extra damage.": "Tá vendo o losango amarelo? É a parte mais fraca - golpes ali causam dano extra.",
 	"That blue bar under your health is POWER. Every move costs some - kicks cost the most. Run it dry and you burn out!": "Essa barra azul embaixo da vida é a ENERGIA. Todo golpe gasta um pouco - chutes gastam mais. Se secar, dá pane!",

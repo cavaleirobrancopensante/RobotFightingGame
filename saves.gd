@@ -340,15 +340,80 @@ func _on_overwrite(slot: int) -> void:
 	show_slots()
 
 
+## Loading a save: a bar at the bottom fills up while the save is read and the garage loads
+## in the background (the garage scene is the slow part the first time).
 func _on_load(slot: int) -> void:
+	const GARAGE := "res://garage.tscn"
+	var cover := ColorRect.new()
+	cover.color = Color(0.07, 0.07, 0.1, 0.96)
+	cover.set_anchors_preset(Control.PRESET_FULL_RECT)
+	cover.mouse_filter = Control.MOUSE_FILTER_STOP
+	add_child(cover)
+	var title := UI.label(tr("LOADING..."), 30, Color(1.0, 0.45, 0.2))
+	title.anchor_left = 0.0
+	title.anchor_right = 1.0
+	title.anchor_top = 0.42
+	title.anchor_bottom = 0.42
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	cover.add_child(title)
+	var bar := ProgressBar.new()
+	bar.min_value = 0.0
+	bar.max_value = 100.0
+	bar.show_percentage = false
+	bar.anchor_left = 0.08
+	bar.anchor_right = 0.92
+	bar.anchor_top = 1.0
+	bar.anchor_bottom = 1.0
+	bar.offset_top = -70.0 * UI.SCALE
+	bar.offset_bottom = -40.0 * UI.SCALE
+	var fill := StyleBoxFlat.new()
+	fill.bg_color = Color(1.0, 0.55, 0.2)
+	fill.set_corner_radius_all(6)
+	bar.add_theme_stylebox_override("fill", fill)
+	cover.add_child(bar)
+	var pct := UI.label("0%", 20, Color(0.9, 0.9, 0.95))
+	pct.anchor_left = 0.0
+	pct.anchor_right = 1.0
+	pct.anchor_top = 1.0
+	pct.anchor_bottom = 1.0
+	pct.offset_top = -110.0 * UI.SCALE
+	pct.offset_bottom = -74.0 * UI.SCALE
+	pct.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	cover.add_child(pct)
+	var show := func(v: float) -> void:
+		bar.value = v
+		pct.text = "%d%%" % int(v)
+	# the garage scene loads in the background while the save is read
+	ResourceLoader.load_threaded_request(GARAGE)
+	show.call(3.0)
+	await get_tree().process_frame
+	await get_tree().process_frame
 	var err := GameData.load_game(slot)
-	if err == "":
-		get_tree().change_scene_to_file("res://garage.tscn")
-	else:
+	if err != "":
+		cover.queue_free()
 		var l := UI.label(err, 16, Color(1.0, 0.6, 0.4))
 		l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		col.add_child(l)
 		Sfx.play("error")
+		return
+	var shown := 25.0
+	show.call(shown)
+	var progress: Array = []
+	while true:
+		var status := ResourceLoader.load_threaded_get_status(GARAGE, progress)
+		if status == ResourceLoader.THREAD_LOAD_LOADED:
+			break
+		if status == ResourceLoader.THREAD_LOAD_FAILED or status == ResourceLoader.THREAD_LOAD_INVALID_RESOURCE:
+			get_tree().change_scene_to_file(GARAGE)
+			return
+		var target := 25.0 + 70.0 * float(progress[0] if not progress.is_empty() else 0.0)
+		shown = maxf(shown, minf(target, shown + 2.5))   # fill smoothly, never backwards
+		show.call(shown)
+		await get_tree().process_frame
+	show.call(100.0)
+	await get_tree().process_frame
+	var packed: PackedScene = ResourceLoader.load_threaded_get(GARAGE)
+	get_tree().change_scene_to_packed(packed)
 
 
 func _on_delete(slot: int) -> void:
