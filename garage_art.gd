@@ -71,11 +71,7 @@ static func _props_back(ci: CanvasItem, size: Vector2, scene: String, t: float, 
 		"build":
 			# pegboard of tools
 			var pb := Rect2(10, 118, size.x * 0.34, size.y * 0.2)
-			ci.draw_rect(pb, Color(0.42, 0.33, 0.22))
-			for k in 4:
-				var x := pb.position.x + 10 + k * (pb.size.x - 20) / 3.0
-				ci.draw_line(Vector2(x, pb.position.y + 8), Vector2(x, pb.position.y + 8 + 22 + k % 2 * 10), Color(0.6, 0.6, 0.65), 3.0)
-			ci.draw_circle(pb.get_center() + Vector2(0, 16), 7, Color(0.75, 0.2, 0.2))
+			_tool_board(ci, pb)
 			_sign(ci, Vector2(size.x * 0.62, 30), I18n.t("GUS'S BAY"), Color(0.95, 0.65, 0.35))
 			_bay_trophies(ci, size, info)
 			_lamp(ci, Vector2(size.x * 0.62, 0), size, t)
@@ -93,10 +89,7 @@ static func _props_back(ci: CanvasItem, size: Vector2, scene: String, t: float, 
 				ci.draw_line(Vector2(lerpf(lx - rh * 0.07, lx, f), ry), Vector2(lerpf(lx + rh * 0.1, lx + rh * 0.02, f), ry), wood, 3.0)
 			var ps := clampf(size.y / 300.0, 0.6, 1.3)
 			PilotArt.draw_person(ci, Vector2(lx + 4.0, lerpf(floor_y, top_y, 0.68)), ps, info.get("pilot", {}), -1.0, "point", t + 1.3)
-			# oil stain and lift platform
-			ci.draw_set_transform(Vector2(size.x * 0.3, floor_y + 8), 0, Vector2(1.0, 0.25))
-			ci.draw_circle(Vector2.ZERO, 26, Color(0.05, 0.05, 0.06, 0.6))
-			ci.draw_set_transform(Vector2.ZERO, 0, Vector2.ONE)
+			# lift platform
 			ci.draw_rect(Rect2(size.x * 0.56 - 50, floor_y - 6, 100, 8), Color(0.75, 0.6, 0.15))
 			for k in 6:
 				ci.draw_line(Vector2(size.x * 0.56 - 48 + k * 18, floor_y - 6), Vector2(size.x * 0.56 - 40 + k * 18, floor_y + 2), Color(0.15, 0.15, 0.15), 3.0)
@@ -496,3 +489,39 @@ static func _scoreboard(ci: CanvasItem, r: Rect2, info: Dictionary) -> void:
 			continue
 		ci.draw_string(f, Vector2(r.position.x + 4, y), lines[k][0], HORIZONTAL_ALIGNMENT_LEFT, r.size.x * 0.5, fs, lines[k][2])
 		ci.draw_string(f, Vector2(r.position.x + r.size.x * 0.5, y), lines[k][1], HORIZONTAL_ALIGNMENT_LEFT, r.size.x * 0.5 - 2, fs, lines[k][3])
+
+
+## Gus's tool board: a pegboard with a wrench, hammer, screwdriver, pliers and a roll of red tape on it.
+static func _tool_board(ci: CanvasItem, pb: Rect2) -> void:
+	ci.draw_rect(pb, Color(0.42, 0.33, 0.22))
+	ci.draw_rect(pb, Color(0.3, 0.23, 0.15), false, 3.0)
+	for gx in range(int(pb.size.x / 14.0)):
+		for gy in range(int(pb.size.y / 14.0)):
+			ci.draw_circle(pb.position + Vector2(8 + gx * 14.0, 8 + gy * 14.0), 1.3, Color(0.3, 0.23, 0.15))
+	var steel := Color(0.68, 0.7, 0.75)
+	var u := pb.size.x / 5.0
+	var top := pb.position.y + 12.0
+	var len := pb.size.y - 26.0
+	# wrench: shaft with an open jaw on top
+	var wx := pb.position.x + u * 0.6
+	ci.draw_line(Vector2(wx, top + 10), Vector2(wx, top + len), steel, 5.0)
+	ci.draw_circle(Vector2(wx, top + 6), 8, steel)
+	ci.draw_rect(Rect2(wx - 3, top - 3, 6, 9), Color(0.42, 0.33, 0.22))
+	# hammer: wooden handle, steel head
+	var hx := pb.position.x + u * 1.6
+	ci.draw_line(Vector2(hx, top + 4), Vector2(hx, top + len), Color(0.7, 0.5, 0.28), 5.0)
+	ci.draw_rect(Rect2(hx - 13, top - 2, 26, 10), Color(0.45, 0.47, 0.52))
+	# screwdriver: red handle, thin shaft
+	var sx := pb.position.x + u * 2.5
+	ci.draw_rect(Rect2(sx - 4, top, 8, len * 0.4), Color(0.8, 0.22, 0.2))
+	ci.draw_line(Vector2(sx, top + len * 0.4), Vector2(sx, top + len), steel, 2.0)
+	# pliers: two handles crossing at a pivot
+	var px := pb.position.x + u * 3.4
+	ci.draw_line(Vector2(px - 2, top), Vector2(px + 6, top + len), Color(0.2, 0.35, 0.75), 4.0)
+	ci.draw_line(Vector2(px + 2, top), Vector2(px - 6, top + len), Color(0.2, 0.35, 0.75), 4.0)
+	ci.draw_line(Vector2(px - 2, top - 4), Vector2(px + 2, top), steel, 4.0)
+	ci.draw_circle(Vector2(px, top + len * 0.3), 3, steel)
+	# roll of red tape on a peg
+	var tc := Vector2(pb.position.x + u * 4.4, top + len * 0.45)
+	ci.draw_circle(tc, 11, Color(0.75, 0.2, 0.2))
+	ci.draw_circle(tc, 5, Color(0.42, 0.33, 0.22))
