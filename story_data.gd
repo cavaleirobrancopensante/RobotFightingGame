@@ -30,16 +30,15 @@ const SPEAKERS := {
 const SCENES := {
 	"intro": {"place": "PORT FERRUM, 2047", "lines": [
 		["NARRATOR", "Port Ferrum. Kane Dynamics owns the city - and its robot boxing league, where Kane's unpiloted OVERLORD is putting human pilots out of work."],
-		["YOU", "My dad was one of those pilots. These gloves are all he left me."],
-		["GUS", "Three months behind on rent, kid. Tell me that junk you dug out of the dry dock does something."],
+		["YOU", "My dad was one of those pilots. All he left me was his old robot, rusting under a tarp at the dry dock."],
+		["GUS", "Three months behind on rent, kid. Tell me that heap still does something."],
 		["ECHO", "[ PAIRING SIGNAL ... HANDLER LINK FOUND ]"],
-		["YOU", "It paired with my controller first try. I'll call it ECHO."],
 		["GUS", "Then it starts where everybody starts: the Scrap Heap League, out back of the junkyard. Five fights, pennies a bout."],
 		["GUS", "Medal there, you're in the Regional. Make the Regional semis, you're in the Kane Championship - once a year, OVERLORD waiting at the end. First bout's tonight."],
 	]},
 
 	"pre_0": {"place": "THE SCRAP HEAP RING", "lines": [
-		["MARGO", "Margo, TIN CAN's pilot. Nice gloves, rookie. Don't cry when I knock the bolts out of your bucket."],
+		["MARGO", "Margo, TIN CAN's pilot. Cute antique, rookie. Don't cry when I knock the bolts out of it."],
 		["GUS", "Tap a part of her robot to aim at it. I'll shout the rest from the corner. Go!"],
 	]},
 	"post_0": {"place": "THE SCRAP HEAP RING", "lines": [
@@ -49,7 +48,7 @@ const SCENES := {
 	]},
 
 	"pre_1": {"place": "THE SCRAP HEAP RING", "lines": [
-		["BRUNO", "Bruno. I run the docks, and on weekends I run this pile. You're the kid with the dead man's gloves. Your father beat me once. Once."],
+		["BRUNO", "Bruno. I run the docks, and on weekends I run this pile. You're the kid driving the dead man's robot. Your father beat me once. Once."],
 		["GUS", "RIVET's all elbows. Take its arms and it can't hit back."],
 	]},
 	"post_1": {"place": "THE SCRAP HEAP RING", "lines": [
@@ -144,11 +143,11 @@ const SCENES := {
 	]},
 
 	"pre_8": {"place": "KANE CHAMPIONSHIP ARENA", "lines": [
-		["NARRATOR", "The night before, you went back to where it all began: the old dry dock, under the crane where you found ECHO."],
+		["NARRATOR", "The night before, you went back to where it all began: the old dry dock, under the crane where your father kept ECHO hidden."],
 		["YOU", "I dug around under the crane last night, Gus. Found this. A burned-out handler console. Your name's scratched on the back."],
 		["GUS", "...Seven years ago I was an engineer at Kane. I built the handler link. Built this arm out of their parts, too."],
-		["GUS", "When they ordered Unit 00 crushed, I smuggled it out and buried it here with the pairing signal on. Hoping a real pilot would find it someday."],
-		["GUS", "I knew your father. I'm the one who wrote the report that said pilots were 'too expensive.' Kane used it to fire every one of them."],
+		["GUS", "When they ordered Unit 00 crushed, I smuggled it out and gave it to the best pilot I knew - your father. He kept it hidden here, under the crane."],
+		["GUS", "And I'm the one who wrote the report that said pilots were 'too expensive.' Kane used it to fire every one of them. Him first."],
 		["YOU", "...And then you rented me the bay next door."],
 		["GUS", "I lowered the rent. A lot. It's not enough. It'll never be enough."],
 		["IRONSIDE", "Ironside. JUGGERNAUT. I was Gus's pilot, back when he still built for the right side. You two done crying? Good. Let's give 'em a fight."],
@@ -164,7 +163,7 @@ const SCENES := {
 		["ANNOUNCER", "LADIES AND GENTLEMEN... THE FINAL OF THE KANE CHAMPIONSHIP!"],
 		["ANNOUNCER", "In the red corner: the defending champion, unpiloted, running version 12 of the Kane fight program... OVERLORD!"],
 		["ANNOUNCER", "And in the blue corner: the junkyard miracle... ECHO and its pilot!"],
-		["NARRATOR", "Dinner jackets and diamonds in the boxes. But the front rows are full of pilots. Margo, Bruno, Skar, Rosa, the twins, Bull, Ironside. They've all brought their old gloves."],
+		["NARRATOR", "Dinner jackets and diamonds in the boxes. But the front rows are full of pilots. Margo, Bruno, Skar, Rosa, the twins, Bull, Ironside. They've all brought their old controllers."],
 		["KANE", "Tonight the whole city learns that machines don't need people."],
 		["YOU", "Tonight they learn what people can do with them."],
 	]},
