@@ -23,6 +23,7 @@ var msg_label: Label
 var preview: RobotPreview
 var fight_button: Button
 var scout_button: Button
+var send_button: Button
 var overlay: Control
 var last_view := ""
 
@@ -104,6 +105,8 @@ func _ready() -> void:
 	var spacer := Control.new()
 	spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	bottom.add_child(spacer)
+	send_button = UI.button("", _on_send, 16, Vector2(150, 48))
+	bottom.add_child(send_button)
 	scout_button = UI.button("", _on_open_scout, 17, Vector2(150, 48))
 	bottom.add_child(scout_button)
 	fight_button = UI.button("", _on_fight, 19, Vector2(360, 48))
@@ -117,6 +120,7 @@ func tab_list() -> Array:
 	var t := ["Build", "Shop", "Workshop", "Moves"]
 	if GameData.champion:
 		t.append("Cups")
+	if GameData.team_unlocked():
 		t.append("Team")
 	return t
 
@@ -171,7 +175,16 @@ func refresh() -> void:
 			title_label.text = "GARAGE - Fight %d of %d" % [GameData.fight_index + 1, GameData.OPPONENTS.size()]
 	var o := GameData.current_opponent()
 	var core := GameData.equipped_inst("torso")
-	if not GameData.can_fight():
+	# which robot goes in: your main robot, or a backup robot (1-on-1 fights only)
+	var backups: Array = []
+	for k in GameData.wingmen.size():
+		if GameData.wingman_ready(k):
+			backups.append(k)
+	if GameData.sending >= 0 and not backups.has(GameData.sending):
+		GameData.sending = -1
+	send_button.visible = not backups.is_empty() and not GameData.is_team_fight()
+	send_button.text = "Send: %s" % ("main robot" if GameData.sending < 0 else GameData.WINGMAN_NAMES[GameData.sending])
+	if not GameData.can_send():
 		fight_button.text = "Need a head and a torso"
 		fight_button.disabled = true
 	else:
@@ -180,7 +193,9 @@ func refresh() -> void:
 		fight_button.text = label % [o["name"], GameData.current_reward()]
 		if o.has("team_label"):
 			fight_button.text += " - %s" % o["team_label"]
-		if not core.is_empty() and GameData.hp_ratio(core) < 0.35:
+		if GameData.sending >= 0 and not GameData.is_team_fight():
+			fight_button.text = "%s fights %s ($%d)" % [GameData.sending_name(), o["name"], GameData.current_reward()]
+		elif not core.is_empty() and GameData.hp_ratio(core) < 0.35:
 			fight_button.text += " - core damaged!"
 
 	scout_button.visible = GameData.scout_key() != ""
@@ -237,6 +252,9 @@ func refresh_stats() -> void:
 			Color(1.0, 0.35, 0.2) if over else Color(1.0, 0.8, 0.3))
 	if over:
 		stats_box.add_child(UI.label("OVERLOADED: %d%% performance!" % int(s["efficiency"] * 100), 13, Color(1.0, 0.5, 0.3)))
+	var wl := UI.label("%s  (%d power)" % [GameData.weight_class(s["power_used"]), s["power_used"]], 13, Color(0.8, 0.8, 0.9))
+	wl.tooltip_text = "Weight class = the power your parts draw. Teams share one heavyweight's power."
+	stats_box.add_child(wl)
 
 
 func add_stat(title: String, value: float, max_value: float, text: String, color: Color) -> void:
@@ -715,7 +733,10 @@ func build_cups_tab() -> void:
 
 
 func build_team_tab() -> void:
-	section("WINGMEN fight beside you against tag teams and swarms (some cup fights). They're built from your spare parts and keep their damage, just like your robot.")
+	section("BACKUP ROBOTS are built from your spare parts and keep their damage, just like your robot. Main robot too beaten up and no cash to fix it? Use the Send button to put a backup robot in a 1-on-1 and earn some money. In cups they also fight beside you against tag teams and swarms.")
+	var ms := GameData.stats()
+	section("WEIGHT CLASSES: a robot fighting alone can be as heavy as its reactor allows. A team shares one heavyweight's power (%d): 2 robots get %d each, 3 get %d. Your robot now: %s, %d power. Mini parts are light, Heavy parts drink power - a team robot over its share gets overloaded."
+			% [int(GameData.TEAM_POWER), int(GameData.team_share(2)), int(GameData.team_share(3)), GameData.weight_class(ms["power_used"]), ms["power_used"]])
 	var bar := action_bar()
 	var split: bool = GameData.settings.get("team_controls", "split") == "split"
 	var b := row_button(bar, "Team controls: %s" % ("SPLIT - each robot gets its own movement pad" if split else "LINKED - every robot follows one pad"), _on_team_controls, true, 0)
@@ -734,7 +755,12 @@ func build_team_tab() -> void:
 					var p := GameData.inst(int(w[slot]))
 					if not p.is_empty():
 						names.append("%s %d%%" % [GameData.part_def(p["id"])["name"], int(GameData.hp_ratio(p) * 100)])
-			sub = ("READY. " if GameData.wingman_ready(k) else "CAN'T FIGHT - missing a head or torso. ") + ", ".join(names)
+			var ws := GameData.stats(w)
+			var share := GameData.team_share(2)
+			var power := "%s, %d power. In a team of 2 each robot gets %d power, in a team of 3 only %d%s. " % [
+					GameData.weight_class(ws["power_used"]), ws["power_used"], int(share), int(GameData.team_share(3)),
+					" - too heavy, it will be overloaded!" if ws["power_used"] > share else ""]
+			sub = ("READY. " if GameData.wingman_ready(k) else "CAN'T FIGHT - missing a head or torso. ") + power + ", ".join(names)
 		else:
 			pv.look = {}
 		var row := make_row(pv, name, sub)
@@ -1061,6 +1087,17 @@ func _on_save() -> void:
 
 func _on_menu() -> void:
 	get_tree().change_scene_to_file("res://main.tscn")
+
+
+func _on_send() -> void:
+	var options: Array = [-1]
+	for k in GameData.wingmen.size():
+		if GameData.wingman_ready(k):
+			options.append(k)
+	GameData.sending = options[(options.find(GameData.sending) + 1) % options.size()]
+	say("%s will fight the next 1-on-1. %s" % [GameData.sending_name(),
+			"Its damage stays on it - your main robot sits this one out." if GameData.sending >= 0 else ""], "click")
+	refresh()
 
 
 func _on_fight() -> void:

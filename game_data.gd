@@ -188,6 +188,7 @@ var robot_name := DEFAULT_ROBOT
 var inventory: Array = []   # [{uid, id, hp}]
 var equipped := {}          # slot -> uid (-1 = empty)
 var wingmen: Array = [{}, {}]   # extra robots for team fights, built from spares: [{slot: uid}, ...]
+var sending := -1           # which robot fights the next 1-on-1: -1 = your main robot, 0/1 = a backup robot
 var next_uid := 1
 var paint := 0
 var fight_index := 0        # next championship fight (0..9); 10 = finished
@@ -202,7 +203,19 @@ var exhibition := false       # an OVERLORD rematch is queued
 var quick := {}               # Quick Fight from the menu: {player, enemy} random bots, never saved
 var setups: Array = []        # saved builds: {} or {name, equipped, chips, paint}
 var custom_parts: Array = []  # part definitions you designed in the workshop
-var ALL_PARTS: Array = []     # every catalog part id (classic + brand parts), in order
+var ALL_PARTS: Array = []     # every catalog part id (classic + brand parts, and their Mini / Heavy sizes)
+
+# Every head, torso, arm and leg comes in three sizes. Mini parts are weak, quick and cheap to power;
+# Heavy parts are tough and hit hard but drink power. Variant ids end in "~S" or "~L".
+const SIZE_CLASSES := {
+	"S": {"name": "Mini", "hp": 0.7, "armor": -3, "damage": 0.75, "speed": 10, "draw": 0.5, "cost": 0.7, "size": 0.8},
+	"L": {"name": "Heavy", "hp": 1.4, "armor": 4, "damage": 1.35, "speed": -10, "draw": 1.75, "cost": 1.5, "size": 1.22},
+}
+const SIZE_NAMES := {"S": "Small", "M": "Medium", "L": "Large"}
+# Weight class = total power your parts draw. [name, max power]
+const WEIGHT_CLASSES := [["LIGHTWEIGHT", 12], ["MIDDLEWEIGHT", 22], ["HEAVYWEIGHT", 9999]]
+# A team shares one heavyweight's worth of power: 2 robots get half each, 3 get a third.
+const TEAM_POWER := 40.0
 var style := "striker"        # fighting style: tank, striker, mechanic, specialist
 var shop_stock: Array = []    # part ids for sale right now (changes after every fight)
 var scout := {}               # scouting report on the next opponent: {key, spied_back, change}
@@ -236,7 +249,18 @@ func _ready() -> void:
 			d["shape"] = ""
 		if not d.has("gimmick"):
 			d["gimmick"] = ""
+		if not d.has("size_class"):
+			d["size_class"] = "M"
 		PARTS[d["id"]] = d
+	# Mini and Heavy versions of every body part
+	var base_ids := ALL_PARTS.duplicate()
+	for c in ["S", "L"]:
+		for id in base_ids:
+			var d: Dictionary = PARTS[id]
+			if d["kind"] in ["head", "torso", "arm", "leg"] and d["cost"] > 0 and d["shop"]:
+				var v := sized_variant(d, c)
+				PARTS[v["id"]] = v
+				ALL_PARTS.append(v["id"])
 	load_settings()
 	migrate_old_save()
 	get_tree().root.theme = UI.make_theme()
@@ -540,6 +564,8 @@ func part_stat_text(d: Dictionary) -> String:
 		bits.append("PWR +%d" % d["output"])
 	if d["kind"] == "head" and d["chips"] > 0:
 		bits.append("CHIPS %d" % d["chips"])
+	if d["kind"] in ["head", "torso", "arm", "leg"]:
+		bits.append(SIZE_NAMES.get(d.get("size_class", "M"), "Medium"))
 	bits.append("Power %d" % d["draw"])
 	if not d["mounts"].is_empty():
 		var m: Array = []
@@ -844,9 +870,11 @@ func fight_title() -> String:
 
 # ---------------------------------------------------------------- multibot teams
 
+# Team robots also fight with less health and punch (on top of their smaller parts).
+# sizes: which part sizes CPU teams build with (they fit their share of the power).
 const TEAM_MODS := {
-	2: {"hp": 0.62, "damage": 0.72, "scale": 0.86, "label": "TAG TEAM"},
-	3: {"hp": 0.42, "damage": 0.55, "scale": 0.72, "label": "SWARM"},
+	2: {"hp": 0.8, "damage": 0.85, "sizes": ["S", "M"], "label": "TAG TEAM"},
+	3: {"hp": 0.65, "damage": 0.75, "sizes": ["S"], "label": "SWARM"},
 }
 const WINGMAN_NAMES := ["JR", "MK2"]
 
@@ -857,10 +885,10 @@ func random_team(rng: RandomNumberGenerator, budget: float, level: float, size: 
 	var team: Array = []
 	var share := budget / size * (1.5 if size == 2 else 1.7)   # small bots buy cheap parts, so a bit more each
 	for k in size:
-		var b := random_bot(rng, share, level)
+		var b := random_bot(rng, share, level, mods["sizes"])
 		b["hp"] = b["hp"] * mods["hp"]
 		b["damage"] = b["damage"] * mods["damage"]
-		b["scale"] = mods["scale"] * rng.randf_range(0.94, 1.06)
+		b["power_share"] = TEAM_POWER / size
 		team.append(b)
 	var lead: Dictionary = team[0].duplicate(true)
 	var word: String = BOT_SUFFIX[rng.randi() % BOT_SUFFIX.size()].strip_edges()
@@ -899,6 +927,11 @@ func fight_player_team() -> Array:
 			spec["speed_mult"] = 1.0
 			out.append(spec)
 		return out
+	# a 1-on-1 can be fought by a backup robot while your main robot sits out
+	if not is_team_fight() and sending >= 0 and wingman_ready(sending):
+		var solo := player_spec(wingmen[sending], wingman_name(sending))
+		solo["wingman"] = sending
+		return [solo]
 	var team: Array = [player_spec()]
 	if is_team_fight():
 		for k in wingmen.size():
@@ -906,14 +939,38 @@ func fight_player_team() -> Array:
 				var spec := player_spec(wingmen[k], wingman_name(k))
 				spec["wingman"] = k
 				team.append(spec)
-	# size rule: alone = large, a team of 2 = medium robots, a team of 3 = small, weaker robots
+	# weight classes: a team shares one heavyweight's power. Big parts on a team robot overload it.
 	if team.size() > 1:
 		var mods: Dictionary = TEAM_MODS[team.size()]
+		var share := TEAM_POWER / team.size()
 		for spec in team:
-			spec["scale"] = mods["scale"]
 			spec["damage_mult"] = spec["damage_mult"] * mods["damage"]
 			spec["hp_scale"] = mods["hp"]
+			var st := stats(wingmen[spec["wingman"]] if spec.has("wingman") else equipped)
+			var out := minf(float(st["power_output"]), share)
+			spec["efficiency"] = 1.0 if st["power_used"] <= out else out / float(st["power_used"])
 	return team
+
+
+## Power each robot gets in a team of n (n = 1: no limit).
+func team_share(n: int) -> float:
+	return TEAM_POWER / n if n > 1 else 9999.0
+
+
+## Can the robot you're sending into the next fight actually fight?
+func can_send() -> bool:
+	if not is_team_fight() and sending >= 0:
+		return wingman_ready(sending)
+	return can_fight()
+
+
+func sending_name() -> String:
+	return wingman_name(sending) if sending >= 0 and not is_team_fight() else robot_name
+
+
+## Backup robots and the Team tab unlock after the second story fight.
+func team_unlocked() -> bool:
+	return champion or fight_index >= 2
 
 
 func wingman_name(k: int) -> String:
@@ -938,11 +995,27 @@ func build_wingman(k: int) -> String:
 	var free := spares().filter(func(p): return not is_wreck(p))
 	free.sort_custom(func(a, b): return part_def(a["id"])["cost"] * hp_ratio(a) > part_def(b["id"])["cost"] * hp_ratio(b))
 	var order := ["torso", "head", "reactor", "arm_front", "arm_back", "leg_front", "leg_back", "back"]
-	for slot in order:
+	# stay inside a team robot's share of the power: best parts that still leave room for the rest
+	var budget := team_share(2)
+	var used := 0.0
+	for i in order.size():
+		var slot: String = order[i]
+		var room := budget - used - (order.size() - 1 - i) * 1.0
+		var pick := {}
+		var lightest := {}
 		for p in free:
-			if part_def(p["id"])["kind"] == SLOT_KIND[slot] and not w.values().has(p["uid"]):
-				w[slot] = p["uid"]
-				break
+			var d := part_def(p["id"])
+			if d["kind"] != SLOT_KIND[slot] or w.values().has(p["uid"]):
+				continue
+			if lightest.is_empty() or d["draw"] < part_def(lightest["id"])["draw"]:
+				lightest = p
+			if pick.is_empty() and d["draw"] <= room:
+				pick = p   # list is sorted best-first
+		if pick.is_empty():
+			pick = lightest
+		if not pick.is_empty():
+			w[slot] = pick["uid"]
+			used += part_def(pick["id"])["draw"]
 	if w.has("torso"):
 		for slot in part_def(inst(int(w["torso"]))["id"])["mounts"]:
 			for p in free:
@@ -959,6 +1032,8 @@ func build_wingman(k: int) -> String:
 
 func clear_wingman(k: int) -> void:
 	wingmen[k] = {}
+	if sending == k:
+		sending = -1
 
 
 func wingman_repair_cost(k: int) -> int:
@@ -1075,7 +1150,14 @@ func opponent_spec_from(o: Dictionary, _unused: float) -> Dictionary:
 	if o["parts"].has("back"):
 		var bd := part_def(o["parts"]["back"])
 		back = {"shape": bd["shape"], "color": Color(bd["color"])}
-	return {"name": o.get("bot_name", o["name"]), "parts": parts, "efficiency": 1.0, "damage_mult": o["damage"],
+	var eff := 1.0
+	if o.has("power_share"):
+		var used := 0.0
+		for slot in o["parts"]:
+			if o["parts"][slot] != "":
+				used += part_def(o["parts"][slot])["draw"]
+		eff = minf(1.0, float(o["power_share"]) / maxf(1.0, used))
+	return {"name": o.get("bot_name", o["name"]), "parts": parts, "efficiency": eff, "damage_mult": o["damage"],
 			"speed_mult": o["speed"], "scale": o["scale"], "trim": Color(o["trim"]), "eye": Color(o["eye"]),
 			"back": back, "gadgets": gadgets, "specials": o["specials"], "style": o.get("style", "striker"),
 			"traits": global_traits(o["parts"])}
@@ -1234,10 +1316,10 @@ func circuit_opponent(c: Dictionary, i: int) -> Dictionary:
 	return bot
 
 
-func random_bot(rng: RandomNumberGenerator, budget: float, level: float) -> Dictionary:
+func random_bot(rng: RandomNumberGenerator, budget: float, level: float, sizes: Array = []) -> Dictionary:
 	var parts := {}
 	for slot in ["head", "torso", "arm_front", "arm_back", "leg_front", "leg_back", "reactor"]:
-		parts[slot] = random_part_id(rng, SLOT_KIND[slot], budget)
+		parts[slot] = random_part_id(rng, SLOT_KIND[slot], budget, sizes)
 	if rng.randf() < 0.15 + level * 0.15:
 		var b := random_part_id(rng, "back", budget)
 		if b != "":
@@ -1246,7 +1328,7 @@ func random_bot(rng: RandomNumberGenerator, budget: float, level: float) -> Dict
 		parts["arm_back"] = parts["arm_front"] if rng.randf() < 0.5 else parts["arm_back"]
 		parts["leg_back"] = parts["leg_front"]
 	for slot in part_def(parts["torso"])["mounts"]:
-		parts[slot] = random_part_id(rng, SLOT_KIND[slot], budget)
+		parts[slot] = random_part_id(rng, SLOT_KIND[slot], budget, sizes)
 	var specials: Array = []
 	var ids: Array = Specials.MOVES.keys().filter(func(x): return not Specials.MOVES[x].has("style"))
 	for k in clampi(int(level) + rng.randi_range(0, 1), 0, 5):
@@ -1257,7 +1339,7 @@ func random_bot(rng: RandomNumberGenerator, budget: float, level: float) -> Dict
 	return {
 		"name": BOT_PREFIX[rng.randi() % BOT_PREFIX.size()] + BOT_SUFFIX[rng.randi() % BOT_SUFFIX.size()],
 		"hp": 0.8 + level * 0.11, "damage": 0.8 + level * 0.07, "speed": 0.9 + level * 0.05 + rng.randf_range(-0.05, 0.08),
-		"scale": rng.randf_range(0.85, 1.25), "think": maxf(0.16, 0.6 - level * 0.09), "block": minf(0.65, 0.1 + level * 0.11),
+		"scale": 1.0 if not sizes.is_empty() else rng.randf_range(0.95, 1.15), "think": maxf(0.16, 0.6 - level * 0.09), "block": minf(0.65, 0.1 + level * 0.11),
 		"smart": minf(0.95, 0.1 + level * 0.18), "body": "#" + body.to_html(false),
 		"trim": "#" + Color.from_hsv(rng.randf(), 0.3, rng.randf_range(0.2, 0.9)).to_html(false),
 		"eye": "#" + Color.from_hsv(rng.randf(), 0.9, 1.0).to_html(false),
@@ -1265,11 +1347,37 @@ func random_bot(rng: RandomNumberGenerator, budget: float, level: float) -> Dict
 	}
 
 
-func random_part_id(rng: RandomNumberGenerator, kind: String, budget: float) -> String:
+func sized_variant(d: Dictionary, c: String) -> Dictionary:
+	var m: Dictionary = SIZE_CLASSES[c]
+	var v := d.duplicate(true)
+	v["id"] = "%s~%s" % [d["id"], c]
+	v["name"] = "%s %s" % [m["name"], d["name"]]
+	v["size_class"] = c
+	v["hp"] = maxi(10, int(d["hp"] * m["hp"]))
+	v["armor"] = maxi(0, int(d["armor"]) + int(m["armor"]))
+	if d["damage"] > 0:
+		v["damage"] = int(d["damage"] * m["damage"])
+	if d["kind"] != "head":
+		v["speed"] = int(d["speed"]) + int(m["speed"])
+	v["draw"] = maxi(1, roundi(d["draw"] * m["draw"]))
+	v["cost"] = maxi(10, int(d["cost"] * m["cost"] / 10.0) * 10)
+	v["size"] = d["size"] * m["size"]
+	return v
+
+
+## Weight class from the power a build draws.
+static func weight_class(power: float) -> String:
+	for w in WEIGHT_CLASSES:
+		if power <= w[1]:
+			return w[0]
+	return "HEAVYWEIGHT"
+
+
+func random_part_id(rng: RandomNumberGenerator, kind: String, budget: float, sizes: Array = []) -> String:
 	var options: Array = []
 	for id in ALL_PARTS:
 		var p: Dictionary = PARTS[id]
-		if p["kind"] == kind and p["cost"] <= budget:
+		if p["kind"] == kind and p["cost"] <= budget and (sizes.is_empty() or not kind in ["head", "torso", "arm", "leg"] or sizes.has(p["size_class"])):
 			options.append(p["id"])
 	if options.is_empty():
 		if kind == "back":
@@ -1491,7 +1599,7 @@ func save_game() -> bool:
 		"losses": losses, "champion": champion, "story_seen": story_seen,
 		"owned_chips": owned_chips, "chips": chips, "circuit": circuit, "circuit_offers": circuit_offers,
 		"circuits_won": circuits_won, "setups": setups, "custom_parts": custom_parts,
-		"style": style, "shop_stock": shop_stock, "scout": scout, "wingmen": wingmen,
+		"style": style, "shop_stock": shop_stock, "scout": scout, "wingmen": wingmen, "sending": sending,
 	}
 	var f := FileAccess.open(slot_path(save_slot), FileAccess.WRITE)
 	if f == null:
@@ -1551,6 +1659,7 @@ func load_game(slot: int = -1) -> String:
 		if owned_chips.has(id) and not chips.has(id):
 			chips.append(id)
 	style = str(data.get("style", "striker"))
+	sending = int(data.get("sending", -1))
 	wingmen = [{}, {}]
 	var wm: Array = data.get("wingmen", [])
 	for k in mini(2, wm.size()):

@@ -305,6 +305,17 @@ func _ready() -> void:
 			t[0].scale = maxf(t[0].scale, BOT_SCALE)   # a robot fighting alone is always full size
 			t[0].spec["scale"] = t[0].scale
 			t[0].look_dirty = true
+		else:
+			# team robots are drawn by weight class: lightweights small, middleweights medium
+			for f in t:
+				var power := 0.0
+				for slot in f.parts:
+					if not f.parts[slot].is_empty():
+						power += float(GameData.part_def(f.parts[slot]["id"])["draw"])
+				var wc := GameData.weight_class(power)
+				f.scale = BOT_SCALE * {"LIGHTWEIGHT": 0.78, "MIDDLEWEIGHT": 0.9}.get(wc, 1.0)
+				f.spec["scale"] = f.scale
+				f.look_dirty = true
 	player = team_p[0]
 	cpu = team_c[0]
 	var split: bool = GameData.settings.get("team_controls", "split") == "split"
@@ -1248,7 +1259,7 @@ func finish_match() -> void:
 	var main: Fighter = team_p[0]
 	var part_hp := {}
 	for slot in BODY_PARTS:
-		if not main.parts[slot].is_empty():
+		if main.wingman == -1 and not main.parts[slot].is_empty():
 			part_hp[slot] = main.parts[slot]["hp"] / main.hp_scale
 	var team_hp: Array = []
 	for f in team_p:
@@ -1287,7 +1298,7 @@ func quit_fight() -> void:
 		get_tree().change_scene_to_file("res://main.tscn")
 		return
 	for slot in BODY_PARTS:
-		if not team_p[0].parts[slot].is_empty():
+		if team_p[0].wingman == -1 and not team_p[0].parts[slot].is_empty():
 			var p := GameData.equipped_inst(slot)
 			if not p.is_empty():
 				p["hp"] = maxf(1.0, team_p[0].parts[slot]["hp"] / team_p[0].hp_scale)

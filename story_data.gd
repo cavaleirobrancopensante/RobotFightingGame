@@ -57,6 +57,11 @@ const SCENES := {
 	"post_1": {"place": "DOCK 9 ARENA", "lines": [
 		["GUS", "The Dock 9 boys actually paid up. That's a first."],
 		["ECHO", "THEY CALLED ME 'THE TRASH CAN THAT TALKS BACK'. I HAVE DECIDED TO TAKE IT AS PRAISE."],
+		["GUS", "Now listen. Every fight leaves dents, and dents cost money. Some weeks you'll be broke with a robot that can barely stand."],
+		["GUS", "So we build a BACKUP. Bolt your spare parts together in the Team tab. When ECHO needs rest and the money's gone, hit Send and put the backup in the ring to earn the repair cash."],
+		["ECHO", "A LITTLE BROTHER. I WILL TEACH IT EVERYTHING. MOSTLY ABOUT SEAGULLS."],
+		["GUS", "Keep it light, kid. One robot alone can run as big as its reactor allows, but teams share power. Two robots get half each, three get a third. That's why team bots run small."],
+		["GUS", "Some crews in the big cups fight in tag teams and swarms. When that happens, everybody goes in. ECHO and the backups, together."],
 	]},
 
 	"pre_2": {"place": "THE CANNERY", "lines": [
