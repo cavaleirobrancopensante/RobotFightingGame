@@ -3,6 +3,7 @@ extends Node2D
 # helper scripts, loaded by path so the game also runs without an editor scan
 const Arena = preload("res://arena.gd")
 const Scoreboard = preload("res://scoreboard.gd")
+const PartIcon = preload("res://part_icon.gd")
 const Catalog = preload("res://catalog.gd")
 const Controls = preload("res://controls.gd")
 const PilotArt = preload("res://pilot_art.gd")
@@ -2630,14 +2631,6 @@ func draw_results() -> void:
 		lines.append(["Prize money: +$%d" % result.get("reward", 0), Color(0.95, 0.85, 0.2)])
 	if result.get("bonus", 0) > 0:
 		lines.append(["Dismantle bonus: +$%d" % result["bonus"], Color(0.95, 0.85, 0.2)])
-	for n in result.get("salvaged", []):
-		lines.append(["Salvaged: %s" % n, Color(0.5, 1.0, 0.6)])
-	for n in result.get("wrecked", []):
-		lines.append(["Wrecked (rebuild in Spares): %s" % n, Color(1.0, 0.7, 0.3)])
-	for n in result.get("lost", []):
-		lines.append(["Lost: %s" % n, Color(1.0, 0.45, 0.4)])
-	if result.get("trophy", "") != "":
-		lines.append(["Trophy part: %s (in Spares)" % result["trophy"], Color(0.5, 1.0, 0.6)])
 	if result.get("champion", false):
 		lines.append(["YOU ARE THE CHAMPION!", Color(1.0, 0.5, 0.2)])
 	if result.get("cup_done", "") != "":
@@ -2647,8 +2640,44 @@ func draw_results() -> void:
 	for l in lines:
 		draw_string(font, Vector2(0, y), l[0], HORIZONTAL_ALIGNMENT_CENTER, screen.x, fs(24), l[1])
 		y += 38.0
+	y = draw_result_cards(y)
 	if phase_timer > 1.0:
 		draw_string(font, Vector2(0, y + 20), "Tap to continue", HORIZONTAL_ALIGNMENT_CENTER, screen.x, fs(22), Color(0.8, 0.8, 0.8))
+
+
+## Parts won and lost, as picture cards: green for parts you got, orange wrecked, red lost.
+func draw_result_cards(y: float) -> float:
+	var cards: Array = result.get("cards", [])
+	if cards.is_empty():
+		return y
+	var tags := {"salvaged": ["SALVAGED", Color(0.5, 1.0, 0.6)], "trophy": ["TROPHY PART", Color(0.5, 1.0, 0.6)],
+			"wrecked": ["WRECKED", Color(1.0, 0.7, 0.3)], "lost": ["LOST", Color(1.0, 0.45, 0.4)]}
+	var n := mini(cards.size(), 6)
+	var cw := minf(150.0, (screen.x - 40.0) / n)
+	var icon := minf(cw - 30.0, 84.0)
+	var x0 := screen.x * 0.5 - n * cw * 0.5
+	y += 4.0
+	for k in n:
+		var c: Dictionary = cards[k]
+		var d := GameData.part_def(str(c["id"]))
+		if d.is_empty():
+			continue
+		var tag: Array = tags.get(c["what"], ["", Color.WHITE])
+		var cx := x0 + k * cw + cw * 0.5
+		var box := Rect2(cx - icon * 0.5, y, icon, icon)
+		# cards appear one after another
+		if phase_timer < 0.3 + k * 0.25:
+			continue
+		PartIcon.draw_part(self, box, d, float(c.get("health", 1.0)))
+		draw_rect(box, tag[1], false, 3.0)
+		if c["what"] == "lost":
+			draw_line(box.position + Vector2(6, 6), box.end - Vector2(6, 6), Color(1.0, 0.3, 0.25, 0.85), 4.0)
+			draw_line(Vector2(box.end.x - 6, box.position.y + 6), Vector2(box.position.x + 6, box.end.y - 6), Color(1.0, 0.3, 0.25, 0.85), 4.0)
+		draw_string(font, Vector2(cx - cw * 0.5, box.end.y + 18), tag[0], HORIZONTAL_ALIGNMENT_CENTER, cw, fs(13), tag[1])
+		draw_string(font, Vector2(cx - cw * 0.5, box.end.y + 36), str(d["name"]), HORIZONTAL_ALIGNMENT_CENTER, cw, fs(14), Color(0.92, 0.92, 0.95))
+	if cards.size() > n:
+		draw_string(font, Vector2(0, y + icon + 56), "+%d more in Storage" % (cards.size() - n), HORIZONTAL_ALIGNMENT_CENTER, screen.x, fs(14), Color(0.8, 0.8, 0.85))
+	return y + icon + 50.0
 
 
 func draw_buttons() -> void:

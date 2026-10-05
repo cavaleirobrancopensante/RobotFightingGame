@@ -10,16 +10,23 @@ var trim := Color(0.85, 0.85, 0.9)
 
 
 func _draw() -> void:
-	draw_rect(Rect2(Vector2.ZERO, size), Color(0.1, 0.1, 0.14))
+	draw_part(self, Rect2(Vector2.ZERO, size), part, health, trim)
+
+
+## Draw a part picture into any rect of any canvas (the results screen uses this too).
+static func draw_part(ci: CanvasItem, box: Rect2, part: Dictionary, health: float = 1.0, trim: Color = Color(0.85, 0.85, 0.9)) -> void:
+	ci.draw_rect(box, Color(0.1, 0.1, 0.14))
 	if part.is_empty():
 		return
+	var size := box.size
+	var o := box.position
 	var kind: String = part["kind"]
 	if kind == "reactor":
-		var c := size * 0.5
+		var c := o + size * 0.5
 		var col := Color(part["color"])
-		draw_circle(c, size.y * 0.34, col.darkened(0.6))
-		draw_circle(c, size.y * 0.26, col)
-		draw_circle(c, size.y * 0.1, Color(1, 1, 1, 0.8))
+		ci.draw_circle(c, size.y * 0.34, col.darkened(0.6))
+		ci.draw_circle(c, size.y * 0.26, col)
+		ci.draw_circle(c, size.y * 0.1, Color(1, 1, 1, 0.8))
 		return
 	if kind == "back":
 		var bparts := {}
@@ -31,7 +38,8 @@ func _draw() -> void:
 		var bg := RobotArt.geom(blook)
 		var br := Rect2((bg["torso"] as Rect2).position.x - 40.0, bg["top"] - 34.0, 70.0, bg["th"] + 50.0)
 		var bsc := minf((size.x - 8.0) / br.size.x, (size.y - 8.0) / br.size.y)
-		RobotArt.draw(self, size * 0.5 - br.get_center() * bsc, blook, {"scale": bsc, "jet": true, "boost": true})
+		RobotArt.draw(ci, o + size * 0.5 - br.get_center() * bsc, blook, {"scale": bsc, "jet": true, "boost": true})
+		ci.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 		return
 	var slot: String = {"head": "head", "torso": "torso", "arm": "arm_front", "leg": "leg_front"}[kind]
 	var parts := {}
@@ -42,11 +50,12 @@ func _draw() -> void:
 	var look := {"parts": parts, "trim": trim, "eye": Color(1.0, 0.35, 0.2), "scale": 1.0, "icon": true}
 	var rect := _bounds(look, slot)
 	var sc := minf((size.x - 8.0) / rect.size.x, (size.y - 8.0) / rect.size.y)
-	var base := size * 0.5 - rect.get_center() * sc
-	RobotArt.draw(self, base, look, {"scale": sc})
+	var base := o + size * 0.5 - rect.get_center() * sc
+	RobotArt.draw(ci, base, look, {"scale": sc})
+	ci.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
 
-func _bounds(look: Dictionary, slot: String) -> Rect2:
+static func _bounds(look: Dictionary, slot: String) -> Rect2:
 	var g := RobotArt.geom(look)
 	match slot:
 		"head":

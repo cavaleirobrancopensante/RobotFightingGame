@@ -1544,7 +1544,7 @@ func repair_wingman(k: int) -> String:
 
 
 ## After a team fight: wingmen keep their damage, destroyed parts can be lost.
-func apply_wingman_damage(k: int, part_hp: Dictionary, lost: Array, wrecked: Array) -> void:
+func apply_wingman_damage(k: int, part_hp: Dictionary, lost: Array, wrecked: Array, cards: Array = []) -> void:
 	for slot in part_hp:
 		if not wingmen[k].has(slot):
 			continue
@@ -1558,8 +1558,10 @@ func apply_wingman_damage(k: int, part_hp: Dictionary, lost: Array, wrecked: Arr
 			wingmen[k].erase(slot)
 			if randf() < 0.5:
 				wrecked.append(part_def(p["id"])["name"])
+				cards.append({"id": p["id"], "what": "wrecked", "health": 0.0})
 			else:
 				lost.append("%s (%s)" % [part_def(p["id"])["name"], wingman_name(k)])
+				cards.append({"id": p["id"], "what": "lost", "health": 0.0})
 				inventory.erase(p)
 
 
@@ -1679,6 +1681,7 @@ func record_result(won: bool, part_hp: Dictionary, destroyed: int, salvage_ids: 
 	# carry the damage over, lose destroyed parts
 	var lost: Array = []
 	var wrecked: Array = []
+	var cards: Array = []   # parts won and lost, shown with pictures on the results screen
 	for slot in part_hp:
 		var p := equipped_inst(slot)
 		if p.is_empty():
@@ -1692,12 +1695,14 @@ func record_result(won: bool, part_hp: Dictionary, destroyed: int, salvage_ids: 
 				# your crew dragged the wreck out of the ring: rebuild it for half price
 				p["hp"] = 0.0
 				wrecked.append(part_def(p["id"])["name"])
+				cards.append({"id": p["id"], "what": "wrecked", "health": 0.0})
 			else:
 				lost.append("%s (%s)" % [part_def(p["id"])["name"], SLOT_NAMES[slot]])
+				cards.append({"id": p["id"], "what": "lost", "health": 0.0})
 				inventory.erase(p)
 
 	for e in team_hp:
-		apply_wingman_damage(int(e["wingman"]), e["part_hp"], lost, wrecked)
+		apply_wingman_damage(int(e["wingman"]), e["part_hp"], lost, wrecked, cards)
 
 	# salvage: winners get a chance to keep ripped-off enemy parts
 	var salvaged: Array = []
@@ -1709,6 +1714,7 @@ func record_result(won: bool, part_hp: Dictionary, destroyed: int, salvage_ids: 
 				chance += 0.15
 			if randf() < chance:
 				add_part(sv["id"], 0.35 if sv["aimed"] else 0.2)
+				cards.append({"id": sv["id"], "what": "salvaged", "health": 0.35 if sv["aimed"] else 0.2})
 				salvaged.append(part_def(sv["id"])["name"] + (" (aimed)" if sv["aimed"] else ""))
 
 	# trophy: sometimes the beaten robot's crew hands over one of its parts
@@ -1718,6 +1724,7 @@ func record_result(won: bool, part_hp: Dictionary, destroyed: int, salvage_ids: 
 		var id: String = ids[randi() % ids.size()]
 		var d := part_def(id)
 		add_part(id, 1.0 if UNDAMAGEABLE.has(d["kind"]) else 0.5)
+		cards.append({"id": id, "what": "trophy", "health": 1.0 if UNDAMAGEABLE.has(d["kind"]) else 0.5})
 		trophy = d["name"]
 
 	digs_left = DIGS_PER_FIGHT   # the scrapyard pile gets fresh junk after every fight
@@ -1760,7 +1767,7 @@ func record_result(won: bool, part_hp: Dictionary, destroyed: int, salvage_ids: 
 	roll_stock()
 	last_result = {"won": won, "reward": reward, "bonus": bonus, "opponent": o["name"], "lost": lost, "wrecked": wrecked,
 			"salvaged": salvaged, "champion": champion and not was_champion,
-			"trophy": trophy, "cup_done": cup_done, "event_done": event_done, "out_of_debt": was_in_debt and money >= 0}
+			"trophy": trophy, "cup_done": cup_done, "event_done": event_done, "out_of_debt": was_in_debt and money >= 0, "cards": cards}
 	save_game()
 	return last_result
 
