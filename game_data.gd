@@ -2049,13 +2049,21 @@ func record_result(won: bool, part_hp: Dictionary, destroyed: int, salvage_ids: 
 
 	# trophy: sometimes the beaten robot's crew hands over one of its parts
 	var trophy := ""
-	if won and randf() < 0.3:
-		var ids: Array = o["parts"].values().filter(func(x): return x != "")
-		var id: String = ids[randi() % ids.size()]
+	var trophy_id := ""
+	# (only from parts still on their robot: nothing you tore off - each part exists once)
+	var intact: Array = []
+	for slot in o["parts"]:
+		if o["parts"][slot] != "":
+			intact.append(o["parts"][slot])
+	for sv in salvage_ids:
+		intact.erase(str(sv.get("id", "")))   # erase() removes one copy: two identical arms, one torn off -> one left
+	if won and randf() < 0.3 and not intact.is_empty():
+		var id: String = intact[randi() % intact.size()]
 		var d := part_def(id)
 		add_part(id, 1.0 if UNDAMAGEABLE.has(d["kind"]) else 0.5)
 		cards.append({"id": id, "what": "trophy", "health": 1.0 if UNDAMAGEABLE.has(d["kind"]) else 0.5})
 		trophy = d["name"]
+		trophy_id = id
 
 	# the pilot you fought lives on: their robot keeps the dents, their wallet moves
 	if o.has("wid"):
@@ -2066,6 +2074,15 @@ func record_result(won: bool, part_hp: Dictionary, destroyed: int, salvage_ids: 
 			"circuit":
 				stage = "cup"
 		World.after_player_fight(int(o["wid"]), won, last_enemy_hp, salvage_ids, stage)
+		# the part their crew handed over is gone from their robot too
+		var wp := World.pilot(int(o["wid"]))
+		if trophy_id != "" and not wp.is_empty():
+			for s in wp["bot"]["parts"]:
+				if wp["bot"]["parts"][s] == trophy_id and s != "torso":
+					var rng := RandomNumberGenerator.new()
+					rng.randomize()
+					World.lose_part(rng, wp, s)
+					break
 	digs_left = DIGS_PER_FIGHT   # the scrapyard pile gets fresh junk after every fight
 	var was_champion := champion
 	var mode := fight_mode()
