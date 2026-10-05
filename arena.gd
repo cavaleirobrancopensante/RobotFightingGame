@@ -279,10 +279,10 @@ static func draw_backdrop(ci: CanvasItem, id: String, screen: Vector2, floor_y: 
 				var x := w * (0.45 + k * 0.03)
 				var y := 26.0 + sin(float(k) / 17.0 * PI) * 22.0
 				ci.draw_circle(Vector2(x, y) + o, 3.5, Color(1.0, 0.85, 0.5, 0.55 + 0.45 * sin(t * 2.0 + k * 1.7)))
-			ci.draw_rect(Rect2(w * 0.55, 60, 150, 34), Color(0.35, 0.36, 0.33))   # hand-painted sign on tin
+			ci.draw_rect(Rect2(w * 0.62, 104, 150, 34), Color(0.35, 0.36, 0.33))   # hand-painted sign on tin
 			for k in 6:
-				ci.draw_line(Vector2(w * 0.55 + k * 25, 60), Vector2(w * 0.55 + k * 25, 94), Color(0.28, 0.29, 0.27), 2.0)
-			ci.draw_string(ThemeDB.fallback_font, Vector2(w * 0.55, 84), "SCRAP RING", HORIZONTAL_ALIGNMENT_CENTER, 150, 20, Color(0.85, 0.25, 0.15))
+				ci.draw_line(Vector2(w * 0.62 + k * 25, 104), Vector2(w * 0.62 + k * 25, 138), Color(0.28, 0.29, 0.27), 2.0)
+			ci.draw_string(ThemeDB.fallback_font, Vector2(w * 0.62, 128), "SCRAP RING", HORIZONTAL_ALIGNMENT_CENTER, 150, 20, Color(0.85, 0.25, 0.15))
 		"regional_hall", "regional_final":
 			var fin := id == "regional_final"
 			ci.draw_rect(Rect2(0, 0, w, floor_y * 0.12), Color(0.12, 0.14, 0.18))
@@ -291,10 +291,10 @@ static func draw_backdrop(ci: CanvasItem, id: String, screen: Vector2, floor_y: 
 				ci.draw_rect(Rect2(x - 34, 26, 68, 40), Color(0.35, 0.45, 0.6, 0.35 if not fin else 0.15))
 				ci.draw_line(Vector2(x - 34, 46), Vector2(x + 34, 46), Color(0.12, 0.14, 0.18), 3.0)
 				ci.draw_line(Vector2(x, 26), Vector2(x, 66), Color(0.12, 0.14, 0.18), 3.0)
-			ci.draw_rect(Rect2(w * 0.3, 74, w * 0.4, 30), Color(0.12, 0.25, 0.55) if not fin else Color(0.55, 0.1, 0.12))
-			ci.draw_string(ThemeDB.fallback_font, Vector2(w * 0.3, 96), "PORT FERRUM REGIONAL" if not fin else "REGIONAL FINAL", HORIZONTAL_ALIGNMENT_CENTER, w * 0.4, 20, Color(1, 1, 1) if not fin else Color(1.0, 0.85, 0.4))
-			ci.draw_rect(Rect2(w * 0.05, 72, 90, 36), Color(0.05, 0.05, 0.05))   # the hall's scoreboard clock
-			ci.draw_string(ThemeDB.fallback_font, Vector2(w * 0.05, 98), "%02d:%02d" % [int(t / 60.0) % 60, int(t) % 60], HORIZONTAL_ALIGNMENT_CENTER, 90, 22, Color(1.0, 0.3, 0.2))
+			ci.draw_rect(Rect2(w * 0.3, 118, w * 0.4, 28), Color(0.12, 0.25, 0.55) if not fin else Color(0.55, 0.1, 0.12))
+			ci.draw_string(ThemeDB.fallback_font, Vector2(w * 0.3, 139), "PORT FERRUM REGIONAL" if not fin else "REGIONAL FINAL", HORIZONTAL_ALIGNMENT_CENTER, w * 0.4, 20, Color(1, 1, 1) if not fin else Color(1.0, 0.85, 0.4))
+			ci.draw_rect(Rect2(w * 0.05, 114, 90, 34), Color(0.05, 0.05, 0.05))   # the hall's scoreboard clock
+			ci.draw_string(ThemeDB.fallback_font, Vector2(w * 0.05, 139), "%02d:%02d" % [int(t / 60.0) % 60, int(t) % 60], HORIZONTAL_ALIGNMENT_CENTER, 90, 22, Color(1.0, 0.3, 0.2))
 			if fin:
 				for k in 26:   # bunting
 					var x := w * k / 25.0
@@ -316,16 +316,16 @@ static func draw_backdrop(ci: CanvasItem, id: String, screen: Vector2, floor_y: 
 				ci.draw_line(Vector2(x - 8, 12), Vector2(x + 8, 28), Color(0.3, 0.32, 0.38), 2.0)
 				ci.draw_circle(Vector2(x, 34), 5.0, Color.from_hsv(fmod(k * 0.13 + t * 0.1, 1.0), 0.5, 1.0, 0.8))
 			for side in [0.04, 0.72]:   # big screens
-				var sc := Rect2(w * side, 50, w * 0.24, 56)
+				var sc := Rect2(w * side, 104, w * 0.2, 40)
 				ci.draw_rect(sc.grow(4), Color(0.08, 0.08, 0.1))
 				ci.draw_rect(sc, Color(0.05, 0.1, 0.25))
-				ci.draw_string(ThemeDB.fallback_font, sc.position + Vector2(0, 38), "KANE CHAMPIONSHIP", HORIZONTAL_ALIGNMENT_CENTER, sc.size.x, 20, Color(0.4, 0.75, 1.0))
+				ci.draw_string(ThemeDB.fallback_font, sc.position + Vector2(0, 27), "KANE CHAMPIONSHIP", HORIZONTAL_ALIGNMENT_CENTER, sc.size.x, 20, Color(0.4, 0.75, 1.0))
 			# LED ribbon board scrolling round the arena
-			ci.draw_rect(Rect2(0, 118, w, 18), Color(0.02, 0.02, 0.05))
+			ci.draw_rect(Rect2(0, 148, w, 18), Color(0.02, 0.02, 0.05))
 			var msg := "  KANE DYNAMICS  *  CHAMPIONSHIP SEASON  *  PORT FERRUM  *"
 			var mx := fmod(-t * 90.0, 520.0)
 			while mx < w:
-				ci.draw_string(ThemeDB.fallback_font, Vector2(mx, 133), msg, HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Color(1.0, 0.75, 0.25))
+				ci.draw_string(ThemeDB.fallback_font, Vector2(mx, 163), msg, HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Color(1.0, 0.75, 0.25))
 				mx += 520.0
 			for k in 3:
 				var bx := w * (0.2 + k * 0.3)
@@ -352,9 +352,9 @@ static func draw_backdrop(ci: CanvasItem, id: String, screen: Vector2, floor_y: 
 					var ang := PI * j / 6.0
 					var p := Vector2(cx, 56) + Vector2(cos(ang), sin(ang)) * 30.0
 					ci.draw_circle(p, 3.0, Color(1.0, 0.95, 0.75, 0.6 + 0.4 * sin(t * 4.0 + j + k * 3)))
-			ci.draw_rect(Rect2(w * 0.32, 92, w * 0.36, 30), Color(0.12, 0.04, 0.06))   # gold-lettered banner
-			ci.draw_rect(Rect2(w * 0.32, 92, w * 0.36, 30), Color(0.85, 0.7, 0.3), false, 2.0)
-			ci.draw_string(ThemeDB.fallback_font, Vector2(w * 0.32, 114), "THE KANE CHAMPIONSHIP", HORIZONTAL_ALIGNMENT_CENTER, w * 0.36, 18, Color(0.95, 0.8, 0.4))
+			ci.draw_rect(Rect2(w * 0.32, 118, w * 0.36, 28), Color(0.12, 0.04, 0.06))   # gold-lettered banner
+			ci.draw_rect(Rect2(w * 0.32, 118, w * 0.36, 28), Color(0.85, 0.7, 0.3), false, 2.0)
+			ci.draw_string(ThemeDB.fallback_font, Vector2(w * 0.32, 138), "THE KANE CHAMPIONSHIP", HORIZONTAL_ALIGNMENT_CENTER, w * 0.36, 18, Color(0.95, 0.8, 0.4))
 		"main_event":
 			var sc := Rect2(w * 0.38, 96, w * 0.24, 46)   # jumbotron
 			ci.draw_rect(sc.grow(5), Color(0.1, 0.1, 0.12))

@@ -2579,10 +2579,11 @@ func draw_hud() -> void:
 			draw_string(font, Vector2(x, y + bh + 70), "%d HIT COMBO!" % f.combo, HORIZONTAL_ALIGNMENT_LEFT if f == player else HORIZONTAL_ALIGNMENT_RIGHT,
 					w, fs(30), Color(1.0, 0.85, 0.2, minf(1.0, f.combo_show * 2.0)))
 
-	draw_string(font, Vector2(0, y + 18), title_text,
-			HORIZONTAL_ALIGNMENT_CENTER, screen.x, fs(16), Color(0.8, 0.8, 0.85))
-	var tc := Color(1.0, 0.35, 0.3) if time_left < 10.0 else Color.WHITE
-	draw_string(font, Vector2(0, y + 50), "%d" % ceili(time_left), HORIZONTAL_ALIGNMENT_CENTER, screen.x, fs(30), tc)
+	# the fight name and clock hang on a board between the health bars
+	var gap_l := px + w + 12.0
+	var gap_r := cx - 12.0
+	var bw := minf(gap_r - gap_l, 420.0)
+	draw_title_board(Rect2(screen.x * 0.5 - bw * 0.5, 6.0, bw, minf(quit_rect.position.y - 12.0, 70.0)))
 	if phase == "intro" or phase == "fight":
 		for rr in [[quit_rect, "QUIT"], [moves_rect, "MOVES"]]:
 			draw_rect(rr[0], Color(1, 1, 1, 0.1))
@@ -2984,6 +2985,129 @@ func draw_gus(off: Vector2) -> void:
 
 
 var gus_head := Vector2.ZERO
+
+
+## Which kind of board shows the fight name: a chalk slate on chains at the scrapyard, the old
+## hand-swapped number plates of a stadium board at the Regional and cups, an LED panel at the
+## Championship.
+func board_style() -> String:
+	if arena_id == "scrap_ring":
+		return "chalk"
+	if mode == "circuit":
+		return "plates"
+	if arena_id in ["champ_arena", "champ_gala", "main_event", "test_track", "rooftop"]:
+		return "led"
+	return "plates"
+
+
+## Biggest font size (up to max_size) that fits text in width.
+func fit_size(text: String, width: float, max_size: int) -> int:
+	var size := max_size
+	while size > 9 and font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, size).x > width:
+		size -= 1
+	return size
+
+
+func draw_title_board(r: Rect2) -> void:
+	var title := title_text.to_upper()
+	var clock_text := "%d" % ceili(time_left)
+	var hurry := time_left < 10.0
+	var title_h := r.size.y * 0.36
+	var tr := Rect2(r.position + Vector2(8, 4), Vector2(r.size.x - 16, title_h))
+	var cr := Rect2(Vector2(r.position.x + 8, tr.end.y + 2), Vector2(r.size.x - 16, r.end.y - tr.end.y - 6))
+	var style := board_style()
+	if style == "chalk":
+		# the slate hangs a little lower so its chains show
+		r = Rect2(r.position + Vector2(0, 10), r.size - Vector2(0, 10))
+		title_h = r.size.y * 0.4
+		tr = Rect2(r.position + Vector2(8, 3), Vector2(r.size.x - 16, title_h))
+		cr = Rect2(Vector2(r.position.x + 8, tr.end.y + 1), Vector2(r.size.x - 16, r.end.y - tr.end.y - 4))
+	match style:
+		"chalk":
+			# a slate in a battered wooden frame, hanging crooked from two rusty chains
+			var swing := sin(clock * 0.9) * 0.012
+			draw_set_transform(Vector2(r.get_center().x, 0), swing, Vector2.ONE)
+			var lr := Rect2(r.position - Vector2(r.get_center().x, 0), r.size)
+			for side in [0.18, 0.82]:
+				var top := Vector2(lr.position.x + lr.size.x * side, -4)
+				var y := top.y
+				var link := 0
+				while y < lr.position.y - 2:
+					if link % 2 == 0:
+						draw_arc(Vector2(top.x, y + 3.5), 4.0, 0, TAU, 8, Color(0.72, 0.55, 0.38), 3.0)
+					else:
+						draw_line(Vector2(top.x, y), Vector2(top.x, y + 7), Color(0.62, 0.47, 0.32), 3.5)
+					y += 5.0
+					link += 1
+			draw_rect(lr.grow(4), Color(0.42, 0.28, 0.16))
+			draw_rect(lr.grow(4), Color(0.25, 0.16, 0.09), false, 2.0)
+			draw_rect(lr, Color(0.13, 0.17, 0.15))
+			for k in 3:   # old chalk smudges
+				draw_rect(Rect2(lr.position + Vector2(lr.size.x * (0.1 + k * 0.3), lr.size.y * (0.3 + 0.2 * (k % 2))), Vector2(lr.size.x * 0.2, 6)), Color(1, 1, 1, 0.04))
+			var ltr := Rect2(tr.position - Vector2(r.get_center().x, 0), tr.size)
+			var lcr := Rect2(cr.position - Vector2(r.get_center().x, 0), cr.size)
+			var ts := fit_size(title, ltr.size.x, fs(17))
+			var chalk := Color(0.93, 0.93, 0.88)
+			draw_string(font, Vector2(ltr.position.x + 1, ltr.end.y - 3), title, HORIZONTAL_ALIGNMENT_CENTER, ltr.size.x, ts, Color(chalk, 0.35))
+			draw_string(font, Vector2(ltr.position.x, ltr.end.y - 4), title, HORIZONTAL_ALIGNMENT_CENTER, ltr.size.x, ts, chalk)
+			var cc := Color(1.0, 0.45, 0.4) if hurry else chalk
+			draw_string(font, Vector2(lcr.position.x, lcr.end.y - 4), clock_text, HORIZONTAL_ALIGNMENT_CENTER, lcr.size.x, fit_size(clock_text, lcr.size.x, int(lcr.size.y * 0.95)), cc)
+			draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+		"plates":
+			# old stadium board: painted green board, every letter on its own hand-hung plate
+			draw_rect(r, Color(0.1, 0.25, 0.17))
+			draw_rect(r, Color(0.9, 0.9, 0.85), false, 3.0)
+			draw_rect(r.grow(-4), Color(0.9, 0.9, 0.85, 0.5), false, 1.0)
+			var pad := 1.5
+			var ts := fit_size(title, tr.size.x - title.length() * pad, fs(18))
+			var widths: Array = []
+			var total := 0.0
+			for k in title.length():
+				var cw := font.get_string_size(title.substr(k, 1), HORIZONTAL_ALIGNMENT_LEFT, -1, ts).x
+				widths.append(cw)
+				total += cw + pad
+			var x := tr.get_center().x - total * 0.5
+			for k in title.length():
+				var ch := title.substr(k, 1)
+				var cw: float = widths[k]
+				if ch != " ":
+					var ph := minf(tr.size.y - 2, ts + 8.0)
+					var plate := Rect2(x, tr.end.y - 1 - ph, cw + pad, ph)
+					draw_rect(plate, Color(0.06, 0.06, 0.07))
+					draw_line(Vector2(plate.position.x, plate.get_center().y), Vector2(plate.end.x, plate.get_center().y), Color(0, 0, 0, 0.6), 1.0)
+					draw_string(font, Vector2(x + pad * 0.5 - 0.5, plate.end.y - 4), ch, HORIZONTAL_ALIGNMENT_LEFT, -1, ts, Color(0.97, 0.97, 0.92))
+				x += cw + pad
+			# the clock: two big plates
+			var digits := clock_text.lpad(2, "0")
+			var pw := cr.size.y * 0.8
+			for k in digits.length():
+				var plate := Rect2(cr.get_center().x - digits.length() * (pw + 4) * 0.5 + k * (pw + 4), cr.position.y, pw, cr.size.y)
+				draw_rect(plate, Color(0.06, 0.06, 0.07))
+				draw_circle(Vector2(plate.get_center().x, plate.position.y + 3), 1.5, Color(0.6, 0.6, 0.6))   # the hook
+				draw_line(Vector2(plate.position.x, plate.get_center().y), Vector2(plate.end.x, plate.get_center().y), Color(0, 0, 0, 0.6), 1.0)
+				draw_string(font, Vector2(plate.position.x, plate.end.y - 4), digits.substr(k, 1), HORIZONTAL_ALIGNMENT_CENTER, plate.size.x, int(plate.size.y * 0.85),
+						Color(1.0, 0.4, 0.3) if hurry else Color(0.97, 0.97, 0.92))
+		_:
+			# an expensive LED panel: brushed-steel bezel, black dot-matrix face, glowing amber letters
+			draw_rect(r.grow(3), Color(0.55, 0.58, 0.64))
+			draw_rect(r.grow(1), Color(0.25, 0.27, 0.3))
+			draw_rect(r, Color(0.02, 0.02, 0.03))
+			var dot := 4.0
+			var yy := r.position.y + 2.0
+			while yy < r.end.y:
+				var xx := r.position.x + 2.0
+				while xx < r.end.x:
+					draw_rect(Rect2(xx, yy, 1.5, 1.5), Color(1, 1, 1, 0.05))
+					xx += dot
+				yy += dot
+			var amber := Color(1.0, 0.7, 0.2)
+			var ts := fit_size(title, tr.size.x, fs(17))
+			draw_string(font, Vector2(tr.position.x, tr.end.y - 3), title, HORIZONTAL_ALIGNMENT_CENTER, tr.size.x, ts + 2, Color(amber, 0.12))
+			draw_string(font, Vector2(tr.position.x, tr.end.y - 4), title, HORIZONTAL_ALIGNMENT_CENTER, tr.size.x, ts, amber)
+			var cc := Color(1.0, 0.2, 0.15) if hurry else Color(0.4, 0.95, 1.0)
+			var cs := fit_size(clock_text, cr.size.x, int(cr.size.y * 0.95))
+			draw_string(font, Vector2(cr.position.x, cr.end.y - 3), clock_text, HORIZONTAL_ALIGNMENT_CENTER, cr.size.x, cs + 3, Color(cc, 0.15))
+			draw_string(font, Vector2(cr.position.x, cr.end.y - 4), clock_text, HORIZONTAL_ALIGNMENT_CENTER, cr.size.x, cs, cc)
 
 
 func draw_coach() -> void:
