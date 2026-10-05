@@ -152,8 +152,10 @@ save("sell", seq(env(osc(1320, 0.06), decay=0.04), env(osc(880, 0.06), decay=0.0
                  env(osc(660, 0.12), decay=0.08), gap=0.02), 0.5)
 save("target", seq(env(osc(1500, 0.04), decay=0.03), env(osc(2000, 0.06), decay=0.04), gap=0.02), 0.4)
 save("untarget", env(osc((1500, 700), 0.08), decay=0.05), 0.35)
-save("talk", env(osc(700, 0.035), decay=0.02), 0.3)
-save("talk_robot", seq(env(osc(1100, 0.03), decay=0.02), env(osc(800, 0.03), decay=0.02), gap=0.0), 0.3)
+# dialogue blips: low, soft (triangle wave with a touch of square for character)
+save("talk", env(mix(osc((250, 225), 0.045, "tri"), osc((250, 225), 0.045) * 0.15), decay=0.03), 0.3)
+save("talk_robot", seq(env(mix(osc(420, 0.035, "tri"), osc(420, 0.035) * 0.2), decay=0.025),
+                       env(mix(osc(330, 0.035, "tri"), osc(330, 0.035) * 0.2), decay=0.025), gap=0.0), 0.3)
 save("time", env(osc(220, 0.6), decay=0.5), 0.5)
 save("spark", mix(env(lowpass(noise(0.05), 0.8), decay=0.01), env(osc((3000, 1200), 0.05, "square"), decay=0.02) * 0.4), 0.3)
 
