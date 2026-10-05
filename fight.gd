@@ -3010,58 +3010,10 @@ func fit_size(text: String, width: float, max_size: int) -> int:
 
 func draw_title_board(r: Rect2) -> void:
 	var title := title_text.to_upper()
-	var clock_text := "%d" % ceili(time_left)
 	var hurry := time_left < 10.0
-	var title_h := r.size.y * 0.36
-	var tr := Rect2(r.position + Vector2(8, 4), Vector2(r.size.x - 16, title_h))
-	var cr := Rect2(Vector2(r.position.x + 8, tr.end.y + 2), Vector2(r.size.x - 16, r.end.y - tr.end.y - 6))
-	var style := board_style()
-	if style == "chalk":
-		# the slate hangs a little lower so its chains show
-		r = Rect2(r.position + Vector2(r.size.x * 0.06, 12), r.size - Vector2(r.size.x * 0.12, 20))
-		title_h = r.size.y * 0.4
-		tr = Rect2(r.position + Vector2(8, 3), Vector2(r.size.x - 16, title_h))
-		cr = Rect2(Vector2(r.position.x + 8, tr.end.y + 1), Vector2(r.size.x - 16, r.end.y - tr.end.y - 4))
-	match style:
+	match board_style():
 		"chalk":
-			# a slate in a battered wooden frame, hanging crooked from two rusty chains
-			# hung crooked: the right chain is longer, and it all sways a bit
-			var swing := -0.085 + sin(clock * 0.9) * 0.018
-			var pivot := r.get_center()
-			draw_set_transform(pivot, swing, Vector2.ONE)
-			var lr := Rect2(r.position - pivot, r.size)
-			for side in [0.12, 0.86]:
-				var top := Vector2(lr.position.x + lr.size.x * side, lr.position.y - 70)
-				var y := top.y
-				var link := 0
-				while y < lr.position.y - 2:
-					if link % 2 == 0:
-						draw_arc(Vector2(top.x, y + 3.5), 4.0, 0, TAU, 8, Color(0.72, 0.55, 0.38), 3.0)
-					else:
-						draw_line(Vector2(top.x, y), Vector2(top.x, y + 7), Color(0.62, 0.47, 0.32), 3.5)
-					y += 5.0
-					link += 1
-			draw_rect(lr.grow(4), Color(0.42, 0.28, 0.16))
-			draw_rect(lr.grow(4), Color(0.25, 0.16, 0.09), false, 2.0)
-			draw_rect(lr, Color(0.13, 0.17, 0.15))
-			# a broken corner of the frame, a crack across the slate and a nailed-on patch
-			draw_colored_polygon(PackedVector2Array([lr.end + Vector2(4, 4), lr.end + Vector2(-22, 4), lr.end + Vector2(4, -14)]), Color(0.1, 0.08, 0.06))
-			draw_polyline(PackedVector2Array([lr.position + Vector2(lr.size.x * 0.7, 0), lr.position + Vector2(lr.size.x * 0.66, lr.size.y * 0.35),
-					lr.position + Vector2(lr.size.x * 0.72, lr.size.y * 0.6), lr.position + Vector2(lr.size.x * 0.69, lr.size.y)]), Color(0.05, 0.06, 0.05), 1.5)
-			draw_rect(Rect2(lr.position + Vector2(-8, lr.size.y * 0.45), Vector2(16, 12)), Color(0.5, 0.48, 0.44))
-			draw_circle(lr.position + Vector2(-5, lr.size.y * 0.45 + 3), 1.5, Color(0.2, 0.2, 0.2))
-			draw_circle(lr.position + Vector2(5, lr.size.y * 0.45 + 9), 1.5, Color(0.2, 0.2, 0.2))
-			for k in 3:   # old chalk smudges
-				draw_rect(Rect2(lr.position + Vector2(lr.size.x * (0.1 + k * 0.3), lr.size.y * (0.3 + 0.2 * (k % 2))), Vector2(lr.size.x * 0.2, 6)), Color(1, 1, 1, 0.04))
-			var ltr := Rect2(tr.position - pivot, tr.size)
-			var lcr := Rect2(cr.position - pivot, cr.size)
-			var ts := fit_size(title, ltr.size.x, fs(17))
-			var chalk := Color(0.93, 0.93, 0.88)
-			draw_string(font, Vector2(ltr.position.x + 1, ltr.end.y - 3), title, HORIZONTAL_ALIGNMENT_CENTER, ltr.size.x, ts, Color(chalk, 0.35))
-			draw_string(font, Vector2(ltr.position.x, ltr.end.y - 4), title, HORIZONTAL_ALIGNMENT_CENTER, ltr.size.x, ts, chalk)
-			var cc := Color(1.0, 0.45, 0.4) if hurry else chalk
-			draw_string(font, Vector2(lcr.position.x, lcr.end.y - 4), clock_text, HORIZONTAL_ALIGNMENT_CENTER, lcr.size.x, fit_size(clock_text, lcr.size.x, int(lcr.size.y * 0.95)), cc)
-			draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+			Scoreboard.draw_chalk(self, Rect2(r.position + Vector2(r.size.x * 0.04, 12), r.size - Vector2(r.size.x * 0.08, 20)), title, time_left, hurry, clock, font)
 		"flip":
 			Scoreboard.draw_flip(self, Rect2(r.position + Vector2(0, 10), r.size - Vector2(0, 10)), title, time_left, hurry, font, fs(17))
 		_:
