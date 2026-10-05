@@ -1676,7 +1676,10 @@ func story_dynamic(key: String) -> String:
 		"RENT_GARAGE":
 			var t := ""
 			if money < 0:
-				t = tr("And kid - you still owe me $%d in back rent.") % -money + " "
+				if wins + losses > 0:
+					t = tr("And kid - even after tonight's purse, you still owe me $%d in back rent.") % -money + " "
+				else:
+					t = tr("And kid - you still owe me $%d in back rent.") % -money + " "
 			t += (tr("Rent and food are $%d every month.") % living) if living > 0 else tr("Rent's on the house for now - don't get used to it.")
 			return t + " " + tr("No repairs on credit: when we're in the hole, we fight with the dents.")
 	return ""
@@ -1710,31 +1713,36 @@ func tab_tip(tab: String) -> String:
 
 ## Dig through the scrapyard pile. Returns {"text", "part"} (part = id found, or "").
 ## One dig = one part, always beaten up. Mostly junk, sometimes something decent, rarely a real find.
-func dig_scrap() -> Dictionary:
+## One dig in the scrapyard. kind = "" digs anywhere (better odds of something good), or
+## "head" / "torso" / "arm" / "leg" digs for that part - you get one, but it's mostly junk.
+func dig_scrap(kind: String = "") -> Dictionary:
 	if digs_left <= 0:
 		return {"text": "Too tired to dig. The pile will still be here after the next fight.", "part": ""}
 	digs_left -= 1
 	var r := randf()
+	var good_odds := 0.12 if kind == "" else 0.04
+	var decent_odds := 0.5 if kind == "" else 0.22
 	var pool: Array = []
 	var grade := "junk"
-	if r < 0.08:
+	if r < good_odds:
 		grade = "good"
 		var top := 900 + progress() * 250
 		for id in ALL_PARTS:
 			var d: Dictionary = PARTS[id]
-			if d["shop"] and d["cost"] >= 400 and d["cost"] <= top and not UNDAMAGEABLE.has(d["kind"]):
+			if d["shop"] and d["cost"] >= 400 and d["cost"] <= top and not UNDAMAGEABLE.has(d["kind"]) and (kind == "" or d["kind"] == kind):
 				pool.append(id)
-	elif r < 0.35:
+	elif r < decent_odds:
 		grade = "decent"
 		var top := 300 + progress() * 80
 		for id in ALL_PARTS:
 			var d: Dictionary = PARTS[id]
-			if d["shop"] and d["cost"] > 0 and d["cost"] <= top and not UNDAMAGEABLE.has(d["kind"]):
+			if d["shop"] and d["cost"] > 0 and d["cost"] <= top and not UNDAMAGEABLE.has(d["kind"]) and (kind == "" or d["kind"] == kind):
 				pool.append(id)
 	if pool.is_empty():
 		grade = "junk"
-		for kind in STARTER_OPTIONS:
-			pool += STARTER_OPTIONS[kind]
+		for k in STARTER_OPTIONS:
+			if kind == "" or k == kind:
+				pool += STARTER_OPTIONS[k]
 	var id: String = pool[randi() % pool.size()]
 	var dug_uid := add_part(id, randf_range(0.15, 0.5))
 	inst(dug_uid)["dug"] = true   # shown on the Scrapyard screen; fight salvage only goes to Storage
@@ -1992,7 +2000,12 @@ func record_result(won: bool, part_hp: Dictionary, destroyed: int, salvage_ids: 
 	var o := current_opponent()
 	var base: int = current_reward()
 	var reward: int = base if won else loss_pay(base)
-	var bonus := destroyed * 75
+	# dismantle bonus: every part you tore off pays $50, plus a tenth of what that part is worth
+	var bonus := 0
+	for sv in salvage_ids:
+		bonus += dismantle_pay(str(sv.get("id", "")))
+	if salvage_ids.is_empty():
+		bonus = destroyed * 50
 	var was_in_debt := money < 0
 	money += reward + bonus
 	fight_log.append({"y": year, "w": week, "opp": str(o.get("name", "?")), "won": won, "mode": fight_mode(), "title": fight_title()})
@@ -2106,6 +2119,11 @@ func record_result(won: bool, part_hp: Dictionary, destroyed: int, salvage_ids: 
 
 
 # ---------------------------------------------------------------- championships (after the story)
+
+## What tearing one part off the other robot pays: $50, plus 10% of the part's price.
+func dismantle_pay(id: String) -> int:
+	return 50 + int(float(part_def(id).get("cost", 0)) * 0.1) if id != "" else 50
+
 
 ## An event is over: medals, prize money, trophies, and what you've qualified for.
 func finish_event(ev: Dictionary) -> String:

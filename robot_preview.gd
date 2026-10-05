@@ -19,7 +19,16 @@ var _sc := 1.0
 ## Garage scenes: the panel turns transparent and the robot stands where the scene wants it
 ## ([x as fraction of width, height as fraction of the panel]). Empty = classic centered preview.
 var spot: Array = []
-var robot_height := 0.0   # how tall the robot is drawn, in pixels (for the people around it)
+var robot_height := 0.0
+## Body damage map shown above the robot (same as in the arena): slot -> health 0..1,
+## or -1 for a slot that should have a part and doesn't. Empty = no map.
+var part_health := {}
+const MAP_BOXES := {
+	"head": Rect2(-7, 0, 14, 12), "head2": Rect2(-19, 2, 10, 10), "torso": Rect2(-10, 14, 20, 22),
+	"arm_front": Rect2(12, 14, 6, 20), "arm_back": Rect2(-18, 14, 6, 20),
+	"arm_front2": Rect2(20, 20, 5, 16), "arm_back2": Rect2(-25, 20, 5, 16),
+	"leg_front": Rect2(1, 38, 7, 18), "leg_back": Rect2(-8, 38, 7, 18),
+}   # how tall the robot is drawn, in pixels (for the people around it)
 
 
 func _ready() -> void:
@@ -63,6 +72,10 @@ func _draw() -> void:
 				var world := Rect2(_base + rect.position * k * Vector2(facing, 1), rect.size * k * Vector2(facing, 1))
 				world = world.abs()
 				draw_rect(world.grow(4.0), Color(1.0, 0.85, 0.2, 0.9 + 0.1 * sin(t * 6.0)), false, 3.0)
+	if not part_health.is_empty():
+		var k := 1.25
+		# top-right corner of the scene, clear of signs, the scoreboard and the people
+		draw_body_map(Vector2(size.x - 36.0 * k, 40.0), k)
 	if interactive and spot.is_empty():   # (the garage says it in its message line instead)
 		draw_string(ThemeDB.fallback_font, Vector2(6, 22), tr("Tap a part"), HORIZONTAL_ALIGNMENT_LEFT, -1, 16, Color(1, 1, 1, 0.45))
 
@@ -87,3 +100,22 @@ func _gui_input(event: InputEvent) -> void:
 				part_tapped.emit(r[0])
 				accept_event()
 				return
+
+
+## Little green body over the robot: green = healthy, red = hurt, dark with a red edge = missing.
+func draw_body_map(at: Vector2, k: float) -> void:
+	var bg := Rect2(at + Vector2(-28, -4) * k, Vector2(56, 64) * k)
+	draw_rect(bg, Color(0, 0, 0, 0.45))
+	for slot in MAP_BOXES:
+		if not part_health.has(slot):
+			continue
+		var r: Rect2 = MAP_BOXES[slot]
+		r = Rect2(at + r.position * k, r.size * k)
+		var h: float = part_health[slot]
+		if h < 0.0:
+			draw_rect(r, Color(0.15, 0.15, 0.17))
+			draw_rect(r, Color(1.0, 0.25, 0.2), false, 1.5)
+			continue
+		var c := Color(0.9, 0.2, 0.15).lerp(Color(0.3, 0.9, 0.35), h) if h < 1.0 else Color(0.3, 0.9, 0.35)
+		draw_rect(r, c)
+

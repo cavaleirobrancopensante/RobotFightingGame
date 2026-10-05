@@ -79,6 +79,28 @@ class Backdrop extends Control:
 		GarageArt.draw_back(self, size, stage, garage.scene, t, info)
 		GarageArt.draw_front(self, stage, garage.scene, t, info, pv._base, pv.robot_height)
 var fight_button: Button
+var body_map: BodyMap
+
+
+## The little green body next to the fight button (same as in the arena): what's hurt, what's missing.
+class BodyMap extends Control:
+	var health := {}
+
+	func _draw() -> void:
+		var k := minf(size.x / 56.0, size.y / 64.0)
+		var at := Vector2(size.x * 0.5, (size.y - 60.0 * k) * 0.5 + 2.0 * k)
+		draw_rect(Rect2(Vector2.ZERO, size), Color(0.1, 0.1, 0.13))
+		for slot in RobotPreview.MAP_BOXES:
+			if not health.has(slot):
+				continue
+			var r: Rect2 = RobotPreview.MAP_BOXES[slot]
+			r = Rect2(at + r.position * k, r.size * k)
+			var h: float = health[slot]
+			if h < 0.0:
+				draw_rect(r, Color(0.15, 0.15, 0.17))
+				draw_rect(r, Color(1.0, 0.25, 0.2), false, 1.5)
+				continue
+			draw_rect(r, Color(0.9, 0.2, 0.15).lerp(Color(0.3, 0.9, 0.35), h) if h < 1.0 else Color(0.3, 0.9, 0.35))
 var scout_button: Button
 var send_button: Button
 var overlay: Control
@@ -199,6 +221,10 @@ func _ready() -> void:
 	bottom.add_child(send_button)
 	scout_button = UI.button("", _on_open_scout, 17, Vector2(150, 48))
 	bottom.add_child(scout_button)
+	body_map = BodyMap.new()
+	body_map.custom_minimum_size = Vector2(48, 56) * UI.SCALE
+	body_map.tooltip_text = "Green = healthy, red = hurt, dark with a red edge = missing."
+	bottom.add_child(body_map)
 	fight_button = UI.button("", _on_fight, 19, Vector2(360, 48))
 	bottom.add_child(fight_button)
 
@@ -332,6 +358,8 @@ func refresh() -> void:
 	scout_button.visible = GameData.scout_key() != "" and GameData.unlocked("scout")
 	scout_button.text = star(tr("Scout report") if GameData.scouted() else tr("Scout $%d") % GameData.scout_cost(), "scout")
 	preview.look = GameData.player_look()
+	body_map.health = body_health()
+	body_map.queue_redraw()
 	set_scene_for_tab()
 	preview.highlight = selected if tab == "Build" else ""
 	refresh_stats()
@@ -545,7 +573,8 @@ func build_overview() -> void:
 		row_button(bar, star(tr("Style: %s") % tr(Catalog.STYLES[GameData.style]["name"]), "style"), _on_open_style, true, 150)
 	row_button(bar, star(tr("Storage (%d)") % GameData.spares().size(), "storage"), _on_slot.bind("storage"), true, 125)
 	if GameData.unlocked("scrapyard"):
-		row_button(bar, star(tr("Scrapyard") + (" •" if GameData.digs_left > 0 else ""), "scrapyard"), _on_slot.bind("scrapyard"), true, 125)
+		# the star comes back after every fight: there's a fresh dig waiting
+		row_button(bar, tr("Scrapyard") + (" ★" if GameData.digs_left > 0 or GameData.is_new("scrapyard") else ""), _on_slot.bind("scrapyard"), true, 125)
 
 	for slot in GameData.SLOTS:
 		if not GameData.slot_available(slot):
@@ -657,10 +686,7 @@ func build_storage() -> void:
 		var row := make_row(part_icon(d, GameData.hp_ratio(p)), tr("%s%s  [%s]") % [d["name"], tag, tr(str(d["kind"]).to_upper())], health_text(p))
 		var fits: Array = GameData.SLOTS.filter(func(sl): return GameData.SLOT_KIND[sl] == d["kind"] and GameData.slot_available(sl))
 		if not fits.is_empty():
-			if fits.size() == 1:
-				row_button(row, "Fit", _on_equip.bind(p["uid"], fits[0]), not wreck, 80)
-			else:
-				row_button(row, "Fit...", _on_fit_choose.bind(p["uid"], fits), not wreck, 80)
+			row_button(row, "Fit", _on_fit_choose.bind(p["uid"], fits), not wreck, 80)
 		var c := GameData.repair_cost(p)
 		if c > 0:
 			row_button(row, ("Rebuild $%d" if wreck else "Fix $%d") % c, _on_repair.bind(p["uid"]), GameData.can_repair(c), 125)
@@ -880,6 +906,21 @@ func _on_controller(id: String) -> void:
 	refresh()
 
 
+## Health of each body part for the little damage map over the robot (-1 = should have one, doesn't).
+func body_health() -> Dictionary:
+	var out := {}
+	for slot in GameData.BODY_SLOTS:
+		if not GameData.slot_available(slot):
+			continue
+		var p := GameData.equipped_inst(slot)
+		if p.is_empty():
+			if slot in ["head", "torso", "arm_front", "arm_back", "leg_front", "leg_back"]:
+				out[slot] = -1.0
+			continue
+		out[slot] = GameData.hp_ratio(p)
+	return out
+
+
 func set_scene_for_tab() -> void:
 	scene = "paint" if paint_open else TAB_SCENES.get(tab, "build")
 	if tab == "Build" and selected == "storage":
@@ -960,11 +1001,19 @@ func build_scrapyard_tab() -> void:
 	nav.add_child(title)
 	row_button(nav, tr("Storage (%d)") % GameData.spares().size(), _on_slot.bind("storage"), true, 125)
 	var bar := action_bar()
-	var info := UI.label(tr("THE SCRAPYARD - a mountain of dead robots. One dig after every fight, one part per dig - %s. Mostly junk, sometimes something good, always beaten up (15-50%% health). Fix it up in the bay.") % ("ready to dig" if GameData.digs_left > 0 else "already dug, come back after your next fight"), 15, Color(1.0, 0.8, 0.4))
+	var info := UI.label(tr("A mountain of dead robots: one dig after every fight, one part per dig, always beaten up (15-50% health). Dig anywhere for the best odds of something good - or dig for the part you need, and take what the pile gives (mostly junk)."), 15, Color(1.0, 0.8, 0.4))
 	info.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	info.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	bar.add_child(info)
-	row_button(bar, tr("Dig!") if GameData.digs_left > 0 else tr("No digging until next fight"), _on_dig, GameData.digs_left > 0, 130 if GameData.digs_left > 0 else 270)
+	if GameData.digs_left <= 0:
+		row_button(bar, tr("No digging until next fight"), _on_dig.bind(""), false, 270)
+	else:
+		row_button(bar, tr("Dig anywhere"), _on_dig.bind(""), true, 150)
+		var kinds := action_bar()
+		kinds.add_child(UI.label(tr("Dig for:"), 16, Color(1.0, 0.8, 0.4)))
+		for k in ["head", "torso", "arm", "leg"]:
+			var b := row_button(kinds, tr({"head": "Head", "torso": "Torso", "arm": "Arm", "leg": "Leg"}[k]), _on_dig.bind(k), true, 0)
+			b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	# what the pile has given you so far (spare parts that still need fixing)
 	var finds: Array = GameData.spares().filter(func(p): return p.get("dug", false))
 	if not finds.is_empty():
@@ -994,8 +1043,8 @@ func _on_emergency_junk(slot: String) -> void:
 	refresh()
 
 
-func _on_dig() -> void:
-	var res := GameData.dig_scrap()
+func _on_dig(kind: String = "") -> void:
+	var res := GameData.dig_scrap(kind)
 	dig_at = Time.get_ticks_msec() / 1000.0
 	dig_found = tr("Found something!") if res["part"] != "" else ""
 	say(res["text"], "break" if res["part"] != "" else "land")
@@ -1819,14 +1868,24 @@ func _on_buy(id: String) -> void:
 	refresh()
 
 
-## A part that fits more than one slot (arms, legs, heads): pick where it goes.
+## Fit a part from storage: compare it with what's on the robot now, slot by slot, then pick.
 func _on_fit_choose(uid: int, slots: Array) -> void:
-	var d := GameData.part_def(GameData.inst(uid)["id"])
+	var p := GameData.inst(uid)
+	var d := GameData.part_def(p["id"])
 	var col := open_popup(tr("FIT %s") % str(d["name"]).to_upper())
+	col.custom_minimum_size = Vector2(720, 0)
+	col.add_child(UI.label(tr("GOING ON:"), 15, Color(0.5, 1.0, 0.6)))
+	make_row(part_icon(d, GameData.hp_ratio(p)), tr("%s  [%s]") % [d["name"], tr(str(d["kind"]).to_upper())], health_text(p), col)
+	col.add_child(UI.label(tr("COMING OFF:") if slots.size() == 1 else tr("COMING OFF - pick the slot:"), 15, Color(1.0, 0.7, 0.4)))
 	for sl in slots:
 		var cur := GameData.equipped_inst(sl)
-		var now: String = tr("empty") if cur.is_empty() else str(GameData.part_def(cur["id"])["name"])
-		col.add_child(UI.button(tr("%s  (now: %s)") % [tr(GameData.SLOT_NAMES[sl]), now], _on_fit_pick.bind(uid, sl), 17, Vector2(0, 48)))
+		var row: HBoxContainer
+		if cur.is_empty():
+			row = make_row(part_icon({}), tr("%s: empty") % tr(GameData.SLOT_NAMES[sl]), tr("Nothing there now."), col)
+		else:
+			var cd := GameData.part_def(cur["id"])
+			row = make_row(part_icon(cd, GameData.hp_ratio(cur)), tr("%s: %s") % [tr(GameData.SLOT_NAMES[sl]), cd["name"]], health_text(cur), col)
+		row_button(row, "Fit here", _on_fit_pick.bind(uid, sl), true, 110)
 
 
 func _on_fit_pick(uid: int, slot: String) -> void:
@@ -2004,7 +2063,57 @@ func _on_send() -> void:
 	refresh()
 
 
+## What's wrong with the robot before a fight: missing limbs, a hurt core, parts hanging off.
+func damage_report() -> Array:
+	var out: Array = []
+	if GameData.sending >= 0 and not GameData.is_team_fight():
+		return out   # the backup robot fights this one
+	for slot in ["head", "torso", "arm_front", "arm_back", "leg_front", "leg_back"]:
+		var p := GameData.equipped_inst(slot)
+		var name: String = tr(GameData.SLOT_NAMES[slot])
+		if p.is_empty():
+			out.append(tr("No %s fitted!") % name.to_lower())
+			continue
+		var h := GameData.hp_ratio(p)
+		if (slot == "torso" and h < 0.75) or h < 0.5:
+			out.append(tr("%s at %d%% health") % [name, int(h * 100)])
+	return out
+
+
 func _on_fight() -> void:
+	var issues := damage_report()
+	if not issues.is_empty():
+		var col := open_popup(tr("YOUR ROBOT IS DAMAGED"))
+		for line in issues:
+			col.add_child(UI.label("• " + str(line), 18, Color(1.0, 0.55, 0.45)))
+		var hint := UI.label(tr("GUS: Fight like this and it's going to hurt. Your call, kid."), 15, Color(0.95, 0.75, 0.45))
+		hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		col.add_child(hint)
+		var row := HBoxContainer.new()
+		row.add_theme_constant_override("separation", 10)
+		col.add_child(row)
+		var cost := GameData.repair_all_cost()
+		if cost > 0 and GameData.can_repair(cost):
+			var rb := UI.button(tr("Repair all $%d") % cost, _on_repair_then_close, 17, Vector2(0, 50))
+			rb.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			row.add_child(rb)
+		var back := UI.button("Back to the bay", close_popup, 17, Vector2(0, 50))
+		back.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		row.add_child(back)
+		var go := UI.button("Fight anyway", _start_fight, 17, Vector2(0, 50))
+		go.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		row.add_child(go)
+		return
+	_start_fight()
+
+
+func _on_repair_then_close() -> void:
+	close_popup()
+	_on_repair_all()
+
+
+func _start_fight() -> void:
+	close_popup()
 	GameData.save_game()
 	var idx := GameData.current_opponent_index()
 	if idx >= 0 and GameData.queue_story("pre_%d" % idx, "res://fight.tscn"):

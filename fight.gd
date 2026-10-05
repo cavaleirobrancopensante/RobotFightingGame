@@ -520,7 +520,8 @@ func _input(event: InputEvent) -> void:
 		match event.physical_keycode:
 			KEY_ENTER, KEY_SPACE:
 				tap_pending = true
-				tut_pause = false
+				if Time.get_ticks_msec() - tut_pause_at > TUT_GRACE_MS:
+					tut_pause = false
 			KEY_ESCAPE:
 				if phase == "intro" or phase == "fight":
 					quit_fight()
@@ -531,7 +532,9 @@ func _input(event: InputEvent) -> void:
 ## Quit, moves list and aiming. Returns true if the tap was used.
 func handle_tap(p: Vector2) -> bool:
 	if tut_pause:
-		tut_pause = false   # read it: back to the fight
+		# a tap that was meant for the fight (you were mashing PUNCH) mustn't skip Gus unread
+		if Time.get_ticks_msec() - tut_pause_at > TUT_GRACE_MS:
+			tut_pause = false   # read it: back to the fight
 		return true
 	if paused:
 		toggle_pause()
@@ -2505,8 +2508,9 @@ func _draw() -> void:
 	if tut_pause:
 		draw_rect(Rect2(Vector2.ZERO, screen), Color(0, 0, 0, 0.55))
 		draw_coach()
-		draw_string(font, Vector2(0, screen.y * 0.62), tr("Tap to continue"), HORIZONTAL_ALIGNMENT_CENTER, screen.x, fs(26),
-				Color(1, 1, 1, 0.6 + 0.4 * sin(Time.get_ticks_msec() / 200.0)))
+		if Time.get_ticks_msec() - tut_pause_at > TUT_GRACE_MS:
+			draw_string(font, Vector2(0, screen.y * 0.62), tr("Tap to continue"), HORIZONTAL_ALIGNMENT_CENTER, screen.x, fs(26),
+					Color(1, 1, 1, 0.6 + 0.4 * sin(Time.get_ticks_msec() / 200.0)))
 
 
 ## The arena lives on its own layer behind the fighters and is redrawn ~24 times a second
@@ -3300,6 +3304,8 @@ func draw_pilot_bubble(pd: Dictionary, anchor: Vector2) -> void:
 const TUTORIAL_PAUSES := 4
 var tut_pause := false
 var tut_pauses := 0
+var tut_pause_at := 0   # msec when the pause began: taps in the first moments don't count
+const TUT_GRACE_MS := 1500
 
 var coach_queue: Array = []
 var coach_text := ""
@@ -3378,7 +3384,9 @@ func coach_shown() -> void:
 	if first_fight() and phase == "fight" and tut_pauses < TUTORIAL_PAUSES:
 		tut_pauses += 1
 		tut_pause = true
+		tut_pause_at = Time.get_ticks_msec()
 		touches.clear()
+		held_buttons = {}
 
 
 func coach_level() -> int:
