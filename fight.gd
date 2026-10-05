@@ -1,18 +1,20 @@
 extends Node2D
-## Robot Fighting Game - first playable prototype.
-## A simple Mortal Kombat-style 1v1: you vs a CPU robot.
-## Everything (robots, arena, buttons) is drawn in code, so no art is needed yet.
+## Championship fight: your robot vs the current opponent, best of 3 rounds.
+## Everything (robots, arena, buttons) is drawn in code.
 ##
 ## Touch controls (phone):  left pad = < > move, ^ jump, v crouch
 ##                          right pad = P punch, K kick, B block (hold)
-## Keyboard (PC):           A/D move, W jump, S crouch, J punch, K kick, L block
+## Keyboard (PC):           A/D move, W jump, S crouch, J punch, K kick, L block, Esc quit
 ## Crouch + P = uppercut (launches), Crouch + K = sweep (low, must crouch-block)
 ## Crouching ducks under punches.
 
 const GRAVITY := 2200.0
 const WALK_SPEED := 260.0
 const JUMP_SPEED := 860.0
-const ROUND_INTRO := 1.0
+const ROUNDS_TO_WIN := 2
+const BUTTON_SCALES := [0.8, 1.0, 1.25]
+const DIFF_THINK := [1.4, 1.0, 0.7]
+const DIFF_BLOCK := [0.7, 1.0, 1.25]
 
 # Attack data. height: "high" misses crouching targets, "low" must be blocked crouching.
 const ATTACKS := {
@@ -28,41 +30,50 @@ class Fighter:
 	var pos := Vector2.ZERO
 	var vel := Vector2.ZERO
 	var facing := 1
+	var max_hp := 100.0
 	var hp := 100.0
+	var dmg_mult := 1.0
+	var spd_mult := 1.0
+	var look := {}
+	var rounds := 0
 	var state := "idle"   # idle, walk, jump, hit, ko, or an attack name
 	var timer := 0.0
 	var hit_done := false
 	var flash := 0.0
-	var body := Color.WHITE
-	var trim := Color.WHITE
-	var eye := Color.RED
 	var crouching := false
 	var blocking := false
 	var on_ground := true
 	var walk_phase := 0.0
+	var step_timer := 0.0
 
 
 var player: Fighter
 var cpu: Fighter
+var opp: Dictionary
 var screen := Vector2(1152, 648)
 var floor_y := 420.0
 var font: Font
 
 var touches := {}          # touch index -> position
 var buttons: Array = []    # on-screen buttons
-var held_buttons := {}     # which buttons are held this frame (for highlighting)
+var held_buttons := {}
 var prev_punch := false
 var prev_kick := false
 var tap_pending := false
+var quit_rect := Rect2()
 
 var ai_timer := 0.0
 var ai_plan := {}
+var ai_think := 0.4
+var ai_block := 0.2
 
-var round_over := false
-var round_timer := 0.0
-var winner_text := ""
-var player_wins := 0
-var cpu_wins := 0
+var phase := "intro"   # intro, fight, ko, results
+var phase_timer := 0.0
+var round_num := 1
+var ko_text := ""
+var won := false
+var reward := 0
+var fight_called := false
 
 var shake := 0.0
 var sparks: Array = []
@@ -71,7 +82,27 @@ var sparks: Array = []
 func _ready() -> void:
 	font = ThemeDB.fallback_font
 	layout()
-	new_round()
+	var s := GameData.stats()
+	opp = GameData.current_opponent()
+
+	player = Fighter.new()
+	player.label = "YOU"
+	player.max_hp = s["max_hp"]
+	player.dmg_mult = s["damage"] / 100.0
+	player.spd_mult = s["speed"] / 100.0
+	player.look = GameData.look()
+
+	cpu = Fighter.new()
+	cpu.label = opp["name"]
+	cpu.max_hp = opp["hp"]
+	cpu.dmg_mult = opp["damage"]
+	cpu.spd_mult = opp["speed"]
+	cpu.look = GameData.opponent_look(GameData.fight_index)
+
+	var diff: int = GameData.settings["difficulty"]
+	ai_think = opp["think"] * DIFF_THINK[diff]
+	ai_block = minf(0.85, opp["block"] * DIFF_BLOCK[diff])
+	start_round()
 
 
 func layout() -> void:
@@ -79,7 +110,7 @@ func layout() -> void:
 	floor_y = screen.y * 0.66
 	var h := screen.y
 	var w := screen.x
-	var r := clampf(h * 0.085, 34.0, 60.0)
+	var r: float = clampf(h * 0.085, 34.0, 60.0) * BUTTON_SCALES[GameData.settings["button_size"]]
 	var lc := Vector2(r * 2.6, h - r * 2.4)
 	buttons = [
 		{"name": "left",  "pos": lc + Vector2(-r * 1.6, 0), "r": r, "label": "<"},
@@ -90,28 +121,30 @@ func layout() -> void:
 		{"name": "kick",  "pos": Vector2(w - r * 1.8, h - r * 2.2), "r": r, "label": "K"},
 		{"name": "block", "pos": Vector2(w - r * 3.4, h - r * 3.9), "r": r, "label": "B"},
 	]
+	quit_rect = Rect2(w * 0.5 - 60.0, h * 0.04 + 40.0, 120.0, 40.0)
 
 
-func make_fighter(label: String, x: float, body: Color, trim: Color, eye: Color) -> Fighter:
-	var f := Fighter.new()
-	f.label = label
-	f.pos = Vector2(x, floor_y)
-	f.body = body
-	f.trim = trim
-	f.eye = eye
-	return f
-
-
-func new_round() -> void:
-	player = make_fighter("IRONCLAD", screen.x * 0.3, Color(0.25, 0.45, 0.85), Color(0.85, 0.85, 0.9), Color(0.3, 1.0, 1.0))
-	cpu = make_fighter("RUSTBUCKET", screen.x * 0.7, Color(0.75, 0.35, 0.15), Color(0.35, 0.3, 0.3), Color(1.0, 0.2, 0.1))
+func start_round() -> void:
+	for f in [player, cpu]:
+		f.hp = f.max_hp
+		f.vel = Vector2.ZERO
+		f.state = "idle"
+		f.timer = 0.0
+		f.flash = 0.0
+		f.crouching = false
+		f.blocking = false
+		f.on_ground = true
+	player.pos = Vector2(screen.x * 0.3, floor_y)
+	cpu.pos = Vector2(screen.x * 0.7, floor_y)
+	player.facing = 1
 	cpu.facing = -1
-	round_over = false
-	round_timer = 0.0
-	winner_text = ""
+	phase = "intro"
+	phase_timer = 0.0
+	fight_called = false
 	sparks.clear()
 	ai_plan = {}
 	ai_timer = 0.5
+	Sfx.play("round")
 
 
 # ---------------------------------------------------------------- input
@@ -119,6 +152,9 @@ func new_round() -> void:
 func _input(event: InputEvent) -> void:
 	if event is InputEventScreenTouch:
 		if event.pressed:
+			if quit_rect.has_point(event.position) and (phase == "intro" or phase == "fight"):
+				quit_fight()
+				return
 			touches[event.index] = event.position
 			tap_pending = true
 		else:
@@ -128,6 +164,8 @@ func _input(event: InputEvent) -> void:
 	elif event is InputEventKey and event.pressed and not event.echo:
 		if event.physical_keycode == KEY_ENTER or event.physical_keycode == KEY_SPACE:
 			tap_pending = true
+		elif event.physical_keycode == KEY_ESCAPE and (phase == "intro" or phase == "fight"):
+			quit_fight()
 
 
 func empty_input() -> Dictionary:
@@ -165,7 +203,7 @@ func read_player_input() -> Dictionary:
 
 func read_ai_input(delta: float) -> Dictionary:
 	var i := empty_input()
-	if round_over:
+	if phase != "fight":
 		return i
 	ai_timer -= delta
 	var dx := player.pos.x - cpu.pos.x
@@ -174,9 +212,9 @@ func read_ai_input(delta: float) -> Dictionary:
 	var away := "left" if dx > 0 else "right"
 
 	if ai_timer <= 0.0:
-		ai_timer = randf_range(0.18, 0.45)
+		ai_timer = randf_range(ai_think * 0.5, ai_think)
 		var r := randf()
-		if ATTACKS.has(player.state) and dist < 140.0 and r < 0.45:
+		if ATTACKS.has(player.state) and dist < 150.0 and randf() < ai_block:
 			ai_plan = {"hold": ["block"]}
 		elif dist > 120.0:
 			ai_plan = {"hold": [toward]}
@@ -208,28 +246,59 @@ func read_ai_input(delta: float) -> Dictionary:
 
 func _process(delta: float) -> void:
 	layout()
-	round_timer += delta
+	phase_timer += delta
 
 	var p_in := read_player_input()
 	var c_in := read_ai_input(delta)
-	if round_timer < ROUND_INTRO and not round_over:
+	if phase != "fight":
 		p_in = empty_input()
 		c_in = empty_input()
+
+	if phase == "intro":
+		if phase_timer >= 0.9 and not fight_called:
+			fight_called = true
+			Sfx.play("fight")
+		if phase_timer >= 1.6:
+			phase = "fight"
+			phase_timer = 0.0
 
 	update_fighter(player, cpu, p_in, delta)
 	update_fighter(cpu, player, c_in, delta)
 	separate()
 
-	if round_over and round_timer > 1.5 and tap_pending:
-		new_round()
+	if phase == "ko" and phase_timer > 1.8 and tap_pending:
+		after_ko()
+	elif phase == "results" and phase_timer > 1.0 and tap_pending:
+		Sfx.play("click")
+		get_tree().change_scene_to_file("res://garage.tscn")
 	tap_pending = false
 
 	shake = maxf(0.0, shake - delta * 30.0)
+	if not GameData.settings["shake"]:
+		shake = 0.0
 	for s in sparks:
 		s["t"] += delta
 	sparks = sparks.filter(func(s): return s["t"] < 0.25)
 
 	queue_redraw()
+
+
+func after_ko() -> void:
+	if player.rounds >= ROUNDS_TO_WIN or cpu.rounds >= ROUNDS_TO_WIN:
+		won = player.rounds >= ROUNDS_TO_WIN
+		reward = GameData.record_result(won)
+		phase = "results"
+		phase_timer = 0.0
+		Sfx.play("victory" if won else "defeat")
+	else:
+		round_num += 1
+		start_round()
+
+
+func quit_fight() -> void:
+	Sfx.play("error")
+	GameData.last_result = {"quit": true, "opponent": opp["name"]}
+	get_tree().change_scene_to_file("res://garage.tscn")
 
 
 func start_attack(f: Fighter, attack: String) -> void:
@@ -238,6 +307,7 @@ func start_attack(f: Fighter, attack: String) -> void:
 	f.hit_done = false
 	f.blocking = false
 	f.crouching = attack == "sweep"
+	Sfx.play("uppercut" if attack == "uppercut" else "swing", 0.15)
 
 
 func update_fighter(f: Fighter, o: Fighter, i: Dictionary, delta: float) -> void:
@@ -252,7 +322,7 @@ func update_fighter(f: Fighter, o: Fighter, i: Dictionary, delta: float) -> void
 			f.state = "idle"
 	elif ATTACKS.has(f.state):
 		var a: Dictionary = ATTACKS[f.state]
-		f.timer += delta
+		f.timer += delta * f.spd_mult
 		if f.on_ground:
 			f.vel.x = 0.0
 		if not f.hit_done and f.timer >= a["startup"] and f.timer <= a["startup"] + a["active"]:
@@ -273,14 +343,19 @@ func update_fighter(f: Fighter, o: Fighter, i: Dictionary, delta: float) -> void
 			var dir := 0
 			if not f.crouching and not f.blocking:
 				dir = int(i["right"]) - int(i["left"])
-			f.vel.x = dir * WALK_SPEED
+			f.vel.x = dir * WALK_SPEED * f.spd_mult
 			f.state = "walk" if dir != 0 else "idle"
 			if dir != 0:
-				f.walk_phase += delta * 12.0
+				f.walk_phase += delta * 12.0 * f.spd_mult
+				f.step_timer -= delta
+				if f.step_timer <= 0.0:
+					f.step_timer = 0.28
+					Sfx.play("step", 0.2, -10.0)
 			if i["up"] and not f.crouching and not f.blocking:
 				f.vel.y = -JUMP_SPEED
 				f.on_ground = false
 				f.state = "jump"
+				Sfx.play("jump", 0.1)
 
 	# physics
 	f.vel.y += GRAVITY * delta
@@ -288,8 +363,10 @@ func update_fighter(f: Fighter, o: Fighter, i: Dictionary, delta: float) -> void
 	if f.pos.y >= floor_y:
 		f.pos.y = floor_y
 		f.vel.y = 0.0
-		if not f.on_ground and f.state == "jump":
-			f.state = "idle"
+		if not f.on_ground:
+			Sfx.play("land", 0.15, -6.0)
+			if f.state == "jump":
+				f.state = "idle"
 		f.on_ground = true
 	else:
 		f.on_ground = false
@@ -316,14 +393,16 @@ func try_hit(att: Fighter, d: Fighter, a: Dictionary) -> void:
 	elif a["height"] == "low":
 		spark_y = 15.0
 	var spark_pos := Vector2(att.pos.x + att.facing * minf(dx, a["reach"]), att.pos.y - spark_y)
+	var dmg: float = a["damage"] * att.dmg_mult
 
 	var blocked: bool = d.blocking and (a["height"] != "low" or d.crouching)
 	if blocked:
-		d.hp -= a["damage"] * 0.1
+		d.hp -= dmg * 0.1
 		d.pos.x += att.facing * 25.0
 		add_spark(spark_pos, Color(0.7, 0.85, 1.0), 18.0)
+		Sfx.play("block", 0.15)
 	else:
-		d.hp -= a["damage"]
+		d.hp -= dmg
 		d.state = "hit"
 		d.timer = a["stun"]
 		d.flash = 0.12
@@ -335,20 +414,19 @@ func try_hit(att: Fighter, d: Fighter, a: Dictionary) -> void:
 			d.on_ground = false
 		shake = maxf(shake, 8.0)
 		add_spark(spark_pos, Color(1.0, 0.85, 0.3), 30.0)
+		Sfx.play("hit_big" if dmg >= 12.0 else "hit", 0.15)
 
 	if d.hp <= 0.0:
 		d.hp = 0.0
 		d.state = "ko"
 		d.vel = Vector2(att.facing * 400.0, -500.0)
 		d.on_ground = false
-		round_over = true
-		round_timer = 0.0
-		winner_text = "%s WINS" % att.label
-		if att == player:
-			player_wins += 1
-		else:
-			cpu_wins += 1
+		att.rounds += 1
+		phase = "ko"
+		phase_timer = 0.0
+		ko_text = "YOU WIN THE ROUND" if att == player else "%s WINS THE ROUND" % att.label
 		shake = 14.0
+		Sfx.play("ko")
 
 
 func separate() -> void:
@@ -374,15 +452,15 @@ func _draw() -> void:
 	# arena
 	draw_rect(Rect2(Vector2.ZERO, screen), Color(0.07, 0.07, 0.11))
 	for k in range(14):
-		draw_circle(Vector2(screen.x * (k + 0.5) / 14.0, screen.y * 0.2), 5.0, Color(1.0, 0.9, 0.6, 0.45))
+		draw_circle(Vector2(screen.x * (k + 0.5) / 14.0, screen.y * 0.22), 5.0, Color(1.0, 0.9, 0.6, 0.45))
 	draw_rect(Rect2(Vector2(0, floor_y) + off, Vector2(screen.x, screen.y - floor_y + 20.0)), Color(0.17, 0.17, 0.21))
 	draw_line(Vector2(0, floor_y) + off, Vector2(screen.x, floor_y) + off, Color(0.55, 0.55, 0.65), 3.0)
 	for k in range(3):
 		var y := floor_y - 70.0 - k * 45.0
 		draw_line(Vector2(0, y) + off, Vector2(screen.x, y) + off, Color(0.65, 0.1, 0.1, 0.55), 3.0)
 
-	draw_robot(cpu, off)
-	draw_robot(player, off)
+	draw_fighter(cpu, off)
+	draw_fighter(player, off)
 
 	for s in sparks:
 		var t: float = s["t"] / 0.25
@@ -391,13 +469,15 @@ func _draw() -> void:
 		draw_circle(s["pos"] + off, s["size"] * (0.4 + t), c)
 
 	draw_hud()
-	draw_buttons()
+	if phase == "intro" or phase == "fight":
+		draw_buttons()
 
 
-func draw_robot(f: Fighter, off: Vector2) -> void:
+func draw_fighter(f: Fighter, off: Vector2) -> void:
 	# shadow
 	draw_set_transform(Vector2(f.pos.x, floor_y) + off, 0.0, Vector2(1.0, 0.22))
 	draw_circle(Vector2.ZERO, 42.0, Color(0, 0, 0, 0.35))
+	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
 	var base := f.pos + off
 	var rot := 0.0
@@ -407,105 +487,71 @@ func draw_robot(f: Fighter, off: Vector2) -> void:
 			base.y -= 18.0
 		else:
 			rot = -f.facing * PI / 4.0
-	var sy := 0.68 if f.crouching else 1.0
-	draw_set_transform(base, rot, Vector2(f.facing, sy))
-
-	var body := f.body
-	var trim := f.trim
-	var eye := f.eye
-	if f.flash > 0.0:
-		body = Color.WHITE
-		trim = Color.WHITE
-	var dark := body.darkened(0.35)
-	var mid := body.darkened(0.15)
 
 	var extended := false
 	if ATTACKS.has(f.state):
 		var a: Dictionary = ATTACKS[f.state]
 		extended = f.timer >= a["startup"] * 0.6 and f.timer <= a["startup"] + a["active"] + a["recovery"] * 0.5
-	var swing := sin(f.walk_phase) * 10.0 if f.state == "walk" else 0.0
 
-	# back arm
-	if f.blocking:
-		draw_rect(Rect2(2, -152, 14, 48), dark)
-	else:
-		draw_rect(Rect2(-14, -126, 14, 44), dark)
-
-	# back leg
-	draw_rect(Rect2(-22 - swing, -60, 16, 60), dark)
-	draw_rect(Rect2(-26 - swing, -8, 26, 8), trim.darkened(0.3))
-
-	# torso
-	draw_rect(Rect2(-28, -134, 56, 76), body)
-	draw_rect(Rect2(-28, -70, 56, 10), trim)
-	draw_rect(Rect2(-32, -136, 64, 12), trim)
-	draw_circle(Vector2(6, -106), 8.0, eye)
-
-	# front leg
-	if f.state == "kick" and extended:
-		draw_rect(Rect2(8, -88, 92, 18), mid)
-		draw_rect(Rect2(94, -98, 14, 32), trim)
-	elif f.state == "sweep" and extended:
-		draw_rect(Rect2(8, -22, 100, 18), mid)
-		draw_rect(Rect2(102, -30, 14, 30), trim)
-	else:
-		draw_rect(Rect2(6 + swing, -60, 16, 60), mid)
-		draw_rect(Rect2(4 + swing, -8, 26, 8), trim)
-
-	# head
-	draw_rect(Rect2(-6, -144, 12, 10), dark)
-	draw_rect(Rect2(-18, -176, 38, 34), body)
-	draw_rect(Rect2(4, -164, 16, 7), eye)
-	draw_line(Vector2(-8, -176), Vector2(-12, -190), trim, 3.0)
-	draw_circle(Vector2(-12, -191), 3.0, eye)
-
-	# front arm
-	var arm := body.lightened(0.1)
-	if f.state == "punch" and extended:
-		draw_rect(Rect2(8, -128, 80, 16), arm)
-		draw_circle(Vector2(92, -120), 13.0, trim)
-	elif f.state == "uppercut" and extended:
-		draw_rect(Rect2(12, -200, 16, 76), arm)
-		draw_circle(Vector2(20, -204), 13.0, trim)
-	elif f.blocking:
-		draw_rect(Rect2(14, -160, 16, 56), arm)
-		draw_circle(Vector2(22, -162), 11.0, trim)
-	elif f.state == "hit" or f.state == "ko":
-		draw_rect(Rect2(6, -124, 14, 48), arm)
-		draw_circle(Vector2(13, -74), 10.0, trim)
-	else:
-		draw_rect(Rect2(10, -128, 14, 30), arm)
-		draw_rect(Rect2(10, -110, 36, 14), arm)
-		draw_circle(Vector2(48, -103), 11.0, trim)
-
-	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+	RobotArt.draw(self, base, f.look, {
+		"facing": f.facing, "state": f.state, "extended": extended,
+		"swing": sin(f.walk_phase) * 10.0 if f.state == "walk" else 0.0,
+		"crouch": f.crouching, "blocking": f.blocking, "flash": f.flash > 0.0, "rot": rot,
+	})
 
 
 func draw_hud() -> void:
-	var w := screen.x * 0.38
+	var w := screen.x * 0.36
 	var y := screen.y * 0.04
 	var bh := 24.0
 	# player bar (fills left to right)
 	draw_rect(Rect2(30, y, w, bh), Color(0.35, 0.05, 0.05))
-	draw_rect(Rect2(30, y, w * player.hp / 100.0, bh), Color(0.95, 0.85, 0.2))
+	draw_rect(Rect2(30, y, w * player.hp / player.max_hp, bh), Color(0.95, 0.85, 0.2))
 	draw_rect(Rect2(30, y, w, bh), Color.WHITE, false, 2.0)
 	# cpu bar (fills right to left)
 	var cx := screen.x - 30.0 - w
-	var cw := w * cpu.hp / 100.0
+	var cw := w * cpu.hp / cpu.max_hp
 	draw_rect(Rect2(cx, y, w, bh), Color(0.35, 0.05, 0.05))
 	draw_rect(Rect2(cx + w - cw, y, cw, bh), Color(0.95, 0.85, 0.2))
 	draw_rect(Rect2(cx, y, w, bh), Color.WHITE, false, 2.0)
 
-	draw_string(font, Vector2(30, y + bh + 26), "%s  (%d)" % [player.label, player_wins], HORIZONTAL_ALIGNMENT_LEFT, -1, 22, Color.WHITE)
-	draw_string(font, Vector2(cx, y + bh + 26), "(%d)  %s" % [cpu_wins, cpu.label], HORIZONTAL_ALIGNMENT_RIGHT, w, 22, Color.WHITE)
+	draw_string(font, Vector2(30, y + bh + 26), player.label, HORIZONTAL_ALIGNMENT_LEFT, -1, 22, Color.WHITE)
+	draw_string(font, Vector2(cx, y + bh + 26), cpu.label, HORIZONTAL_ALIGNMENT_RIGHT, w, 22, Color.WHITE)
+	# round win pips
+	for k in ROUNDS_TO_WIN:
+		var pc := Color(1.0, 0.8, 0.2) if player.rounds > k else Color(1, 1, 1, 0.2)
+		draw_circle(Vector2(30 + w - 12 - k * 26, y + bh + 18), 8.0, pc)
+		var cc := Color(1.0, 0.8, 0.2) if cpu.rounds > k else Color(1, 1, 1, 0.2)
+		draw_circle(Vector2(cx + 12 + k * 26, y + bh + 18), 8.0, cc)
 
-	if not round_over and round_timer < ROUND_INTRO:
-		draw_string(font, Vector2(0, screen.y * 0.4), "FIGHT!", HORIZONTAL_ALIGNMENT_CENTER, screen.x, 80, Color(1.0, 0.3, 0.2))
-	if round_over:
-		draw_string(font, Vector2(0, screen.y * 0.35), "K.O.", HORIZONTAL_ALIGNMENT_CENTER, screen.x, 96, Color(1.0, 0.2, 0.1))
-		draw_string(font, Vector2(0, screen.y * 0.35 + 60), winner_text, HORIZONTAL_ALIGNMENT_CENTER, screen.x, 40, Color.WHITE)
-		if round_timer > 1.5:
-			draw_string(font, Vector2(0, screen.y * 0.35 + 105), "Tap to fight again", HORIZONTAL_ALIGNMENT_CENTER, screen.x, 28, Color(0.8, 0.8, 0.8))
+	# fight number + quit button
+	draw_string(font, Vector2(0, y + 20), "FIGHT %d/%d" % [GameData.fight_index + 1, GameData.OPPONENTS.size()],
+			HORIZONTAL_ALIGNMENT_CENTER, screen.x, 22, Color(0.8, 0.8, 0.85))
+	if phase == "intro" or phase == "fight":
+		draw_rect(quit_rect, Color(1, 1, 1, 0.1))
+		draw_rect(quit_rect, Color(1, 1, 1, 0.4), false, 2.0)
+		draw_string(font, quit_rect.position + Vector2(0, 28), "QUIT", HORIZONTAL_ALIGNMENT_CENTER, quit_rect.size.x, 20, Color(1, 1, 1, 0.7))
+
+	var cy := screen.y * 0.4
+	match phase:
+		"intro":
+			var t := "ROUND %d" % round_num if phase_timer < 0.9 else "FIGHT!"
+			draw_string(font, Vector2(0, cy), t, HORIZONTAL_ALIGNMENT_CENTER, screen.x, 80, Color(1.0, 0.3, 0.2))
+		"ko":
+			draw_string(font, Vector2(0, cy), "K.O.", HORIZONTAL_ALIGNMENT_CENTER, screen.x, 96, Color(1.0, 0.2, 0.1))
+			draw_string(font, Vector2(0, cy + 55), ko_text, HORIZONTAL_ALIGNMENT_CENTER, screen.x, 36, Color.WHITE)
+			if phase_timer > 1.8:
+				draw_string(font, Vector2(0, cy + 100), "Tap to continue", HORIZONTAL_ALIGNMENT_CENTER, screen.x, 28, Color(0.8, 0.8, 0.8))
+		"results":
+			draw_rect(Rect2(Vector2.ZERO, screen), Color(0, 0, 0, 0.55))
+			var title := "VICTORY!" if won else "DEFEAT"
+			var tc := Color(1.0, 0.85, 0.2) if won else Color(0.9, 0.3, 0.3)
+			draw_string(font, Vector2(0, cy), title, HORIZONTAL_ALIGNMENT_CENTER, screen.x, 96, tc)
+			draw_string(font, Vector2(0, cy + 60), "+$%d" % reward, HORIZONTAL_ALIGNMENT_CENTER, screen.x, 44, Color(0.95, 0.85, 0.2))
+			if GameData.champion and won:
+				draw_string(font, Vector2(0, cy + 110), "YOU ARE THE CHAMPION!", HORIZONTAL_ALIGNMENT_CENTER, screen.x, 40, Color(1.0, 0.5, 0.2))
+			if phase_timer > 1.0:
+				draw_string(font, Vector2(0, cy + 160), "Tap to return to the garage", HORIZONTAL_ALIGNMENT_CENTER, screen.x, 28, Color(0.8, 0.8, 0.8))
 
 
 func draw_buttons() -> void:
