@@ -45,13 +45,13 @@ const WEAK_BONUS := 0.15      # extra damage on the part the scanner marks as we
 const GADGET_KEYS := [KEY_U, KEY_I, KEY_O]
 
 const ATTACKS := {
-	"punch":    {"startup": 0.07, "active": 0.10, "recovery": 0.16, "reach": 82.0,  "damage": 7.0,  "height": "high", "stun": 0.22, "limb": "arm", "zone": "punch"},
-	"kick":     {"startup": 0.14, "active": 0.10, "recovery": 0.26, "reach": 100.0, "damage": 10.0, "height": "mid",  "stun": 0.28, "limb": "leg", "zone": "kick"},
-	"uppercut": {"startup": 0.12, "active": 0.10, "recovery": 0.35, "reach": 72.0,  "damage": 13.0, "height": "mid",  "stun": 0.50, "limb": "arm", "zone": "uppercut", "launch": -700.0},
-	"sweep":    {"startup": 0.12, "active": 0.12, "recovery": 0.30, "reach": 105.0, "damage": 8.0,  "height": "low",  "stun": 0.35, "limb": "leg", "zone": "sweep"},
+	"punch":    {"startup": 0.07, "active": 0.10, "recovery": 0.16, "reach": 82.0,  "damage": 7.0,  "height": "high", "stun": 0.22, "limb": "arm", "zone": "punch", "family": "punch"},
+	"kick":     {"startup": 0.14, "active": 0.10, "recovery": 0.26, "reach": 100.0, "damage": 10.0, "height": "mid",  "stun": 0.28, "limb": "leg", "zone": "kick", "family": "kick"},
+	"uppercut": {"startup": 0.12, "active": 0.10, "recovery": 0.35, "reach": 72.0,  "damage": 13.0, "height": "mid",  "stun": 0.50, "limb": "arm", "zone": "uppercut", "launch": -700.0, "family": "punch"},
+	"sweep":    {"startup": 0.12, "active": 0.12, "recovery": 0.30, "reach": 105.0, "damage": 8.0,  "height": "low",  "stun": 0.35, "limb": "leg", "zone": "sweep", "family": "kick"},
 	# grab beats block: slow and short, but can't be blocked
 	"grab":     {"startup": 0.14, "active": 0.08, "recovery": 0.45, "reach": 72.0,  "damage": 9.0,  "height": "mid",  "stun": 0.6,  "limb": "arm", "zone": "torso",
-			"unblockable": true, "launch": -380.0, "knock": -140.0},
+			"unblockable": true, "launch": -250.0, "knock": 380.0, "family": "hold"},
 }
 
 
@@ -133,6 +133,15 @@ class Fighter:
 	var tag := ""            # little label over its head in team fights
 	var hp_scale := 1.0      # team robots fight with less health (your parts' real damage is scaled back after)
 	var ctrl := {}           # the pilot's controller bonuses (see GameData.CONTROLLER_INFO)
+	# power: every move costs some; run dry and the robot burns out for a moment
+	var power := 10.0
+	var power_max := 10.0
+	var idle_t := 0.0        # seconds since power was last spent (refill starts after a pause)
+	var burn_t := 0.0        # burned out: can't act or block
+	var burn_pending := false
+	var clinch_t := 0.0      # holding the enemy in a grab
+	var clinch_on: Fighter = null
+	var clinch_hit := false
 
 	func alive(slot: String) -> bool:
 		return parts.has(slot) and not parts[slot].is_empty() and parts[slot]["hp"] > 0.0
@@ -259,6 +268,9 @@ var ai_plan := {}
 var ai_think := 0.4
 var ai_block := 0.2
 var ai_smart := 0.0
+# what each side has been doing lately (decays), so the CPU - and Gus - can read habits
+var habit := {"punch": 0.0, "kick": 0.0, "hold": 0.0, "block": 0.0}
+var cpu_habit := {"punch": 0.0, "kick": 0.0, "hold": 0.0, "block": 0.0}
 var ai_special_cd := 3.0   # CPU waits between specials so it doesn't spam them
 var ai_gadget_cd := 1.5
 var ai_kit := {"range": 0.0, "air": false}
@@ -414,6 +426,8 @@ func make_fighter(spec: Dictionary) -> Fighter:
 	f.gadgets = spec.get("gadgets", []).duplicate()
 	f.style = spec.get("style", "striker")
 	f.ctrl = GameData.CONTROLLER_INFO.get(str(spec.get("controller", "")), {}).get("mods", {})
+	f.power_max = maxf(6.0, float(spec.get("power", 10.0))) * (1.25 if spec.get("style", "") == "tank" else 1.0)
+	f.power = f.power_max
 	if Catalog.STYLES.has(f.style):
 		var sig: String = Catalog.STYLES[f.style]["signature"]
 		if Specials.MOVES.has(sig) and not f.specials.has(sig):
@@ -843,8 +857,8 @@ func read_ai_input(delta: float) -> Dictionary:
 	# in the air above the enemy: dive stomp if we know it
 	if not cpu.on_ground and cpu.state == "jump" and dist < 200.0 and cpu.specials.has("dive_stomp") and can_special(cpu, "dive_stomp") and randf() < 0.08 + ai_smart * 0.15:
 		start_special(cpu, "dive_stomp")
-	# combo: smarter bots follow up a landed hit
-	if ATTACKS.has(cpu.state) and cpu.landed and randf() < ai_smart * 0.08 + (0.05 if cpu.style == "striker" else 0.0):
+	# combo: smarter bots follow up a landed hit (if they've got the power for it)
+	if ATTACKS.has(cpu.state) and cpu.landed and cpu.power > cpu.power_max * 0.3 and randf() < ai_smart * 0.08 + (0.05 if cpu.style == "striker" else 0.0):
 		i["punch" if randf() < 0.6 else "kick"] = true
 	return i
 
@@ -869,6 +883,41 @@ func ai_decide(dist: float, toward: String, away: String) -> Dictionary:
 	var hurt := cpu.ratio("torso")
 	var aggro: bool = cpu.over_t > 0.0 or cpu.haste_t > 0.0 or cpu.style == "striker"
 	var r := randf()
+	var pw := cpu.power / maxf(1.0, cpu.power_max)
+	# power: punish a burned-out enemy, and don't burn out yourself
+	if player.burn_t > 0.0 and dist < melee + 40.0 and can_punch:
+		return {"tap": "punch"}
+	if player.burn_t > 0.0 and dist >= melee + 40.0:
+		return {"hold": [toward]}
+	if pw < 0.25 and not p_open and randf() < 0.35 + ai_smart * 0.6:
+		if threatened and cpu.arms() > 0 and dist < 170.0 * cpu.scale:
+			return {"hold": ["block"]}
+		return {"hold": [away]}   # back off and recharge
+	if pw < 0.45:
+		can_kick = can_kick and randf() < 0.25   # kicks are hungry: save them
+	# reading the player's habits (smarter bots read them more often)
+	if dist < melee + 30.0 and not threatened and randf() < 0.1 + ai_smart * 0.45:
+		var top := ""
+		var most := 1.5
+		for k in habit:
+			if habit[k] > most:
+				most = habit[k]
+				top = k
+		match top:
+			"punch":
+				if can_kick:
+					return {"tap": "kick"}   # kicks power through punches
+				if cpu.arms() > 0:
+					return {"hold": ["block"]}
+			"hold":
+				if can_punch:
+					return {"tap": "punch"}   # a punch beats a grab
+			"kick":
+				if cpu.arms() > 0:
+					return {"hold": ["block"]}   # block and let them burn their power
+			"block":
+				if can_punch:
+					return {"tap": "grab"}
 
 	# 1) gadgets, used for what they're good at
 	if free and ai_gadget_cd <= 0.0:
@@ -1256,7 +1305,7 @@ func update_effects(delta: float) -> void:
 		for slot in BODY_PARTS:
 			if f.alive(slot) and f.ratio(slot) < 0.3 and randf() < delta * 5.0:
 				smoke.append({"pos": to_world_point(f, RobotArt.part_center(f.get_look(), slot)), "t": 0.0, "dark": false})
-		if f.burnout and randf() < delta * 6.0:
+		if f.burn_t > 0.0 and randf() < delta * 6.0:
 			smoke.append({"pos": f.pos + Vector2(-f.facing * 20.0, -90.0 * f.scale), "t": 0.0, "dark": true})
 	for s in smoke:
 		s["t"] += delta
@@ -1366,6 +1415,69 @@ func quit_fight() -> void:
 
 # ---------------------------------------------------------------- moves
 
+# ---------------------------------------------------------------- power
+# The tank is the robot's power output (the number in Gus's bay). A move costs the power the
+# limb draws, times the move's weight: punches are cheap, kicks are hungry. Refills when you
+# stop attacking. Empty it and you burn out.
+
+const MOVE_COST := {"punch": 1.0, "uppercut": 1.3, "grab": 1.5, "sweep": 2.0, "kick": 2.6}
+const REFILL := 0.28          # share of the tank refilled per second when not attacking
+const REFILL_DELAY := 0.4     # seconds after a move before it starts refilling
+const BURNOUT_TIME := 1.5
+const POWER_COLOR := Color(0.25, 0.8, 1.0)
+
+
+func limb_draw(f: Fighter, limb: String) -> float:
+	if limb == "" or not f.parts.has(limb) or f.parts[limb].is_empty():
+		return 1.0
+	return maxf(1.0, float(f.parts[limb].get("draw", 1.0)))
+
+
+func attack_cost(f: Fighter, attack: String, limb: String) -> float:
+	var c: float = MOVE_COST.get(attack, 1.0) * limb_draw(f, limb)
+	if f.style == "striker" and attack in ["punch", "uppercut"]:
+		c *= 0.75
+	return c
+
+
+func special_cost(f: Fighter) -> float:
+	return f.power_max * 0.28 * (0.7 if f.style == "specialist" else 1.0)
+
+
+func spend(f: Fighter, cost: float) -> void:
+	if phase != "fight" or cost <= 0.0:
+		return
+	if f.over_t > 0.0:
+		cost *= 0.5   # overcharged: everything's cheap... until it isn't
+	f.power -= cost
+	f.idle_t = 0.0
+	if f.power <= 0.0:
+		f.power = 0.0
+		f.burn_pending = true   # you can always throw it - but the tank's empty after
+
+
+func update_power(f: Fighter, delta: float) -> void:
+	f.idle_t += delta
+	if f.burn_t > 0.0:
+		f.burn_t -= delta
+		if randf() < delta * 14.0:
+			add_spark(f.pos + Vector2(randf_range(-30, 30), randf_range(-150, -60) * f.scale), POWER_COLOR, 10.0)
+		if f.burn_t <= 0.0:
+			f.power = f.power_max * 0.35
+			f.idle_t = 0.0
+		return
+	var busy := ATTACKS.has(f.state) or f.state == "special"
+	if f.burn_pending and not busy and f.state != "ko":
+		f.burn_pending = false
+		f.burn_t = BURNOUT_TIME
+		f.blocking = false
+		Sfx.play("ko", 0.1, -6.0)   # the BURNOUT sign is drawn over its head (draw_burnout)
+		return
+	if not busy and f.idle_t > REFILL_DELAY and f.state != "ko":
+		var rate := REFILL * (1.35 if f.style == "mechanic" else 1.0) * (0.4 if f.blocking else 1.0)
+		f.power = minf(f.power_max, f.power + f.power_max * rate * delta)
+
+
 func start_attack(f: Fighter, attack: String) -> void:
 	var a: Dictionary = ATTACKS[attack]
 	var limb := f.limb_for(a["limb"], attack == "uppercut")
@@ -1374,6 +1486,13 @@ func start_attack(f: Fighter, attack: String) -> void:
 	f.state = attack
 	pilot_jerk(f.team)
 	f.attack_limb = limb
+	spend(f, attack_cost(f, attack, limb))
+	if f.team == 0 and ATTACKS[attack].has("family"):
+		var fam: String = ATTACKS[attack]["family"]
+		habit[fam] = habit.get(fam, 0.0) + 1.0
+	elif f.team == 1 and ATTACKS[attack].has("family"):
+		var fam2: String = ATTACKS[attack]["family"]
+		cpu_habit[fam2] = cpu_habit.get(fam2, 0.0) + 1.0
 	f.arm_turn += 1
 	f.timer = 0.0
 	f.hit_done = false
@@ -1416,6 +1535,7 @@ func start_special(f: Fighter, id: String) -> void:
 	f.crouching = m.get("pose", "") == "sweep"
 	f.cooldowns[id] = m["cd"]
 	f.buffer.clear()
+	spend(f, special_cost(f))
 	if m.has("rise"):
 		f.vel.y = -m["rise"]
 		f.on_ground = false
@@ -1491,9 +1611,11 @@ func update_special(f: Fighter, o: Fighter, delta: float) -> void:
 func use_gadget(f: Fighter, g: Dictionary) -> void:
 	var id: String = g["id"]
 	var info: Dictionary = Specials.GADGETS[id]
-	if f.cooldowns.get(id, 0.0) > 0.0 or not f.gadget_working(g) or f.state in ["ko", "hit"] or f.stun_t > 0.0:
+	if f.cooldowns.get(id, 0.0) > 0.0 or not f.gadget_working(g) or f.state in ["ko", "hit"] or f.stun_t > 0.0 or f.burn_t > 0.0:
 		return
 	var o: Fighter = f.foe
+	if info.get("active", true) and id != "overcharge":
+		spend(f, f.power_max * 0.18)
 	match id:
 		"rocket_fist", "grapple":
 			if f.fist_out.has(g["slot"]):
@@ -1632,9 +1754,8 @@ func update_fighter(f: Fighter, o: Fighter, i: Dictionary, delta: float) -> void
 	if f.over_t > 0.0:
 		f.over_t -= delta
 		if f.over_t <= 0.0:
-			f.burnout = true
-			popup("BURNOUT", f.pos + Vector2(0, -230.0 * f.scale), Color(0.6, 0.6, 0.6))
-			Sfx.play("ko", 0.1, -8.0)
+			f.power = 0.0   # the overcharge drains the tank: burnout
+			f.burn_pending = true
 	if f.has_gadget("regen") and f.alive("torso") and phase == "fight":
 		f.parts["torso"]["hp"] = minf(f.parts["torso"]["max_hp"], f.parts["torso"]["hp"] + 1.2 * delta)
 	f.slow_t = maxf(0.0, f.slow_t - delta)
@@ -1666,6 +1787,12 @@ func update_fighter(f: Fighter, o: Fighter, i: Dictionary, delta: float) -> void
 			f.boost_hit = true
 			apply_hit(f, o, {"damage": 10.0 * f.mod_damage(), "zone": "torso", "knock": 520.0, "stun": 0.4}, o.pos + Vector2(0, -90))
 
+	update_power(f, delta)
+	if f.burn_t > 0.0:
+		i = empty_input()   # burned out: no moves, no block
+	if f.clinch_t > 0.0:
+		update_clinch(f, delta)
+		return
 	var punch: bool = i["punch"]
 	var kick: bool = i["kick"]
 	if punch:
@@ -1742,10 +1869,12 @@ func update_fighter(f: Fighter, o: Fighter, i: Dictionary, delta: float) -> void
 				f.vel.y = -jump
 				f.on_ground = false
 				f.state = "jump"
+				spend(f, 0.5 * limb_draw(f, "leg_front"))
 				f.air_jumps = 1 if f.has_gadget("double_jump") else 0
 				Sfx.play("jump", 0.1)
 		elif i["up_press"] and f.air_jumps > 0:
 			f.air_jumps -= 1
+			spend(f, 0.5 * limb_draw(f, "leg_front"))
 			f.vel.y = -JUMP_SPEED * 0.9
 			f.vel.x = (int(i["right"]) - int(i["left"])) * WALK_SPEED * f.move_speed()
 			f.jet_t = 0.35
@@ -1835,7 +1964,67 @@ func try_hit(att: Fighter, d: Fighter, a: Dictionary) -> void:
 	hit["damage"] = a["damage"] * (1.0 + limb["damage"] / 100.0) * att.mod_damage()
 	hit["src"] = att.attack_limb
 	var at := Vector2(att.pos.x + att.facing * minf(dx, reach), d.pos.y - 90.0 * d.scale)
+	if a.get("family", "") == "hold" and d.shield_t <= 0.0 and d.state != "ko":
+		start_clinch(att, d, hit)
+		return
 	apply_hit(att, d, hit, at)
+
+
+# ---------------------------------------------------------------- the standard hold
+# A grab that connects clamps on: the two robots lock together, a knee goes in, then a shove
+# sends them apart. Short, so the counter loop stays quick.
+
+const CLINCH_TIME := 0.42
+
+
+func start_clinch(att: Fighter, d: Fighter, hit: Dictionary) -> void:
+	att.hit_done = true
+	att.landed = true
+	att.clinch_t = CLINCH_TIME
+	att.clinch_on = d
+	att.clinch_hit = false
+	att.spec["clinch_hit"] = hit
+	d.state = "hit"
+	d.timer = CLINCH_TIME + 0.2
+	d.blocking = false
+	d.crouching = false
+	d.special_id = ""
+	d.vel = Vector2.ZERO
+	popup("GRABBED!", d.pos + Vector2(0, -230.0 * d.scale), Color(1.0, 0.8, 0.4))
+	Sfx.play("equip", 0.1)
+	if d == player:
+		shout("grabbed", "He's got you - hang on!", "He grabbed you! Grabs go through a block - next time hit him before he gets close.", 2, 1, 8.0)
+
+
+func update_clinch(f: Fighter, delta: float) -> void:
+	var d: Fighter = f.clinch_on
+	f.clinch_t -= delta
+	f.vel.x = 0.0
+	if d == null or d.state == "ko" or f.state == "hit" or f.state == "ko":
+		f.clinch_t = 0.0
+		return
+	# hold them right up against us
+	d.pos.x = f.pos.x + f.facing * 64.0 * (f.scale + d.scale) * 0.5
+	d.vel.x = 0.0
+	d.state = "hit"
+	d.timer = maxf(d.timer, 0.25)
+	if not f.clinch_hit and f.clinch_t < CLINCH_TIME * 0.55:
+		f.clinch_hit = true
+		var hit: Dictionary = (f.spec.get("clinch_hit", {}) as Dictionary).duplicate()
+		hit["knock"] = 0.0
+		hit.erase("launch")
+		apply_hit(f, d, hit, d.pos + Vector2(-f.facing * 20.0, -70.0 * d.scale))   # the knee
+		Sfx.play("hit_big", 0.1)
+	if f.clinch_t <= 0.0:
+		# the shove
+		f.clinch_t = 0.0
+		f.clinch_on = null
+		if d.state != "ko":
+			d.vel.x = f.facing * 380.0
+			d.vel.y = -250.0
+			d.on_ground = false
+			d.timer = 0.6
+		f.timer = ATTACKS["grab"]["startup"] + ATTACKS["grab"]["active"]   # straight into recovery
 
 
 ## Apply a hit that connected (melee, projectile or gadget).
@@ -1876,13 +2065,30 @@ func apply_hit(att: Fighter, d: Fighter, a: Dictionary, at: Vector2) -> void:
 		d.pos.x += att.facing * 20.0
 		return
 	if blocked:
+		var family: String = a.get("family", "")
+		spend(d, 0.3 + dmg * 0.04)   # taking hits on the guard costs power
 		var arm := "arm_front"
 		for s2 in ARM_SLOTS:
 			if d.alive(s2):
 				arm = s2
 				break
-		damage_part(d, arm, dmg * (0.08 if d.style == "tank" else 0.3) * d.ctrl.get("block", 1.0))
-		d.pos.x += att.facing * 25.0
+		if family == "kick":
+			# a kick only partly stops on a guard: some gets through and it shoves you back
+			damage_part(d, arm, dmg * (0.2 if d.style == "tank" else 0.35) * d.ctrl.get("block", 1.0))
+			if d.alive("torso"):
+				damage_part(d, "torso", dmg * 0.1)
+			d.pos.x += att.facing * 60.0
+			popup("CHIP", d.pos + Vector2(0, -200.0 * d.scale), Color(1.0, 0.75, 0.4))
+		else:
+			damage_part(d, arm, dmg * (0.08 if d.style == "tank" else 0.3) * d.ctrl.get("block", 1.0))
+			d.pos.x += att.facing * 25.0
+		if family == "punch" and ATTACKS.has(att.state):
+			# block beats punch: the fist bounces off and the puncher is left open
+			att.state = "hit"
+			att.timer = 0.32
+			att.vel.x = -att.facing * 240.0
+			att.crouching = false
+			popup("BLOCKED!", att.pos + Vector2(0, -210.0 * att.scale), Color(0.6, 0.85, 1.0))
 		add_spark(spark_pos, Color(0.7, 0.85, 1.0), 18.0)
 		Sfx.play("block", 0.15)
 	else:
@@ -1953,8 +2159,15 @@ func apply_hit(att: Fighter, d: Fighter, a: Dictionary, at: Vector2) -> void:
 			var limb := att.attack_limb if att.alive(att.attack_limb) and att.attack_limb != "torso" else "torso"
 			damage_part(att, limb, dmg * 0.25)
 			add_spark(att.pos + Vector2(att.facing * 40.0, -100.0 * att.scale), Color(0.8, 0.8, 0.8), 14.0)
-		if d.state != "ko":
+		# kick beats punch: a kick on its way powers through punches (it still takes the damage)
+		var armored: bool = a.get("family", "") == "punch" and (d.state == "kick" or d.state == "sweep") \
+				and d.timer <= float(ATTACKS[d.state]["startup"]) + float(ATTACKS[d.state]["active"])
+		if armored:
+			popup("POWERED THROUGH", d.pos + Vector2(0, -220.0 * d.scale), Color(0.85, 0.9, 1.0))
+			add_spark(hit_at, Color(0.85, 0.9, 1.0), 34.0)
+		if d.state != "ko" and not armored:
 			d.state = "hit"
+			d.clinch_t = 0.0
 			d.timer = maxf(a.get("stun", 0.25), a.get("emp", 0.0))
 			d.crouching = false
 			d.blocking = false
@@ -2165,6 +2378,8 @@ func _draw() -> void:
 	if team_p.size() > 1 or team_c.size() > 1:
 		for f in all_fighters():
 			draw_tag(f, off)
+	for f in all_fighters():
+		draw_burnout(f, off)
 	draw_projectiles(off)
 
 	for d in debris:
@@ -2322,7 +2537,8 @@ func draw_fighter(f: Fighter, off: Vector2) -> void:
 		var a: Dictionary = ATTACKS[state]
 		extended = f.timer >= a["startup"] * 0.6 and f.timer <= a["startup"] + a["active"] + a["recovery"] * 0.5
 		if state == "grab":
-			state = "punch"
+			# both arms reach out; a miss stumbles forward
+			extended = f.timer >= a["startup"] * 0.5 and (f.landed or f.timer <= a["startup"] + a["active"] + 0.1)
 	# --- exaggerated animation: lean, lunge, recoil, squash & stretch
 	var sx := 1.0
 	var sy := 1.0
@@ -2359,6 +2575,11 @@ func draw_fighter(f: Fighter, off: Vector2) -> void:
 					lean = f.facing * 0.22
 					dx = f.facing * 18.0 * f.scale
 					sx = 1.08
+	elif f.burn_t > 0.0 and f.state != "ko":
+		# burned out: slumped forward, head down
+		lean = f.facing * 0.32
+		sy = 0.9
+		state = "hit"
 	elif f.state == "hit":
 		var k := clampf(f.timer / 0.45, 0.0, 1.0)
 		lean = -f.facing * 0.38 * k
@@ -2404,8 +2625,14 @@ func draw_fighter(f: Fighter, off: Vector2) -> void:
 	f.vis_sx = sx
 	f.vis_sy = sy
 	f.vis_ok = true
+	var knee := f.clinch_t > 0.0 and f.clinch_t < CLINCH_TIME * 0.6 and f.clinch_t > CLINCH_TIME * 0.25
+	if f.clinch_t > 0.0:
+		state = "grab"
+		extended = true
+		lean = f.facing * 0.1 if rot == lean else rot
+		rot = lean
 	RobotArt.draw(self, base, f.get_look(), {
-		"facing": f.facing, "state": state, "extended": extended, "attack_limb": f.attack_limb,
+		"facing": f.facing, "state": state, "extended": extended, "attack_limb": f.attack_limb, "knee": knee,
 		"swing": sin(f.walk_phase) * 10.0 if f.state == "walk" else 0.0,
 		"crouch": f.crouching, "blocking": f.blocking or (f.state == "special" and state == "block"),
 		"flash": f.flash > 0.0, "rot": rot, "time": clock, "fist_out": fist_out,
@@ -2413,6 +2640,29 @@ func draw_fighter(f: Fighter, off: Vector2) -> void:
 		"jet": f.jet_t > 0.0 or (not f.on_ground and f.vel.y < -400.0 and f.has_gadget("double_jump")),
 		"boost": f.boost_t > 0.0, "sx": sx, "sy": sy,
 	})
+
+
+## Burned out: a red lightning bolt and BURNOUT right above the robot's head, blinking.
+func draw_burnout(f: Fighter, off: Vector2) -> void:
+	if f.burn_t <= 0.0 or f.state == "ko":
+		return
+	var g := RobotArt.geom(f.get_look())
+	var top := visual_point(f, Vector2(0, (g["head"] as Rect2).position.y)) + off
+	var c := top + Vector2(0, -34.0)
+	var on := fmod(clock, 0.4) < 0.28
+	var red := Color(1.0, 0.18, 0.12) if on else Color(0.55, 0.1, 0.08)
+	var s := 1.3
+	# the bolt
+	var bolt := PackedVector2Array([c + Vector2(4, -26) * s, c + Vector2(-12, 2) * s, c + Vector2(-1, 2) * s,
+			c + Vector2(-6, 24) * s, c + Vector2(12, -6) * s, c + Vector2(1, -6) * s])
+	if on:
+		draw_circle(c, 30.0 * s, Color(1.0, 0.2, 0.1, 0.18))
+	draw_colored_polygon(bolt, red)
+	draw_polyline(bolt + PackedVector2Array([bolt[0]]), Color(0.15, 0.02, 0.02), 2.0)
+	var fsz := fs(20)
+	var tw := font.get_string_size("BURNOUT", HORIZONTAL_ALIGNMENT_LEFT, -1, fsz).x
+	draw_string(font, Vector2(c.x - tw * 0.5 + 2, c.y - 34.0 * s + 2), "BURNOUT", HORIZONTAL_ALIGNMENT_LEFT, -1, fsz, Color(0, 0, 0, 0.7))
+	draw_string(font, Vector2(c.x - tw * 0.5, c.y - 34.0 * s), "BURNOUT", HORIZONTAL_ALIGNMENT_LEFT, -1, fsz, red)
 
 
 ## Team fights: who's who. Your robots show their pad number, the focused enemy gets a red marker.
@@ -2526,6 +2776,17 @@ func draw_team_bars(team: Array, x: float, y: float, w: float, bh: float, right:
 		draw_rect(Rect2(x + (w - fill if right else 0.0), by, fill, h), Color(0.95, 0.85, 0.2) if f.state != "ko" else Color(0.4, 0.4, 0.4))
 		var edge := Color(1.0, 0.35, 0.3) if (right and f == cpu and n > 1) else Color.WHITE
 		draw_rect(Rect2(x, by, w, h), edge, false, 2.0)
+		# power: a thin electric-blue bar along the bottom of the health bar
+		var pf := w * clampf(f.power / maxf(1.0, f.power_max), 0.0, 1.0)
+		var ph := maxf(4.0, h * 0.28)
+		var py := by + h - ph
+		draw_rect(Rect2(x, py, w, ph), Color(0.02, 0.06, 0.1, 0.85))
+		var pc := POWER_COLOR
+		if f.burn_t > 0.0:
+			pc = Color(1.0, 0.3, 0.2) if fmod(clock, 0.3) < 0.15 else Color(0.3, 0.3, 0.35)
+		elif f.power < f.power_max * 0.25:
+			pc = POWER_COLOR.lerp(Color.WHITE, 0.5 + 0.5 * sin(clock * 14.0))
+		draw_rect(Rect2(x + (w - pf if right else 0.0), py, pf, ph), pc)
 		if n > 1:
 			var t := ("%s  " % f.tag if f.tag != "" else "") + f.label + ("  - DOWN" if f.state == "ko" else "")
 			draw_string(font, Vector2(x + 6, by + h - 1), t, HORIZONTAL_ALIGNMENT_RIGHT if right else HORIZONTAL_ALIGNMENT_LEFT, w - 12, int(h * 0.95), Color(0.08, 0.08, 0.1))
@@ -2561,7 +2822,7 @@ func draw_hud() -> void:
 		status.append("OVERLOADED")
 	if player.over_t > 0.0:
 		status.append("OVERCHARGE %.0f" % ceilf(player.over_t))
-	if player.burnout:
+	if player.burn_t > 0.0:
 		status.append("BURNOUT")
 	if player.hobble_t > 0.0:
 		status.append("LEG HIT: SLOWED")
@@ -2721,6 +2982,8 @@ func draw_moves_list() -> void:
 	var lines: Array = [
 		["P punch   K kick   B block   G grab (beats block)   v+P uppercut   v+K sweep   (→ = toward the enemy)", Color(0.8, 0.8, 0.85)],
 		["Combos: hit again while the enemy is still reeling. Landed attacks can chain into the next.", Color(0.8, 0.8, 0.85)],
+		["COUNTERS: punch beats grab - grab beats block - block stops punch (and the puncher recoils) - kick powers through punches, but a block only partly stops it.", Color(1.0, 0.85, 0.4)],
+		["POWER (blue bar): punch %.1f  kick %.1f  grab %.1f  special %.1f of %.0f. Refills when you stop attacking. Empty = BURNOUT." % [attack_cost(player, "punch", "arm_front"), attack_cost(player, "kick", "leg_front"), attack_cost(player, "grab", "arm_front"), special_cost(player), player.power_max], POWER_COLOR],
 	]
 	if team_p.size() > 1:
 		lines.append(["TEAM: tap an enemy part to send your whole team after that robot. " + ("Each numbered pad moves the robot with that number; PUNCH / KICK / BLOCK / GRAB work for all of them." if control_pads > 1 else "Linked controls: every robot follows the one pad.") + " Switch in Settings > Team controls.", Color(0.5, 0.8, 1.0)])
@@ -2955,11 +3218,22 @@ const COACH_STALE := 3.0  # tips that waited longer than this are dropped (they 
 
 func update_coach(delta: float) -> void:
 	coach_clock += delta
+	for h in [habit, cpu_habit]:
+		for k in h:
+			h[k] = maxf(0.0, h[k] - h[k] * 0.45 * delta)
+	if player.blocking:
+		habit["block"] += delta
+	if cpu.blocking:
+		cpu_habit["block"] += delta
 	if phase == "fight":
 		if phase_timer > 0.5:
 			coach("aim", "Tap a part of %s to aim at it - %s hits where you point." % [cpu.label, player.label])
 		if phase_timer > 10.0 and weak_point(cpu) != "":
 			coach("weak", "See the yellow diamond? That's its weakest part - hits there do extra damage.")
+		if player.power < player.power_max * 0.5:
+			coach("power", "That blue bar under your health is POWER. Every move costs some - kicks cost the most. Run it dry and you burn out!")
+		if phase_timer > 16.0:
+			coach("counters", "Punch beats a grab, a grab beats a block, a block stops punches - and kicks power through punches.")
 		if phase_timer > 22.0 and not player.specials.is_empty():
 			coach("moves", "Tap MOVES to see your special moves and how to do them.")
 		if player.ratio("torso") < 0.35:
@@ -3019,6 +3293,20 @@ func live_coach(delta: float) -> void:
 		return
 	var dist := absf(cpu.pos.x - player.pos.x)
 	var close := dist < 170.0 * maxf(player.scale, cpu.scale)
+	# --- power
+	if cpu.burn_t > 0.0:
+		shout("cpu_burn", "He's burned out - HIT HIM!", "He ran out of power - he can't block or move. HIT HIM!", 3, 1, 4.0)
+	if player.burn_t > 0.0:
+		shout("my_burn", "Burned out! Hang on...", "You ran out of power! Every move costs some - kicks cost the most. Pace yourself.", 2, 1, 6.0)
+	elif player.power < player.power_max * 0.25 and player.idle_t < 0.5:
+		shout("low_power", "Watch your power! Back off!", "Your power's nearly gone - back off a second and let it refill, or you'll burn out.", 2, 1, 6.0)
+	# --- reading his habits
+	if close and cpu_habit["punch"] > 2.5 and player.legs() > 0:
+		shout("read_punch", "He's mashing punches - KICK!", "He keeps punching - a kick powers right through punches!", 2, 2, 9.0)
+	if close and cpu_habit["kick"] > 1.8 and player.arms() > 0:
+		shout("read_kick", "Block his kicks - he'll run dry!", "He's kicking a lot - block them. Kicks drink power, he'll burn out soon.", 2, 2, 9.0)
+	if close and cpu_habit["hold"] > 1.0 and player.arms() > 0:
+		shout("read_hold", "He's reaching for you - PUNCH!", "He keeps going for grabs - a quick punch stops a grab cold.", 2, 2, 9.0)
 	# --- danger first
 	if cpu.combo >= 2 and player.state == "hit" and not player.blocking:
 		shout("combo", "BLOCK!", "He's chaining a combo - hold BLOCK till it stops!", 3, 1, 3.0)
@@ -3085,7 +3373,7 @@ func ready_special() -> String:
 		if not Specials.MOVES.has(id) or player.cooldowns.get(id, 0.0) > 0.0:
 			continue
 		var m: Dictionary = Specials.MOVES[id]
-		if m.get("air", false) or m.get("active", true) == false:
+		if m.get("air", false) or not m.has("startup"):   # skip air-only and passive moves
 			continue
 		var limb: String = m.get("limb", "arm")
 		if (limb == "arm" and player.arms() == 0) or (limb == "leg" and player.legs() == 0):
@@ -3184,18 +3472,22 @@ func draw_coach() -> void:
 		return
 	if gus_here() and gus_head != Vector2.ZERO:
 		# a speech bubble from Gus in the corner
+		# up in the top-left, just under your robot's name: out of the fight, clear of the HUD buttons
 		var size := fs(16)
-		var maxw := minf(560.0, screen.x * 0.48)
+		var maxw := minf(560.0, quit_rect.position.x - 50.0)
 		var text_size := font.get_multiline_string_size(coach_text, HORIZONTAL_ALIGNMENT_LEFT, maxw, size)
 		var w := text_size.x + 24.0
 		var h := text_size.y + size + 22.0
-		var bx := clampf(gus_head.x - 30.0, 6.0, screen.x - w - 6.0)
-		var by := gus_head.y - h - 18.0
+		var bx := 12.0
+		var by := screen.y * 0.03 + 28.0 + 38.0
 		var a := minf(1.0, coach_t * 4.0)
 		var bg := Color(1.0, 0.97, 0.9, 0.95 * a)
 		draw_rect(Rect2(bx, by, w, h), bg)
 		draw_rect(Rect2(bx, by, w, h), Color(0.95, 0.6, 0.25, a), false, 3.0)
-		draw_colored_polygon(PackedVector2Array([Vector2(gus_head.x - 6, by + h), Vector2(gus_head.x + 10, by + h), Vector2(gus_head.x, by + h + 14)]), bg)
+		# the tail points down to Gus in the corner
+		var tail_x := clampf(gus_head.x, bx + 14.0, bx + w - 14.0)
+		draw_colored_polygon(PackedVector2Array([Vector2(tail_x - 8, by + h), Vector2(tail_x + 8, by + h), Vector2(gus_head.x, by + h + 18)]), bg)
+		draw_line(Vector2(gus_head.x, by + h + 18), gus_head + Vector2(0, -4), Color(1.0, 0.97, 0.9, 0.35 * a), 2.0)
 		draw_string(font, Vector2(bx + 12, by + size + 4), "GUS", HORIZONTAL_ALIGNMENT_LEFT, -1, int(size * 0.85), Color(0.85, 0.45, 0.1, a))
 		draw_multiline_string(font, Vector2(bx + 12, by + size * 2 + 8), coach_text, HORIZONTAL_ALIGNMENT_LEFT, maxw, size, -1, Color(0.1, 0.08, 0.06, a))
 		return

@@ -917,7 +917,7 @@ func player_spec(eq: Dictionary = {}, label: String = "") -> Dictionary:
 		else:
 			var d := part_def(p["id"])
 			parts[slot] = {"id": d["id"], "hp": p["hp"], "max_hp": float(d["hp"]), "armor": d["armor"],
-					"damage": d["damage"], "speed": d["speed"], "aim": d["aim"],
+					"damage": d["damage"], "speed": d["speed"], "aim": d["aim"], "draw": float(d["draw"]),
 					"shape": d["shape"], "size": d["size"], "color": Color(d["color"]),
 					"trait": d["trait"], "trait_lv": d["trait_lv"]}
 	var s := stats(eq)
@@ -929,6 +929,7 @@ func player_spec(eq: Dictionary = {}, label: String = "") -> Dictionary:
 	var back := inst(int(eq.get("back", -1)))
 	var reactor := inst(int(eq.get("reactor", -1)))
 	return {"name": robot_name if label == "" else label, "parts": parts, "efficiency": s["efficiency"], "damage_mult": 1.0,
+			"power": float(s["power_output"]),
 			"speed_mult": 1.0, "scale": 1.0, "trim": Color(PAINTS[paint]["color"]),
 			"eye": Color(part_def(reactor["id"])["color"]) if not reactor.is_empty() else Color(0.4, 0.9, 1.0),
 			"back": {} if back.is_empty() else {"shape": part_def(back["id"])["shape"], "color": Color(part_def(back["id"])["color"])},
@@ -1446,6 +1447,7 @@ func fight_player_team() -> Array:
 			var st := stats(wingmen[spec["wingman"]] if spec.has("wingman") else equipped)
 			var out := minf(float(st["power_output"]), share)
 			spec["efficiency"] = 1.0 if st["power_used"] <= out else out / float(st["power_used"])
+			spec["power"] = out
 	return team
 
 
@@ -1742,7 +1744,7 @@ func opponent_spec_from(o: Dictionary, _unused: float) -> Dictionary:
 				c = body.lerp(Color(d["color"]), 0.3)
 		var mx: float = d["hp"] * o["hp"]
 		parts[slot] = {"id": d["id"], "hp": mx, "max_hp": mx, "armor": d["armor"] + o.get("armor_bonus", 0),
-				"damage": d["damage"], "speed": d["speed"], "aim": d["aim"],
+				"damage": d["damage"], "speed": d["speed"], "aim": d["aim"], "draw": float(d["draw"]),
 				"shape": d["shape"], "size": d["size"], "color": c,
 				"trait": d["trait"], "trait_lv": d["trait_lv"]}
 	var gadgets: Array = []
@@ -1754,6 +1756,15 @@ func opponent_spec_from(o: Dictionary, _unused: float) -> Dictionary:
 	if o["parts"].has("back"):
 		var bd := part_def(o["parts"]["back"])
 		back = {"shape": bd["shape"], "color": Color(bd["color"])}
+	# the reactor (and any battery) sets how much power it has in a fight
+	var output := 0.0
+	for slot in o["parts"]:
+		if o["parts"][slot] != "":
+			output += float(part_def(o["parts"][slot])["output"])
+	if output <= 0.0:
+		output = 10.0
+	if o.has("power_share"):
+		output = minf(output, float(o["power_share"]))
 	var eff := 1.0
 	if o.has("power_share"):
 		var used := 0.0
@@ -1761,7 +1772,7 @@ func opponent_spec_from(o: Dictionary, _unused: float) -> Dictionary:
 			if o["parts"][slot] != "":
 				used += part_def(o["parts"][slot])["draw"]
 		eff = minf(1.0, float(o["power_share"]) / maxf(1.0, used))
-	return {"name": o.get("bot_name", o["name"]), "parts": parts, "efficiency": eff, "damage_mult": o["damage"],
+	return {"name": o.get("bot_name", o["name"]), "parts": parts, "efficiency": eff, "damage_mult": o["damage"], "power": output,
 			"speed_mult": o["speed"], "scale": o["scale"], "trim": Color(o["trim"]), "eye": Color(o["eye"]),
 			"back": back, "gadgets": gadgets, "specials": o["specials"], "style": o.get("style", "striker"),
 			"traits": global_traits(o["parts"])}

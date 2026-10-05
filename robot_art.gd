@@ -146,7 +146,13 @@ static func draw(ci: CanvasItem, base: Vector2, look: Dictionary, pose: Dictiona
 		arm_pose = {"arm_front": "limp", "arm_back": "limp", "arm_front2": "limp", "arm_back2": "limp"}
 	elif blocking:
 		arm_pose = {"arm_front": "block", "arm_back": "block", "arm_front2": "block", "arm_back2": "block"}
-	if extended and limb != "":
+	if state == "grab" and extended:
+		# a hold: every arm reaches out to clamp on
+		for k in arm_pose:
+			arm_pose[k] = "punch"
+		if pose.get("knee", false):
+			leg_pose["leg_front"] = "kick"
+	elif extended and limb != "":
 		if state == "punch":
 			arm_pose[limb] = "punch"
 		elif state == "uppercut":

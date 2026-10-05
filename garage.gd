@@ -15,6 +15,7 @@ const UI = preload("res://ui.gd")
 ##   MOVES    - special-move training chips
 ##   CUPS     - championships, once the story is done
 
+const POWER_COLOR := Color(0.25, 0.8, 1.0)   # electric blue: power, same as the bar in fights
 const STAT_NAMES := {"hp": "Health", "armor": "Armor", "damage": "Damage", "speed": "Speed", "aim": "Aim", "chips": "Chip slots"}
 
 var tab := "Build"
@@ -355,9 +356,13 @@ func refresh_stats() -> void:
 	add_stat("Chips", GameData.active_chips().size(), maxf(1, GameData.chip_slots()), "%d/%d" % [GameData.active_chips().size(), GameData.chip_slots()], Color(0.75, 0.45, 1.0))
 	var over: bool = s["power_used"] > s["power_output"]
 	add_stat("Power", s["power_used"], s["power_output"], "%d/%d" % [s["power_used"], s["power_output"]],
-			Color(1.0, 0.35, 0.2) if over else Color(1.0, 0.8, 0.3))
+			Color(1.0, 0.35, 0.2) if over else POWER_COLOR)
 	if over:
 		stats_box.add_child(UI.label("OVERLOADED: %d%% performance!" % int(s["efficiency"] * 100), 13, Color(1.0, 0.5, 0.3)))
+	var tank: float = float(s["power_output"]) * (1.25 if GameData.style == "tank" else 1.0)
+	var pl := UI.label("Fight power %d - a punch costs ~1 per arm power, a kick ~2.6" % int(tank), 12, POWER_COLOR)
+	pl.tooltip_text = "In a fight your power output is your tank. Every move spends some; it refills when you stop attacking. Empty = burnout."
+	stats_box.add_child(pl)
 	var wl := UI.label("%s  (%d power)" % [GameData.weight_class(s["power_used"]), s["power_used"]], 13, Color(0.8, 0.8, 0.9))
 	wl.tooltip_text = "Weight class = the power your parts draw. Teams share one heavyweight's power."
 	stats_box.add_child(wl)
