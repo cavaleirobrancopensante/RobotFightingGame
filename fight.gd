@@ -2964,6 +2964,7 @@ func update_coach(delta: float) -> void:
 			coach("moves", "Tap MOVES to see your special moves and how to do them.")
 		if player.ratio("torso") < 0.35:
 			coach("low_core", "Core's hurting! Lose the torso - or the head - and it's lights out. BLOCK!")
+		live_coach(delta)
 	elif phase != "intro":
 		coach_queue.clear()   # the fight is over: no more tips
 		coach_t = minf(coach_t, 0.3)
@@ -2975,6 +2976,126 @@ func update_coach(delta: float) -> void:
 		coach_id = q["id"]
 		coach_t = COACH_SHOW
 		GameData.tip_once(q["id"])   # only counts as seen once it was actually shown
+
+
+# ---------------------------------------------------------------- Gus coaching live
+# Every fight, forever: Gus reads the fight and shouts what to do. In your first fights he explains
+# (tutorial); later he just shouts it. Settings > Gus's coaching sets how often (Off .. Lots).
+
+const SHOUT_GAP := [999.0, 8.0, 4.0, 2.2]   # seconds between shouts, by coaching level
+var shout_cd := {}        # id -> coach_clock when it may be shouted again
+var shout_next := 0.0
+var cpu_turtle_t := 0.0
+var late_call := false
+
+
+func coach_level() -> int:
+	return clampi(int(GameData.settings.get("coaching", 2)), 0, 3)
+
+
+func tutorial_fights() -> bool:
+	return GameData.wins + GameData.losses < 3
+
+
+## Shout something now. prio 3 = urgent (interrupts whatever Gus is saying), 2 = an opening,
+## 1 = advice. Each shout has its own cooldown so he doesn't repeat himself.
+func shout(id: String, short_text: String, long_text: String, prio: int, need_level: int = 1, again: float = 7.0) -> void:
+	var lv := coach_level()
+	if lv < need_level or not gus_here():
+		return
+	if coach_clock < shout_cd.get(id, 0.0):
+		return
+	if prio < 3 and (coach_clock < shout_next or coach_t > 0.6):
+		return
+	coach_text = long_text if tutorial_fights() and long_text != "" else short_text
+	coach_id = id
+	coach_t = 3.0 if tutorial_fights() else (1.4 if prio == 3 else 2.2)
+	shout_cd[id] = coach_clock + again
+	shout_next = coach_clock + SHOUT_GAP[lv]
+
+
+func live_coach(delta: float) -> void:
+	if coach_level() == 0 or player.state == "ko" or cpu.state == "ko":
+		return
+	var dist := absf(cpu.pos.x - player.pos.x)
+	var close := dist < 170.0 * maxf(player.scale, cpu.scale)
+	# --- danger first
+	if cpu.combo >= 2 and player.state == "hit" and not player.blocking:
+		shout("combo", "BLOCK!", "He's chaining a combo - hold BLOCK till it stops!", 3, 1, 3.0)
+	if ATTACKS.has(cpu.state) and cpu.timer < float(ATTACKS[cpu.state]["startup"]) and close and not player.blocking:
+		if cpu.state == "grab":
+			shout("grab_in", "He's grabbing - hit him first!", "He's going for a grab - a block won't stop it. Punch him first!", 3, 3, 4.0)
+		elif cpu.state == "sweep":
+			shout("sweep_in", "JUMP!", "He's sweeping low - JUMP over it!", 3, 3, 4.0)
+		else:
+			shout("incoming", "BLOCK!", "Here it comes - BLOCK!", 3, 3, 3.0)
+	if cpu.state == "special" and dist < 260.0 and not player.blocking:
+		shout("special_in", "Big one coming - BLOCK!", "He's winding up a special move - BLOCK!", 3, 2, 5.0)
+	if not cpu.on_ground and cpu.vel.y > 0.0 and dist < 200.0 and player.on_ground and player.arms() > 0:
+		shout("anti_air", "Uppercut! ↓+P", "He's dropping in on you - uppercut him: hold down and PUNCH!", 2, 2, 6.0)
+	# --- openings
+	cpu_turtle_t = cpu_turtle_t + delta if cpu.blocking else maxf(0.0, cpu_turtle_t - delta * 2.0)
+	if cpu_turtle_t > 0.9 and dist < 220.0 and player.arms() > 0:
+		shout("turtle", "GRAB HIM!", "He's hiding behind his guard - GRAB goes straight through a block!", 2, 1, 6.0)
+	if ATTACKS.has(cpu.state) and not cpu.landed and cpu.timer > float(ATTACKS[cpu.state]["startup"]) + float(ATTACKS[cpu.state]["active"]) and close:
+		shout("punish", "NOW! Hit him!", "He missed - he's wide open. Hit him NOW!", 2, 2, 5.0)
+	if (cpu.stun_t > 0.25 or (cpu.state == "hit" and not cpu.on_ground)) and close:
+		var move := ready_special()
+		if move != "":
+			var m: Dictionary = Specials.MOVES[move]
+			shout("finisher", "%s! %s" % [m["name"], Specials.seq_text(m["seq"])], "He's dazed - hit him with your %s: %s" % [m["name"], Specials.seq_text(m["seq"])], 2, 1, 7.0)
+		else:
+			shout("dazed", "He's dazed - P, P, K!", "He's dazed! Punch, punch, kick - chain it!", 2, 1, 6.0)
+	# --- aiming and parts
+	for slot in ["head", "arm_front", "arm_back", "leg_front", "leg_back"]:
+		var r := cpu.ratio(slot)
+		if r > 0.0 and r < 0.25 and player.target != slot:
+			shout("finish_" + slot, "His %s is hanging off - aim there!" % part_word(slot), "His %s is hanging by a wire - tap it to aim, and finish it!" % part_word(slot), 1, 1, 14.0)
+			break
+	for slot in ["arm_front", "arm_back", "leg_front", "leg_back", "head"]:
+		var r := player.ratio(slot)
+		if r > 0.0 and r < 0.2:
+			shout("own_" + slot, "Your %s's nearly gone - careful!" % part_word(slot), "Your %s is nearly gone. Keep it out of trouble and BLOCK more." % part_word(slot), 1, 2, 15.0)
+			break
+	# --- range and gadgets
+	if dist > 300.0:
+		for g in player.gadgets:
+			var id: String = g["id"]
+			if id in ["rocket_fist", "laser", "cannon", "grapple"] and player.gadget_working(g) and player.cooldowns.get(id, 0.0) <= 0.0:
+				shout("gadget_" + id, "Fire the %s!" % Specials.GADGETS[id]["name"], "He's out of reach - fire your %s!" % Specials.GADGETS[id]["name"], 1, 2, 9.0)
+				break
+		for g in cpu.gadgets:
+			if g["id"] in ["rocket_fist", "laser", "cannon", "grapple", "bolt"] and cpu.gadget_working(g):
+				shout("close_in", "Get in close!", "He wants to shoot from range - close the distance!", 1, 2, 12.0)
+				break
+	# --- the clock
+	if time_left < 12.0 and not late_call:
+		late_call = true
+		var mine := player.ratio("torso")
+		var theirs := cpu.ratio("torso")
+		if mine < theirs:
+			shout("late_behind", "Time's running out - GO!", "Ten seconds and you're behind - throw everything!", 2, 1, 99.0)
+		else:
+			shout("late_ahead", "Ten seconds - play it safe!", "Ten seconds and you're ahead - block and run the clock!", 2, 1, 99.0)
+
+
+## A special move of yours that's ready to use right now ("" if none).
+func ready_special() -> String:
+	for id in player.specials:
+		if not Specials.MOVES.has(id) or player.cooldowns.get(id, 0.0) > 0.0:
+			continue
+		var m: Dictionary = Specials.MOVES[id]
+		if m.get("air", false) or m.get("active", true) == false:
+			continue
+		var limb: String = m.get("limb", "arm")
+		if (limb == "arm" and player.arms() == 0) or (limb == "leg" and player.legs() == 0):
+			continue
+		return id
+	return ""
+
+
+func part_word(slot: String) -> String:
+	return {"head": "head", "arm_front": "front arm", "arm_back": "back arm", "leg_front": "front leg", "leg_back": "back leg"}.get(slot, slot)
 
 
 const GUS_LOOK := {"skin": "#6b4530", "hair": "#33507a", "hat": "cap", "beard": "full", "beard_color": "#c4c4c4",

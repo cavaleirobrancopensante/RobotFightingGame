@@ -299,7 +299,7 @@ var last_result := {}       # handed from the fight to the garage
 var story_key := ""         # which story scene to show next
 var story_return := ""      # scene to go to after the story
 var settings := {"sound": true, "music": true, "shake": true, "button_size": 1, "difficulty": 1, "layout": {}, "team_controls": "split", "battery_saver": false,
-		"start_money": START_MONEY, "living_cost": LIVING_COST}
+		"start_money": START_MONEY, "living_cost": LIVING_COST, "coaching": 2}
 
 
 # ---------------------------------------------------------------- error log
@@ -2500,5 +2500,6 @@ func load_settings() -> void:
 		settings["difficulty"] = int(settings["difficulty"])
 		settings["start_money"] = int(settings["start_money"])
 		settings["living_cost"] = int(settings["living_cost"])
+		settings["coaching"] = int(settings["coaching"])
 		if typeof(settings["layout"]) != TYPE_DICTIONARY:
 			settings["layout"] = {}

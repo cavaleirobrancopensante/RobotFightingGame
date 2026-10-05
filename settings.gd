@@ -19,6 +19,8 @@ var errors_button: Button
 var log_overlay: Control
 var copy_button: Button
 var start_money_button: Button
+var coach_button: Button
+const COACH_NAMES := ["OFF", "A little", "Normal", "Lots (easier)"]
 var living_button: Button
 
 
@@ -58,6 +60,8 @@ func _ready() -> void:
 	# money difficulty: how deep in the hole you start, and what living costs each month
 	start_money_button = UI.button("", _on_start_money, 19, Vector2(470, 50))
 	living_button = UI.button("", _on_living, 19, Vector2(470, 50))
+	coach_button = UI.button("", _on_coach, 19, Vector2(470, 50))
+	grid.add_child(coach_button)
 	grid.add_child(start_money_button)
 	grid.add_child(living_button)
 	errors_button = UI.button("", _on_errors, 19, Vector2(470, 50))
@@ -78,6 +82,7 @@ func refresh() -> void:
 	battery_button.text = "Battery saver: %s" % ("ON (30 fps)" if s.get("battery_saver", false) else "OFF (60 fps)")
 	team_button.text = "Team controls: %s" % ("SPLIT (a pad per robot)" if s.get("team_controls", "split") == "split" else "LINKED (one pad for all)")
 	delete_button.text = "Manage save files"
+	coach_button.text = "Gus's coaching: %s" % COACH_NAMES[clampi(int(s.get("coaching", 2)), 0, 3)]
 	start_money_button.text = "Starting money: %s (new games)" % GameData.money_text(int(s.get("start_money", GameData.START_MONEY)))
 	var lc := int(s.get("living_cost", GameData.LIVING_COST))
 	living_button.text = "Rent & food: %s" % ("none" if lc == 0 else "$%d a month" % lc)
@@ -187,6 +192,12 @@ func _on_controls() -> void:
 
 func _on_diff() -> void:
 	GameData.settings["difficulty"] = (GameData.settings["difficulty"] + 1) % DIFF_NAMES.size()
+	GameData.save_settings()
+	refresh()
+
+
+func _on_coach() -> void:
+	GameData.settings["coaching"] = (int(GameData.settings.get("coaching", 2)) + 1) % COACH_NAMES.size()
 	GameData.save_settings()
 	refresh()
 
