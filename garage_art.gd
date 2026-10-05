@@ -8,7 +8,7 @@ const RobotArt = preload("res://robot_art.gd")
 
 ## Where the robot stands in each scene: [x as fraction of width, height as fraction of panel]
 const ROBOT_SPOT := {
-	"build": [0.56, 0.74], "shop": [0.8, 0.5], "workshop": [0.74, 0.56], "scrap": [0.8, 0.5],
+	"build": [0.62, 0.74], "shop": [0.8, 0.5], "workshop": [0.74, 0.56], "scrap": [0.8, 0.5],
 	"paint": [0.5, 0.72], "moves": [0.62, 0.7], "team": [0.64, 0.66], "cups": [0.68, 0.62],
 }
 
@@ -74,7 +74,21 @@ static func _props_back(ci: CanvasItem, size: Vector2, scene: String, t: float, 
 			ci.draw_circle(pb.get_center() + Vector2(0, 16), 7, Color(0.75, 0.2, 0.2))
 			_sign(ci, Vector2(size.x * 0.62, 30), "GUS'S BAY", Color(0.95, 0.65, 0.35))
 			_bay_trophies(ci, size, info)
-			_lamp(ci, Vector2(size.x * 0.56, 0), size, t)
+			_lamp(ci, Vector2(size.x * 0.62, 0), size, t)
+			# behind the robot: a stepladder, and your pilot up it checking the robot's head
+			var spot: Array = ROBOT_SPOT["build"]
+			var rh: float = size.y * float(spot[1]) - 10.0
+			var lx: float = size.x * float(spot[0]) + rh * 0.2
+			var top_y := floor_y - rh * 0.62
+			var wood := Color(0.6, 0.45, 0.25)
+			ci.draw_line(Vector2(lx - rh * 0.07, floor_y), Vector2(lx, top_y), wood, 4.0)
+			ci.draw_line(Vector2(lx + rh * 0.1, floor_y), Vector2(lx + rh * 0.02, top_y), wood.darkened(0.25), 4.0)
+			for k in 5:
+				var f := float(k + 1) / 6.0
+				var ry := lerpf(floor_y, top_y, f)
+				ci.draw_line(Vector2(lerpf(lx - rh * 0.07, lx, f), ry), Vector2(lerpf(lx + rh * 0.1, lx + rh * 0.02, f), ry), wood, 3.0)
+			var ps := clampf(size.y / 300.0, 0.6, 1.3)
+			PilotArt.draw_person(ci, Vector2(lx + 4.0, lerpf(floor_y, top_y, 0.68)), ps, info.get("pilot", {}), -1.0, "point", t + 1.3)
 			# oil stain and lift platform
 			ci.draw_set_transform(Vector2(size.x * 0.3, floor_y + 8), 0, Vector2(1.0, 0.25))
 			ci.draw_circle(Vector2.ZERO, 26, Color(0.05, 0.05, 0.06, 0.6))
@@ -158,12 +172,11 @@ static func _front(ci: CanvasItem, size: Vector2, scene: String, t: float, info:
 	var gus := PilotArt.GUS_LOOK
 	match scene:
 		"build":
-			# Gus works on the robot's leg with a wrench, sparks fly; the pilot checks the clipboard
+			# Gus works on the robot's leg with a wrench, sparks fly (the pilot is up the ladder behind)
 			PilotArt.draw_person(ci, Vector2(robot_base.x - 52 * s, floor_y), s, gus, 1.0, "wrench", t)
 			var spark_age: float = info.get("spark", 99.0)
 			if fmod(t, 2.4) < 0.25 or spark_age < 0.6:
 				_sparks(ci, Vector2(robot_base.x - 22 * s, floor_y - robot_h * 0.25), t, 1.5 if spark_age < 0.6 else 1.0)
-			PilotArt.draw_person(ci, Vector2(size.x - 28 * s, floor_y), s * 0.95, pilot, -1.0, "clipboard", t + 1.3)
 		"shop":
 			# a desk with a computer showing the parts website
 			var desk := Rect2(12, floor_y - 44 * s, size.x * 0.6, 8 * s)

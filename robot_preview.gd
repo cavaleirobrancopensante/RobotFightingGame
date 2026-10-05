@@ -59,7 +59,8 @@ func _draw() -> void:
 			if r[0] == highlight:
 				var rect: Rect2 = r[1]
 				var k: float = _sc * look.get("scale", 1.0)
-				var world := Rect2(_base + rect.position * k * Vector2(facing, 1), rect.size * k)
+				# mirrored robots: flip the box's size too, then abs() puts it back the right way round
+				var world := Rect2(_base + rect.position * k * Vector2(facing, 1), rect.size * k * Vector2(facing, 1))
 				world = world.abs()
 				draw_rect(world.grow(4.0), Color(1.0, 0.85, 0.2, 0.9 + 0.1 * sin(t * 6.0)), false, 3.0)
 	if interactive:

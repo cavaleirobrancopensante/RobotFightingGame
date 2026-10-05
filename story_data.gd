@@ -179,6 +179,13 @@ const SCENES := {
 		["NARRATOR", "THE END... of your first championship. Next year OVERLORD wants its belt back. Till then: cups, and rematches from your garage."],
 	]},
 
+	# ---- the first time in the bay
+	"first_garage": {"place": "GUS'S BAY", "lines": [
+		["GUS", "Welcome to the bay. Don't touch the coffee."],
+		["GUS", "No money for the parts dealer yet. But out back there's a mountain of dead robots - one dig after every fight. One part per dig."],
+		["GUS", "Mostly junk. Once in a while, something good. Whatever you find, I'll bolt it on and you fix it up."],
+		["GUS", "Keep winning and the prize money starts coming in. Then we talk to the dealer about real parts."],
+	]},
 	# ---- career moments (shown after the fight that decides them)
 	"scrap_medal": {"place": "THE SCRAP HEAP RING", "lines": [
 		["ANNOUNCER", "...and that's the Scrap Heap League done! Step up for your medal - and mind the rust!"],

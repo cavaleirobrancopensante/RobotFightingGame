@@ -1329,7 +1329,7 @@ func tip_once(id: String) -> bool:
 
 
 # The garage opens up slowly so new players aren't buried in menus: feature -> story fights won.
-const UNLOCKS := {"scrapyard": 0, "style": 1, "scout": 1, "team": 2, "moves": 3, "workshop": 4, "pilot": 5, "paint": 5, "setups": 6, "randomize": 6}
+const UNLOCKS := {"scrapyard": 0, "style": 1, "scout": 1, "shop": 2, "season": 2, "team": 2, "moves": 3, "workshop": 4, "pilot": 5, "paint": 5, "setups": 6, "randomize": 6}
 
 
 func unlocked(feature: String) -> bool:
@@ -1341,7 +1341,9 @@ func unlocked(feature: String) -> bool:
 func garage_tip() -> String:
 	var tips := [
 		["repair", repair_all_cost() > 0, "Damage carries over between fights. Hit Repair all before the next one - or fix parts one by one."],
-		["scrapyard", unlocked("scrapyard"), "NEW: the Scrapyard. Dig through the pile for free parts - one dig after every fight. Mostly rust, sometimes treasure."],
+		["scrapyard", unlocked("scrapyard"), "The Scrapyard's out back. One dig after every fight, one part per dig. Mostly rust, sometimes treasure."],
+		["shop", unlocked("shop"), "NEW: the Shop. We've got a bit of prize money now - the dealer sells real parts, and his stock changes after every fight."],
+		["season", unlocked("season"), "NEW: the Season tab. The league table, the calendar and who you fight next."],
 		["style", unlocked("style"), "NEW: the Style button. Pick how ECHO fights - Tank, Striker, Mechanic or Specialist. Each gets a free signature move."],
 		["scout", unlocked("scout") and scout_key() != "", "NEW: Scout. Pay to peek at the next robot. Careful - their crew might spot you and change their setup."],
 		["backup", unlocked("team"), "NEW: the Team tab. Build a backup robot from spare parts, then use Send to put it in the ring when ECHO's too banged up."],
@@ -1374,29 +1376,42 @@ func tab_tip(tab: String) -> String:
 
 
 ## Dig through the scrapyard pile. Returns {"text", "part"} (part = id found, or "").
+## One dig = one part, always beaten up. Mostly junk, sometimes something decent, rarely a real find.
 func dig_scrap() -> Dictionary:
 	if digs_left <= 0:
 		return {"text": "Too tired to dig. The pile will still be here after the next fight.", "part": ""}
 	digs_left -= 1
 	var r := randf()
-	if r < 0.45:
-		var max_cost := 300 + progress() * 160
-		var pool: Array = []
+	var pool: Array = []
+	var grade := "junk"
+	if r < 0.08:
+		grade = "good"
+		var top := 900 + progress() * 250
 		for id in ALL_PARTS:
 			var d: Dictionary = PARTS[id]
-			if d["shop"] and d["cost"] > 0 and d["cost"] <= max_cost and not UNDAMAGEABLE.has(d["kind"]):
+			if d["shop"] and d["cost"] >= 400 and d["cost"] <= top and not UNDAMAGEABLE.has(d["kind"]):
 				pool.append(id)
-		if not pool.is_empty():
-			var id: String = pool[randi() % pool.size()]
-			add_part(id, randf_range(0.15, 0.55))
-			return {"text": "Found a %s! Banged up, but it's yours (in Storage)." % part_def(id)["name"], "part": id}
-	if r < 0.7:
-		var cash := randi_range(15, 60)
-		money += cash
-		return {"text": "Just scrap metal - sold it for $%d." % cash, "part": ""}
-	var nothing := ["Nothing but rust and a dead seagull.", "A boot. Not a robot boot. Just a boot.", "Half a toaster. Gus wants it.",
-			"A tangle of wire and an angry rat.", "Somebody's old fight program on a chip. It's corrupted.", "Rust. So much rust."]
-	return {"text": nothing[randi() % nothing.size()], "part": ""}
+	elif r < 0.35:
+		grade = "decent"
+		var top := 300 + progress() * 80
+		for id in ALL_PARTS:
+			var d: Dictionary = PARTS[id]
+			if d["shop"] and d["cost"] > 0 and d["cost"] <= top and not UNDAMAGEABLE.has(d["kind"]):
+				pool.append(id)
+	if pool.is_empty():
+		grade = "junk"
+		for kind in STARTER_OPTIONS:
+			pool += STARTER_OPTIONS[kind]
+	var id: String = pool[randi() % pool.size()]
+	add_part(id, randf_range(0.15, 0.5))
+	var name: String = part_def(id)["name"]
+	match grade:
+		"good":
+			return {"text": "Jackpot! A %s, buried under a dead robot. Banged up, but it's real gear (in Storage)." % name, "part": id, "grade": grade}
+		"decent":
+			return {"text": "Found a %s. Dented, but decent (in Storage)." % name, "part": id, "grade": grade}
+	var meh := ["More junk: a %s. Rusty, but it bolts on.", "A %s, half eaten by rust. Better than nothing.", "Dug out a %s. Gus says he's seen worse. Not much worse."]
+	return {"text": (meh[randi() % meh.size()] % name) + " (in Storage)", "part": id, "grade": grade}
 
 
 func buy_controller(id: String) -> String:

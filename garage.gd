@@ -102,6 +102,12 @@ class ChipIcon extends Control:
 
 
 func _ready() -> void:
+	# first time in the bay after a fight: Gus explains how things work around here
+	if GameData.wins + GameData.losses > 0 and GameData.queue_story("first_garage", "res://garage.tscn"):
+		get_tree().change_scene_to_file.call_deferred("res://story.tscn")
+		return
+	if not GameData.unlocked("shop") and GameData.unlocked("scrapyard") and not GameData.tips_seen.has("tab_Scrapyard"):
+		tab = "Scrapyard"
 	Sfx.music("garage")
 	reset_workshop("arm")
 	backdrop = Backdrop.new()
@@ -186,9 +192,13 @@ func _ready() -> void:
 
 
 func tab_list() -> Array:
-	var t := ["Build", "Shop", "Season"]
+	var t := ["Build"]
 	if GameData.unlocked("scrapyard"):
 		t.append("Scrapyard")
+	if GameData.unlocked("shop"):
+		t.append("Shop")
+	if GameData.unlocked("season"):
+		t.append("Season")
 	if GameData.unlocked("workshop"):
 		t.append("Workshop")
 	if GameData.unlocked("moves"):
@@ -283,7 +293,7 @@ func refresh() -> void:
 		c.queue_free()
 	for t in tab_list():
 		# a star marks a tab you haven't opened yet
-		var fresh: bool = not t in ["Build", "Shop", "Scrapyard", "Season"] and not GameData.tips_seen.has("tab_" + t)
+		var fresh: bool = not t in ["Build", "Scrapyard"] and not GameData.tips_seen.has("tab_" + t)
 		var b := UI.button(t + (" ★" if fresh else ""), _on_tab.bind(t), 18, Vector2(0, 46))
 		b.toggle_mode = true
 		b.button_pressed = t == tab
@@ -546,7 +556,15 @@ func build_slot(slot: String) -> void:
 		var row := make_row(part_icon(d, 0.0), d["name"] + "  (WRECKED)", "Rebuild it to use it again.")
 		row_button(row, "Rebuild $%d" % c, _on_repair.bind(sp["uid"]), GameData.money >= c, 130)
 		row_button(row, "Scrap", _on_sell.bind(sp["uid"]), true, 80)
+	# never stuck: if this slot is empty and there's nothing to fit, Gus has some junk lying around
+	if p.is_empty() and options.is_empty() and slot in ["head", "torso"]:
+		section("Gus's emergency junk:")
+		var jd := GameData.part_def(GameData.STARTER[slot])
+		var row := make_row(part_icon(jd, 0.4), jd["name"], "Rusty and half broken, but it'll get you in the ring. Free.")
+		row_button(row, "Take", _on_emergency_junk.bind(slot), true, 95)
 	var for_sale: Array = GameData.shop_stock.filter(func(id): return GameData.part_def(id)["kind"] == kind)
+	if not GameData.unlocked("shop"):
+		for_sale = []
 	if not for_sale.is_empty():
 		section("In the dealer's stock right now:")
 		for id in for_sale:
@@ -554,8 +572,11 @@ func build_slot(slot: String) -> void:
 			var row := make_row(part_icon(d), d["name"], GameData.part_stat_text(d))
 			row_button(row, "Buy $%d" % d["cost"], _on_buy.bind(id), GameData.money >= d["cost"], 115)
 	var more := action_bar()
-	row_button(more, "Dealer's stock", _on_go_shop.bind(kind), true, 200)
-	if GameData.CUSTOM_KINDS.has(kind):
+	if GameData.unlocked("shop"):
+		row_button(more, "Dealer's stock", _on_go_shop.bind(kind), true, 200)
+	else:
+		row_button(more, "Dig in the Scrapyard", _on_tab.bind("Scrapyard"), true, 220)
+	if GameData.CUSTOM_KINDS.has(kind) and GameData.unlocked("workshop"):
 		row_button(more, "Design one in the Workshop", _on_go_workshop.bind(kind), true, 270)
 
 
@@ -858,15 +879,25 @@ func build_shop_tab() -> void:
 ## The scrapyard: a mountain of dead robots. Dig for free (beaten-up) parts, a few digs per fight.
 func build_scrapyard_tab() -> void:
 	var bar := action_bar()
-	var info := UI.label("THE SCRAPYARD - a mountain of dead robots. One dig after every fight: %s. Anything you dig up is beaten up (15-55%% health)." % ("ready to dig" if GameData.digs_left > 0 else "already dug - come back after your next fight"), 15, Color(1.0, 0.8, 0.4))
+	var info := UI.label("THE SCRAPYARD - a mountain of dead robots. One dig after every fight, one part per dig - %s. Mostly junk, sometimes something good, always beaten up (15-50%% health). Fix it up in the bay." % ("ready to dig" if GameData.digs_left > 0 else "already dug, come back after your next fight"), 15, Color(1.0, 0.8, 0.4))
 	info.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	info.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	bar.add_child(info)
 	row_button(bar, "Dig!" if GameData.digs_left > 0 else "Rest", _on_dig, GameData.digs_left > 0, 130)
-	section("FREE JUNK - always lying around:")
-	for d in GameData.scrap_bin():
-		var row := make_row(part_icon(d), d["name"] + "  [%s]" % str(d["kind"]).to_upper(), GameData.part_stat_text(d))
-		row_button(row, "Take", _on_buy.bind(d["id"]), true, 115)
+	# what the pile has given you so far (spare parts that still need fixing)
+	var finds: Array = GameData.spares().filter(func(p): return GameData.hp_ratio(p) < 1.0)
+	if not finds.is_empty():
+		section("Dug up and waiting in Storage:")
+		for p in finds:
+			var d := GameData.part_def(p["id"])
+			make_row(part_icon(d, GameData.hp_ratio(p)), "%s  [%s]  %d%%" % [d["name"], str(d["kind"]).to_upper(), int(GameData.hp_ratio(p) * 100)], GameData.part_stat_text(d))
+
+
+func _on_emergency_junk(slot: String) -> void:
+	var uid := GameData.add_part(GameData.STARTER[slot], 0.4)
+	GameData.equip(uid, slot)
+	say("Gus digs a rusty %s out from under the bench. \"It'll hold. Probably.\"" % GameData.part_def(GameData.STARTER[slot])["name"], "equip")
+	refresh()
 
 
 func _on_dig() -> void:
