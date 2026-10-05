@@ -34,7 +34,7 @@ const SCENES := {
 		["GUS", "Three months behind on rent, kid. Tell me that heap still does something."],
 		["ECHO", "[ PAIRING SIGNAL ... HANDLER LINK FOUND ]"],
 		["GUS", "Then it starts where everybody starts: the Scrap Heap League, out back of the junkyard. Five fights, pennies a bout."],
-		["GUS", "Medal there, you're in the Regional. Make the Regional semis, you're in the Kane Championship - once a year, OVERLORD waiting at the end. First bout's tonight."],
+		["GUS", "Do well in the scrap league - finish in the top three - and we qualify for the Regional. That's where the real money starts. First bout's tonight."],
 	]},
 
 	"pre_0": {"place": "THE SCRAP HEAP RING", "lines": [
@@ -186,6 +186,7 @@ const SCENES := {
 		["GUS", "Mostly junk. Once in a while, something good. Whatever you find, I'll bolt it on and you fix it up."],
 		["GUS", "And kid - you owe me a thousand in back rent. Rent and food are another thousand every month. And no repairs on credit - while we're in the hole, we fight with the dents."],
 		["GUS", "Keep winning and the prize money starts coming in. Climb out of the hole, then we talk to the dealer about real parts."],
+		["GUS", "And remember: finish the scrap league in the top three and we qualify for the Regional. That's our way out of this pile."],
 	]},
 	# ---- career moments (shown after the fight that decides them)
 	"scrap_medal": {"place": "THE SCRAP HEAP RING", "lines": [
