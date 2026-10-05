@@ -9,6 +9,7 @@ const UI = preload("res://ui.gd")
 ## Tap to reveal / advance. "Skip" jumps to the end.
 
 const CHARS_PER_SEC := 55.0
+const SCREEN_CHARS := 300   # one speaker's lines share a screen up to about five lines of text
 
 var lines: Array = []
 var index := 0
@@ -111,7 +112,7 @@ class Portrait extends Control:
 func _ready() -> void:
 	Sfx.music("anthem" if GameData.story_key == "post_9" else "story")
 	var scene: Dictionary = Story.SCENES.get(GameData.story_key, {"place": "", "lines": []})
-	lines = scene["lines"]
+	lines = build_screens(scene["lines"])
 	UI.background(self)
 	var m := UI.margin(self, 24)
 	var col := VBoxContainer.new()
@@ -156,6 +157,24 @@ func _ready() -> void:
 	show_line()
 
 
+## Lines -> screens: translated, with lines that depend on your game ({RENT_INTRO}...) filled in,
+## and a speaker's lines in a row sharing one screen (so there's less tapping).
+func build_screens(raw: Array) -> Array:
+	var out: Array = []
+	for l in raw:
+		var who: String = l[0]
+		var text := str(l[1])
+		text = GameData.story_dynamic(text.substr(1, text.length() - 2)) if text.begins_with("{") else tr(text)
+		text = text.replace("ECHO", GameData.robot_name)
+		if text == "":
+			continue
+		if not out.is_empty() and out[-1][0] == who and str(out[-1][1]).length() + text.length() < SCREEN_CHARS:
+			out[-1][1] = str(out[-1][1]) + " " + text
+		else:
+			out.append([who, text])
+	return out
+
+
 func show_line() -> void:
 	var who: String = lines[index][0]
 	var info: Dictionary = Story.SPEAKERS.get(who, {"color": "#ffffff"})
@@ -166,8 +185,7 @@ func show_line() -> void:
 		shown_name = GameData.robot_name
 	name_label.text = "" if who == "NARRATOR" else shown_name
 	name_label.add_theme_color_override("font_color", Color(info["color"]))
-	# the story was written for ECHO: use whatever the player named their robot
-	text_label.text = tr(str(lines[index][1])).replace("ECHO", GameData.robot_name)
+	text_label.text = str(lines[index][1])
 	text_label.add_theme_color_override("font_color", Color(0.75, 0.75, 0.8) if who == "NARRATOR" else Color.WHITE)
 	text_label.visible_characters = 0
 	shown = 0.0

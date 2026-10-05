@@ -298,6 +298,14 @@ static func draw_person(ci: CanvasItem, feet: Vector2, s: float, raw: Dictionary
 		"cheer":
 			hf = sh_f + Vector2(6 * s * dir, -22 * s + swing * 3 * s)
 			hb = sh_b + Vector2(-6 * s * dir, -22 * s - swing * 3 * s)
+		"pry":
+			var heave := maxf(0.0, sin(t * 2.6))
+			hf = sh_f + Vector2(18 * s * dir, (18 - 8 * heave) * s)
+			hb = sh_b + Vector2(22 * s * dir, (20 - 8 * heave) * s)
+		"lift":
+			var up := sin(t * 1.5) * 2.0
+			hf = sh_f + Vector2(8 * s * dir, (-14 + up) * s)
+			hb = sh_b + Vector2(14 * s * dir, (-12 + up) * s)
 	var arm_col := shirt.darkened(0.12)
 	ci.draw_line(sh_b, hb, arm_col, 5 * s)
 	ci.draw_circle(hb, 2.6 * s, Color(look.get("skin", "#c8946e")))
@@ -330,6 +338,15 @@ static func draw_person(ci: CanvasItem, feet: Vector2, s: float, raw: Dictionary
 		"clipboard":
 			ci.draw_rect(Rect2((hf + hb) * 0.5 + Vector2(-7 * s, -10 * s), Vector2(14 * s, 18 * s)), Color(0.6, 0.45, 0.3))
 			ci.draw_rect(Rect2((hf + hb) * 0.5 + Vector2(-5 * s, -7 * s), Vector2(10 * s, 13 * s)), Color(0.95, 0.95, 0.9))
+		"pry":
+			# a crowbar under a crate lid
+			var tip := (hf + hb) * 0.5 + Vector2(16 * s * dir, 10 * s)
+			ci.draw_line((hf + hb) * 0.5 + Vector2(-4 * s * dir, -6 * s), tip, Color(0.75, 0.2, 0.15), 2.5 * s)
+		"lift":
+			# holding up a part to look at it
+			var mid := (hf + hb) * 0.5 + Vector2(0, -5 * s)
+			ci.draw_rect(Rect2(mid + Vector2(-8 * s, -6 * s), Vector2(16 * s, 10 * s)), tool_color)
+			ci.draw_circle(mid + Vector2(4 * s, -1 * s), 2.0 * s, Color(1.0, 0.5, 0.2))
 		"hold":
 			draw_controller(ci, (hf + hb) * 0.5, s * 0.8, str(look.get("controller", "gamepad")), int(t * 3.0) % 2 == 0, t)
 	# head

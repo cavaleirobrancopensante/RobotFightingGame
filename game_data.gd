@@ -683,6 +683,7 @@ func equip(uid: int, slot: String) -> String:
 	if p.is_empty():
 		return "That part is gone."
 	release_from_wingman(uid)
+	p.erase("dug")   # fitted: it's not a fresh find any more
 	var d := part_def(p["id"])
 	if is_wreck(p):
 		return tr("%s is a wreck. Rebuild it first.") % d["name"]
@@ -1608,40 +1609,67 @@ const UNLOCKS := {"scrapyard": 0, "style": 1, "shop": 2, "season": 3, "scout": 4
 		"workshop": 8, "pilot": 9, "paint": 10, "setups": 11, "randomize": 12}
 
 
+## Wins, and always a fight after the one that earned it: your first visit to the bay is just
+## the bay and the scrapyard; after that one new thing per fight.
 func unlocked(feature: String) -> bool:
-	return champion or wins >= int(UNLOCKS.get(feature, 0))
+	var need := int(UNLOCKS.get(feature, 0))
+	return champion or (wins >= need and (need == 0 or wins + losses >= need + 1))
 
 
-## The order things open in the garage, and the Gus scene that explains each one.
-## [feature, garage tab to open afterwards, the old tip id (saves from before these scenes)]
-const UNLOCK_SCENES := [["style", "", "style"], ["shop", "Shop", "shop"], ["season", "Season", "season"],
-		["scout", "", "scout"], ["moves", "Moves", "moves"], ["cups", "Cups", ""], ["team", "Team", "backup"],
-		["workshop", "Workshop", "workshop"], ["pilot", "", "pilot"], ["paint", "", "pilot"],
-		["setups", "", "setups"], ["randomize", "", "setups"]]
-var open_tab := ""   # a garage tab to show after an unlock scene
+## Things that open up in the garage. Each one shows up with a star; the first tap plays a short
+## Gus scene ("unlock_<feature>") and then opens it. [feature, garage tab or "" for a button,
+## the old one-line tip id (saves from before the scenes count it as already explained)]
+const UNLOCK_SCENES := [["scrapyard", "Scrapyard", "scrapyard"], ["storage", "", ""], ["style", "", "style"],
+		["shop", "Shop", "shop"], ["season", "Season", "season"], ["scout", "", "scout"], ["moves", "Moves", "moves"],
+		["cups", "Cups", ""], ["team", "Team", "backup"], ["workshop", "Workshop", "workshop"], ["pilot", "", "pilot"],
+		["paint", "", "pilot"], ["setups", "", "setups"], ["randomize", "", "setups"]]
+const TAB_FEATURES := {"Scrapyard": "scrapyard", "Shop": "shop", "Season": "season", "Moves": "moves",
+		"Cups": "cups", "Team": "team", "Workshop": "workshop"}
+var open_tab := ""      # garage tab to open after an unlock scene
+var open_action := ""   # garage button to press after an unlock scene (style, pilot, paint, ...)
 
 
-## Gus scenes for everything that has opened up since the last visit. Saves from before these
-## scenes skip the ones the old one-line tips already explained.
-func unlock_scenes() -> Array:
-	var keys: Array = []
+## Still has its star: unlocked, and Gus hasn't explained it yet.
+func is_new(feature: String) -> bool:
+	return not story_seen.has("unlock_" + feature) and Story.SCENES.has("unlock_" + feature)
+
+
+## Saves from before the unlock scenes: what the old one-line tips explained counts as seen.
+func migrate_unlock_scenes() -> void:
 	for u in UNLOCK_SCENES:
-		var f: String = u[0]
-		var key: String = "unlock_" + f
-		if story_seen.has(key):
-			continue
-		var open: bool = cups_unlocked() if f == "cups" else unlocked(f)
-		if f == "scout":
-			open = open and scout_key() != ""
-		if not open:
-			continue
-		if u[2] != "" and tips_seen.has(u[2]):
-			story_seen.append(key)
-			continue
-		keys.append(key)
-		if u[1] != "":
-			open_tab = u[1]
-	return keys
+		if u[2] != "" and tips_seen.has(u[2]) and not story_seen.has("unlock_" + u[0]):
+			story_seen.append("unlock_" + u[0])
+		if u[1] != "" and tips_seen.has("tab_" + str(u[1])) and not story_seen.has("unlock_" + u[0]):
+			story_seen.append("unlock_" + u[0])
+
+
+## Lines in the story that depend on your game: {RENT_INTRO} and {RENT_GARAGE} follow the
+## starting money and rent settings.
+func story_dynamic(key: String) -> String:
+	var living := living_cost()
+	match key:
+		"RENT_INTRO":
+			var heap := tr("Tell me that heap still does something.")
+			if money < 0:
+				var owed := -money
+				if living > 0 and owed % living == 0:
+					var months := owed / living
+					if months == 1:
+						return tr("A month behind on rent, kid.") + " " + heap
+					return (tr("%d months behind on rent, kid.") % months) + " " + heap
+				return (tr("You owe me $%d in back rent, kid.") % owed) + " " + heap
+			if money == 0:
+				return tr("Rent's paid up, kid - and that's every cent you've got.") + " " + heap
+			if living > 0 and money < living:
+				return (tr("$%d to your name, kid. That won't even cover next month.") % money) + " " + heap
+			return (tr("$%d in the bank, kid. Nice cushion. In this business it won't last.") % money) + " " + heap
+		"RENT_GARAGE":
+			var t := ""
+			if money < 0:
+				t = tr("And kid - you still owe me $%d in back rent.") % -money + " "
+			t += (tr("Rent and food are $%d every month.") % living) if living > 0 else tr("Rent's on the house for now - don't get used to it.")
+			return t + " " + tr("No repairs on credit: when we're in the hole, we fight with the dents.")
+	return ""
 
 
 ## Gus's one-line garage tips (the bigger news gets a scene of its own, see unlock_scenes).
@@ -1663,6 +1691,8 @@ const TAB_TIPS := {
 
 
 func tab_tip(tab: String) -> String:
+	if TAB_FEATURES.has(tab):
+		return ""   # Gus explains these in a scene the first time you open them
 	if TAB_TIPS.has(tab) and tip_once("tab_" + tab):
 		return tr(TAB_TIPS[tab]).replace("ECHO", robot_name)
 	return ""
@@ -1696,7 +1726,8 @@ func dig_scrap() -> Dictionary:
 		for kind in STARTER_OPTIONS:
 			pool += STARTER_OPTIONS[kind]
 	var id: String = pool[randi() % pool.size()]
-	add_part(id, randf_range(0.15, 0.5))
+	var dug_uid := add_part(id, randf_range(0.15, 0.5))
+	inst(dug_uid)["dug"] = true   # shown on the Scrapyard screen; fight salvage only goes to Storage
 	var name: String = part_def(id)["name"]
 	match grade:
 		"good":
@@ -2496,6 +2527,8 @@ func load_game(slot: int = -1) -> String:
 	for p in data.get("inventory", []):
 		if not part_def(str(p.get("id", ""))).is_empty():
 			inventory.append({"uid": int(p["uid"]), "id": str(p["id"]), "hp": float(p["hp"])})
+			if bool(p.get("dug", false)):
+				inventory[inventory.size() - 1]["dug"] = true
 	var eq: Dictionary = data.get("equipped", {})
 	for sl in SLOTS:
 		var uid := int(eq.get(sl, -1))
@@ -2586,6 +2619,7 @@ func load_game(slot: int = -1) -> String:
 		event = {} if champion else Career.new_event(rank, year, randi())
 		if champion:
 			week = 42
+	migrate_unlock_scenes()
 	if typeof(data.get("world")) == TYPE_DICTIONARY and not (data["world"] as Dictionary).get("pilots", {}).is_empty():
 		world = data["world"]
 		_fix_world()

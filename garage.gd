@@ -45,6 +45,7 @@ const TAB_SCENES := {"Build": "build", "Season": "build", "Shop": "shop", "Works
 ## The living scene behind the whole garage screen. The robot panel is see-through, so the robot
 ## stands in the scene with Gus and the pilot around it.
 class Backdrop extends Control:
+	const ZOOM := 1.15
 	var garage
 	var t := 0.0
 	var _rt := 0.0
@@ -60,7 +61,19 @@ class Backdrop extends Control:
 		if garage == null or garage.preview == null:
 			return
 		var pv: Control = garage.preview
-		var stage := Rect2(pv.global_position - global_position, pv.size)
+		# (positions before the zoom below is applied)
+		var pv_at: Vector2 = pv.global_position - pv.pivot_offset * (Vector2.ONE - pv.scale)
+		var my_at: Vector2 = global_position - pivot_offset * (Vector2.ONE - scale)
+		var stage := Rect2(pv_at - my_at, pv.size)
+		# the bay is drawn zoomed in a bit, anchored at the left of the robot panel, a little below the middle, so Gus,
+		# the pilot and the scoreboard read better; the robot preview gets the same zoom
+		var pivot := Vector2(6.0, pv.size.y * 0.62)
+		if pv.scale.x != ZOOM or pv.pivot_offset != pivot:
+			pv.pivot_offset = pivot
+			pv.scale = Vector2(ZOOM, ZOOM)
+		if scale.x != ZOOM or pivot_offset != stage.position + pivot:
+			pivot_offset = stage.position + pivot
+			scale = Vector2(ZOOM, ZOOM)
 		var info: Dictionary = garage.scene_info()
 		GarageArt.draw_back(self, size, stage, garage.scene, t, info)
 		GarageArt.draw_front(self, stage, garage.scene, t, info, pv._base, pv.robot_height)
@@ -103,19 +116,14 @@ class ChipIcon extends Control:
 
 
 func _ready() -> void:
-	# first time in the bay after a fight: Gus explains how things work around here
-	# and every time something new opens up, Gus explains it in a scene of its own
-	if GameData.wins + GameData.losses > 0:
-		var keys: Array = ["first_garage"] + GameData.unlock_scenes()
-		if GameData.queue_stories(keys, "res://garage.tscn"):
-			get_tree().change_scene_to_file.call_deferred("res://story.tscn")
-			return
+	# first time in the bay after a fight: Gus explains how things work around here.
+	# Everything else that opens up waits with a star; Gus explains it when you first tap it.
+	if GameData.wins + GameData.losses > 0 and GameData.queue_story("first_garage", "res://garage.tscn"):
+		get_tree().change_scene_to_file.call_deferred("res://story.tscn")
+		return
 	if GameData.open_tab != "" and tab_list().has(GameData.open_tab):
 		tab = GameData.open_tab
-		GameData.tip_once("tab_" + tab)   # Gus just explained it
 	GameData.open_tab = ""
-	if not GameData.unlocked("shop") and GameData.unlocked("scrapyard") and not GameData.tips_seen.has("tab_Scrapyard"):
-		tab = "Scrapyard"
 	Sfx.music("garage")
 	reset_workshop("arm")
 	backdrop = Backdrop.new()
@@ -197,6 +205,20 @@ func _ready() -> void:
 	if tip != "":
 		msg_label.text = tip if msg_label.text.begins_with("Tap a part") else msg_label.text + "\n" + tip
 	refresh()
+	# back from Gus explaining a button: press it for you
+	var act := GameData.open_action
+	GameData.open_action = ""
+	match act:
+		"style":
+			_on_open_style()
+		"pilot":
+			_on_open_pilot()
+		"paint":
+			_on_open_paint()
+		"setups":
+			_on_open_setups()
+		"storage":
+			_on_slot("storage")
 
 
 func tab_list() -> Array:
@@ -306,7 +328,7 @@ func refresh() -> void:
 			fight_button.text += tr(" - core damaged!")
 
 	scout_button.visible = GameData.scout_key() != "" and GameData.unlocked("scout")
-	scout_button.text = tr("Scout report") if GameData.scouted() else tr("Scout $%d") % GameData.scout_cost()
+	scout_button.text = star(tr("Scout report") if GameData.scouted() else tr("Scout $%d") % GameData.scout_cost(), "scout")
 	preview.look = GameData.player_look()
 	set_scene_for_tab()
 	preview.highlight = selected if tab == "Build" else ""
@@ -315,7 +337,7 @@ func refresh() -> void:
 		c.queue_free()
 	for t in tab_list():
 		# a star marks a tab you haven't opened yet
-		var fresh: bool = not t in ["Build", "Scrapyard"] and not GameData.tips_seen.has("tab_" + t)
+		var fresh: bool = GameData.TAB_FEATURES.has(t) and GameData.is_new(GameData.TAB_FEATURES[t])
 		var b := UI.button(tr(t) + (" ★" if fresh else ""), _on_tab.bind(t), 18, Vector2(0, 46))
 		b.toggle_mode = true
 		b.button_pressed = t == tab
@@ -505,16 +527,16 @@ func build_overview() -> void:
 	row_button(bar, tr("Repair all $%d") % total if total > 0 else tr("All repaired"), _on_repair_all, total > 0, 150)
 	# more buttons appear as the story goes on (see GameData.UNLOCKS)
 	if GameData.unlocked("randomize"):
-		row_button(bar, "Randomize", _on_randomize, true, 120)
+		row_button(bar, star(tr("Randomize"), "randomize"), _on_randomize, true, 120)
 	if GameData.unlocked("setups"):
-		row_button(bar, "Setups", _on_open_setups, true, 100)
+		row_button(bar, star(tr("Setups"), "setups"), _on_open_setups, true, 100)
 	if GameData.unlocked("paint"):
-		row_button(bar, "Paint", _on_open_paint, true, 85)
+		row_button(bar, star(tr("Paint"), "paint"), _on_open_paint, true, 85)
 	if GameData.unlocked("pilot"):
-		row_button(bar, "Pilot", _on_open_pilot, true, 80)
+		row_button(bar, star(tr("Pilot"), "pilot"), _on_open_pilot, true, 80)
 	if GameData.unlocked("style"):
-		row_button(bar, tr("Style: %s") % tr(Catalog.STYLES[GameData.style]["name"]), _on_open_style, true, 150)
-	row_button(bar, tr("Storage (%d)") % GameData.spares().size(), _on_slot.bind("storage"), true, 125)
+		row_button(bar, star(tr("Style: %s") % tr(Catalog.STYLES[GameData.style]["name"]), "style"), _on_open_style, true, 150)
+	row_button(bar, star(tr("Storage (%d)") % GameData.spares().size(), "storage"), _on_slot.bind("storage"), true, 125)
 
 	for slot in GameData.SLOTS:
 		if not GameData.slot_available(slot):
@@ -698,6 +720,8 @@ func close_popup() -> void:
 
 
 func _on_open_setups() -> void:
+	if gus_explains("setups"):
+		return
 	var col := open_popup(tr("SAVED SETUPS"))
 	section("A setup remembers your parts, chips and paint.", col)
 	for k in GameData.SETUP_SLOTS:
@@ -715,6 +739,8 @@ const StoryScript = preload("res://story.gd")
 
 ## Design your pilot: they stand in your corner during fights and appear in the story.
 func _on_open_pilot() -> void:
+	if gus_explains("pilot"):
+		return
 	var col := open_popup(tr("YOUR PILOT"))
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 12)
@@ -839,12 +865,16 @@ func _on_controller(id: String) -> void:
 
 func set_scene_for_tab() -> void:
 	scene = "paint" if paint_open else TAB_SCENES.get(tab, "build")
+	if tab == "Build" and selected == "storage":
+		scene = "storage"
 	preview.spot = GarageArt.robot_spot(scene)
 	preview.facing = 1 if scene == "paint" else -1
 	preview.queue_redraw()
 
 
 func _on_open_paint() -> void:
+	if gus_explains("paint"):
+		return
 	var col := open_popup(tr("PAINT JOB"))
 	paint_open = true
 	set_scene_for_tab()
@@ -911,7 +941,7 @@ func build_scrapyard_tab() -> void:
 	bar.add_child(info)
 	row_button(bar, tr("Dig!") if GameData.digs_left > 0 else tr("Rest"), _on_dig, GameData.digs_left > 0, 130)
 	# what the pile has given you so far (spare parts that still need fixing)
-	var finds: Array = GameData.spares().filter(func(p): return GameData.hp_ratio(p) < 1.0)
+	var finds: Array = GameData.spares().filter(func(p): return p.get("dug", false))
 	if not finds.is_empty():
 		section("Dug up and waiting in Storage - fit them in the bay, or sell them (damaged parts sell cheaper):")
 		for p in finds:
@@ -1512,7 +1542,28 @@ func bot_preview(o: Dictionary) -> RobotPreview:
 
 # ---------------------------------------------------------------- actions
 
+## New things carry a star: the first tap has Gus explain them (a short scene), then opens them.
+func gus_explains(feature: String, tab_name: String = "") -> bool:
+	if not GameData.is_new(feature):
+		return false
+	GameData.open_tab = tab_name
+	GameData.open_action = "" if tab_name != "" else feature
+	if feature == "storage":
+		GameData.open_tab = "Build"
+	if GameData.queue_story("unlock_" + feature, "res://garage.tscn"):
+		Sfx.play("click")
+		get_tree().change_scene_to_file("res://story.tscn")
+		return true
+	return false
+
+
+func star(text: String, feature: String) -> String:
+	return text + (" ★" if GameData.is_new(feature) else "")
+
+
 func _on_tab(t: String) -> void:
+	if GameData.TAB_FEATURES.has(t) and gus_explains(GameData.TAB_FEATURES[t], t):
+		return
 	tab = t
 	paint_open = false
 	if t == "Build":
@@ -1531,6 +1582,8 @@ func _on_part_tapped(slot: String) -> void:
 
 
 func _on_slot(slot: String) -> void:
+	if slot == "storage" and gus_explains("storage"):
+		return
 	selected = slot
 	refresh()
 
@@ -1559,6 +1612,8 @@ func _on_reroll() -> void:
 
 
 func _on_open_style() -> void:
+	if gus_explains("style"):
+		return
 	var col := open_popup(tr("FIGHTING STYLE"))
 	section("Your style changes how ECHO fights and gives it a free signature move.", col)
 	for id in Catalog.STYLES:
@@ -1589,6 +1644,8 @@ func _on_pick_style(id: String) -> void:
 
 
 func _on_open_scout() -> void:
+	if gus_explains("scout"):
+		return
 	var msg := ""
 	if not GameData.scouted():
 		var before := GameData.money
@@ -1694,6 +1751,8 @@ func _on_repair_all() -> void:
 
 
 func _on_randomize() -> void:
+	if gus_explains("randomize"):
+		return
 	say(GameData.randomize_robot(), "equip")
 	Sfx.play("repair", 0.2)
 	refresh()

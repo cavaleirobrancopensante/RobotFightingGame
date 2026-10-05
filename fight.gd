@@ -507,6 +507,7 @@ func _input(event: InputEvent) -> void:
 		match event.physical_keycode:
 			KEY_ENTER, KEY_SPACE:
 				tap_pending = true
+				tut_pause = false
 			KEY_ESCAPE:
 				if phase == "intro" or phase == "fight":
 					quit_fight()
@@ -516,6 +517,9 @@ func _input(event: InputEvent) -> void:
 
 ## Quit, moves list and aiming. Returns true if the tap was used.
 func handle_tap(p: Vector2) -> bool:
+	if tut_pause:
+		tut_pause = false   # read it: back to the fight
+		return true
 	if paused:
 		toggle_pause()
 		return true
@@ -1224,6 +1228,9 @@ func ai_pick_target() -> void:
 
 func _process(delta: float) -> void:
 	layout()
+	if tut_pause:
+		queue_redraw()
+		return
 	if paused:
 		queue_redraw()
 		return
@@ -2476,6 +2483,11 @@ func _draw() -> void:
 		draw_buttons()
 	if paused:
 		draw_moves_list()
+	if tut_pause:
+		draw_rect(Rect2(Vector2.ZERO, screen), Color(0, 0, 0, 0.55))
+		draw_coach()
+		draw_string(font, Vector2(0, screen.y * 0.62), tr("Tap to continue"), HORIZONTAL_ALIGNMENT_CENTER, screen.x, fs(26),
+				Color(1, 1, 1, 0.6 + 0.4 * sin(Time.get_ticks_msec() / 200.0)))
 
 
 ## The arena lives on its own layer behind the fighters and is redrawn ~24 times a second
@@ -3265,6 +3277,11 @@ func draw_pilot_bubble(pd: Dictionary, anchor: Vector2) -> void:
 # Instead of a wall of tutorial text before the first fight, Gus shouts short tips from the
 # corner at the moment they matter. Each tip shows once per save (not in quick fights).
 
+# First fight only: Gus's first few words stop the fight so you can actually read them.
+const TUTORIAL_PAUSES := 4
+var tut_pause := false
+var tut_pauses := 0
+
 var coach_queue: Array = []
 var coach_text := ""
 var coach_t := 0.0
@@ -3318,6 +3335,7 @@ func update_coach(delta: float) -> void:
 		coach_text = q["text"]
 		coach_id = q["id"]
 		coach_t = COACH_SHOW
+		coach_shown()
 		GameData.tip_once(q["id"])   # only counts as seen once it was actually shown
 
 
@@ -3330,6 +3348,18 @@ var shout_cd := {}        # id -> coach_clock when it may be shouted again
 var shout_next := 0.0
 var cpu_turtle_t := 0.0
 var late_call := false
+
+
+func first_fight() -> bool:
+	return mode == "story" and GameData.wins + GameData.losses == 0
+
+
+## Gus started saying something: in your first fight, the first few stop the action.
+func coach_shown() -> void:
+	if first_fight() and phase == "fight" and tut_pauses < TUTORIAL_PAUSES:
+		tut_pauses += 1
+		tut_pause = true
+		touches.clear()
 
 
 func coach_level() -> int:
@@ -3355,6 +3385,7 @@ func shout(id: String, short_text: String, long_text: String, prio: int, need_le
 	coach_t = 3.0 if tutorial_fights() else (1.4 if prio == 3 else 2.2)
 	shout_cd[id] = coach_clock + again
 	shout_next = coach_clock + SHOUT_GAP[lv]
+	coach_shown()
 
 
 func live_coach(delta: float) -> void:
@@ -3548,8 +3579,8 @@ func draw_coach() -> void:
 	if gus_here() and gus_head != Vector2.ZERO:
 		# a speech bubble from Gus in the corner
 		# up in the top-left, just under your robot's name: out of the fight, clear of the HUD buttons
-		var size := fs(16)
-		var maxw := minf(560.0, quit_rect.position.x - 50.0)
+		var size := fs(16) if not tut_pause else fs(21)   # bigger while the fight waits for you to read it
+		var maxw := minf(560.0 if not tut_pause else 680.0, quit_rect.position.x - 50.0 if not tut_pause else screen.x - 80.0)
 		var text_size := font.get_multiline_string_size(coach_text, HORIZONTAL_ALIGNMENT_LEFT, maxw, size)
 		var w := text_size.x + 24.0
 		var h := text_size.y + size + 22.0

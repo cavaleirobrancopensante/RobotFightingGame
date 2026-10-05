@@ -11,6 +11,7 @@ const RobotArt = preload("res://robot_art.gd")
 const ROBOT_SPOT := {
 	"build": [0.62, 0.74], "shop": [0.8, 0.5], "workshop": [0.74, 0.56], "scrap": [0.8, 0.5],
 	"paint": [0.5, 0.72], "moves": [0.62, 0.7], "team": [0.64, 0.66], "cups": [0.68, 0.62],
+	"storage": [0.88, 0.5],
 }
 
 
@@ -55,6 +56,8 @@ static func _environment(ci: CanvasItem, screen: Vector2, floor_y: float, scene:
 			_wall(ci, screen, floor_y, Color(0.18, 0.18, 0.22), Color(0.22, 0.22, 0.27))
 		"cups":
 			_wall(ci, screen, floor_y, Color(0.2, 0.16, 0.2), Color(0.24, 0.2, 0.24))
+		"storage":
+			_wall(ci, screen, floor_y, Color(0.17, 0.15, 0.13), Color(0.2, 0.18, 0.15))
 		_:
 			ci.draw_rect(Rect2(Vector2.ZERO, screen), Color(0.12, 0.12, 0.17))
 	if scene != "scrap":
@@ -143,6 +146,16 @@ static func _props_back(ci: CanvasItem, size: Vector2, scene: String, t: float, 
 			ci.draw_rect(Rect2(size.x * 0.45, floor_y - 6, size.x * 0.4, 6), Color(0.3, 0.3, 0.35))   # practice mat
 		"team":
 			_sign(ci, Vector2(size.x * 0.5, 30), I18n.t("TEAM"), Color(0.5, 0.8, 1.0))
+		"storage":
+			_sign(ci, Vector2(size.x * 0.5, 30), I18n.t("STOREROOM"), Color(0.95, 0.75, 0.4))
+			_lamp(ci, Vector2(size.x * 0.42, 0), size, t)
+			# crates stacked to the ceiling at the back
+			var cw := 46.0
+			for col in int(size.x / (cw + 4.0)):
+				var h := 2 + (col * 7) % 3
+				for row in h:
+					var r := Rect2(6 + col * (cw + 4.0), floor_y - (row + 1) * 34.0 - 26.0, cw, 32.0)
+					_crate(ci, r, 0.75 + 0.1 * float((col + row) % 3))
 		"cups":
 			# trophy shelf: the cup trophies you've won
 			var cups: Array = info.get("medals", []).filter(func(x): return x.get("kind", "") == "cup")
@@ -270,9 +283,44 @@ static func _front(ci: CanvasItem, size: Vector2, scene: String, t: float, info:
 			PilotArt.draw_person(ci, Vector2(size.x - 22 * s, floor_y), s * 0.9, pilot, -1.0, "cheer" if not backup.is_empty() else "idle", t)
 		"cups":
 			PilotArt.draw_person(ci, Vector2(28 * s, floor_y), s, pilot, 1.0, "cheer" if not info.get("medals", []).is_empty() else "point", t)
+		"storage":
+			# two crates being opened: one lid already off with parts sticking out, Gus prying the other
+			var a := Rect2(size.x * 0.1, floor_y - 40 * s, 70 * s, 40 * s)
+			var b := Rect2(size.x * 0.5, floor_y - 36 * s, 62 * s, 36 * s)
+			# what's inside crate A: an arm, a wheel and a head poking out of the straw
+			ci.draw_line(a.position + Vector2(18 * s, 4 * s), a.position + Vector2(30 * s, -22 * s), Color(0.6, 0.6, 0.66), 6 * s)
+			ci.draw_circle(a.position + Vector2(30 * s, -22 * s), 5 * s, Color(0.5, 0.5, 0.55))
+			ci.draw_circle(a.position + Vector2(48 * s, -4 * s), 9 * s, Color(0.12, 0.12, 0.12))
+			ci.draw_circle(a.position + Vector2(48 * s, -4 * s), 4 * s, Color(0.55, 0.5, 0.45))
+			ci.draw_rect(Rect2(a.position + Vector2(52 * s, -14 * s), Vector2(16 * s, 14 * s)), Color(0.45, 0.5, 0.58))
+			ci.draw_circle(a.position + Vector2(62 * s, -8 * s), 2 * s, Color(1.0, 0.4, 0.2) if fmod(t, 1.4) < 0.7 else Color(0.3, 0.2, 0.2))
+			for k in 6:
+				ci.draw_line(a.position + Vector2((6 + k * 10) * s, 2 * s), a.position + Vector2((10 + k * 10) * s, -4 * s), Color(0.85, 0.75, 0.4), 1.5)
+			_crate(ci, a, 0.9)
+			# the lid leans against it
+			ci.draw_colored_polygon(PackedVector2Array([a.position + Vector2(-4 * s, a.size.y), a.position + Vector2(4 * s, a.size.y),
+					a.position + Vector2(-10 * s, -6 * s), a.position + Vector2(-18 * s, -6 * s)]), Color(0.55, 0.4, 0.25))
+			# crate B: the lid lifts a little each heave
+			var heave := maxf(0.0, sin(t * 2.6)) * 6 * s
+			_crate(ci, b, 0.8)
+			ci.draw_rect(Rect2(b.position + Vector2(-2 * s, -6 * s - heave), Vector2(b.size.x + 4 * s, 6 * s)), Color(0.6, 0.45, 0.28))
+			PilotArt.draw_person(ci, Vector2(b.position.x - 14 * s, floor_y), s, gus, 1.0, "pry", t)
+			# the pilot holds up a find and looks it over
+			PilotArt.draw_person(ci, Vector2(a.end.x + 30 * s, floor_y), s, pilot, -1.0, "lift", t + 0.5, Color(0.55, 0.58, 0.62))
 
 
 # ---------------------------------------------------------------- bits
+
+## A wooden crate with planks and a stencil mark. shade darkens or lightens the wood.
+static func _crate(ci: CanvasItem, r: Rect2, shade: float) -> void:
+	var wood := Color(0.55, 0.4, 0.25) * Color(shade, shade, shade)
+	ci.draw_rect(r, wood)
+	ci.draw_rect(r, wood.darkened(0.35), false, 2.0)
+	for k in 3:
+		var y := r.position.y + r.size.y * (k + 1) / 4.0
+		ci.draw_line(Vector2(r.position.x, y), Vector2(r.end.x, y), wood.darkened(0.2), 1.0)
+	ci.draw_line(r.position, r.end, wood.darkened(0.3), 2.0)
+	ci.draw_rect(Rect2(r.get_center() + Vector2(-r.size.x * 0.18, -4), Vector2(r.size.x * 0.36, 8)), Color(0.15, 0.12, 0.1, 0.45))
 
 static func _wall(ci: CanvasItem, size: Vector2, floor_y: float, c1: Color, c2: Color) -> void:
 	ci.draw_rect(Rect2(Vector2.ZERO, size), c1)

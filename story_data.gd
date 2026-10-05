@@ -31,7 +31,7 @@ const SCENES := {
 	"intro": {"place": "PORT FERRUM, 2047", "lines": [
 		["NARRATOR", "Port Ferrum. Kane Dynamics owns the city - and its robot boxing league, where Kane's unpiloted OVERLORD is putting human pilots out of work."],
 		["YOU", "My dad was one of those pilots. All he left me was his old robot, rusting under a tarp at the dry dock."],
-		["GUS", "Three months behind on rent, kid. Tell me that heap still does something."],
+		["GUS", "{RENT_INTRO}"],
 		["ECHO", "[ PAIRING SIGNAL ... HANDLER LINK FOUND ]"],
 		["GUS", "Then it starts where everybody starts: the Scrap Heap League, out back of the junkyard. Five fights, pennies a bout."],
 		["GUS", "Do well in the scrap league - finish in the top three - and we qualify for the Regional. That's where the real money starts. First bout's tonight."],
@@ -58,14 +58,11 @@ const SCENES := {
 	]},
 
 	"pre_2": {"place": "THE SCRAP HEAP RING", "lines": [
-		["SKAR", "Skar. SCRAPJAW's my baby. Bear trap on the face, my own design. What's that rust bucket's excuse?"],
-		["YOU", "ECHO's chest plate says 'handler-operated'. Ever seen a chassis like it?"],
-		["SKAR", "...Yeah, actually. Old Kane prototype frame. They scrapped a whole line of 'em years back. Weird you've got one."],
+		["SKAR", "Skar. SCRAPJAW's my baby - bear trap on the face, my own design. ...Hang on. That chassis is an old Kane prototype frame. They scrapped a whole line of 'em years back. Weird you've got one."],
 		["ECHO", "[ CHASSIS ID: UNIT 00 - RECORD ERASED ]"],
 		["GUS", "Lots of old frames out there. Focus, kid."],
 	]},
 	"post_2": {"place": "THE SCRAP HEAP RING", "lines": [
-		["GUS", "Tip: when you rip a part off and still win, sometimes you get to keep it. Check your Spares."],
 		["SKAR", "You got lucky. Rematch someday. And hey - if you ever want that bear trap face, I'll weld it on for free."],
 		["YOU", "I'll think about it."],
 		["GUS", "You will not think about it."],
@@ -79,7 +76,6 @@ const SCENES := {
 		["KANE", "Sentimental. Let's see how sentiment does against eight tons of quality control."],
 	]},
 	"post_3": {"place": "PORT FERRUM SPORTS HALL", "lines": [
-		["DR. VOSS", "Impossible. That frame's response time is under four milliseconds. Our handler link was never that fast in testing..."],
 		["NARRATOR", "Security doesn't escort you to the exit. They escort you to the glass box above the hall."],
 		["KANE", "You're a nuisance with a museum piece. I'll give you twenty thousand for it. Right now. Walk away."],
 		["YOU", "No."],
@@ -89,23 +85,19 @@ const SCENES := {
 
 	"pre_4": {"place": "PORT FERRUM SPORTS HALL", "lines": [
 		["ROSA", "Rosa. I've piloted HAMMERHEAD for fifteen years. Kane offered me a 'retirement package' last month. Pay me to quit, so a program can take my spot."],
-		["YOU", "Did you take it?"],
-		["ROSA", "I'm standing here, aren't I? Now come show me why everyone's talking about you."],
+		["ROSA", "I said no. Now come show me why everyone's talking about you."],
 		["GUS", "HAMMERHEAD swings like a wrecking ball. Don't stand in front of the big arm. Better yet - take it off."],
 	]},
 	"post_4": {"place": "PORT FERRUM SPORTS HALL", "lines": [
 		["ROSA", "Good fight. You read me before I moved. That's piloting. That's what Kane wants to erase."],
 		["YOU", "Kane offered me twenty thousand for ECHO. I'm never selling it."],
 		["NARRATOR", "Behind you, Gus goes very still. Relieved. And something worse than relieved: afraid."],
-		["ECHO", "[ HANDLER LINK: 100% SYNC ]"],
 	]},
 
 	"pre_5": {"place": "PORT FERRUM SPORTS HALL", "lines": [
 		["NARRATOR", "You come back to the bay at midnight. The door is kicked in. The tools are smashed. The power lines are cut clean."],
 		["GUS", "Kane's people. They went for the workbench and the control rig - not the robot. They want you unable to pilot."],
-		["YOU", "Then I'll pilot with what's left. I rewired the rig on a car battery. It works."],
 		["NIK & NAT", "We're Nik and Nat. VOLTAGE has two pilots - one for the arms, one for the legs. Heard what happened to your bay. That's low, even for Kane."],
-		["GUS", "VOLTAGE is fast and twitchy. Take out its legs and it's just a very angry lamp."],
 	]},
 	"post_5": {"place": "PORT FERRUM SPORTS HALL", "lines": [
 		["NIK & NAT", "Here. Spare power cables, from our garage. Nobody wrecks a pilot's bay. Nobody."],
@@ -121,7 +113,6 @@ const SCENES := {
 		["GUS", "...Sorry. Not now. Win this one first. Then ask me again."],
 	]},
 	"post_6": {"place": "KANE CHAMPIONSHIP ARENA", "lines": [
-		["NARRATOR", "Sledge's fans threw bolts again. This time, at their own robot."],
 		["BULL", "Heh. My boys picked a side. Listen, rookie - every pilot in this town is watching you now. Rosa, the twins, even Bruno. Don't make us look stupid."],
 		["YOU", "The crowd is chanting something."],
 		["GUS", "It's ECHO's name, kid. And yours."],
@@ -136,27 +127,23 @@ const SCENES := {
 	]},
 	"post_7": {"place": "KANE CHAMPIONSHIP ARENA", "lines": [
 		["KANE", "Security. That chassis is Kane Dynamics property. Confiscate it."],
-		["NARRATOR", "Guards come through the doors. Gus is already moving."],
 		["GUS", "Service tunnel! Get it on the cart, kid, NOW!"],
 		["NARRATOR", "You make it through the tunnels under the arena with the robot strapped to a cart and the alarms howling. Bruno's dock truck is waiting at the loading bay."],
 		["BRUNO", "Get in. Your father would've done the same for me."],
 	]},
 
 	"pre_8": {"place": "KANE CHAMPIONSHIP ARENA", "lines": [
-		["NARRATOR", "The night before, you went back to where it all began: the old dry dock, under the crane where your father kept ECHO hidden."],
 		["YOU", "I dug around under the crane last night, Gus. Found this. A burned-out handler console. Your name's scratched on the back."],
 		["GUS", "...Seven years ago I was an engineer at Kane. I built the handler link. Built this arm out of their parts, too."],
 		["GUS", "When they ordered Unit 00 crushed, I smuggled it out and gave it to the best pilot I knew - your father. He kept it hidden here, under the crane."],
 		["GUS", "And I'm the one who wrote the report that said pilots were 'too expensive.' Kane used it to fire every one of them. Him first."],
-		["YOU", "...And then you rented me the bay next door."],
-		["GUS", "I lowered the rent. A lot. It's not enough. It'll never be enough."],
+		["GUS", "Then I rented you the bay next door, cheap. It'll never be enough."],
 		["IRONSIDE", "Ironside. JUGGERNAUT. I was Gus's pilot, back when he still built for the right side. You two done crying? Good. Let's give 'em a fight."],
 	]},
 	"post_8": {"place": "KANE CHAMPIONSHIP ARENA", "lines": [
 		["IRONSIDE", "Ha. Best beating I've taken in years. Tomorrow I'll be in the front row with every pilot Kane ever fired."],
 		["GUS", "Finish the league in the top seven and we're in the playoffs. OVERLORD waits in the final. The whole city will be watching."],
 		["YOU", "Gus. Whatever you wrote back then - you also built the thing that's going to prove it wrong."],
-		["ECHO", "[ ALL SYSTEMS NOMINAL - HANDLER LINK: 100% ]"],
 	]},
 
 	"pre_9": {"place": "THE KANE GRAND HALL - FINAL", "lines": [
@@ -171,20 +158,16 @@ const SCENES := {
 		["ANNOUNCER", "OVERLORD IS DOWN! OVERLORD IS DOWN! THE SCRAP-HEAP UNDERDOG IS YOUR NEW CHAMPION!"],
 		["KANE", "...Impossible. It had every advantage. Every program. Every simulation."],
 		["GUS", "It had no pilot."],
+		["GUS", "Kid. Your father would have been proud. I'm... I'm proud too. For what that's worth."],
 		["NARRATOR", "For a second the arena is silent. Then the front rows stand up - every pilot Kane ever fired - and the whole place explodes."],
 		["NARRATOR", "Kane Dynamics' stock fell forty percent by morning. By the end of the month, the league brought back pilot licenses."],
-		["ROSA", "My license came in the mail today. First thing I did was frame it."],
-		["GUS", "Kid. Your father would have been proud. I'm... I'm proud too. For what that's worth."],
-		["ECHO", "[ NEXT OPPONENT? AWAITING HANDLER INPUT ]"],
 		["NARRATOR", "THE END... of your first championship. Next year OVERLORD wants its belt back. Till then: cups, and rematches from your garage."],
 	]},
 
 	# ---- the first time in the bay
 	"first_garage": {"place": "GUS'S BAY", "lines": [
 		["GUS", "Welcome to the bay. Don't touch the coffee."],
-		["GUS", "No money for the parts dealer yet. But out back there's a mountain of dead robots - one dig after every fight. One part per dig."],
-		["GUS", "Mostly junk. Once in a while, something good. Whatever you find, I'll bolt it on and you fix it up."],
-		["GUS", "And kid - you owe me a thousand in back rent. Rent and food are another thousand every month. And no repairs on credit - while we're in the hole, we fight with the dents."],
+		["GUS", "{RENT_GARAGE}"],
 		["GUS", "Keep winning and the prize money starts coming in. Climb out of the hole, then we talk to the dealer about real parts."],
 		["GUS", "And remember: finish the scrap league in the top three and we qualify for the Regional. That's our way out of this pile."],
 	]},
@@ -202,7 +185,6 @@ const SCENES := {
 	"regional_semis": {"place": "PORT FERRUM SPORTS HALL", "lines": [
 		["ANNOUNCER", "...and that puts them in the SEMIFINALS!"],
 		["GUS", "Kid. You know what the semis mean? You're IN. The Kane Championship. Week twenty-two."],
-		["YOU", "OVERLORD's championship."],
 		["GUS", "Seventeen league fights, then the playoffs. OVERLORD sits out the league and waits in the bracket. Of course it does."],
 		["GUS", "But first: finish this Regional. A medal's a medal."],
 	]},
@@ -216,6 +198,14 @@ const SCENES := {
 		["GUS", "Next year. Same week, same arena. We'll be ready."],
 	]},
 	# ---- Gus explains each part of the garage the first time it opens (one per win)
+	"unlock_scrapyard": {"place": "THE SCRAPYARD", "lines": [
+		["GUS", "No money for the parts dealer yet. But out back there's a mountain of dead robots - one dig after every fight. One part per dig."],
+		["GUS", "Mostly junk. Once in a while, something good. Whatever you find, I'll bolt it on and you fix it up."],
+	]},
+	"unlock_storage": {"place": "GUS'S STOREROOM", "lines": [
+		["GUS", "Everything ends up in these crates - parts you take off, parts you buy, and whatever you tear off the other robots and get to keep."],
+		["GUS", "Bolt them on from here, fix them up, or sell what you don't need. Even junk is worth a few bucks to the scrap man."],
+	]},
 	"unlock_style": {"place": "GUS'S BAY", "lines": [
 		["GUS", "I watched you out there tonight. You fight like your dad did - all fists, no plan."],
 		["YOU", "Is that bad?"],
