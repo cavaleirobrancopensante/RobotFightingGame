@@ -16,7 +16,12 @@ const OLD_SAVE_PATH := "user://savegame.json"   # single save from earlier versi
 const SAVE_SLOTS := 3
 const SETTINGS_PATH := "user://settings.json"
 const SAVE_VERSION := 3
-const START_MONEY := 300
+const START_MONEY := -1000   # default: you start in debt (back rent to Gus) and climb out
+const MONTH_WEEKS := 4        # every 4 weeks...
+const LIVING_COST := 1000     # ...rent and food come out of your balance (default)
+## Money difficulty (Settings), separate from CPU difficulty
+const START_MONEY_OPTIONS := [1000, 300, 0, -1000, -2000, -3000]
+const LIVING_COST_OPTIONS := [0, 250, 500, 1000, 1500, 2000]
 const DEFAULT_ROBOT := "ECHO"
 const Career = preload("res://career.gd")
 const PILOT_NAMES := ["Rook", "Marisol", "Dex", "Kit", "Juno", "Tavi", "Bram", "Nia", "Otto", "Zara", "Lio", "Mags",
@@ -257,6 +262,7 @@ var career_stats := {"heads": 0, "arms": 0, "legs": 0, "cores": 0, "parts": 0}
 var story_queue: Array = [] # more story scenes to show after the current one
 var pending_stories: Array = []   # scenes the last result unlocked (shown after the fight)
 var last_ko := ""
+var bills_note := 0         # living costs charged since the garage last showed them
 var wins := 0
 var losses := 0
 var champion := false
@@ -290,7 +296,8 @@ var chips: Array = []         # chips installed (only the first chip_slots() of 
 var last_result := {}       # handed from the fight to the garage
 var story_key := ""         # which story scene to show next
 var story_return := ""      # scene to go to after the story
-var settings := {"sound": true, "music": true, "shake": true, "button_size": 1, "difficulty": 1, "layout": {}, "team_controls": "split", "battery_saver": false}
+var settings := {"sound": true, "music": true, "shake": true, "button_size": 1, "difficulty": 1, "layout": {}, "team_controls": "split", "battery_saver": false,
+		"start_money": START_MONEY, "living_cost": LIVING_COST}
 
 
 # ---------------------------------------------------------------- error log
@@ -448,7 +455,7 @@ func _ready() -> void:
 # ---------------------------------------------------------------- inventory
 
 func new_game() -> void:
-	money = START_MONEY
+	money = int(settings.get("start_money", START_MONEY))
 	pilot_name = "Rook"
 	pilot_look = DEFAULT_PILOT_LOOK.duplicate()
 	owned_controllers = ["gamepad"]
@@ -486,6 +493,7 @@ func new_game() -> void:
 	circuits_won = 0
 	exhibition = false
 	pickup = {}
+	bills_note = 0
 	setups = []
 	for k in SETUP_SLOTS:
 		setups.append({})
@@ -702,8 +710,8 @@ func repair(uid: int) -> String:
 	var c := repair_cost(p)
 	if c == 0:
 		return "Already in perfect shape."
-	if money < c:
-		return "Not enough money to repair."
+	if not can_repair(c):
+		return "Not enough cash - no repairs on credit. Fight with the dents and win some money."
 	money -= c
 	p["hp"] = float(part_def(p["id"])["hp"])
 	return "Repaired %s for $%d." % [part_def(p["id"])["name"], c]
@@ -722,8 +730,8 @@ func repair_all() -> String:
 	var c := repair_all_cost()
 	if c == 0:
 		return "Your robot is in perfect shape."
-	if money < c:
-		return "Repairing everything costs $%d. You can't afford it - repair parts one at a time." % c
+	if not can_repair(c):
+		return "Repairing everything costs $%d. You don't have the cash - fix the worst parts one at a time, or fight with the dents." % c
 	for slot in BODY_SLOTS:
 		var p := equipped_inst(slot)
 		if not p.is_empty():
@@ -1147,11 +1155,33 @@ func start_pickup() -> void:
 ## The week moves on (after every fight, or when you rest). New leagues start on their week.
 func advance_week(n: int = 1) -> void:
 	for k in n:
+		if week % MONTH_WEEKS == 0:
+			money -= living_cost()   # end of the month: cost of living
+			bills_note += living_cost()
 		week += 1
 		if week > Career.WEEKS_PER_YEAR:
 			week = 1
 			year += 1
 		ensure_event()
+
+
+func living_cost() -> int:
+	return int(settings.get("living_cost", LIVING_COST))
+
+
+## Weeks until the next living-cost bill.
+func weeks_to_bills() -> int:
+	return MONTH_WEEKS - ((week - 1) % MONTH_WEEKS)
+
+
+## "$420" or "-$1000"
+static func money_text(v: int) -> String:
+	return ("-$%d" % -v) if v < 0 else ("$%d" % v)
+
+
+## No credit: repairs (like everything else) need real cash. In debt, you fight with the dents.
+func can_repair(cost: int) -> bool:
+	return money >= cost
 
 
 func rank_index() -> int:
@@ -1503,7 +1533,7 @@ func repair_wingman(k: int) -> String:
 	var c := wingman_repair_cost(k)
 	if c == 0:
 		return "%s is in perfect shape." % wingman_name(k)
-	if money < c:
+	if not can_repair(c):
 		return "Repairing %s costs $%d." % [wingman_name(k), c]
 	money -= c
 	for slot in wingmen[k]:
@@ -1643,6 +1673,7 @@ func record_result(won: bool, part_hp: Dictionary, destroyed: int, salvage_ids: 
 	var base: int = current_reward()
 	var reward: int = base if won else int(base * 0.35)
 	var bonus := destroyed * 75
+	var was_in_debt := money < 0
 	money += reward + bonus
 
 	# carry the damage over, lose destroyed parts
@@ -1729,7 +1760,7 @@ func record_result(won: bool, part_hp: Dictionary, destroyed: int, salvage_ids: 
 	roll_stock()
 	last_result = {"won": won, "reward": reward, "bonus": bonus, "opponent": o["name"], "lost": lost, "wrecked": wrecked,
 			"salvaged": salvaged, "champion": champion and not was_champion,
-			"trophy": trophy, "cup_done": cup_done, "event_done": event_done}
+			"trophy": trophy, "cup_done": cup_done, "event_done": event_done, "out_of_debt": was_in_debt and money >= 0}
 	save_game()
 	return last_result
 
@@ -2131,7 +2162,7 @@ func save_game() -> bool:
 		"owned_chips": owned_chips, "chips": chips, "circuit": circuit, "circuit_offers": circuit_offers,
 		"circuits_won": circuits_won, "pickup": pickup, "setups": setups, "custom_parts": custom_parts,
 		"year": year, "week": week, "rank": rank, "event": event, "trophies": trophies, "career_stats": career_stats,
-		"style": style, "shop_stock": shop_stock, "scout": scout, "wingmen": wingmen, "sending": sending, "pilot_look": pilot_look, "owned_controllers": owned_controllers, "tips_seen": tips_seen, "digs_left": digs_left,
+		"style": style, "shop_stock": shop_stock, "scout": scout, "wingmen": wingmen, "sending": sending, "pilot_look": pilot_look, "owned_controllers": owned_controllers, "tips_seen": tips_seen, "digs_left": digs_left, "bills_note": bills_note,
 	}
 	var f := FileAccess.open(slot_path(save_slot), FileAccess.WRITE)
 	if f == null:
@@ -2199,6 +2230,7 @@ func load_game(slot: int = -1) -> String:
 	pilot_look = PilotArt.normalize(pilot_look)
 	tips_seen = data.get("tips_seen", []).duplicate()
 	digs_left = int(data.get("digs_left", DIGS_PER_FIGHT))
+	bills_note = int(data.get("bills_note", 0))
 	owned_controllers = ["gamepad"]
 	for c in data.get("owned_controllers", []):
 		if CONTROLLER_INFO.has(str(c)) and not owned_controllers.has(str(c)):
@@ -2314,5 +2346,7 @@ func load_settings() -> void:
 				settings[k] = data[k]
 		settings["button_size"] = int(settings["button_size"])
 		settings["difficulty"] = int(settings["difficulty"])
+		settings["start_money"] = int(settings["start_money"])
+		settings["living_cost"] = int(settings["living_cost"])
 		if typeof(settings["layout"]) != TYPE_DICTIONARY:
 			settings["layout"] = {}

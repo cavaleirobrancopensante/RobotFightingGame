@@ -184,7 +184,8 @@ const SCENES := {
 		["GUS", "Welcome to the bay. Don't touch the coffee."],
 		["GUS", "No money for the parts dealer yet. But out back there's a mountain of dead robots - one dig after every fight. One part per dig."],
 		["GUS", "Mostly junk. Once in a while, something good. Whatever you find, I'll bolt it on and you fix it up."],
-		["GUS", "Keep winning and the prize money starts coming in. Then we talk to the dealer about real parts."],
+		["GUS", "And kid - you owe me a thousand in back rent. Rent and food are another thousand every month. And no repairs on credit - while we're in the hole, we fight with the dents."],
+		["GUS", "Keep winning and the prize money starts coming in. Climb out of the hole, then we talk to the dealer about real parts."],
 	]},
 	# ---- career moments (shown after the fight that decides them)
 	"scrap_medal": {"place": "THE SCRAP HEAP RING", "lines": [

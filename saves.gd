@@ -65,7 +65,7 @@ func show_slots() -> void:
 		else:
 			text.add_child(UI.label("Slot %d - %s & %s" % [slot, info["pilot"], info["robot"]], 20))
 			var cups := ", %d cups" % info["cups"] if info["cups"] > 0 else ""
-			text.add_child(UI.label("%s%s  -  $%d  -  saved %s" % [info["progress"], cups, info["money"], info["saved"]], 14, Color(0.72, 0.72, 0.78)))
+			text.add_child(UI.label("%s%s  -  %s  -  saved %s" % [info["progress"], cups, GameData.money_text(info["money"]), info["saved"]], 14, Color(0.72, 0.72, 0.78)))
 		var waiting: String = confirm.get(slot, "")
 		if mode == "new":
 			if info.is_empty():

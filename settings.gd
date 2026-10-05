@@ -18,6 +18,8 @@ var battery_button: Button
 var errors_button: Button
 var log_overlay: Control
 var copy_button: Button
+var start_money_button: Button
+var living_button: Button
 
 
 func _ready() -> void:
@@ -53,6 +55,11 @@ func _ready() -> void:
 			UI.button("Edit controls (move & resize)", _on_controls, 19, Vector2(470, 50)), team_button, diff_button]:
 		grid.add_child(b)
 	grid.add_child(delete_button)
+	# money difficulty: how deep in the hole you start, and what living costs each month
+	start_money_button = UI.button("", _on_start_money, 19, Vector2(470, 50))
+	living_button = UI.button("", _on_living, 19, Vector2(470, 50))
+	grid.add_child(start_money_button)
+	grid.add_child(living_button)
 	errors_button = UI.button("", _on_errors, 19, Vector2(470, 50))
 	grid.add_child(errors_button)
 	grid.add_child(UI.button("Back", _on_back, 19, Vector2(470, 50)))
@@ -71,6 +78,9 @@ func refresh() -> void:
 	battery_button.text = "Battery saver: %s" % ("ON (30 fps)" if s.get("battery_saver", false) else "OFF (60 fps)")
 	team_button.text = "Team controls: %s" % ("SPLIT (a pad per robot)" if s.get("team_controls", "split") == "split" else "LINKED (one pad for all)")
 	delete_button.text = "Manage save files"
+	start_money_button.text = "Starting money: %s (new games)" % GameData.money_text(int(s.get("start_money", GameData.START_MONEY)))
+	var lc := int(s.get("living_cost", GameData.LIVING_COST))
+	living_button.text = "Rent & food: %s" % ("none" if lc == 0 else "$%d a month" % lc)
 
 
 func _on_sound() -> void:
@@ -177,6 +187,22 @@ func _on_controls() -> void:
 
 func _on_diff() -> void:
 	GameData.settings["difficulty"] = (GameData.settings["difficulty"] + 1) % DIFF_NAMES.size()
+	GameData.save_settings()
+	refresh()
+
+
+func _on_start_money() -> void:
+	var opts: Array = GameData.START_MONEY_OPTIONS
+	var i := opts.find(int(GameData.settings.get("start_money", GameData.START_MONEY)))
+	GameData.settings["start_money"] = opts[(i + 1) % opts.size()]
+	GameData.save_settings()
+	refresh()
+
+
+func _on_living() -> void:
+	var opts: Array = GameData.LIVING_COST_OPTIONS
+	var i := opts.find(int(GameData.settings.get("living_cost", GameData.LIVING_COST)))
+	GameData.settings["living_cost"] = opts[(i + 1) % opts.size()]
 	GameData.save_settings()
 	refresh()
 

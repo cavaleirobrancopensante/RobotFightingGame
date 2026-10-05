@@ -212,8 +212,12 @@ func tab_list() -> Array:
 
 func show_last_result() -> void:
 	var r := GameData.last_result
+	var bills := ""
+	if GameData.bills_note > 0:
+		bills = " End of the month: rent and food, -$%d." % GameData.bills_note
+		GameData.bills_note = 0
 	if r.is_empty():
-		msg_label.text = "Tap a part of your robot (or a row) to swap, repair or remove it."
+		msg_label.text = "Tap a part of your robot (or a row) to swap, repair or remove it." + bills
 		return
 	if r.get("quit", false):
 		msg_label.text = "You walked out on %s. No pay, and the dents came home with you." % r["opponent"]
@@ -238,7 +242,9 @@ func show_last_result() -> void:
 			bits.append("Wrecked: %s (rebuild in Storage)." % ", ".join(r["wrecked"]))
 		if not r.get("salvaged", []).is_empty():
 			bits.append("Salvaged: %s." % ", ".join(r["salvaged"]))
-		msg_label.text = " ".join(bits)
+		if r.get("out_of_debt", false):
+			bits.append("OUT OF THE HOLE - you don't owe Gus a cent!")
+		msg_label.text = " ".join(bits) + bills
 	GameData.last_result = {}
 
 
@@ -251,7 +257,8 @@ func say(text: String, sound: String = "") -> void:
 # ---------------------------------------------------------------- refresh
 
 func refresh() -> void:
-	money_label.text = "$%d" % GameData.money
+	money_label.text = GameData.money_text(GameData.money)
+	money_label.add_theme_color_override("font_color", Color(1.0, 0.35, 0.3) if GameData.money < 0 else Color(0.95, 0.85, 0.2))
 	var mode := GameData.fight_mode()
 	if mode == "open":
 		GameData.start_pickup()   # a quiet week: there's always a pickup fight down at the scrapyard
@@ -514,7 +521,7 @@ func build_overview() -> void:
 			row.add_child(col)
 			var c := GameData.repair_cost(p)
 			if c > 0:
-				row_button(row, "Fix $%d" % c, _on_repair.bind(p["uid"]), GameData.money >= c, 95)
+				row_button(row, "Fix $%d" % c, _on_repair.bind(p["uid"]), GameData.can_repair(c), 95)
 
 
 func build_slot(slot: String) -> void:
@@ -534,7 +541,7 @@ func build_slot(slot: String) -> void:
 		var row := make_row(part_icon(d, GameData.hp_ratio(p)), d["name"], health_text(p))
 		var c := GameData.repair_cost(p)
 		if c > 0:
-			row_button(row, "Fix $%d" % c, _on_repair.bind(p["uid"]), GameData.money >= c, 95)
+			row_button(row, "Fix $%d" % c, _on_repair.bind(p["uid"]), GameData.can_repair(c), 95)
 		if slot != "reactor":
 			row_button(row, "Remove", _on_unequip.bind(slot), true, 95)
 
@@ -554,7 +561,7 @@ func build_slot(slot: String) -> void:
 		var d := GameData.part_def(sp["id"])
 		var c := GameData.repair_cost(sp)
 		var row := make_row(part_icon(d, 0.0), d["name"] + "  (WRECKED)", "Rebuild it to use it again.")
-		row_button(row, "Rebuild $%d" % c, _on_repair.bind(sp["uid"]), GameData.money >= c, 130)
+		row_button(row, "Rebuild $%d" % c, _on_repair.bind(sp["uid"]), GameData.can_repair(c), 130)
 		row_button(row, "Scrap", _on_sell.bind(sp["uid"]), true, 80)
 	# never stuck: if this slot is empty and there's nothing to fit, Gus has some junk lying around
 	if p.is_empty() and options.is_empty() and slot in ["head", "torso"]:
@@ -598,7 +605,7 @@ func build_storage() -> void:
 		var row := make_row(part_icon(d, GameData.hp_ratio(p)), "%s%s  [%s]" % [d["name"], tag, d["kind"]], health_text(p))
 		var c := GameData.repair_cost(p)
 		if c > 0:
-			row_button(row, ("Rebuild $%d" if wreck else "Fix $%d") % c, _on_repair.bind(p["uid"]), GameData.money >= c, 125)
+			row_button(row, ("Rebuild $%d" if wreck else "Fix $%d") % c, _on_repair.bind(p["uid"]), GameData.can_repair(c), 125)
 		var v := GameData.sell_value(p)
 		row_button(row, "Sell $%d" % v if v > 0 else "Scrap", _on_sell.bind(p["uid"]), true, 95)
 
@@ -1094,6 +1101,8 @@ func build_season_tab() -> void:
 	var mode := GameData.fight_mode()
 	var nxt := GameData.next_event_info()
 	var head := "YEAR %d, WEEK %d.  Record %d-%d.  Medals: %d." % [GameData.year, GameData.week, GameData.wins, GameData.losses, GameData.trophies.size()]
+	if GameData.living_cost() > 0:
+		head += "  Rent & food ($%d) due in %d week%s." % [GameData.living_cost(), GameData.weeks_to_bills(), "" if GameData.weeks_to_bills() == 1 else "s"]
 	if mode == "pickup" or mode == "open":
 		if str(nxt[0]) != "":
 			head += "  Next: the %s in %d week%s." % [Career.STAGES[nxt[0]]["name"], int(nxt[2]), "" if int(nxt[2]) == 1 else "s"]
@@ -1199,12 +1208,20 @@ func table_row(cells: Array, widths: Array, col: Color, bg: Color) -> void:
 
 
 func _on_rest() -> void:
-	say(GameData.rest_week(), "click")
+	say(GameData.rest_week() + bills_text(), "click")
 	refresh()
 
 
 func _on_skip() -> void:
-	say(GameData.skip_to_next_event(), "click")
+	say(GameData.skip_to_next_event() + bills_text(), "click")
+
+
+func bills_text() -> String:
+	if GameData.bills_note <= 0:
+		return ""
+	var t := " Rent and food: -$%d." % GameData.bills_note
+	GameData.bills_note = 0
+	return t
 	refresh()
 
 
@@ -1251,7 +1268,7 @@ func build_team_tab() -> void:
 		row_button(row, "Rebuild" if not w.is_empty() else "Build", _on_build_wingman.bind(k), true, 100)
 		if not w.is_empty():
 			var c := GameData.wingman_repair_cost(k)
-			row_button(row, "Fix $%d" % c if c > 0 else "OK", _on_repair_wingman.bind(k), c > 0 and GameData.money >= c, 95)
+			row_button(row, "Fix $%d" % c if c > 0 else "OK", _on_repair_wingman.bind(k), c > 0 and GameData.can_repair(c), 95)
 			row_button(row, "Disband", _on_disband_wingman.bind(k), true, 100)
 
 
