@@ -56,6 +56,18 @@ static func normalize(look: Dictionary) -> Dictionary:
 
 
 ## A head. dir: 1 = looking right, -1 = left, 0 = facing you. mouth: how open (pixels).
+## Everyone blinks: one blink every 1-5 seconds, at a random-looking moment. Each person's rhythm
+## comes from their look, so two people in the same scene don't blink in sync.
+const BLINK_TIME := 0.13
+static func blinking(look: Dictionary) -> bool:
+	var seed := absi(hash(str(look.get("skin", "")) + str(look.get("hair", "")) + str(look.get("eyes", "")) + str(look.get("outfit", "")) + str(look.get("hat", ""))))
+	var t := Time.get_ticks_msec() / 1000.0 + float(seed % 1000) * 0.37
+	# 3-second windows, each with one blink somewhere in its first 2 seconds: gaps of 1 to 5 seconds
+	var k := int(floor(t / 3.0))
+	var at := float(k) * 3.0 + float(absi(hash(seed + k * 7919)) % 1000) / 1000.0 * 2.0
+	return t >= at and t < at + BLINK_TIME
+
+
 static func draw_head(ci: CanvasItem, c: Vector2, r: float, raw: Dictionary, dir: float, mouth: float) -> void:
 	var look := normalize(raw)
 	var skin := Color(look.get("skin", "#c8946e"))
@@ -101,7 +113,11 @@ static func draw_head(ci: CanvasItem, c: Vector2, r: float, raw: Dictionary, dir
 	# eyes
 	var el := c + Vector2(ex - r * 0.33, -r * 0.08)
 	var er := c + Vector2(ex + r * 0.33, -r * 0.08)
+	var shut := blinking(look)
 	for e in [el, er]:
+		if shut:
+			ci.draw_line(e + Vector2(-r * 0.14, 0), e + Vector2(r * 0.14, 0), skin.darkened(0.55), maxf(1.0, r * 0.06))
+			continue
 		ci.draw_circle(e, r * 0.14, Color.WHITE)
 		ci.draw_circle(e + Vector2(dir * r * 0.04, 0), r * 0.08, eyes)
 	# glasses
