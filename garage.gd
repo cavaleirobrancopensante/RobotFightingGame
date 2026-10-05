@@ -139,6 +139,9 @@ func _ready() -> void:
 	bottom.add_child(fight_button)
 
 	show_last_result()
+	var tip := GameData.garage_tip()
+	if tip != "":
+		msg_label.text = tip if msg_label.text.begins_with("Tap a part") else msg_label.text + "\n" + tip
 	refresh()
 
 
@@ -973,6 +976,9 @@ func _on_tab(t: String) -> void:
 	tab = t
 	if t == "Build":
 		selected = ""
+	var tip := GameData.tab_tip(t)
+	if tip != "":
+		say(tip)
 	refresh()
 
 

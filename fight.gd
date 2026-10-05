@@ -524,6 +524,8 @@ func handle_tap(p: Vector2) -> bool:
 		for f in team_p:
 			f.target = slot
 		Sfx.play("target")
+		if slot.begins_with("head"):
+			coach("head", "Heads are small and tough - aimed head shots miss a lot. Try the limbs!")
 	assign_foes()
 	return true
 
@@ -1220,6 +1222,7 @@ func _process(delta: float) -> void:
 
 	update_effects(delta)
 	update_pilots(delta)
+	update_coach(delta)
 	arena_redraw_t -= delta
 	if arena_redraw_t <= 0.0 and arena_layer:
 		arena_redraw_t = 1.0 / ARENA_FPS
@@ -1922,6 +1925,10 @@ func apply_hit(att: Fighter, d: Fighter, a: Dictionary, at: Vector2) -> void:
 		if slot != "torso" and d.alive("torso"):
 			damage_part(d, "torso", dmg * CORE_SHARE)
 		# every part matters: hurt legs slow you down, hurt arms hit softer
+		if att.team == 0 and slot.begins_with("leg"):
+			coach("leg_hit", "Leg hit! Damaged legs make it slower.")
+		elif att.team == 0 and slot.begins_with("arm"):
+			coach("arm_hit", "Arm hit! Damaged arms make its punches go soft.")
 		if slot.begins_with("leg"):
 			if d.hobble_t <= 0.0 and d == cpu:
 				popup("HOBBLED", hit_at + Vector2(0, 20), Color(1.0, 0.75, 0.4))
@@ -2057,6 +2064,13 @@ func rip_off(f: Fighter, slot: String) -> void:
 		if e.target == slot and e.foe == f:
 			aimed = true
 	f.ripped.append({"id": p["id"], "aimed": aimed})
+	if f.team == 1:
+		if aimed:
+			coach("aimed_rip", "Clean rip! Parts you AIM at and rip off usually come home with us after a win.")
+		else:
+			coach("rip_any", "Ripped off! Aim at a part first and it comes off clean - free spare parts.")
+	else:
+		coach("own_lost", "We lost a part! Ripped-off parts must be bought again. Dented ones can be repaired.")
 	f.fist_out.erase(slot)
 	f.burns = f.burns.filter(func(b): return b["slot"] != slot)
 	var boom: float = limb_trait(f, slot, "explosive") + f.gtraits.get("explosive", 0.0)
@@ -2186,6 +2200,7 @@ func _draw() -> void:
 		draw_string(font, p["pos"] + Vector2(-260, -40.0 - t * 50.0), p["text"], HORIZONTAL_ALIGNMENT_CENTER, 520, fs(26), c)
 
 	draw_hud()
+	draw_coach()
 	if phase == "intro" or phase == "fight":
 		draw_buttons()
 	if paused:
@@ -2558,8 +2573,6 @@ func draw_hud() -> void:
 			draw_rect(rr[0], Color(1, 1, 1, 0.1))
 			draw_rect(rr[0], Color(1, 1, 1, 0.4), false, 2.0)
 			draw_string(font, (rr[0] as Rect2).position + Vector2(0, 31), rr[1], HORIZONTAL_ALIGNMENT_CENTER, (rr[0] as Rect2).size.x, fs(19), Color(1, 1, 1, 0.75))
-		if phase == "fight" and phase_timer < 6.0 and player.target == "" and fight_idx < 2 and mode == "story":
-			draw_string(font, Vector2(0, screen.y * 0.38), "Tap a part of %s to aim at it" % cpu.label, HORIZONTAL_ALIGNMENT_CENTER, screen.x, fs(22), Color(1, 1, 1, 0.75))
 
 	var cy := screen.y * 0.42
 	match phase:
@@ -2855,3 +2868,51 @@ func draw_pilot_bubble(pd: Dictionary, anchor: Vector2) -> void:
 	draw_colored_polygon(PackedVector2Array([Vector2(anchor.x - 6, by + h), Vector2(anchor.x + 6, by + h), Vector2(anchor.x, by + h + 9)]), bg)
 	var tc := Color(0.08, 0.08, 0.1, a) if not pd["auto"] else Color(0.3, 1.0, 0.5, a)
 	draw_string(font, Vector2(bx + 9, by + h - 9), text, HORIZONTAL_ALIGNMENT_LEFT, -1, size, tc)
+
+
+# ---------------------------------------------------------------- Gus's tips during fights
+# Instead of a wall of tutorial text before the first fight, Gus shouts short tips from the
+# corner at the moment they matter. Each tip shows once per save (not in quick fights).
+
+var coach_queue: Array = []
+var coach_text := ""
+var coach_t := 0.0
+
+
+func coach(id: String, text: String) -> void:
+	if mode == "quick" or not GameData.tip_once(id):
+		return
+	coach_queue.append(text)
+
+
+func update_coach(delta: float) -> void:
+	if phase == "fight":
+		if phase_timer > 0.8:
+			coach("aim", "Tap a part of %s to aim at it - %s hits where you point." % [cpu.label, player.label])
+		if phase_timer > 10.0 and weak_point(cpu) != "":
+			coach("weak", "See the yellow diamond? That's its weakest part - hits there do extra damage.")
+		if phase_timer > 22.0 and not player.specials.is_empty():
+			coach("moves", "Tap MOVES to see your special moves and how to do them.")
+		if player.ratio("torso") < 0.35:
+			coach("low_core", "Core's hurting! Lose the torso - or the head - and it's lights out. BLOCK!")
+	coach_t = maxf(0.0, coach_t - delta)
+	if coach_t <= 0.0 and not coach_queue.is_empty():
+		coach_text = coach_queue.pop_front()
+		coach_t = 5.0
+
+
+func draw_coach() -> void:
+	if coach_t <= 0.0 or coach_text == "":
+		return
+	var size := fs(17)
+	var label := "GUS: "
+	var lw := font.get_string_size(label, HORIZONTAL_ALIGNMENT_LEFT, -1, size).x
+	var tw := font.get_string_size(coach_text, HORIZONTAL_ALIGNMENT_LEFT, -1, size).x
+	var w := minf(screen.x - 40.0, lw + tw + 30.0)
+	var x := (screen.x - w) * 0.5
+	var y := screen.y * 0.23
+	var a := minf(1.0, coach_t * 3.0)
+	draw_rect(Rect2(x, y, w, size + 18.0), Color(0.05, 0.05, 0.08, 0.85 * a))
+	draw_rect(Rect2(x, y, w, size + 18.0), Color(0.95, 0.65, 0.35, 0.8 * a), false, 2.0)
+	draw_string(font, Vector2(x + 14, y + size + 6), label, HORIZONTAL_ALIGNMENT_LEFT, -1, size, Color(0.95, 0.65, 0.35, a))
+	draw_string(font, Vector2(x + 14 + lw, y + size + 6), coach_text, HORIZONTAL_ALIGNMENT_LEFT, w - lw - 28.0, size, Color(1, 1, 1, a))

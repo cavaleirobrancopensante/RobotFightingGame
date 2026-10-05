@@ -212,6 +212,7 @@ const CONTROLLER_INFO := {
 }
 var pilot_look := DEFAULT_PILOT_LOOK.duplicate()   # how your pilot looks in the corner and in the story
 var owned_controllers: Array = ["gamepad"]
+var tips_seen: Array = []   # Gus's one-time tips (fight and garage) already shown
 var inventory: Array = []   # [{uid, id, hp}]
 var equipped := {}          # slot -> uid (-1 = empty)
 var wingmen: Array = [{}, {}]   # extra robots for team fights, built from spares: [{slot: uid}, ...]
@@ -413,6 +414,7 @@ func new_game() -> void:
 	pilot_name = "Rook"
 	pilot_look = DEFAULT_PILOT_LOOK.duplicate()
 	owned_controllers = ["gamepad"]
+	tips_seen = []
 	robot_name = DEFAULT_ROBOT
 	inventory = []
 	equipped = {}
@@ -1115,6 +1117,44 @@ func team_unlocked() -> bool:
 	return champion or fight_index >= 2
 
 
+## True the first time a tip is asked for (then it's marked as seen).
+func tip_once(id: String) -> bool:
+	if tips_seen.has(id):
+		return false
+	tips_seen.append(id)
+	return true
+
+
+## One garage tip from Gus per visit, the first one that applies and hasn't been shown.
+func garage_tip() -> String:
+	var tips := [
+		["pilot", true, "Tap Pilot (in Build) to design yourself. Better controllers are in the Shop."],
+		["style", fight_index >= 1 or champion, "Pick a fighting style with the Style button: Tank, Striker, Mechanic or Specialist. Each gets a free signature move."],
+		["repair", repair_all_cost() > 0, "Damage carries over between fights. Hit Repair all before the next one."],
+		["scout", fight_index >= 1 and scout_key() != "", "Want an edge? Scout the next robot. Careful - their crew might spot you and change their setup."],
+		["backup", team_unlocked(), "New: the Team tab. Build a backup robot from spare parts, then use Send to put it in the ring when ECHO's too banged up."],
+	]
+	for t in tips:
+		if t[1] and tip_once(t[0]):
+			return "GUS: " + t[2]
+	return ""
+
+
+const TAB_TIPS := {
+	"Shop": "GUS: The dealer's stock changes after every fight. Mini parts sip power, Heavy parts hit hard but drink it.",
+	"Workshop": "GUS: Design your own part here. Costs more than the dealer, but it's exactly what you want.",
+	"Moves": "GUS: Training chips teach special moves. Better heads hold more chips.",
+	"Cups": "GUS: Cups are random robots, some in tag teams and swarms. Your backups fight beside you then.",
+	"Team": "GUS: Teams share one heavyweight's power, so team robots run small. Mini parts are your friend here.",
+}
+
+
+func tab_tip(tab: String) -> String:
+	if TAB_TIPS.has(tab) and tip_once("tab_" + tab):
+		return TAB_TIPS[tab]
+	return ""
+
+
 func buy_controller(id: String) -> String:
 	var info: Dictionary = CONTROLLER_INFO[id]
 	if owned_controllers.has(id):
@@ -1768,7 +1808,7 @@ func save_game() -> bool:
 		"losses": losses, "champion": champion, "story_seen": story_seen,
 		"owned_chips": owned_chips, "chips": chips, "circuit": circuit, "circuit_offers": circuit_offers,
 		"circuits_won": circuits_won, "setups": setups, "custom_parts": custom_parts,
-		"style": style, "shop_stock": shop_stock, "scout": scout, "wingmen": wingmen, "sending": sending, "pilot_look": pilot_look, "owned_controllers": owned_controllers,
+		"style": style, "shop_stock": shop_stock, "scout": scout, "wingmen": wingmen, "sending": sending, "pilot_look": pilot_look, "owned_controllers": owned_controllers, "tips_seen": tips_seen,
 	}
 	var f := FileAccess.open(slot_path(save_slot), FileAccess.WRITE)
 	if f == null:
@@ -1834,6 +1874,7 @@ func load_game(slot: int = -1) -> String:
 	if typeof(data.get("pilot_look")) == TYPE_DICTIONARY:
 		pilot_look.merge(data["pilot_look"], true)
 	pilot_look = PilotArt.normalize(pilot_look)
+	tips_seen = data.get("tips_seen", []).duplicate()
 	owned_controllers = ["gamepad"]
 	for c in data.get("owned_controllers", []):
 		if CONTROLLER_INFO.has(str(c)) and not owned_controllers.has(str(c)):
