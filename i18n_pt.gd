@@ -483,6 +483,7 @@ const T := {
 	"Show:": "Mostrar:",
 	"All parts": "Todas as peças",
 	"Pilot gear": "Equipamento do piloto",
+	"PUNCH and KICK are split in two: tap the left half for the left arm (leg), the right half for the right one.": "SOCO e CHUTE são divididos em dois: toque na metade esquerda para o braço (perna) esquerdo, na metade direita para o direito.",
 	"Tap a part of %s to aim at it - %s hits where you point.": "Toque numa peça de %s para mirar - %s acerta onde você apontar.",
 	"See the yellow diamond? That's its weakest part - hits there do extra damage.": "Tá vendo o losango amarelo? É a parte mais fraca - golpes ali causam dano extra.",
 	"That blue bar under your health is POWER. Every move costs some - kicks cost the most. Run it dry and you burn out!": "Essa barra azul embaixo da vida é a ENERGIA. Todo golpe gasta um pouco - chutes gastam mais. Se secar, dá pane!",

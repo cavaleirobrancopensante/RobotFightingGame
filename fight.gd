@@ -38,6 +38,7 @@ const CORE_SHARE := 0.35      # share of a limb/head hit that also hurts the tor
 const HEAD_FACTOR := 0.6      # heads are hard to hit cleanly
 const COMBO_BONUS := 0.08     # extra damage per hit in a combo
 const BODY_PARTS := ["head", "head2", "torso", "arm_front", "arm_back", "arm_front2", "arm_back2", "leg_front", "leg_back"]
+const SPLIT_BUTTONS := ["punch", "kick"]   # touch buttons cut in half: left half = left limb, right half = right limb
 const ARM_SLOTS := ["arm_front", "arm_back", "arm_front2", "arm_back2"]
 const PART_LABELS := {"head": "HEAD", "head2": "2ND HEAD", "torso": "TORSO", "arm_front": "FRONT ARM", "arm_back": "BACK ARM",
 		"arm_front2": "LOWER FRONT ARM", "arm_back2": "LOWER BACK ARM", "leg_front": "FRONT LEG", "leg_back": "BACK LEG"}
@@ -81,6 +82,7 @@ class Fighter:
 	var landed := false      # the current attack connected (allows combo cancels)
 	var queued := ""         # attack pressed slightly early, waiting for the current one to allow it
 	var queued_t := 0.0
+	var queued_side := ""    # "L"/"R": which half of PUNCH/KICK the queued attack came from
 	var recovered_at := -10.0   # when this fighter last recovered from being hit
 	var flash := 0.0
 	var crouching := false
@@ -176,7 +178,22 @@ class Fighter:
 	func usable_arm(slot: String) -> bool:
 		return alive(slot) and not fist_out.has(slot)
 
-	func limb_for(kind: String, prefer_back: bool = false) -> String:
+	## side "L"/"R" = the robot's own left or right limb (the split PUNCH/KICK buttons).
+	## Facing right, its left side is toward the camera (the "front" limbs); facing left it's the back ones.
+	## If that side's limb is gone, the other side does the job.
+	func limb_for(kind: String, prefer_back: bool = false, side: String = "") -> String:
+		if side != "" and (kind == "arm" or kind == "leg"):
+			var near := (side == "L") == (facing == 1)
+			var front: Array = ["arm_front", "arm_front2"] if kind == "arm" else ["leg_front"]
+			var back: Array = ["arm_back", "arm_back2"] if kind == "arm" else ["leg_back"]
+			for grp in ([front, back] if near else [back, front]):
+				var ok: Array = []
+				for sl in grp:
+					if (usable_arm(sl) if kind == "arm" else alive(sl)):
+						ok.append(sl)
+				if not ok.is_empty():
+					return ok[arm_turn % ok.size()]
+			return ""
 		if kind == "arm":
 			var order := ["arm_back", "arm_front", "arm_back2", "arm_front2"] if prefer_back else ["arm_front", "arm_back", "arm_front2", "arm_back2"]
 			var ok: Array = []
@@ -643,6 +660,8 @@ func read_player_input() -> Array:
 		for b in buttons + gadget_buttons:
 			if t.distance_to(b["pos"]) <= b["r"] * 1.2:
 				held_buttons[b["name"]] = true
+				if SPLIT_BUTTONS.has(b["name"]):
+					held_buttons[b["name"] + ("_L" if t.x < b["pos"].x else "_R")] = true
 	var now := {
 		"left": held_buttons.get("left", false) or key(KEY_A) or key(KEY_LEFT),
 		"right": held_buttons.get("right", false) or key(KEY_D) or key(KEY_RIGHT),
@@ -662,6 +681,14 @@ func read_player_input() -> Array:
 	shared["block"] = now["block"]
 	shared["punch"] = now["punch"] and not prev_held.get("punch", false)
 	shared["kick"] = now["kick"] and not prev_held.get("kick", false)
+	# split buttons: a fresh tap on either half is a new punch/kick with that side's limb
+	for nm in SPLIT_BUTTONS:
+		for sd in ["L", "R"]:
+			var half: String = nm + "_" + sd
+			now[half] = held_buttons.get(half, false)
+			if now[half] and not prev_held.get(half, false):
+				shared[nm] = true
+				shared["pside" if nm == "punch" else "kside"] = sd
 	shared["grab"] = now["grab"] and not prev_held.get("grab", false)
 	for k in gadget_buttons.size():
 		if now["gadget%d" % k] and not prev_held.get("gadget%d" % k, false):
@@ -1559,9 +1586,9 @@ func update_power(f: Fighter, delta: float) -> void:
 		f.power = minf(f.power_max, f.power + f.power_max * rate * delta)
 
 
-func start_attack(f: Fighter, attack: String) -> void:
+func start_attack(f: Fighter, attack: String, side: String = "") -> void:
 	var a: Dictionary = ATTACKS[attack]
-	var limb := f.limb_for(a["limb"], attack == "uppercut")
+	var limb := f.limb_for(a["limb"], attack == "uppercut", side)
 	if limb == "":
 		return
 	f.state = attack
@@ -1593,9 +1620,9 @@ func start_queued(f: Fighter) -> bool:
 		start_special(f, sp)
 		return true
 	var a: Dictionary = ATTACKS[q]
-	if f.limb_for(a["limb"], q == "uppercut") == "":
+	if f.limb_for(a["limb"], q == "uppercut", f.queued_side) == "":
 		return false
-	start_attack(f, q)
+	start_attack(f, q, f.queued_side)
 	return true
 
 
@@ -1873,6 +1900,7 @@ func update_fighter(f: Fighter, o: Fighter, i: Dictionary, delta: float) -> void
 		return
 	var punch: bool = i["punch"]
 	var kick: bool = i["kick"]
+	var side: String = i.get("pside", "") if punch else i.get("kside", "")
 	if punch:
 		push_token(f, "P")
 	if kick:
@@ -1900,6 +1928,7 @@ func update_fighter(f: Fighter, o: Fighter, i: Dictionary, delta: float) -> void
 		# remember an attack pressed a little early so slower button presses still chain
 		if punch or kick:
 			f.queued = ("uppercut" if i["down"] else "punch") if punch else ("sweep" if i["down"] else "kick")
+			f.queued_side = side
 			f.queued_t = 0.45
 		# combo cancel: a normal that landed can go straight into the next attack or a special
 		if f.landed and f.timer >= a["startup"] + a["active"] and f.queued != "":
@@ -1921,9 +1950,9 @@ func update_fighter(f: Fighter, o: Fighter, i: Dictionary, delta: float) -> void
 		if sp != "":
 			start_special(f, sp)
 		elif punch and f.arms() > 0:
-			start_attack(f, "uppercut" if f.crouching else "punch")
+			start_attack(f, "uppercut" if f.crouching else "punch", side)
 		elif kick and f.legs() > 0:
-			start_attack(f, "sweep" if f.crouching else "kick")
+			start_attack(f, "sweep" if f.crouching else "kick", side)
 		elif i["grab"] and f.arms() > 0 and f.on_ground:
 			start_attack(f, "grab")
 		elif f.on_ground:
@@ -3057,6 +3086,9 @@ func draw_result_cards(y: float) -> float:
 
 func draw_buttons() -> void:
 	for b in buttons:
+		if SPLIT_BUTTONS.has(b["name"]):
+			draw_split_button(b)
+			continue
 		var held: bool = held_buttons.get(b["name"], false)
 		draw_circle(b["pos"], b["r"], Color(1, 1, 1, 0.35 if held else 0.12))
 		draw_arc(b["pos"], b["r"], 0.0, TAU, 40, Color(1, 1, 1, 0.5), 2.0)
@@ -3081,6 +3113,28 @@ func draw_buttons() -> void:
 		draw_string(font, b["pos"] + Vector2(-b["r"] - 10, 7.0), tr(b["label"]), HORIZONTAL_ALIGNMENT_CENTER, b["r"] * 2.0 + 20, fs(15), col)
 
 
+## PUNCH / KICK: one circle cut in half - the left half uses the robot's left arm (leg), the right half its right one.
+func draw_split_button(b: Dictionary) -> void:
+	var c: Vector2 = b["pos"]
+	var r: float = b["r"]
+	for k in 2:
+		var sd := "L" if k == 0 else "R"
+		var held: bool = held_buttons.get(b["name"] + "_" + sd, false)
+		var pts := PackedVector2Array()
+		for n in 21:
+			var ang := PI / 2.0 + PI * n / 20.0 if k == 0 else -PI / 2.0 + PI * n / 20.0
+			pts.append(c + Vector2(cos(ang), sin(ang)) * r)
+		draw_colored_polygon(pts, Color(1, 1, 1, 0.35 if held else 0.12))
+		draw_string(font, c + Vector2((-0.75 + k) * r, r * 0.38), sd, HORIZONTAL_ALIGNMENT_CENTER, r * 0.5, fs(17), Color(1, 1, 1, 0.85))
+	draw_arc(c, r, 0.0, TAU, 40, Color(1, 1, 1, 0.5), 2.0)
+	draw_line(c + Vector2(0, -r * 0.12), c + Vector2(0, r), Color(1, 1, 1, 0.5), 2.0)
+	var size := fs(13)
+	var btxt := tr(b["label"])
+	while size > 8 and font.get_string_size(btxt, HORIZONTAL_ALIGNMENT_LEFT, -1, size).x > r * 1.5:
+		size -= 1
+	draw_string(font, c + Vector2(-r, -r * 0.3), btxt, HORIZONTAL_ALIGNMENT_CENTER, r * 2.0, size, Color(1, 1, 1, 0.85))
+
+
 func draw_moves_list() -> void:
 	draw_rect(Rect2(Vector2.ZERO, screen), Color(0, 0, 0, 0.82))
 	var x := screen.x * 0.08
@@ -3089,6 +3143,7 @@ func draw_moves_list() -> void:
 	y += 50.0
 	var lines: Array = [
 		["P punch   K kick   B block   G grab (beats block)   v+P uppercut   v+K sweep   (→ = toward the enemy)", Color(0.8, 0.8, 0.85)],
+		["PUNCH and KICK are split in two: tap the left half for the left arm (leg), the right half for the right one.", Color(0.8, 0.8, 0.85)],
 		["Combos: hit again while the enemy is still reeling. Landed attacks can chain into the next.", Color(0.8, 0.8, 0.85)],
 		["COUNTERS: punch beats grab - grab beats block - block stops punch (and the puncher recoils) - kick powers through punches, but a block only partly stops it.", Color(1.0, 0.85, 0.4)],
 		[tr("POWER (blue bar): punch %.1f  kick %.1f  grab %.1f  special %.1f of %.0f. Refills when you stop attacking. Empty = BURNOUT.") % [attack_cost(player, "punch", "arm_front"), attack_cost(player, "kick", "leg_front"), attack_cost(player, "grab", "arm_front"), special_cost(player), player.power_max], POWER_COLOR],

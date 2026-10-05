@@ -199,6 +199,9 @@ func _draw() -> void:
 		draw_arc(b["pos"], b["r"], 0.0, TAU, 40, Color(1.0, 0.8, 0.2) if sel else Color(col.r, col.g, col.b, 0.6), 4.0 if sel else 2.0)
 		var size := 21 if str(b["label"]).length() <= 5 else 17
 		size = int(size * clampf(b["r"] / 70.0, 0.6, 1.3))
+		if b["name"] == "punch" or b["name"] == "kick":
+			# split in two: left half = left limb, right half = right limb
+			draw_line(b["pos"] + Vector2(0, b["r"] * 0.3), b["pos"] + Vector2(0, b["r"]), Color(col.r, col.g, col.b, 0.6), 2.0)
 		draw_string(font, b["pos"] + Vector2(-b["r"] - 10, size * 0.35), b["label"], HORIZONTAL_ALIGNMENT_CENTER, b["r"] * 2.0 + 20, size, Color(col.r, col.g, col.b, 0.9))
 
 	for t in TOOLS:
