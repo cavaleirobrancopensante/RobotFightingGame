@@ -56,12 +56,7 @@ class Portrait extends Control:
 				draw_rect(Rect2(c.x - r * 0.25, c.y + r * 0.35, r * 0.5, mouth * 0.7), Color(0.75, 0.1, 0.2))
 				draw_rect(Rect2(c.x - r * 1.2, c.y + r * 0.95, r * 2.4, r), Color(0.15, 0.15, 0.2))  # suit
 			"YOU":
-				draw_circle(c, r, Color(0.6, 0.42, 0.3))
-				draw_rect(Rect2(c.x - r, c.y - r * 1.05, r * 2.0, r * 0.65), Color(0.85, 0.3, 0.2))  # beanie
-				draw_circle(c + Vector2(-r * 0.35, -r * 0.05), r * 0.1, Color.WHITE)
-				draw_circle(c + Vector2(r * 0.35, -r * 0.05), r * 0.1, Color.WHITE)
-				draw_rect(Rect2(c.x - r * 0.25, c.y + r * 0.4, r * 0.5, mouth * 0.7), Color(0.25, 0.1, 0.08))
-				draw_rect(Rect2(c.x - r * 1.1, c.y + r * 0.95, r * 2.2, r), Color(0.25, 0.35, 0.3))  # jacket
+				draw_face(GameData.pilot_look, c, r, mouth)
 			"ANNOUNCER":
 				draw_circle(c, r, Color(0.85, 0.65, 0.5))
 				draw_rect(Rect2(c.x - r, c.y - r * 1.05, r * 2.0, r * 0.45), Color(0.1, 0.1, 0.1))

@@ -348,6 +348,7 @@ func _ready() -> void:
 	arena_id = venue[0]
 	crowd_id = venue[1]
 	crowd = Arena.make_crowd(crowd_id, screen)
+	setup_pilots()
 	var boss := false
 	var pick := randi()
 	match mode:
@@ -1153,6 +1154,8 @@ func _process(delta: float) -> void:
 			if phase_timer >= 1.0 and not fight_called:
 				fight_called = true
 				Sfx.play("fight")
+				pilot_say(0, "start", true)
+				pilot_say(1, "start", true)
 			if phase_timer >= 1.7:
 				phase = "fight"
 				phase_timer = 0.0
@@ -1181,6 +1184,7 @@ func _process(delta: float) -> void:
 			f.target = ""
 
 	update_effects(delta)
+	update_pilots(delta)
 	queue_redraw()
 
 
@@ -1239,6 +1243,8 @@ func end_by(winner: Fighter, title: String) -> void:
 	phase = "ko"
 	phase_timer = 0.0
 	won = winner.team == 0
+	pilot_say(winner.team, "win", true)
+	pilot_say(1 - winner.team, "lose", true)
 	ko_text = title
 	cheer = 4.0
 	Sfx.play("crowd_cheer")
@@ -1322,6 +1328,7 @@ func start_attack(f: Fighter, attack: String) -> void:
 	if limb == "":
 		return
 	f.state = attack
+	pilot_jerk(f.team)
 	f.attack_limb = limb
 	f.arm_turn += 1
 	f.timer = 0.0
@@ -1351,6 +1358,9 @@ func start_queued(f: Fighter) -> bool:
 func start_special(f: Fighter, id: String) -> void:
 	var m: Dictionary = Specials.MOVES[id]
 	f.state = "special"
+	pilot_jerk(f.team)
+	if randf() < 0.6:
+		pilot_say(f.team, "special", false, (Specials.MOVES[id]["name"] as String).to_upper() + "!" if not pilots.is_empty() and not pilots[f.team]["auto"] else "[ EXECUTE: %s ]" % (Specials.MOVES[id]["name"] as String).to_upper())
 	f.special_id = id
 	f.attack_limb = f.limb_for(m["limb"]) if m.has("limb") else ""
 	f.timer = 0.0
@@ -1844,6 +1854,12 @@ func apply_hit(att: Fighter, d: Fighter, a: Dictionary, at: Vector2) -> void:
 			if att.combo == 3 or att.combo == 5 or att.combo >= 8:
 				Sfx.play("crowd_ooh", 0.2, -6.0)
 		dmg *= 1.0 + COMBO_BONUS * minf(att.combo - 1, 6)
+		if att.combo >= 3:
+			pilot_say(att.team, "combo")
+		elif randf() < 0.35:
+			pilot_say(att.team, "hit")
+		if randf() < 0.3:
+			pilot_say(d.team, "hurt")
 		if slot == att.target:
 			dmg *= 1.0 + att.best_aim() / 100.0
 			if att.style == "specialist":
@@ -2013,6 +2029,8 @@ func rip_off(f: Fighter, slot: String) -> void:
 			Color(1.0, 0.3, 0.2) if f.team == 0 else Color(1.0, 0.85, 0.2))
 	if f.blocking and f.arms() == 0:
 		f.blocking = false
+	pilot_say(1 - f.team, "rip_enemy", true)
+	pilot_say(f.team, "rip_own")
 	shake = 16.0
 	hitstop = maxf(hitstop, 0.14)
 	cheer = maxf(cheer, 1.5)
@@ -2077,6 +2095,8 @@ func _draw() -> void:
 		off = Vector2(randf_range(-shake, shake), randf_range(-shake, shake))
 
 	draw_arena(off)
+	for pd in pilots:
+		draw_pilot(pd, off)
 	draw_cables(off)
 	# knocked-out robots first, so the ones still fighting are drawn on top
 	for f in all_fighters():
@@ -2590,3 +2610,223 @@ func draw_moves_list() -> void:
 		draw_multiline_string(font, Vector2(x, y), l[0], HORIZONTAL_ALIGNMENT_LEFT, width, fs(16), -1, l[1])
 		y += font.get_multiline_string_size(l[0], HORIZONTAL_ALIGNMENT_LEFT, width, fs(16)).y + 6.0
 	draw_string(font, Vector2(0, screen.y - 30), "Tap anywhere to resume", HORIZONTAL_ALIGNMENT_CENTER, screen.x, fs(20), Color(0.8, 0.8, 0.8))
+
+
+# ---------------------------------------------------------------- pilots in the corners
+
+const PILOT_LINES := {
+	"start": ["GO, %s!", "Let's work, %s!", "Show 'em, %s!", "Here we go!"],
+	"hit": ["PUNCH IT!", "Smash it!", "Again! Again!", "Right there!", "Go in, %s!", "That's it!"],
+	"combo": ["COMBO!", "Don't let up!", "Keep it coming!", "Pour it on!"],
+	"hurt": ["Block! BLOCK!", "Get out of there!", "Move, %s, move!", "Watch it!"],
+	"rip_enemy": ["It's coming apart!", "Take it apart!", "YES! Rip it off!"],
+	"rip_own": ["No no no!", "We lost a part!", "Ugh! Keep going!"],
+	"low": ["Hang in there, %s!", "Stay up, %s!", "Don't quit on me!"],
+	"chatter": ["Watch the left!", "Find the opening!", "Go in, %s!", "Aim for the weak spot!", "Stay light!", "Wait for it..."],
+	"win": ["THAT'S MY ROBOT!", "YES! YES! YES!", "Did you SEE that?!"],
+	"lose": ["No...", "Get up, %s... please.", "We'll fix it. We'll fix it."],
+}
+const PROGRAM_LINES := {
+	"start": ["[ ROUTINE ENGAGED ]", "[ COMBAT PROGRAM v%s ]"],
+	"hit": ["[ HIT CONFIRMED ]", "[ DAMAGE APPLIED ]"],
+	"combo": ["[ CHAIN SEQUENCE ]"],
+	"hurt": ["[ RECALCULATING ]", "[ EVASION SUBROUTINE ]"],
+	"rip_enemy": ["[ COMPONENT REMOVED ]"],
+	"rip_own": ["[ PART LOSS DETECTED ]"],
+	"low": ["[ WARNING: CORE 30% ]"],
+	"chatter": ["[ ANALYZING PATTERNS ]", "[ PREDICTING INPUT ]", "[ TARGET LOCKED ]"],
+	"win": ["[ OPPONENT TERMINATED ]"],
+	"lose": ["[ ERROR ] [ ERROR ] [ ERROR ]"],
+}
+
+var pilots: Array = []   # one per side: {team, look, auto, bubble, bubble_t, jerk, talk_cd, chatter_t}
+
+
+func setup_pilots() -> void:
+	var mine: Dictionary = GameData.pilot_look
+	if mode == "quick":
+		mine = random_pilot_look(str(GameData.quick["player"]["name"]))
+	var theirs := {}
+	var auto := false
+	if mode == "story" or mode == "exhibition":
+		var who := str(opp.get("pilot", ""))
+		auto = who == ""
+		theirs = Story.SPEAKERS.get(who, {}).get("face", {})
+	if theirs.is_empty():
+		theirs = random_pilot_look(str(opp["name"]))
+	pilots = [
+		{"team": 0, "look": mine, "auto": false, "bubble": "", "bubble_t": 0.0, "jerk": 0.0, "talk_cd": 0.0, "chatter_t": randf_range(5.0, 8.0)},
+		{"team": 1, "look": theirs, "auto": auto, "bubble": "", "bubble_t": 0.0, "jerk": 0.0, "talk_cd": 0.0, "chatter_t": randf_range(6.0, 9.0)},
+	]
+
+
+## A random but stable pilot for a robot (same robot, same pilot).
+func random_pilot_look(seed_text: String) -> Dictionary:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = hash(seed_text)
+	var skins := ["#f1d0b5", "#e2b48c", "#c8946e", "#a8714f", "#8d5a3b", "#5e3a24"]
+	var hats := ["cap", "beanie", "mohawk", "helmet", "bun", "bald", ""]
+	return {"skin": skins[rng.randi() % skins.size()], "hair": "#" + Color.from_hsv(rng.randf(), rng.randf_range(0.2, 0.9), rng.randf_range(0.15, 0.85)).to_html(false),
+			"hat": hats[rng.randi() % hats.size()], "outfit": "#" + Color.from_hsv(rng.randf(), rng.randf_range(0.3, 0.8), rng.randf_range(0.25, 0.6)).to_html(false),
+			"glasses": rng.randf() < 0.2, "beard": rng.randf() < 0.25, "goggles": rng.randf() < 0.12}
+
+
+func team_robot(team: int) -> Fighter:
+	for f in (team_p if team == 0 else team_c):
+		if f.state != "ko":
+			return f
+	return team_p[0] if team == 0 else team_c[0]
+
+
+## A pilot shouts something (a speech bubble, no voice). force = ignore the cooldown.
+func pilot_say(team: int, what: String, force: bool = false, custom: String = "") -> void:
+	if pilots.size() < 2:
+		return
+	var pd: Dictionary = pilots[team]
+	if not force and (pd["talk_cd"] > 0.0 or pd["bubble_t"] > 0.3):
+		return
+	var text := custom
+	if text == "":
+		var pool: Array = (PROGRAM_LINES if pd["auto"] else PILOT_LINES).get(what, [])
+		if pool.is_empty():
+			return
+		text = pool[randi() % pool.size()]
+		if "%s" in text:
+			text = text % (str(randi_range(9, 12)) if pd["auto"] else team_robot(team).label)
+	pd["bubble"] = text
+	pd["bubble_t"] = 1.8
+	pd["talk_cd"] = randf_range(2.0, 3.2)
+
+
+func pilot_jerk(team: int) -> void:
+	if pilots.size() == 2:
+		pilots[team]["jerk"] = 0.22
+
+
+func update_pilots(delta: float) -> void:
+	for pd in pilots:
+		pd["bubble_t"] = maxf(0.0, pd["bubble_t"] - delta)
+		pd["talk_cd"] = maxf(0.0, pd["talk_cd"] - delta)
+		pd["jerk"] = maxf(0.0, pd["jerk"] - delta)
+		if phase == "fight":
+			pd["chatter_t"] -= delta
+			if pd["chatter_t"] <= 0.0:
+				pd["chatter_t"] = randf_range(6.0, 10.0)
+				var r := team_robot(pd["team"])
+				pilot_say(pd["team"], "low" if r.ratio("torso") < 0.3 else "chatter")
+
+
+## A little pilot doll standing in its corner, working the controller.
+func draw_pilot(pd: Dictionary, off: Vector2) -> void:
+	var team: int = pd["team"]
+	var face := 1.0 if team == 0 else -1.0
+	var x: float = wall_l * 0.45 if team == 0 else screen.x - wall_l * 0.45
+	var s := clampf(wall_l / 58.0, 1.2, 2.0)
+	var base := Vector2(x, floor_y) + off * 0.6
+	var look: Dictionary = pd["look"]
+	var r := team_robot(team)
+	if pd["auto"]:
+		# Kane's robots have no pilot: just a terminal running the fight program
+		var tw := 30.0 * s
+		var th := 22.0 * s
+		var top := base + Vector2(-tw * 0.5, -th - 40.0 * s)
+		draw_rect(Rect2(base + Vector2(-4 * s, -40 * s), Vector2(8 * s, 40 * s)), Color(0.2, 0.2, 0.24))
+		draw_rect(Rect2(top, Vector2(tw, th)), Color(0.1, 0.1, 0.13))
+		draw_rect(Rect2(top + Vector2(3, 3), Vector2(tw - 6, th - 6)), Color(0.02, 0.08, 0.04))
+		for k in 4:
+			var w := (tw - 12) * (0.4 + 0.6 * absf(sin(clock * 3.0 + k * 1.7)))
+			draw_rect(Rect2(top + Vector2(6, 6 + k * (th - 12) / 4.0), Vector2(w, 2)), Color(0.3, 1.0, 0.5, 0.8))
+		draw_string(font, top + Vector2(0, -4), "KANE", HORIZONTAL_ALIGNMENT_CENTER, tw, int(9 * s), Color(0.88, 0.72, 0.29))
+		draw_pilot_bubble(pd, top + Vector2(tw * 0.5, -14.0 * s))
+		return
+	var skin := Color(look.get("skin", "#c8946e"))
+	var hair := Color(look.get("hair", "#2a1d14"))
+	var outfit := Color(look.get("outfit", "#34495e"))
+	# body language follows the robot: lean in on attacks, flinch when it gets hit, cheer when it wins
+	var lean := 0.0
+	var hands_up := 0.0
+	if phase == "ko" or phase == "results":
+		var happy := (won and team == 0) or (not won and team == 1)
+		hands_up = (1.0 if happy else -0.4) * (0.7 + 0.3 * absf(sin(clock * 8.0)))
+	elif r.state == "hit":
+		lean = -0.35
+	elif ATTACKS.has(r.state) or r.state == "special":
+		lean = 0.45
+	elif r.blocking:
+		lean = -0.15
+	var bob := absf(sin(clock * 6.0)) * 2.0 * s if r.state == "walk" else sin(clock * 2.0 + team) * 0.6 * s
+	# legs
+	draw_rect(Rect2(base + Vector2(-9 * s, -24 * s), Vector2(7 * s, 24 * s)), outfit.darkened(0.45))
+	draw_rect(Rect2(base + Vector2(2 * s, -24 * s), Vector2(7 * s, 24 * s)), outfit.darkened(0.45))
+	draw_rect(Rect2(base + Vector2(-10 * s, -3 * s), Vector2(9 * s, 3 * s)), Color(0.12, 0.12, 0.12))
+	draw_rect(Rect2(base + Vector2(1 * s, -3 * s), Vector2(9 * s, 3 * s)), Color(0.12, 0.12, 0.12))
+	# torso
+	var hip := base + Vector2(0, -24 * s - bob)
+	var neck := hip + Vector2(face * lean * 6 * s, -30 * s)
+	draw_colored_polygon(PackedVector2Array([hip + Vector2(-11 * s, 0), hip + Vector2(11 * s, 0), neck + Vector2(12 * s, 0), neck + Vector2(-12 * s, 0)]), outfit)
+	# head
+	var hc := neck + Vector2(face * lean * 3 * s, -11 * s)
+	var hr := 10.0 * s
+	if look.get("long_hair", false):
+		draw_rect(Rect2(hc + Vector2(-hr * 1.05, -hr * 0.5), Vector2(hr * 2.1, hr * 1.5)), hair)
+	draw_circle(hc, hr, skin)
+	match str(look.get("hat", "")):
+		"cap":
+			draw_rect(Rect2(hc + Vector2(-hr * 1.05, -hr * 1.05), Vector2(hr * 2.1, hr * 0.5)), hair)
+			draw_rect(Rect2(hc + Vector2(face > 0.0 and 0.0 or -hr * 1.4, -hr * 0.65), Vector2(hr * 1.4, hr * 0.18)), hair)
+		"beanie":
+			draw_rect(Rect2(hc + Vector2(-hr, -hr * 1.05), Vector2(hr * 2.0, hr * 0.6)), hair)
+		"mohawk":
+			draw_rect(Rect2(hc + Vector2(-hr * 0.18, -hr * 1.6), Vector2(hr * 0.36, hr * 0.8)), hair)
+		"helmet":
+			draw_arc(hc, hr * 1.05, PI, TAU, 14, hair, hr * 0.35)
+		"bun":
+			draw_circle(hc + Vector2(0, -hr * 1.05), hr * 0.35, hair)
+			draw_rect(Rect2(hc + Vector2(-hr, -hr), Vector2(hr * 2.0, hr * 0.35)), hair)
+		"bald":
+			pass
+		_:
+			draw_rect(Rect2(hc + Vector2(-hr, -hr), Vector2(hr * 2.0, hr * 0.4)), hair)
+	draw_circle(hc + Vector2(face * hr * 0.15 - hr * 0.3, -hr * 0.05), hr * 0.12, Color.WHITE)
+	draw_circle(hc + Vector2(face * hr * 0.15 + hr * 0.3, -hr * 0.05), hr * 0.12, Color.WHITE)
+	if look.get("goggles", false):
+		draw_rect(Rect2(hc + Vector2(-hr * 0.75, -hr * 0.3), Vector2(hr * 1.5, hr * 0.4)), Color(0.2, 0.5, 0.6, 0.85))
+	if look.get("glasses", false):
+		draw_arc(hc + Vector2(face * hr * 0.15 - hr * 0.3, -hr * 0.05), hr * 0.22, 0, TAU, 10, Color(0.1, 0.1, 0.1), 1.5)
+		draw_arc(hc + Vector2(face * hr * 0.15 + hr * 0.3, -hr * 0.05), hr * 0.22, 0, TAU, 10, Color(0.1, 0.1, 0.1), 1.5)
+	if look.get("beard", false):
+		draw_circle(hc + Vector2(0, hr * 0.55), hr * 0.5, hair.lightened(0.15))
+	if look.get("scar", false):
+		draw_line(hc + Vector2(hr * 0.15, -hr * 0.5), hc + Vector2(hr * 0.6, hr * 0.2), Color(0.6, 0.25, 0.2), 2.0)
+	var shouting: bool = pd["bubble_t"] > 0.0
+	draw_rect(Rect2(hc + Vector2(-hr * 0.25 + face * hr * 0.15, hr * 0.35), Vector2(hr * 0.5, hr * (0.35 if shouting else 0.12))), Color(0.25, 0.08, 0.06))
+	# arms and controller: little jerks when the robot attacks, held up high when it wins
+	var j: float = pd["jerk"] / 0.22
+	var jx := sin(clock * 40.0) * 3.0 * s * j
+	var pad := neck + Vector2(face * (14 + lean * 4) * s + jx, (10 - hands_up * 26) * s - j * 4 * s)
+	for side in [-1.0, 1.0]:
+		var sh := neck + Vector2(side * 10 * s, 3 * s)
+		draw_line(sh, pad + Vector2(side * 6 * s, 0), outfit.darkened(0.15), 5 * s)
+	draw_rect(Rect2(pad + Vector2(-10 * s, -5 * s), Vector2(20 * s, 10 * s)), Color(0.15, 0.15, 0.18))
+	draw_circle(pad + Vector2(-5 * s, 0), 2 * s, Color(0.9, 0.3, 0.3))
+	draw_circle(pad + Vector2(5 * s, 0), 2 * s, Color(0.3, 0.8, 1.0) if j > 0.0 else Color(0.2, 0.4, 0.5))
+	draw_line(pad + Vector2(7 * s, -5 * s), pad + Vector2(9 * s, -12 * s), Color(0.5, 0.5, 0.55), 1.5)
+	draw_pilot_bubble(pd, hc + Vector2(0, -hr - 10 * s))
+
+
+func draw_pilot_bubble(pd: Dictionary, anchor: Vector2) -> void:
+	if pd["bubble_t"] <= 0.0 or pd["bubble"] == "":
+		return
+	var size := fs(15)
+	var text: String = pd["bubble"]
+	var tw := font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, size).x
+	var w := tw + 18.0
+	var h := size + 14.0
+	var bx := clampf(anchor.x - w * 0.5, 6.0, screen.x - w - 6.0)
+	var by := anchor.y - h - 10.0
+	var a := minf(1.0, pd["bubble_t"] * 4.0)
+	var bg := Color(1, 1, 1, 0.92 * a) if not pd["auto"] else Color(0.05, 0.12, 0.07, 0.9 * a)
+	draw_rect(Rect2(bx, by, w, h), bg)
+	draw_colored_polygon(PackedVector2Array([Vector2(anchor.x - 6, by + h), Vector2(anchor.x + 6, by + h), Vector2(anchor.x, by + h + 9)]), bg)
+	var tc := Color(0.08, 0.08, 0.1, a) if not pd["auto"] else Color(0.3, 1.0, 0.5, a)
+	draw_string(font, Vector2(bx + 9, by + h - 9), text, HORIZONTAL_ALIGNMENT_LEFT, -1, size, tc)

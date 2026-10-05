@@ -388,6 +388,7 @@ func build_overview() -> void:
 	row_button(bar, "Randomize", _on_randomize, true, 120)
 	row_button(bar, "Setups", _on_open_setups, true, 100)
 	row_button(bar, "Paint", _on_open_paint, true, 85)
+	row_button(bar, "Pilot", _on_open_pilot, true, 80)
 	row_button(bar, "Style: %s" % Catalog.STYLES[GameData.style]["name"], _on_open_style, true, 150)
 	row_button(bar, "Storage (%d)" % GameData.spares().size(), _on_slot.bind("storage"), true, 125)
 
@@ -544,6 +545,100 @@ func _on_open_setups() -> void:
 		row.add_child(name)
 		row_button(row, "Save here", _on_save_setup.bind(k), true, 120)
 		row_button(row, "Load", _on_load_setup.bind(k), not st.is_empty(), 90)
+
+
+const StoryScript = preload("res://story.gd")
+
+
+## Design your pilot: they stand in your corner during fights and appear in the story.
+func _on_open_pilot() -> void:
+	var col := open_popup("YOUR PILOT")
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 14)
+	col.add_child(row)
+	var face = StoryScript.Portrait.new()
+	face.who = "YOU"
+	face.custom_minimum_size = Vector2(190, 190)
+	row.add_child(face)
+	var opts := VBoxContainer.new()
+	opts.add_theme_constant_override("separation", 6)
+	opts.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.add_child(opts)
+	var look: Dictionary = GameData.pilot_look
+	var extras := []
+	for e in ["glasses", "beard", "goggles", "long_hair", "scar"]:
+		if look.get(e, false):
+			extras.append(e)
+	var lines := [
+		["Skin", "skin", "%d/%d" % [GameData.PILOT_SKINS.find(look["skin"]) + 1, GameData.PILOT_SKINS.size()]],
+		["Hair / hat color", "hair", ""],
+		["Head", "hat", GameData.PILOT_HAT_NAMES.get(look["hat"], "?")],
+		["Jacket", "outfit", ""],
+		["Extras", "extras", "none" if extras.is_empty() else ", ".join(extras).replace("_", " ")],
+	]
+	for l in lines:
+		var bar := action_bar(opts)
+		var t := UI.label(l[0], 16)
+		t.custom_minimum_size = Vector2(170, 0)
+		bar.add_child(t)
+		row_button(bar, "<", _on_pilot_change.bind(l[1], -1), true, 54)
+		var v := UI.label(l[2], 15, Color(0.8, 0.8, 0.85))
+		v.custom_minimum_size = Vector2(130, 0)
+		v.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		if l[2] == "":
+			var sw := ColorRect.new()
+			sw.color = Color(look[l[1]])
+			sw.custom_minimum_size = Vector2(130, 30)
+			bar.add_child(sw)
+		else:
+			bar.add_child(v)
+		row_button(bar, ">", _on_pilot_change.bind(l[1], 1), true, 54)
+	var last := action_bar(opts)
+	row_button(last, "Random", _on_pilot_random, true, 130)
+	section("Your pilot stands in your corner during fights, working the controller and shouting at the robot.", col)
+
+
+func _on_pilot_change(what: String, step: int) -> void:
+	var look: Dictionary = GameData.pilot_look
+	match what:
+		"skin":
+			look["skin"] = cycle(GameData.PILOT_SKINS, look["skin"], step)
+		"hair", "outfit":
+			look[what] = cycle(GameData.PILOT_COLORS, look[what], step)
+		"hat":
+			look["hat"] = cycle(GameData.PILOT_HATS, look["hat"], step)
+		"extras":
+			var cur := []
+			for e in ["glasses", "beard", "goggles", "long_hair", "scar"]:
+				if look.get(e, false):
+					cur.append(e)
+			var k := 0
+			for i in GameData.PILOT_EXTRAS.size():
+				if GameData.PILOT_EXTRAS[i] == cur:
+					k = i
+			var nxt: Array = GameData.PILOT_EXTRAS[posmod(k + step, GameData.PILOT_EXTRAS.size())]
+			for e in ["glasses", "beard", "goggles", "long_hair", "scar"]:
+				look[e] = nxt.has(e)
+	Sfx.play("click")
+	_on_open_pilot()
+
+
+func cycle(list: Array, cur, step: int):
+	var i := list.find(cur)
+	return list[posmod((0 if i < 0 else i) + step, list.size())]
+
+
+func _on_pilot_random() -> void:
+	var look: Dictionary = GameData.pilot_look
+	look["skin"] = GameData.PILOT_SKINS[randi() % GameData.PILOT_SKINS.size()]
+	look["hair"] = GameData.PILOT_COLORS[randi() % GameData.PILOT_COLORS.size()]
+	look["outfit"] = GameData.PILOT_COLORS[randi() % GameData.PILOT_COLORS.size()]
+	look["hat"] = GameData.PILOT_HATS[randi() % GameData.PILOT_HATS.size()]
+	var ex: Array = GameData.PILOT_EXTRAS[randi() % GameData.PILOT_EXTRAS.size()]
+	for e in ["glasses", "beard", "goggles", "long_hair", "scar"]:
+		look[e] = ex.has(e)
+	Sfx.play("equip")
+	_on_open_pilot()
 
 
 func _on_open_paint() -> void:

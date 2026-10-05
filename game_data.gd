@@ -185,6 +185,13 @@ var save_slot := 1          # which save file (1..SAVE_SLOTS) this game uses
 var slot_mode := "load"     # what the save-slot screen is for: "new" or "load"
 var pilot_name := "Rook"
 var robot_name := DEFAULT_ROBOT
+const DEFAULT_PILOT_LOOK := {"skin": "#b07a52", "hair": "#d9482f", "hat": "beanie", "outfit": "#3e5c4f"}
+const PILOT_SKINS := ["#f1d0b5", "#e2b48c", "#c8946e", "#b07a52", "#8d5a3b", "#5e3a24"]
+const PILOT_COLORS := ["#d9482f", "#2a1d14", "#e8d36a", "#7a4b2a", "#c0c0c0", "#1f6fd1", "#2ecc71", "#e056fd", "#f39c12", "#ecf0f1", "#3e5c4f", "#34495e", "#8e2c1c", "#222222"]
+const PILOT_HATS := ["beanie", "cap", "helmet", "mohawk", "bun", "bald", ""]
+const PILOT_HAT_NAMES := {"beanie": "Beanie", "cap": "Cap", "helmet": "Helmet", "mohawk": "Mohawk", "bun": "Hair bun", "bald": "Bald", "": "Short hair"}
+const PILOT_EXTRAS := [[], ["glasses"], ["beard"], ["goggles"], ["glasses", "beard"], ["long_hair"], ["long_hair", "glasses"], ["scar"]]
+var pilot_look := DEFAULT_PILOT_LOOK.duplicate()   # how your pilot looks in the corner and in the story
 var inventory: Array = []   # [{uid, id, hp}]
 var equipped := {}          # slot -> uid (-1 = empty)
 var wingmen: Array = [{}, {}]   # extra robots for team fights, built from spares: [{slot: uid}, ...]
@@ -272,6 +279,7 @@ func _ready() -> void:
 func new_game() -> void:
 	money = START_MONEY
 	pilot_name = "Rook"
+	pilot_look = DEFAULT_PILOT_LOOK.duplicate()
 	robot_name = DEFAULT_ROBOT
 	inventory = []
 	equipped = {}
@@ -1599,7 +1607,7 @@ func save_game() -> bool:
 		"losses": losses, "champion": champion, "story_seen": story_seen,
 		"owned_chips": owned_chips, "chips": chips, "circuit": circuit, "circuit_offers": circuit_offers,
 		"circuits_won": circuits_won, "setups": setups, "custom_parts": custom_parts,
-		"style": style, "shop_stock": shop_stock, "scout": scout, "wingmen": wingmen, "sending": sending,
+		"style": style, "shop_stock": shop_stock, "scout": scout, "wingmen": wingmen, "sending": sending, "pilot_look": pilot_look,
 	}
 	var f := FileAccess.open(slot_path(save_slot), FileAccess.WRITE)
 	if f == null:
@@ -1660,6 +1668,9 @@ func load_game(slot: int = -1) -> String:
 			chips.append(id)
 	style = str(data.get("style", "striker"))
 	sending = int(data.get("sending", -1))
+	pilot_look = DEFAULT_PILOT_LOOK.duplicate()
+	if typeof(data.get("pilot_look")) == TYPE_DICTIONARY:
+		pilot_look.merge(data["pilot_look"], true)
 	wingmen = [{}, {}]
 	var wm: Array = data.get("wingmen", [])
 	for k in mini(2, wm.size()):
