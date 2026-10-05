@@ -117,6 +117,7 @@ func tab_list() -> Array:
 	var t := ["Build", "Shop", "Workshop", "Moves"]
 	if GameData.champion:
 		t.append("Cups")
+		t.append("Team")
 	return t
 
 
@@ -177,6 +178,8 @@ func refresh() -> void:
 		fight_button.disabled = false
 		var label: String = {"story": "FIGHT: %s ($%d)", "circuit": "CUP FIGHT: %s ($%d)", "exhibition": "REMATCH: %s ($%d)"}.get(mode, "FIGHT: %s ($%d)")
 		fight_button.text = label % [o["name"], GameData.current_reward()]
+		if o.has("team_label"):
+			fight_button.text += " - %s" % o["team_label"]
 		if not core.is_empty() and GameData.hp_ratio(core) < 0.35:
 			fight_button.text += " - core damaged!"
 
@@ -216,6 +219,8 @@ func refresh() -> void:
 			build_moves_tab()
 		"Cups":
 			build_cups_tab()
+		"Team":
+			build_team_tab()
 	scroll.set_deferred("scroll_vertical", keep)
 
 
@@ -694,7 +699,7 @@ func build_cups_tab() -> void:
 			var specials: Array = []
 			for id in o["specials"]:
 				specials.append(Specials.MOVES[id]["name"])
-			make_row(bot_preview(o), "%d. %s   ($%d)" % [i + 1, o["name"], o["reward"]],
+			make_row(bot_preview(o), "%d. %s%s   ($%d)" % [i + 1, o["name"], "  [%s]" % o["team_label"] if o.has("team_label") else "", o["reward"]],
 					"Moves: " + (", ".join(specials) if not specials.is_empty() else "none"))
 		return
 	section("Pick a championship. Robots are built at random for every cup!")
@@ -707,6 +712,61 @@ func build_cups_tab() -> void:
 		row_button(row, "Enter", _on_enter_cup.bind(k), true, 100)
 	make_row(bot_preview(GameData.OPPONENTS[GameData.OPPONENTS.size() - 1]), "OVERLORD rematch",
 			"Exhibition bout for $%d - the fight button starts it when no cup is active." % GameData.EXHIBITION_REWARD)
+
+
+func build_team_tab() -> void:
+	section("WINGMEN fight beside you against tag teams and swarms (some cup fights). They're built from your spare parts and keep their damage, just like your robot.")
+	var bar := action_bar()
+	var split: bool = GameData.settings.get("team_controls", "split") == "split"
+	var b := row_button(bar, "Team controls: %s" % ("SPLIT - each robot gets its own movement pad" if split else "LINKED - every robot follows one pad"), _on_team_controls, true, 0)
+	b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	for k in GameData.wingmen.size():
+		var w: Dictionary = GameData.wingmen[k]
+		var name := GameData.wingman_name(k)
+		var pv := RobotPreview.new()
+		pv.anim = false
+		var sub := "Not built yet. Tap Build to assemble it from your best spare parts (needs at least a head and a torso)."
+		if not w.is_empty():
+			pv.look = GameData.look_from_spec(GameData.player_spec(w, name))
+			var names: Array = []
+			for slot in GameData.SLOTS:
+				if w.has(slot):
+					var p := GameData.inst(int(w[slot]))
+					if not p.is_empty():
+						names.append("%s %d%%" % [GameData.part_def(p["id"])["name"], int(GameData.hp_ratio(p) * 100)])
+			sub = ("READY. " if GameData.wingman_ready(k) else "CAN'T FIGHT - missing a head or torso. ") + ", ".join(names)
+		else:
+			pv.look = {}
+		var row := make_row(pv, name, sub)
+		row_button(row, "Rebuild" if not w.is_empty() else "Build", _on_build_wingman.bind(k), true, 100)
+		if not w.is_empty():
+			var c := GameData.wingman_repair_cost(k)
+			row_button(row, "Fix $%d" % c if c > 0 else "OK", _on_repair_wingman.bind(k), c > 0 and GameData.money >= c, 95)
+			row_button(row, "Disband", _on_disband_wingman.bind(k), true, 100)
+
+
+func _on_team_controls() -> void:
+	var split: bool = GameData.settings.get("team_controls", "split") == "split"
+	GameData.settings["team_controls"] = "linked" if split else "split"
+	GameData.save_settings()
+	say("Team controls: %s." % ("LINKED - all your robots follow one movement pad" if split else "SPLIT - one movement pad per robot, shared attack buttons. Move the pads in Settings > Edit controls"), "click")
+	refresh()
+
+
+func _on_build_wingman(k: int) -> void:
+	say(GameData.build_wingman(k), "equip")
+	refresh()
+
+
+func _on_repair_wingman(k: int) -> void:
+	say(GameData.repair_wingman(k), "repair")
+	refresh()
+
+
+func _on_disband_wingman(k: int) -> void:
+	GameData.clear_wingman(k)
+	say("%s's parts went back to your Spares." % GameData.wingman_name(k), "click")
+	refresh()
 
 
 func bot_preview(o: Dictionary) -> RobotPreview:

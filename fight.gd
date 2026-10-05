@@ -114,6 +114,13 @@ class Fighter:
 	var armor_t := 0.0       # bulwark slam armor buff
 	var haste_t := 0.0       # overclock
 	var burns: Array = []    # [{slot, dps, t}]
+	# teams (multibot fights)
+	var team := 0            # 0 = player's side, 1 = CPU's side
+	var foe = null           # the enemy this fighter is fighting right now
+	var ai := {}             # this robot's own AI state (CPU robots)
+	var wingman := -1        # which of the player's wingmen this is (-1 = main robot / not ours)
+	var tag := ""            # little label over its head in team fights
+	var hp_scale := 1.0      # team robots fight with less health (your parts' real damage is scaled back after)
 
 	func alive(slot: String) -> bool:
 		return parts.has(slot) and not parts[slot].is_empty() and parts[slot]["hp"] > 0.0
@@ -208,8 +215,11 @@ class Fighter:
 		return look
 
 
-var player: Fighter
-var cpu: Fighter
+var player: Fighter        # your main robot (first one still standing)
+var cpu: Fighter           # the enemy you're focused on (the one you aimed at, or the closest)
+var team_p: Array = []     # every robot on your side
+var team_c: Array = []     # every robot on the CPU's side
+var focus = null           # enemy picked by tapping it (team fights)
 var opp: Dictionary
 var fight_idx := 0
 var exhibition := false
@@ -229,6 +239,7 @@ var tap_pending := false
 var quit_rect := Rect2()
 var moves_rect := Rect2()
 var touch_device := false
+var control_pads := 1      # movement pads on screen (multibot split controls use more)
 var paused := false
 
 var ai_timer := 0.0
@@ -277,19 +288,50 @@ func _ready() -> void:
 	exhibition = mode != "story"
 	title_text = GameData.fight_title()
 	opp = GameData.current_opponent()
-	player = make_fighter(GameData.fight_player_spec())
-	cpu = make_fighter(GameData.current_opponent_spec())
+	var pspecs: Array = GameData.fight_player_team()
+	var cspecs: Array = GameData.current_opponent_team()
+	for k in pspecs.size():
+		var f := make_fighter(pspecs[k])
+		f.team = 0
+		f.wingman = int(pspecs[k].get("wingman", -1))
+		team_p.append(f)
+	for k in cspecs.size():
+		var f := make_fighter(cspecs[k])
+		f.team = 1
+		f.facing = -1
+		team_c.append(f)
+	for t in [team_p, team_c]:
+		if t.size() == 1:
+			t[0].scale = maxf(t[0].scale, BOT_SCALE)   # a robot fighting alone is always full size
+			t[0].spec["scale"] = t[0].scale
+			t[0].look_dirty = true
+	player = team_p[0]
+	cpu = team_c[0]
+	var split: bool = GameData.settings.get("team_controls", "split") == "split"
+	control_pads = team_p.size() if team_p.size() > 1 and split else 1
+	if team_p.size() > 1:
+		for k in team_p.size():
+			team_p[k].tag = str(k + 1) if control_pads > 1 else "▲"
 	layout()
+	screen = get_viewport_rect().size
+	for k in team_p.size():
+		team_p[k].pos = Vector2(screen.x * (0.3 - 0.085 * k), floor_y)
+	for k in team_c.size():
+		team_c[k].pos = Vector2(screen.x * (0.7 + 0.085 * k), floor_y)
 	var diff: int = GameData.settings["difficulty"]
-	ai_think = opp["think"] * DIFF_THINK[diff]
-	ai_block = minf(0.85, opp["block"] * DIFF_BLOCK[diff])
-	ai_smart = opp["smart"]
-	cpu.dmg_mult *= DIFF_DAMAGE[diff]
-	ai_build_kit()
-
-	player.pos = Vector2(screen.x * 0.3, floor_y)
-	cpu.pos = Vector2(screen.x * 0.7, floor_y)
-	cpu.facing = -1
+	for f in team_c:
+		f.dmg_mult *= DIFF_DAMAGE[diff]
+		f.foe = player
+		f.ai = {"timer": randf() * 0.3, "plan": {}, "think": opp["think"] * DIFF_THINK[diff],
+				"block": minf(0.85, opp["block"] * DIFF_BLOCK[diff]), "smart": opp["smart"],
+				"special_cd": 3.0 + randf(), "gadget_cd": 1.5 + randf(), "kit": {}}
+		ai_load(f)
+		ai_build_kit()
+		ai_save(f)
+	for f in team_p:
+		f.foe = cpu
+	cpu = team_c[0]
+	player = team_p[0]
 	var seed_value := int(GameData.circuit.get("seed", 0)) if mode == "circuit" else 0
 	var venue := Arena.pick(mode, fight_idx, seed_value)
 	arena_id = venue[0]
@@ -320,6 +362,12 @@ func make_fighter(spec: Dictionary) -> Fighter:
 	f.dmg_mult = spec["damage_mult"]
 	f.spd_mult = spec["speed_mult"]
 	f.scale = minf(spec["scale"] * BOT_SCALE, 1.5)   # cap so giants still fit under the HUD
+	f.hp_scale = float(spec.get("hp_scale", 1.0))
+	if f.hp_scale != 1.0:
+		for slot in f.parts:
+			if not f.parts[slot].is_empty():
+				f.parts[slot]["hp"] = f.parts[slot]["hp"] * f.hp_scale
+				f.parts[slot]["max_hp"] = f.parts[slot]["max_hp"] * f.hp_scale
 	f.spec["scale"] = f.scale   # draw at the same size the hit boxes use
 	f.specials = spec.get("specials", []).duplicate()
 	f.gadgets = spec.get("gadgets", []).duplicate()
@@ -341,32 +389,26 @@ func layout() -> void:
 	wall_r = screen.x * 0.93
 	var h := screen.y
 	var w := screen.x
-	var r: float = clampf(h * 0.085, 34.0, 60.0) * BUTTON_SCALES[GameData.settings["button_size"]] * UI_SCALE
-	# two mirrored diamonds: movement on the left, actions on the right
-	var lc := Vector2(r * 2.75, h - r * 2.4)
-	var rc := Vector2(w - r * 2.75, h - r * 2.4)
-	buttons = [
-		{"name": "left",  "pos": lc + Vector2(-r * 1.55, 0), "r": r, "label": "◀ LEFT"},
-		{"name": "right", "pos": lc + Vector2(r * 1.55, 0),  "r": r, "label": "RIGHT ▶"},
-		{"name": "up",    "pos": lc + Vector2(0, -r * 1.55), "r": r, "label": "JUMP"},
-		{"name": "down",  "pos": lc + Vector2(0, r * 1.3),  "r": r, "label": "CROUCH"},
-		{"name": "punch", "pos": rc + Vector2(-r * 1.55, 0), "r": r, "label": "PUNCH"},
-		{"name": "kick",  "pos": rc + Vector2(r * 1.55, 0),  "r": r, "label": "KICK"},
-		{"name": "block", "pos": rc + Vector2(0, -r * 1.55), "r": r, "label": "BLOCK"},
-		{"name": "grab",  "pos": rc + Vector2(0, r * 1.3),  "r": r, "label": "GRAB"},
-	]
-	# gadget buttons along the bottom middle, one per active gadget (max 3)
-	gadget_buttons = []
-	if player:
-		var active: Array = []
-		for g in player.gadgets:
+	# touch buttons: default diamonds, or the player's own layout from Settings > Edit controls
+	var active: Array = []
+	var owners: Array = []
+	for f in team_p:
+		for g in f.gadgets:
 			if Specials.GADGETS[g["id"]]["active"] and active.size() < 3:
 				active.append(g)
-		var gr := r * 0.72
-		for k in active.size():
-			var x := w * 0.5 + (k - (active.size() - 1) * 0.5) * gr * 2.4
-			gadget_buttons.append({"name": "gadget%d" % k, "gadget": active[k], "pos": Vector2(x, h - gr * 1.25), "r": gr,
-					"label": Specials.GADGETS[active[k]["id"]]["short"]})
+				owners.append(f)
+	var labels: Array = []
+	for g in active:
+		labels.append(Specials.GADGETS[g["id"]]["short"])
+	buttons = []
+	gadget_buttons = []
+	for btn in Controls.make_buttons(screen, labels, control_pads):
+		if str(btn["name"]).begins_with("gadget"):
+			btn["gadget"] = active[int(str(btn["name"]).substr(6))]
+			btn["owner"] = owners[int(str(btn["name"]).substr(6))]
+			gadget_buttons.append(btn)
+		else:
+			buttons.append(btn)
 	quit_rect = Rect2(w * 0.5 - 140.0, h * 0.04 + 52.0, 130.0, 44.0)
 	moves_rect = Rect2(w * 0.5 + 10.0, h * 0.04 + 52.0, 130.0, 44.0)
 
@@ -414,15 +456,28 @@ func handle_tap(p: Vector2) -> bool:
 	for b in buttons + gadget_buttons:
 		if p.distance_to(b["pos"]) <= b["r"] * 1.2:
 			return false
-	var slot := part_at(cpu, p)
+	var slot := ""
+	var who: Fighter = null
+	for e in team_c:
+		if e.state == "ko":
+			continue
+		slot = part_at(e, p)
+		if slot != "":
+			who = e
+			break
 	if slot == "":
 		return false
-	if player.target == slot:
-		player.target = ""
+	if player.target == slot and who == cpu:
+		for f in team_p:
+			f.target = ""
 		Sfx.play("untarget")
 	else:
-		player.target = slot
+		if team_c.size() > 1:
+			focus = who
+		for f in team_p:
+			f.target = slot
 		Sfx.play("target")
+	assign_foes()
 	return true
 
 
@@ -479,7 +534,9 @@ func key(k: Key) -> bool:
 	return Input.is_physical_key_pressed(k)
 
 
-func read_player_input() -> Dictionary:
+## Input for each of your robots. Linked controls: every robot follows the one pad.
+## Split controls: each robot has its own movement pad, the action buttons are shared.
+func read_player_input() -> Array:
 	held_buttons = {}
 	for b in buttons + gadget_buttons:
 		held_buttons[b["name"]] = false
@@ -488,33 +545,44 @@ func read_player_input() -> Dictionary:
 			if t.distance_to(b["pos"]) <= b["r"] * 1.2:
 				held_buttons[b["name"]] = true
 	var now := {
-		"left": held_buttons["left"] or key(KEY_A) or key(KEY_LEFT),
-		"right": held_buttons["right"] or key(KEY_D) or key(KEY_RIGHT),
-		"up": held_buttons["up"] or key(KEY_W) or key(KEY_UP),
-		"down": held_buttons["down"] or key(KEY_S) or key(KEY_DOWN),
-		"block": held_buttons["block"] or key(KEY_L),
-		"punch": held_buttons["punch"] or key(KEY_J),
-		"kick": held_buttons["kick"] or key(KEY_K),
-		"grab": held_buttons["grab"] or key(KEY_H),
+		"left": held_buttons.get("left", false) or key(KEY_A) or key(KEY_LEFT),
+		"right": held_buttons.get("right", false) or key(KEY_D) or key(KEY_RIGHT),
+		"up": held_buttons.get("up", false) or key(KEY_W) or key(KEY_UP),
+		"down": held_buttons.get("down", false) or key(KEY_S) or key(KEY_DOWN),
+		"block": held_buttons.get("block", false) or key(KEY_L),
+		"punch": held_buttons.get("punch", false) or key(KEY_J),
+		"kick": held_buttons.get("kick", false) or key(KEY_K),
+		"grab": held_buttons.get("grab", false) or key(KEY_H),
 	}
+	for pad in range(1, control_pads):
+		for d in Controls.MOVE_NAMES:
+			now[Controls.pad_name(d, pad)] = held_buttons.get(Controls.pad_name(d, pad), false)
 	for k in gadget_buttons.size():
 		now["gadget%d" % k] = held_buttons["gadget%d" % k] or key(GADGET_KEYS[k])
-	var i := empty_input()
-	for k in ["left", "right", "up", "down", "block"]:
-		i[k] = now[k]
-	i["punch"] = now["punch"] and not prev_held.get("punch", false)
-	i["kick"] = now["kick"] and not prev_held.get("kick", false)
-	i["grab"] = now["grab"] and not prev_held.get("grab", false)
-	i["up_press"] = now["up"] and not prev_held.get("up", false)
+	var shared := empty_input()
+	shared["block"] = now["block"]
+	shared["punch"] = now["punch"] and not prev_held.get("punch", false)
+	shared["kick"] = now["kick"] and not prev_held.get("kick", false)
+	shared["grab"] = now["grab"] and not prev_held.get("grab", false)
 	for k in gadget_buttons.size():
 		if now["gadget%d" % k] and not prev_held.get("gadget%d" % k, false):
-			i["gadget"] = k
-	# record direction presses for special-move sequences
-	for d in ["left", "right", "up", "down"]:
-		if now[d] and not prev_held.get(d, false):
-			push_token(player, dir_token(player, d))
+			shared["gadget"] = k
+	var out: Array = []
+	for k in team_p.size():
+		var f: Fighter = team_p[k]
+		var pad := k if control_pads > 1 else 0
+		var i := shared.duplicate()
+		for d in Controls.MOVE_NAMES:
+			var pn := Controls.pad_name(d, pad)
+			i[d] = now[pn]
+			# record direction presses for special-move sequences
+			if now[pn] and not prev_held.get(pn, false):
+				push_token(f, dir_token(f, d))
+		var up_name := Controls.pad_name("up", pad)
+		i["up_press"] = now[up_name] and not prev_held.get(up_name, false)
+		out.append(i)
 	prev_held = now
-	return i
+	return out
 
 
 func dir_token(f: Fighter, d: String) -> String:
@@ -575,6 +643,88 @@ func can_special(f: Fighter, id: String) -> bool:
 	return true
 
 
+## The AI code thinks in terms of "cpu" (me) and "player" (my enemy). In team fights every CPU
+## robot gets its own turn: load its state, think, save it back.
+func ai_load(f: Fighter) -> void:
+	cpu = f
+	player = f.foe if f.foe != null else team_p[0]
+	ai_timer = f.ai.get("timer", 0.0)
+	ai_plan = f.ai.get("plan", {})
+	ai_think = f.ai.get("think", 0.4)
+	ai_block = f.ai.get("block", 0.2)
+	ai_smart = f.ai.get("smart", 0.0)
+	ai_special_cd = f.ai.get("special_cd", 3.0)
+	ai_gadget_cd = f.ai.get("gadget_cd", 1.5)
+	ai_kit = f.ai.get("kit", {"range": 0.0, "air": false})
+
+
+func ai_save(f: Fighter) -> void:
+	f.ai["timer"] = ai_timer
+	f.ai["plan"] = ai_plan
+	f.ai["special_cd"] = ai_special_cd
+	f.ai["gadget_cd"] = ai_gadget_cd
+	f.ai["kit"] = ai_kit
+
+
+func ai_input_for(f: Fighter, delta: float) -> Dictionary:
+	if f.state == "ko":
+		return empty_input()
+	ai_load(f)
+	var i := read_ai_input(delta)
+	ai_save(f)
+	return i
+
+
+func all_fighters() -> Array:
+	return team_c + team_p
+
+
+func enemies_of(f: Fighter) -> Array:
+	return team_c if f.team == 0 else team_p
+
+
+func team_alive(t: int) -> int:
+	var n := 0
+	for f in (team_p if t == 0 else team_c):
+		if f.state != "ko":
+			n += 1
+	return n
+
+
+func nearest_alive(f: Fighter, among: Array) -> Fighter:
+	var best: Fighter = among[0]
+	var bd := 1e9
+	for e in among:
+		if e.state == "ko":
+			continue
+		var d := absf(e.pos.x - f.pos.x)
+		if d < bd:
+			bd = d
+			best = e
+	return best
+
+
+## Who fights whom: your robots go for the enemy you tapped (or the closest), CPU robots pick
+## the closest of yours but don't switch targets every frame.
+func assign_foes() -> void:
+	if focus != null and focus.state == "ko":
+		focus = null
+	for f in team_p:
+		f.foe = focus if focus != null else nearest_alive(f, team_c)
+	for f in team_c:
+		var n := nearest_alive(f, team_p)
+		var cur = f.foe
+		if cur == null or cur.state == "ko" or (n != cur and absf(n.pos.x - f.pos.x) + 150.0 < absf(cur.pos.x - f.pos.x)):
+			f.foe = n
+	# HUD / aiming: your first robot still standing, and the enemy it's on
+	player = team_p[0]
+	for f in team_p:
+		if f.state != "ko":
+			player = f
+			break
+	cpu = player.foe if player.foe != null else team_c[0]
+
+
 func read_ai_input(delta: float) -> Dictionary:
 	var i := empty_input()
 	if phase != "fight":
@@ -589,7 +739,7 @@ func read_ai_input(delta: float) -> Dictionary:
 
 	# react to incoming shots: shield, jump over, or block (smarter bots react more often)
 	for p in projectiles:
-		if p["owner"] != player or p["returning"] or p.get("ai_seen", false):
+		if (p["owner"] as Fighter).team == cpu.team or p["returning"] or p.get("ai_seen", false):
 			continue
 		var pdx: float = cpu.pos.x - p["pos"].x
 		if absf(pdx) < 300.0 and signf(pdx) == signf(p["vel"].x):
@@ -973,11 +1123,17 @@ func _process(delta: float) -> void:
 	clock += delta
 	phase_timer += delta
 
-	var p_in := read_player_input()
-	var c_in := read_ai_input(delta)
+	assign_foes()
+	var p_ins: Array = read_player_input()
+	var c_ins: Array = []
+	for f in team_c:
+		c_ins.append(ai_input_for(f, delta))
+	assign_foes()   # restores player / cpu after the AI turns
 	if phase != "fight":
-		p_in = empty_input()
-		c_in = empty_input()
+		for k in p_ins.size():
+			p_ins[k] = empty_input()
+		for k in c_ins.size():
+			c_ins[k] = empty_input()
 
 	match phase:
 		"intro":
@@ -1002,15 +1158,16 @@ func _process(delta: float) -> void:
 				leave_after_results()
 	tap_pending = false
 
-	update_fighter(player, cpu, p_in, delta)
-	update_fighter(cpu, player, c_in, delta)
+	for k in team_p.size():
+		update_fighter(team_p[k], team_p[k].foe, p_ins[k], delta)
+	for k in team_c.size():
+		update_fighter(team_c[k], team_c[k].foe, c_ins[k], delta)
 	separate()
 	update_projectiles(delta)
 
-	if player.target != "" and not cpu.alive(player.target):
-		player.target = ""
-	if cpu.target != "" and not player.alive(cpu.target):
-		cpu.target = ""
+	for f in all_fighters():
+		if f.target != "" and (f.foe == null or not f.foe.alive(f.target)):
+			f.target = ""
 
 	update_effects(delta)
 	queue_redraw()
@@ -1041,7 +1198,7 @@ func update_effects(delta: float) -> void:
 	for p in popups:
 		p["t"] += delta
 	popups = popups.filter(func(p): return p["t"] < 1.4)
-	for f in [player, cpu]:
+	for f in all_fighters():
 		for slot in BODY_PARTS:
 			if f.alive(slot) and f.ratio(slot) < 0.3 and randf() < delta * 5.0:
 				smoke.append({"pos": to_world_point(f, RobotArt.part_center(f.get_look(), slot)), "t": 0.0, "dark": false})
@@ -1059,22 +1216,26 @@ func popup(text: String, at: Vector2, color: Color) -> void:
 
 func time_up() -> void:
 	Sfx.play("time")
-	var winner := player if player.ratio("torso") >= cpu.ratio("torso") else cpu
-	end_by(winner, "TIME!")
+	var score := [0.0, 0.0]
+	for f in team_p:
+		score[0] += (f.ratio("torso") if f.state != "ko" else 0.0) / team_p.size()
+	for f in team_c:
+		score[1] += (f.ratio("torso") if f.state != "ko" else 0.0) / team_c.size()
+	end_by(player if score[0] >= score[1] else cpu, "TIME!")
 
 
 func end_by(winner: Fighter, title: String) -> void:
 	phase = "ko"
 	phase_timer = 0.0
-	won = winner == player
+	won = winner.team == 0
 	ko_text = title
 	cheer = 4.0
 	Sfx.play("crowd_cheer")
-	var loser := cpu if won else player
-	if loser.state != "ko":
-		loser.state = "ko"
-		loser.vel = Vector2(-loser.facing * 300.0, -400.0)
-		loser.on_ground = false
+	for loser in (team_c if won else team_p):
+		if loser.state != "ko":
+			loser.state = "ko"
+			loser.vel = Vector2(-loser.facing * 300.0, -400.0)
+			loser.on_ground = false
 
 
 func finish_match() -> void:
@@ -1084,11 +1245,23 @@ func finish_match() -> void:
 		phase_timer = 0.0
 		Sfx.play("victory" if won else "defeat")
 		return
+	var main: Fighter = team_p[0]
 	var part_hp := {}
 	for slot in BODY_PARTS:
-		if not player.parts[slot].is_empty():
-			part_hp[slot] = player.parts[slot]["hp"]
-	result = GameData.record_result(won, part_hp, cpu.ripped.size(), cpu.ripped)
+		if not main.parts[slot].is_empty():
+			part_hp[slot] = main.parts[slot]["hp"] / main.hp_scale
+	var team_hp: Array = []
+	for f in team_p:
+		if f.wingman >= 0:
+			var hp := {}
+			for slot in BODY_PARTS:
+				if not f.parts[slot].is_empty():
+					hp[slot] = f.parts[slot]["hp"] / f.hp_scale
+			team_hp.append({"wingman": f.wingman, "part_hp": hp})
+	var ripped: Array = []
+	for f in team_c:
+		ripped += f.ripped
+	result = GameData.record_result(won, part_hp, ripped.size(), ripped, team_hp)
 	phase = "results"
 	phase_timer = 0.0
 	Sfx.play("victory" if won else "defeat")
@@ -1114,10 +1287,17 @@ func quit_fight() -> void:
 		get_tree().change_scene_to_file("res://main.tscn")
 		return
 	for slot in BODY_PARTS:
-		if not player.parts[slot].is_empty():
+		if not team_p[0].parts[slot].is_empty():
 			var p := GameData.equipped_inst(slot)
 			if not p.is_empty():
-				p["hp"] = maxf(1.0, player.parts[slot]["hp"])
+				p["hp"] = maxf(1.0, team_p[0].parts[slot]["hp"] / team_p[0].hp_scale)
+	for f in team_p:
+		if f.wingman >= 0:
+			for slot in BODY_PARTS:
+				if not f.parts[slot].is_empty() and GameData.wingmen[f.wingman].has(slot):
+					var p := GameData.inst(int(GameData.wingmen[f.wingman][slot]))
+					if not p.is_empty():
+						p["hp"] = maxf(1.0, f.parts[slot]["hp"] / f.hp_scale)
 	GameData.last_result = {"quit": true, "opponent": opp["name"]}
 	GameData.save_game()
 	get_tree().change_scene_to_file("res://garage.tscn")
@@ -1199,7 +1379,7 @@ func start_special(f: Fighter, id: String) -> void:
 					f.cooldowns[g["id"]] = 0.0
 			f.haste_t = 4.0
 			rings.append({"pos": f.pos + Vector2(0, -90.0 * f.scale), "t": 0.0, "color": Color(0.75, 0.45, 1.0), "r": 160.0})
-	popup(m["name"].to_upper() + "!", f.pos + Vector2(0, -230.0 * f.scale), Color(0.5, 0.9, 1.0) if f == player else Color(1.0, 0.6, 0.3))
+	popup(m["name"].to_upper() + "!", f.pos + Vector2(0, -230.0 * f.scale), Color(0.5, 0.9, 1.0) if f.team == 0 else Color(1.0, 0.6, 0.3))
 	Sfx.play("uppercut", 0.1)
 	Sfx.play("target", 0.2, -6.0)
 
@@ -1248,7 +1428,7 @@ func use_gadget(f: Fighter, g: Dictionary) -> void:
 	var info: Dictionary = Specials.GADGETS[id]
 	if f.cooldowns.get(id, 0.0) > 0.0 or not f.gadget_working(g) or f.state in ["ko", "hit"] or f.stun_t > 0.0:
 		return
-	var o := cpu if f == player else player
+	var o: Fighter = f.foe
 	match id:
 		"rocket_fist", "grapple":
 			if f.fist_out.has(g["slot"]):
@@ -1277,9 +1457,10 @@ func use_gadget(f: Fighter, g: Dictionary) -> void:
 			rings.append({"pos": f.pos + Vector2(0, -80.0 * f.scale), "t": 0.0, "color": Color(0.7, 0.55, 1.0), "r": 220.0})
 			Sfx.play("spark")
 			Sfx.play("block")
-			if absf(o.pos.x - f.pos.x) < 220.0 * f.scale and o.state != "ko":
-				apply_hit(f, o, {"damage": 6.0 * f.mod_damage(), "zone": "head_torso", "unblockable": true,
-						"emp": 1.0, "knock": 120.0, "stun": 0.3}, o.pos + Vector2(0, -90))
+			for e in enemies_of(f):
+				if absf(e.pos.x - f.pos.x) < 220.0 * f.scale and e.state != "ko":
+					apply_hit(f, e, {"damage": 6.0 * f.mod_damage(), "zone": "head_torso", "unblockable": true,
+							"emp": 1.0, "knock": 120.0, "stun": 0.3}, e.pos + Vector2(0, -90))
 		"shield":
 			f.shield_t = 2.5
 			Sfx.play("repair", 0.1)
@@ -1324,7 +1505,7 @@ func update_projectiles(delta: float) -> void:
 	var keep: Array = []
 	for p in projectiles:
 		var owner: Fighter = p["owner"]
-		var o := cpu if owner == player else player
+		var o: Fighter = owner.foe
 		p["spin"] += delta * 20.0
 		if p["returning"]:
 			var hand := to_world_point(owner, RobotArt.geom(owner.get_look())[shoulder_key(p["slot"])])
@@ -1339,10 +1520,15 @@ func update_projectiles(delta: float) -> void:
 		p["pos"] += p["vel"] * delta
 		p["travel"] += absf(p["vel"].x) * delta
 		var hit_now := false
-		if not p["hit"] and o.state != "ko" and o.invuln_t <= 0.0:
-			var top := o.pos.y - 200.0 * o.scale
-			if absf(p["pos"].x - o.pos.x) < 36.0 * o.scale and p["pos"].y > top and p["pos"].y < o.pos.y + 5.0:
-				hit_now = true
+		if not p["hit"]:
+			for e in enemies_of(owner):
+				if e.state == "ko" or e.invuln_t > 0.0:
+					continue
+				var top: float = e.pos.y - 200.0 * e.scale
+				if absf(p["pos"].x - e.pos.x) < 36.0 * e.scale and p["pos"].y > top and p["pos"].y < e.pos.y + 5.0:
+					hit_now = true
+					o = e
+					break
 		if hit_now:
 			p["hit"] = true
 			var a := {"damage": p["damage"], "zone": p["zone"], "stun": 0.3, "knock": 260.0, "height": "mid", "src": p.get("src", "")}
@@ -1406,7 +1592,7 @@ func update_fighter(f: Fighter, o: Fighter, i: Dictionary, delta: float) -> void
 					add_spark(visual_point(f, RobotArt.part_center(f.get_look(), b["slot"])) + Vector2(randf_range(-14, 14), randf_range(-14, 8)), Color(1.0, 0.5, 0.1), 12.0)
 		f.burns = f.burns.filter(func(b): return b["t"] > 0.0)
 		check_ko(o, f)
-	if i["gadget"] >= 0 and i["gadget"] < gadget_buttons.size():
+	if i["gadget"] >= 0 and i["gadget"] < gadget_buttons.size() and gadget_buttons[i["gadget"]]["owner"] == f:
 		use_gadget(f, gadget_buttons[i["gadget"]]["gadget"])
 	if f.boost_t > 0.0:
 		f.boost_t -= delta
@@ -1430,8 +1616,8 @@ func update_fighter(f: Fighter, o: Fighter, i: Dictionary, delta: float) -> void
 		if f.timer <= 0.0 and f.on_ground:
 			f.state = "idle"
 			f.recovered_at = clock
-			if f == cpu:
-				ai_timer = minf(ai_timer, randf_range(0.02, 0.1) + ai_think * 0.15)   # react right after recovering
+			if f.team == 1:
+				f.ai["timer"] = minf(f.ai.get("timer", 0.0), randf_range(0.02, 0.1) + f.ai.get("think", 0.4) * 0.15)   # react right after recovering
 	elif f.state == "special":
 		update_special(f, o, delta)
 	elif ATTACKS.has(f.state):
@@ -1550,7 +1736,20 @@ func choose_part(att: Fighter, d: Fighter, zone_name: String, sure: bool = false
 
 
 ## Melee hit check: range and height. If it connects, apply it.
+func melee_ok(att: Fighter, d: Fighter, a: Dictionary) -> bool:
+	var dx := (d.pos.x - att.pos.x) * att.facing
+	var reach: float = (a.get("reach", 80.0) + limb_trait(att, att.attack_limb, "magnet")) * att.scale
+	return d.state != "ko" and dx >= -10.0 and dx <= reach + 35.0 * d.scale and absf(d.pos.y - att.pos.y) <= 130.0
+
+
 func try_hit(att: Fighter, d: Fighter, a: Dictionary) -> void:
+	if d == null or not melee_ok(att, d, a):
+		for e in enemies_of(att):
+			if e != d and melee_ok(att, e, a):
+				d = e
+				break
+	if d == null:
+		return
 	var dx := (d.pos.x - att.pos.x) * att.facing
 	var reach: float = (a.get("reach", 80.0) + limb_trait(att, att.attack_limb, "magnet")) * att.scale
 	if dx < -10.0 or dx > reach + 35.0 * d.scale:
@@ -1711,15 +1910,15 @@ func apply_hit(att: Fighter, d: Fighter, a: Dictionary, at: Vector2) -> void:
 
 ## Knock out whoever has lost their core or every head. att = the fighter that caused it.
 func check_ko(att: Fighter, d: Fighter) -> void:
-	if phase != "fight":
+	if phase != "fight" or att == null or d == null:
 		return
-	if not d.alive("torso"):
+	if d.state == "ko":
+		pass
+	elif not d.alive("torso"):
 		knockout(att, d, "CORE DESTROYED")
 	elif d.heads() == 0:
 		knockout(att, d, "HEAD KNOCKED OFF" if d.parts["head2"].is_empty() else "BOTH HEADS KNOCKED OFF")
-	elif not att.alive("torso"):   # thorns or explosions can finish an attacker
-		knockout(d, att, "BLOWN APART")
-	elif att.heads() == 0:
+	if att.state != "ko" and (not att.alive("torso") or att.heads() == 0):   # thorns or explosions can finish an attacker
 		knockout(d, att, "BLOWN APART")
 
 
@@ -1785,8 +1984,11 @@ func damage_part(f: Fighter, slot: String, amount: float, quiet: bool = false) -
 
 func rip_off(f: Fighter, slot: String) -> void:
 	var p: Dictionary = f.parts[slot]
-	var o := cpu if f == player else player
-	f.ripped.append({"id": p["id"], "aimed": o.target == slot})
+	var aimed := false
+	for e in enemies_of(f):
+		if e.target == slot and e.foe == f:
+			aimed = true
+	f.ripped.append({"id": p["id"], "aimed": aimed})
 	f.fist_out.erase(slot)
 	f.burns = f.burns.filter(func(b): return b["slot"] != slot)
 	var boom: float = limb_trait(f, slot, "explosive") + f.gtraits.get("explosive", 0.0)
@@ -1796,8 +1998,8 @@ func rip_off(f: Fighter, slot: String) -> void:
 			"rot": 0.0, "rv": randf_range(-12, 12), "size": size * f.scale, "color": p["color"]})
 	for k in 3:
 		add_spark(at + Vector2(randf_range(-20, 20), randf_range(-20, 20)), Color(1.0, 0.6, 0.2), 26.0)
-	popup("%s LOST!" % PART_LABELS[slot] if f == player else "%s DESTROYED!" % PART_LABELS[slot], at,
-			Color(1.0, 0.3, 0.2) if f == player else Color(1.0, 0.85, 0.2))
+	popup("%s LOST!" % PART_LABELS[slot] if f.team == 0 else "%s DESTROYED!" % PART_LABELS[slot], at,
+			Color(1.0, 0.3, 0.2) if f.team == 0 else Color(1.0, 0.85, 0.2))
 	if f.blocking and f.arms() == 0:
 		f.blocking = false
 	shake = 16.0
@@ -1809,15 +2011,28 @@ func rip_off(f: Fighter, slot: String) -> void:
 		rings.append({"pos": at, "t": 0.0, "color": Color(1.0, 0.5, 0.1), "r": 180.0})
 		Sfx.play("hit_big")
 		popup("KABOOM!", at + Vector2(0, -40), Color(1.0, 0.5, 0.1))
-		if absf(o.pos.x - f.pos.x) < 200.0 * f.scale:
-			damage_part(o, "torso", boom)
-			o.flash = 0.12
+		for e in enemies_of(f):
+			if absf(e.pos.x - f.pos.x) < 200.0 * f.scale and e.state != "ko":
+				damage_part(e, "torso", boom)
+				e.flash = 0.12
+				check_ko(f, e)
 
 
 func knockout(att: Fighter, d: Fighter, why: String) -> void:
 	d.state = "ko"
 	d.vel = Vector2(att.facing * 400.0, -500.0)
 	d.on_ground = false
+	d.blocking = false
+	d.burns.clear()
+	if team_alive(d.team) > 0:
+		# one robot down, the rest of its team fights on
+		popup("%s IS DOWN!" % d.label, d.pos + Vector2(0, -240.0 * d.scale), Color(1.0, 0.4, 0.3) if d.team == 0 else Color(1.0, 0.85, 0.2))
+		shake = 14.0
+		hitstop = 0.15
+		cheer = 2.5
+		Sfx.play("ko")
+		Sfx.play("crowd_cheer")
+		return
 	shake = 18.0
 	hitstop = 0.22
 	slowmo = 1.3
@@ -1826,16 +2041,17 @@ func knockout(att: Fighter, d: Fighter, why: String) -> void:
 
 
 func separate() -> void:
-	var dx := cpu.pos.x - player.pos.x
-	# keep bodies apart by their real torso widths, so wide robots don't overlap (and stay easy to tap)
-	var tw_p: float = RobotArt.geom(player.get_look())["tw"]
-	var tw_c: float = RobotArt.geom(cpu.get_look())["tw"]
-	var gap := tw_p * 0.5 * player.scale + tw_c * 0.5 * cpu.scale + 12.0
-	if absf(dx) < gap and absf(cpu.pos.y - player.pos.y) < 120.0:
-		var push := (gap - absf(dx)) * 0.5
-		var s := 1.0 if dx >= 0.0 else -1.0
-		player.pos.x = clampf(player.pos.x - push * s, wall_l + 55.0 * player.scale, wall_r - 55.0 * player.scale)
-		cpu.pos.x = clampf(cpu.pos.x + push * s, wall_l + 55.0 * cpu.scale, wall_r - 55.0 * cpu.scale)
+	for a in team_p:
+		for b in team_c:
+			if a.state == "ko" or b.state == "ko":
+				continue
+			var dx: float = b.pos.x - a.pos.x
+			var gap: float = 70.0 * (a.scale + b.scale) * 0.5
+			if absf(dx) < gap and absf(b.pos.y - a.pos.y) < 120.0:
+				var push := (gap - absf(dx)) * 0.5
+				var sgn := 1.0 if dx >= 0.0 else -1.0
+				a.pos.x = clampf(a.pos.x - push * sgn, wall_l + 55.0 * a.scale, wall_r - 55.0 * a.scale)
+				b.pos.x = clampf(b.pos.x + push * sgn, wall_l + 55.0 * b.scale, wall_r - 55.0 * b.scale)
 
 
 func add_spark(p: Vector2, c: Color, size: float) -> void:
@@ -1851,8 +2067,16 @@ func _draw() -> void:
 
 	draw_arena(off)
 	draw_cables(off)
-	draw_fighter(cpu, off)
-	draw_fighter(player, off)
+	# knocked-out robots first, so the ones still fighting are drawn on top
+	for f in all_fighters():
+		if f.state == "ko":
+			draw_fighter(f, off)
+	for f in all_fighters():
+		if f.state != "ko":
+			draw_fighter(f, off)
+	if team_p.size() > 1 or team_c.size() > 1:
+		for f in all_fighters():
+			draw_tag(f, off)
 	draw_projectiles(off)
 
 	for d in debris:
@@ -1879,7 +2103,9 @@ func _draw() -> void:
 
 	draw_weak_point(cpu, off)
 	draw_crosshair(player.target, cpu, Color(1.0, 0.2, 0.2, 0.9), off, 1.0)
-	draw_crosshair(cpu.target, player, Color(1.0, 0.6, 0.1, 0.75), off, 0.75)
+	for e in team_c:
+		if e.state != "ko" and e.foe != null:
+			draw_crosshair(e.target, e.foe, Color(1.0, 0.6, 0.1, 0.75), off, 0.75 if e == team_c[0] else 0.6)
 	for p in popups:
 		var t: float = p["t"] / 1.4
 		var c: Color = p["color"]
@@ -2068,6 +2294,23 @@ func draw_fighter(f: Fighter, off: Vector2) -> void:
 	})
 
 
+## Team fights: who's who. Your robots show their pad number, the focused enemy gets a red marker.
+func draw_tag(f: Fighter, off: Vector2) -> void:
+	var mates: Array = team_p if f.team == 0 else team_c
+	if f.state == "ko" or not f.vis_ok or mates.size() < 2:
+		return
+	var top := visual_point(f, Vector2(0, -RobotArt.geom(f.get_look())["L"] - 150.0)) + off
+	top.y = minf(top.y, f.pos.y - 200.0 * f.scale) - (mates.find(f) % 2) * 22.0   # stagger so names don't overlap
+	if f.team == 0:
+		if f.tag != "":
+			draw_circle(top, 15.0, Color(0.2, 0.6, 1.0, 0.85))
+			draw_string(font, top + Vector2(-20, 7), f.tag, HORIZONTAL_ALIGNMENT_CENTER, 40, fs(16), Color.WHITE)
+	elif f == cpu:
+		var r := 10.0 + sin(clock * 6.0) * 2.0
+		draw_colored_polygon(PackedVector2Array([top + Vector2(-r, -r), top + Vector2(r, -r), top + Vector2(0, r * 0.4)]), Color(1.0, 0.25, 0.2, 0.9))
+	draw_string(font, top + Vector2(-100, -20), f.label, HORIZONTAL_ALIGNMENT_CENTER, 200, fs(12), Color(1, 1, 1, 0.7))
+
+
 func draw_crosshair(slot: String, f: Fighter, c: Color, off: Vector2, size: float) -> void:
 	if slot == "" or (phase != "fight" and phase != "intro") or not f.alive(slot):
 		return
@@ -2099,9 +2342,7 @@ func draw_weak_point(f: Fighter, off: Vector2) -> void:
 	draw_string(font, p + Vector2(-60, r + 16), "WEAK", HORIZONTAL_ALIGNMENT_CENTER, 120, fs(11), c)
 
 
-func draw_part_map(f: Fighter, at: Vector2, mirror: bool) -> void:
-	var m := -1.0 if mirror else 1.0
-	var k := UI_SCALE
+func draw_part_map(f: Fighter, at: Vector2, mirror: bool, k: float = UI_SCALE) -> void:
 	var boxes := {
 		"head": Rect2(-7, 0, 14, 12), "head2": Rect2(-19, 2, 10, 10), "torso": Rect2(-10, 14, 20, 22),
 		"arm_front": Rect2(12, 14, 6, 20), "arm_back": Rect2(-18, 14, 6, 20),
@@ -2116,13 +2357,57 @@ func draw_part_map(f: Fighter, at: Vector2, mirror: bool) -> void:
 			r.position.x = -(r.position.x + r.size.x)
 		r = Rect2(at + r.position * k, r.size * k)
 		var c := Color(0.25, 0.25, 0.28)
-		if f.alive(slot):
+		if f.state == "ko":
+			c = Color(0.18, 0.18, 0.2)
+		elif f.alive(slot):
 			var h := f.ratio(slot)
 			c = Color(0.9, 0.2, 0.15).lerp(Color(0.3, 0.9, 0.35), h) if h < 1.0 else Color(0.3, 0.9, 0.35)
 		draw_rect(r, c)
 		var aimed: bool = (f == cpu and player.target == slot) or (f == player and cpu.target == slot)
 		if aimed:
 			draw_rect(r.grow(2.0), Color(1, 0.2, 0.2) if f == cpu else Color(1, 0.6, 0.1), false, 2.0)
+
+
+func part_map_step() -> float:
+	return 50.0 * UI_SCALE * 0.72 + 6.0
+
+
+## A body map for every robot on a team (smaller when there are several).
+func draw_part_maps(team: Array, y: float, right: bool) -> void:
+	if team.size() == 1:
+		draw_part_map(team[0], Vector2(screen.x - 44 if right else 44, y), right)
+		return
+	var k := UI_SCALE * 0.72
+	var step := part_map_step()
+	for i in team.size():
+		var f: Fighter = team[i]
+		var cx: float = 18.0 + 25.0 * k + i * step
+		var at := Vector2(screen.x - cx if right else cx, y + 4.0)
+		draw_part_map(f, at, right, k)
+		var c := Color(1.0, 0.35, 0.3) if (right and f == cpu) else Color(0.75, 0.75, 0.8)
+		var t := f.tag if f.tag != "" and f.team == 0 else ("▼" if right and f == cpu else "")
+		if f.state == "ko":
+			t = "KO"
+		if t != "":
+			draw_string(font, at + Vector2(-30, 58.0 * k + 14.0), t, HORIZONTAL_ALIGNMENT_CENTER, 60, fs(12), c)
+
+
+## Core health bars: one big bar, or a thin bar per robot in team fights.
+func draw_team_bars(team: Array, x: float, y: float, w: float, bh: float, right: bool) -> void:
+	var n := team.size()
+	var gap := 3.0
+	var h := (bh - gap * (n - 1)) / n
+	for k in n:
+		var f: Fighter = team[k]
+		var by := y + k * (h + gap)
+		var fill := w * (f.ratio("torso") if f.state != "ko" else 0.0)
+		draw_rect(Rect2(x, by, w, h), Color(0.35, 0.05, 0.05))
+		draw_rect(Rect2(x + (w - fill if right else 0.0), by, fill, h), Color(0.95, 0.85, 0.2) if f.state != "ko" else Color(0.4, 0.4, 0.4))
+		var edge := Color(1.0, 0.35, 0.3) if (right and f == cpu and n > 1) else Color.WHITE
+		draw_rect(Rect2(x, by, w, h), edge, false, 2.0)
+		if n > 1:
+			var t := ("%s  " % f.tag if f.tag != "" else "") + f.label + ("  - DOWN" if f.state == "ko" else "")
+			draw_string(font, Vector2(x + 6, by + h - 1), t, HORIZONTAL_ALIGNMENT_RIGHT if right else HORIZONTAL_ALIGNMENT_LEFT, w - 12, int(h * 0.95), Color(0.08, 0.08, 0.1))
 
 
 func draw_hud() -> void:
@@ -2132,18 +2417,17 @@ func draw_hud() -> void:
 	# soft dark band so the HUD reads on bright arenas
 	for k in 6:
 		draw_rect(Rect2(0, k * (y + bh + 50) / 6.0, screen.x, (y + bh + 50) / 6.0 + 1), Color(0, 0, 0, 0.42 * (1.0 - k / 6.0)))
-	var px := 100.0
-	var cx := screen.x - 100.0 - w
-	draw_rect(Rect2(px, y, w, bh), Color(0.35, 0.05, 0.05))
-	draw_rect(Rect2(px, y, w * player.ratio("torso"), bh), Color(0.95, 0.85, 0.2))
-	draw_rect(Rect2(px, y, w, bh), Color.WHITE, false, 2.0)
-	var cw := w * cpu.ratio("torso")
-	draw_rect(Rect2(cx, y, w, bh), Color(0.35, 0.05, 0.05))
-	draw_rect(Rect2(cx + w - cw, y, cw, bh), Color(0.95, 0.85, 0.2))
-	draw_rect(Rect2(cx, y, w, bh), Color.WHITE, false, 2.0)
-	draw_string(font, Vector2(px, y + bh + 28), player.label, HORIZONTAL_ALIGNMENT_LEFT, -1, fs(22), Color.WHITE)
-	draw_string(font, Vector2(cx, y + bh + 28), cpu.label, HORIZONTAL_ALIGNMENT_RIGHT, w, fs(22), Color.WHITE)
-	for f in [player, cpu]:
+	# one body map per robot in the corners; the health bars move over to make room
+	var px := 100.0 if team_p.size() == 1 else 30.0 + team_p.size() * part_map_step()
+	var cx := screen.x - (100.0 if team_c.size() == 1 else 30.0 + team_c.size() * part_map_step()) - w
+	draw_team_bars(team_p, px, y, w, bh, false)
+	draw_team_bars(team_c, cx, y, w, bh, true)
+	var my_team := player.label
+	if team_p.size() > 1:
+		my_team = str(GameData.quick["player"]["name"]) if mode == "quick" else "TEAM %s" % GameData.robot_name
+	draw_string(font, Vector2(px, y + bh + 28), my_team, HORIZONTAL_ALIGNMENT_LEFT, -1, fs(22), Color.WHITE)
+	draw_string(font, Vector2(cx, y + bh + 28), cpu.label if team_c.size() == 1 else str(opp["name"]), HORIZONTAL_ALIGNMENT_RIGHT, w, fs(22), Color.WHITE)
+	for f in ([player, cpu] if team_p.size() == 1 and team_c.size() == 1 else []):
 		if Catalog.STYLES.has(f.style):
 			var st: Dictionary = Catalog.STYLES[f.style]
 			var sw := font.get_string_size(f.label, HORIZONTAL_ALIGNMENT_LEFT, -1, fs(22)).x
@@ -2168,8 +2452,8 @@ func draw_hud() -> void:
 		status.append("ON FIRE")
 	if not status.is_empty():
 		draw_string(font, Vector2(px, y + bh + 50), "  ".join(status), HORIZONTAL_ALIGNMENT_LEFT, -1, fs(16), Color(1.0, 0.5, 0.2))
-	draw_part_map(player, Vector2(44, y), false)
-	draw_part_map(cpu, Vector2(screen.x - 44, y), true)
+	draw_part_maps(team_p, y, false)
+	draw_part_maps(team_c, y, true)
 	for f in [player, cpu]:
 		if f.combo >= 2 and f.combo_show > 0.0:
 			var x := px if f == player else cx
@@ -2191,7 +2475,9 @@ func draw_hud() -> void:
 	var cy := screen.y * 0.42
 	match phase:
 		"intro":
-			var t := cpu.label if phase_timer < 1.0 else "FIGHT!"
+			var t := str(opp["name"]) if phase_timer < 1.0 else "FIGHT!"
+			if phase_timer < 1.0 and opp.has("team_label"):
+				draw_string(font, Vector2(0, cy - 70), str(opp["team_label"]), HORIZONTAL_ALIGNMENT_CENTER, screen.x, fs(26), Color(1.0, 0.85, 0.2))
 			draw_string(font, Vector2(0, cy), t, HORIZONTAL_ALIGNMENT_CENTER, screen.x, fs(72), Color(1.0, 0.3, 0.2))
 			draw_string(font, Vector2(0, cy + 44), "%s  -  %s" % [Arena.ARENAS[arena_id]["name"].to_upper(), Arena.CROWDS[crowd_id]["name"]],
 					HORIZONTAL_ALIGNMENT_CENTER, screen.x, fs(18), Color(0.85, 0.85, 0.9))
@@ -2200,7 +2486,8 @@ func draw_hud() -> void:
 			draw_string(font, Vector2(0, cy), big, HORIZONTAL_ALIGNMENT_CENTER, screen.x, fs(84), Color(1.0, 0.2, 0.1))
 			var sub := ko_text if ko_text != "TIME!" else "Judges' decision"
 			draw_string(font, Vector2(0, cy + 55), sub, HORIZONTAL_ALIGNMENT_CENTER, screen.x, fs(26), Color.WHITE)
-			draw_string(font, Vector2(0, cy + 100), "%s WINS" % (player.label if won else cpu.label), HORIZONTAL_ALIGNMENT_CENTER, screen.x, fs(32), Color(1.0, 0.85, 0.2))
+			var winner_name: String = (team_p[0].label if team_p.size() == 1 else "YOUR TEAM") if won else str(opp["name"])
+			draw_string(font, Vector2(0, cy + 100), "%s WINS" % winner_name, HORIZONTAL_ALIGNMENT_CENTER, screen.x, fs(32), Color(1.0, 0.85, 0.2))
 			if phase_timer > 2.0:
 				draw_string(font, Vector2(0, cy + 145), "Tap to continue", HORIZONTAL_ALIGNMENT_CENTER, screen.x, fs(22), Color(0.8, 0.8, 0.8))
 		"results":
@@ -2249,9 +2536,10 @@ func draw_buttons() -> void:
 	for b in gadget_buttons:
 		var g: Dictionary = b["gadget"]
 		var id: String = g["id"]
-		var cd: float = player.cooldowns.get(id, 0.0)
-		var ready := cd <= 0.0 and player.gadget_working(g) and not (id == "overcharge" and player.overcharged) \
-				and not (player.fist_out.has(g["slot"]))
+		var owner: Fighter = b["owner"]
+		var cd: float = owner.cooldowns.get(id, 0.0)
+		var ready := cd <= 0.0 and owner.gadget_working(g) and not (id == "overcharge" and owner.overcharged) \
+				and not (owner.fist_out.has(g["slot"])) and owner.state != "ko"
 		var col := Color(0.4, 0.8, 1.0) if ready else Color(0.5, 0.5, 0.55)
 		draw_circle(b["pos"], b["r"], Color(col.r, col.g, col.b, 0.3 if held_buttons.get(b["name"], false) else 0.15))
 		draw_arc(b["pos"], b["r"], 0.0, TAU, 40, col, 3.0)
@@ -2271,6 +2559,8 @@ func draw_moves_list() -> void:
 		["P punch   K kick   B block   G grab (beats block)   v+P uppercut   v+K sweep   (→ = toward the enemy)", Color(0.8, 0.8, 0.85)],
 		["Combos: hit again while the enemy is still reeling. Landed attacks can chain into the next.", Color(0.8, 0.8, 0.85)],
 	]
+	if team_p.size() > 1:
+		lines.append(["TEAM: tap an enemy part to send your whole team after that robot. " + ("Each numbered pad moves the robot with that number; PUNCH / KICK / BLOCK / GRAB work for all of them." if control_pads > 1 else "Linked controls: every robot follows the one pad.") + " Switch in Settings > Team controls.", Color(0.5, 0.8, 1.0)])
 	if player.specials.is_empty():
 		lines.append(["No special moves installed. Buy training chips in the garage!", Color(1.0, 0.7, 0.3)])
 	for id in player.specials:

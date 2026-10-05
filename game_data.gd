@@ -187,6 +187,7 @@ var pilot_name := "Rook"
 var robot_name := DEFAULT_ROBOT
 var inventory: Array = []   # [{uid, id, hp}]
 var equipped := {}          # slot -> uid (-1 = empty)
+var wingmen: Array = [{}, {}]   # extra robots for team fights, built from spares: [{slot: uid}, ...]
 var next_uid := 1
 var paint := 0
 var fight_index := 0        # next championship fight (0..9); 10 = finished
@@ -210,7 +211,7 @@ var chips: Array = []         # chips installed (only the first chip_slots() of 
 var last_result := {}       # handed from the fight to the garage
 var story_key := ""         # which story scene to show next
 var story_return := ""      # scene to go to after the story
-var settings := {"sound": true, "music": true, "shake": true, "button_size": 1, "difficulty": 1}
+var settings := {"sound": true, "music": true, "shake": true, "button_size": 1, "difficulty": 1, "layout": {}, "team_controls": "split"}
 
 
 func _ready() -> void:
@@ -311,9 +312,26 @@ func slot_of_uid(uid: int) -> String:
 func spares() -> Array:
 	var out: Array = []
 	for p in inventory:
-		if slot_of_uid(p["uid"]) == "":
+		if slot_of_uid(p["uid"]) == "" and wingman_of_uid(p["uid"]) == -1:
 			out.append(p)
 	return out
+
+
+func wingman_of_uid(uid: int) -> int:
+	for k in wingmen.size():
+		for slot in wingmen[k]:
+			if int(wingmen[k][slot]) == uid:
+				return k
+	return -1
+
+
+func release_from_wingman(uid: int) -> void:
+	var k := wingman_of_uid(uid)
+	if k == -1:
+		return
+	for slot in wingmen[k].keys():
+		if int(wingmen[k][slot]) == uid:
+			wingmen[k].erase(slot)
 
 
 func shop_parts(kind: String) -> Array:
@@ -409,6 +427,7 @@ func equip(uid: int, slot: String) -> String:
 	var p := inst(uid)
 	if p.is_empty():
 		return "That part is gone."
+	release_from_wingman(uid)
 	var d := part_def(p["id"])
 	if is_wreck(p):
 		return "%s is a wreck. Rebuild it first." % d["name"]
@@ -489,6 +508,8 @@ func sell(uid: int) -> String:
 	var p := inst(uid)
 	if p.is_empty() or slot_of_uid(uid) != "":
 		return "Unequip it before selling."
+	if wingman_of_uid(uid) != -1:
+		return "A wingman is using that part."
 	var v := sell_value(p)
 	money += v
 	inventory.erase(p)
@@ -589,7 +610,9 @@ func can_fight() -> bool:
 	return (equipped["head"] != -1 or equipped["head2"] != -1) and equipped["torso"] != -1
 
 
-func stats() -> Dictionary:
+func stats(eq: Dictionary = {}) -> Dictionary:
+	if eq.is_empty():
+		eq = equipped
 	var used := 0
 	var output := 0
 	var arm_dmg := 0.0
@@ -601,7 +624,7 @@ func stats() -> Dictionary:
 	var armor := 0.0
 	var parts := 0
 	for slot in SLOTS:
-		var p := equipped_inst(slot)
+		var p := inst(int(eq.get(slot, -1)))
 		if p.is_empty():
 			continue
 		var d := part_def(p["id"])
@@ -625,7 +648,7 @@ func stats() -> Dictionary:
 	var leg_factor: float = [0.35, 0.65, 1.0][mini(legs, 2)]
 	var speed := (100.0 + (leg_spd / maxf(1, legs)) + torso_spd) * leg_factor * eff
 	var damage := (100.0 + arm_dmg / maxf(1, arms)) * eff if arms > 0 else 0.0
-	var t := equipped_inst("torso")
+	var t := inst(int(eq.get("torso", -1)))
 	return {
 		"power_used": used, "power_output": output, "efficiency": eff,
 		"core": 0.0 if t.is_empty() else t["hp"], "core_max": 0.0 if t.is_empty() else float(part_def(t["id"])["hp"]),
@@ -635,10 +658,12 @@ func stats() -> Dictionary:
 
 
 ## Everything the fight needs to build the player's robot.
-func player_spec() -> Dictionary:
+func player_spec(eq: Dictionary = {}, label: String = "") -> Dictionary:
+	if eq.is_empty():
+		eq = equipped
 	var parts := {}
 	for slot in BODY_SLOTS:
-		var p := equipped_inst(slot)
+		var p := inst(int(eq.get(slot, -1)))
 		if p.is_empty():
 			parts[slot] = {}
 		else:
@@ -647,19 +672,29 @@ func player_spec() -> Dictionary:
 					"damage": d["damage"], "speed": d["speed"], "aim": d["aim"],
 					"shape": d["shape"], "size": d["size"], "color": Color(d["color"]),
 					"trait": d["trait"], "trait_lv": d["trait_lv"]}
-	var s := stats()
+	var s := stats(eq)
 	var gadgets: Array = []
 	for slot in SLOTS:
-		var p := equipped_inst(slot)
+		var p := inst(int(eq.get(slot, -1)))
 		if not p.is_empty() and part_def(p["id"])["gimmick"] != "":
 			gadgets.append({"id": part_def(p["id"])["gimmick"], "slot": slot})
-	var back := equipped_inst("back")
-	return {"name": robot_name, "parts": parts, "efficiency": s["efficiency"], "damage_mult": 1.0,
+	var back := inst(int(eq.get("back", -1)))
+	var reactor := inst(int(eq.get("reactor", -1)))
+	return {"name": robot_name if label == "" else label, "parts": parts, "efficiency": s["efficiency"], "damage_mult": 1.0,
 			"speed_mult": 1.0, "scale": 1.0, "trim": Color(PAINTS[paint]["color"]),
-			"eye": Color(part_def(equipped_inst("reactor")["id"])["color"]),
+			"eye": Color(part_def(reactor["id"])["color"]) if not reactor.is_empty() else Color(0.4, 0.9, 1.0),
 			"back": {} if back.is_empty() else {"shape": part_def(back["id"])["shape"], "color": Color(part_def(back["id"])["color"])},
-			"gadgets": gadgets, "specials": active_chips(), "style": style,
-			"traits": global_traits(equipped_ids())}
+			"gadgets": gadgets, "specials": active_chips() if eq == equipped else [], "style": style,
+			"traits": global_traits(ids_of(eq))}
+
+
+func ids_of(eq: Dictionary) -> Dictionary:
+	var out := {}
+	for slot in eq:
+		var p := inst(int(eq[slot]))
+		if not p.is_empty():
+			out[slot] = p["id"]
+	return out
 
 
 func equipped_ids() -> Dictionary:
@@ -807,6 +842,168 @@ func fight_title() -> String:
 	return "FIGHT %d/%d" % [fight_index + 1, OPPONENTS.size()]
 
 
+# ---------------------------------------------------------------- multibot teams
+
+const TEAM_MODS := {
+	2: {"hp": 0.62, "damage": 0.72, "scale": 0.86, "label": "TAG TEAM"},
+	3: {"hp": 0.42, "damage": 0.55, "scale": 0.72, "label": "SWARM"},
+}
+const WINGMAN_NAMES := ["JR", "MK2"]
+
+
+## A team of smaller robots that share one robot's budget: 2 medium bots or 3 small, weaker bots.
+func random_team(rng: RandomNumberGenerator, budget: float, level: float, size: int) -> Dictionary:
+	var mods: Dictionary = TEAM_MODS[size]
+	var team: Array = []
+	var share := budget / size * (1.5 if size == 2 else 1.7)   # small bots buy cheap parts, so a bit more each
+	for k in size:
+		var b := random_bot(rng, share, level)
+		b["hp"] = b["hp"] * mods["hp"]
+		b["damage"] = b["damage"] * mods["damage"]
+		b["scale"] = mods["scale"] * rng.randf_range(0.94, 1.06)
+		team.append(b)
+	var lead: Dictionary = team[0].duplicate(true)
+	var word: String = BOT_SUFFIX[rng.randi() % BOT_SUFFIX.size()].strip_edges()
+	lead["name"] = ("THE %sS" % word.to_upper()) if size == 3 else "%s & %s" % [team[0]["name"], team[1]["name"]]
+	lead["bot_name"] = team[0]["name"]
+	lead["team"] = team.slice(1)   # the lead's own fields describe bot 1; "team" holds the others
+	lead["team_label"] = mods["label"]
+	return lead
+
+
+func is_team_fight() -> bool:
+	return current_opponent().has("team")
+
+
+## Specs for every enemy robot in the next fight (1 for normal fights).
+func current_opponent_team() -> Array:
+	if fight_mode() == "quick" and quick.has("enemies"):
+		var out: Array = []
+		for b in quick["enemies"]:
+			out.append(opponent_spec_from(b, 1.0))
+		return out
+	var specs: Array = [current_opponent_spec()]
+	var o := current_opponent()
+	for b in o.get("team", []):
+		specs.append(opponent_spec_from(b, 1.0))
+	return specs
+
+
+## Specs for the player's side: you, plus your wingmen in team fights.
+func fight_player_team() -> Array:
+	if fight_mode() == "quick":
+		var out: Array = []
+		for b in quick.get("players", [quick["player"]]):
+			var spec := opponent_spec_from(b, 1.0)
+			spec["damage_mult"] = b.get("damage", 1.0) if quick.has("players") else 1.0
+			spec["speed_mult"] = 1.0
+			out.append(spec)
+		return out
+	var team: Array = [player_spec()]
+	if is_team_fight():
+		for k in wingmen.size():
+			if wingman_ready(k):
+				var spec := player_spec(wingmen[k], wingman_name(k))
+				spec["wingman"] = k
+				team.append(spec)
+	# size rule: alone = large, a team of 2 = medium robots, a team of 3 = small, weaker robots
+	if team.size() > 1:
+		var mods: Dictionary = TEAM_MODS[team.size()]
+		for spec in team:
+			spec["scale"] = mods["scale"]
+			spec["damage_mult"] = spec["damage_mult"] * mods["damage"]
+			spec["hp_scale"] = mods["hp"]
+	return team
+
+
+func wingman_name(k: int) -> String:
+	return "%s %s" % [robot_name, WINGMAN_NAMES[k]]
+
+
+func wingman_ready(k: int) -> bool:
+	var w: Dictionary = wingmen[k]
+	if w.is_empty():
+		return false
+	var has_head := false
+	for slot in ["head", "head2"]:
+		if w.has(slot) and not inst(int(w[slot])).is_empty() and not is_wreck(inst(int(w[slot]))):
+			has_head = true
+	return has_head and w.has("torso") and not inst(int(w["torso"])).is_empty()
+
+
+## Build a wingman out of the best spare parts you have.
+func build_wingman(k: int) -> String:
+	clear_wingman(k)
+	var w := {}
+	var free := spares().filter(func(p): return not is_wreck(p))
+	free.sort_custom(func(a, b): return part_def(a["id"])["cost"] * hp_ratio(a) > part_def(b["id"])["cost"] * hp_ratio(b))
+	var order := ["torso", "head", "reactor", "arm_front", "arm_back", "leg_front", "leg_back", "back"]
+	for slot in order:
+		for p in free:
+			if part_def(p["id"])["kind"] == SLOT_KIND[slot] and not w.values().has(p["uid"]):
+				w[slot] = p["uid"]
+				break
+	if w.has("torso"):
+		for slot in part_def(inst(int(w["torso"]))["id"])["mounts"]:
+			for p in free:
+				if part_def(p["id"])["kind"] == SLOT_KIND[slot] and not w.values().has(p["uid"]):
+					w[slot] = p["uid"]
+					break
+	wingmen[k] = w
+	if not wingman_ready(k):
+		wingmen[k] = {}
+		return "Not enough spare parts: a wingman needs at least a head and a torso from your Spares."
+	var n := w.size()
+	return "%s is built from %d spare parts." % [wingman_name(k), n]
+
+
+func clear_wingman(k: int) -> void:
+	wingmen[k] = {}
+
+
+func wingman_repair_cost(k: int) -> int:
+	var total := 0
+	for slot in wingmen[k]:
+		var p := inst(int(wingmen[k][slot]))
+		if not p.is_empty():
+			total += repair_cost(p)
+	return total
+
+
+func repair_wingman(k: int) -> String:
+	var c := wingman_repair_cost(k)
+	if c == 0:
+		return "%s is in perfect shape." % wingman_name(k)
+	if money < c:
+		return "Repairing %s costs $%d." % [wingman_name(k), c]
+	money -= c
+	for slot in wingmen[k]:
+		var p := inst(int(wingmen[k][slot]))
+		if not p.is_empty():
+			p["hp"] = float(part_def(p["id"])["hp"])
+	return "Repaired %s for $%d." % [wingman_name(k), c]
+
+
+## After a team fight: wingmen keep their damage, destroyed parts can be lost.
+func apply_wingman_damage(k: int, part_hp: Dictionary, lost: Array, wrecked: Array) -> void:
+	for slot in part_hp:
+		if not wingmen[k].has(slot):
+			continue
+		var p := inst(int(wingmen[k][slot]))
+		if p.is_empty():
+			continue
+		p["hp"] = maxf(0.0, part_hp[slot])
+		if slot == "torso":
+			p["hp"] = maxf(1.0, p["hp"])
+		if p["hp"] <= 0.0:
+			wingmen[k].erase(slot)
+			if randf() < 0.5:
+				wrecked.append(part_def(p["id"])["name"])
+			else:
+				lost.append("%s (%s)" % [part_def(p["id"])["name"], wingman_name(k)])
+				inventory.erase(p)
+
+
 ## Set up a Quick Fight: two random robots of the same strength.
 func start_quick_fight() -> void:
 	var rng := RandomNumberGenerator.new()
@@ -814,6 +1011,17 @@ func start_quick_fight() -> void:
 	var budget := rng.randf_range(400.0, 4000.0)
 	var level := rng.randf_range(0.5, 3.0)
 	quick = {"player": random_bot(rng, budget, level), "enemy": random_bot(rng, budget, level)}
+	# sometimes a team fight: tag teams and swarms, on either side (or both)
+	var formats := [[1, 1], [1, 1], [1, 1], [1, 2], [1, 3], [2, 1], [3, 1], [2, 2], [3, 3], [2, 3], [3, 2]]
+	var fmt: Array = formats[rng.randi() % formats.size()]
+	if fmt[0] > 1:
+		var t := random_team(rng, budget, level, fmt[0])
+		quick["players"] = [t] + t["team"]
+		quick["player"] = t
+	if fmt[1] > 1:
+		var t := random_team(rng, budget, level, fmt[1])
+		quick["enemies"] = [t] + t["team"]
+		quick["enemy"] = t
 
 
 func fight_player_spec() -> Dictionary:
@@ -867,7 +1075,7 @@ func opponent_spec_from(o: Dictionary, _unused: float) -> Dictionary:
 	if o["parts"].has("back"):
 		var bd := part_def(o["parts"]["back"])
 		back = {"shape": bd["shape"], "color": Color(bd["color"])}
-	return {"name": o["name"], "parts": parts, "efficiency": 1.0, "damage_mult": o["damage"],
+	return {"name": o.get("bot_name", o["name"]), "parts": parts, "efficiency": 1.0, "damage_mult": o["damage"],
 			"speed_mult": o["speed"], "scale": o["scale"], "trim": Color(o["trim"]), "eye": Color(o["eye"]),
 			"back": back, "gadgets": gadgets, "specials": o["specials"], "style": o.get("style", "striker"),
 			"traits": global_traits(o["parts"])}
@@ -896,7 +1104,7 @@ func player_look() -> Dictionary:
 ## Called when a championship match ends.
 ## part_hp: slot -> remaining hp for the player's parts. destroyed: number of enemy parts ripped off.
 ## salvage_ids: enemy part ids that were ripped off (some may be salvaged).
-func record_result(won: bool, part_hp: Dictionary, destroyed: int, salvage_ids: Array) -> Dictionary:
+func record_result(won: bool, part_hp: Dictionary, destroyed: int, salvage_ids: Array, team_hp: Array = []) -> Dictionary:
 	var o := current_opponent()
 	var base: int = current_reward()
 	var reward: int = base if won else int(base * 0.35)
@@ -922,6 +1130,9 @@ func record_result(won: bool, part_hp: Dictionary, destroyed: int, salvage_ids: 
 			else:
 				lost.append("%s (%s)" % [part_def(p["id"])["name"], SLOT_NAMES[slot]])
 				inventory.erase(p)
+
+	for e in team_hp:
+		apply_wingman_damage(int(e["wingman"]), e["part_hp"], lost, wrecked)
 
 	# salvage: winners get a chance to keep ripped-off enemy parts
 	var salvaged: Array = []
@@ -1014,7 +1225,12 @@ func circuit_opponent(c: Dictionary, i: int) -> Dictionary:
 	var level := clampf(tier - 1 + step, 0.0, 5.0)
 	var budget: float = TIER_BUDGET[clampi(tier - 1, 0, 4)] * (0.7 + 0.6 * step)
 	var bot := random_bot(rng, budget, level)
+	var last := i >= int(c["size"]) - 1
+	if not last and i > 0 and rng.randf() < 0.35:
+		bot = random_team(rng, budget, level, 2 if rng.randf() < 0.55 else 3)
 	bot["reward"] = 250 + 300 * tier + int(150 * step * tier)
+	if bot.has("team"):
+		bot["reward"] = int(bot["reward"] * 1.15)
 	return bot
 
 
@@ -1275,7 +1491,7 @@ func save_game() -> bool:
 		"losses": losses, "champion": champion, "story_seen": story_seen,
 		"owned_chips": owned_chips, "chips": chips, "circuit": circuit, "circuit_offers": circuit_offers,
 		"circuits_won": circuits_won, "setups": setups, "custom_parts": custom_parts,
-		"style": style, "shop_stock": shop_stock, "scout": scout,
+		"style": style, "shop_stock": shop_stock, "scout": scout, "wingmen": wingmen,
 	}
 	var f := FileAccess.open(slot_path(save_slot), FileAccess.WRITE)
 	if f == null:
@@ -1335,6 +1551,14 @@ func load_game(slot: int = -1) -> String:
 		if owned_chips.has(id) and not chips.has(id):
 			chips.append(id)
 	style = str(data.get("style", "striker"))
+	wingmen = [{}, {}]
+	var wm: Array = data.get("wingmen", [])
+	for k in mini(2, wm.size()):
+		if typeof(wm[k]) == TYPE_DICTIONARY:
+			for ws in wm[k]:
+				var uid := int(wm[k][ws])
+				if not inst(uid).is_empty():
+					wingmen[k][str(ws)] = uid
 	if not Catalog.STYLES.has(style):
 		style = "striker"
 	shop_stock = data.get("shop_stock", []).filter(func(id): return PARTS.has(id))
@@ -1384,3 +1608,5 @@ func load_settings() -> void:
 				settings[k] = data[k]
 		settings["button_size"] = int(settings["button_size"])
 		settings["difficulty"] = int(settings["difficulty"])
+		if typeof(settings["layout"]) != TYPE_DICTIONARY:
+			settings["layout"] = {}
