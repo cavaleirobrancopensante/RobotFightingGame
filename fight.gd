@@ -2149,9 +2149,9 @@ func _draw() -> void:
 
 	if arena_layer:
 		arena_layer.position = off * 0.6   # screen shake moves the whole arena
+	draw_gus(off)   # Gus stands behind your pilot, so draw him first
 	for pd in pilots:
 		draw_pilot(pd, off)
-	draw_gus(off)
 	draw_cables(off)
 	# knocked-out robots first, so the ones still fighting are drawn on top
 	for f in all_fighters():
@@ -2945,12 +2945,13 @@ func gus_here() -> bool:
 	return mode != "quick"
 
 
-## Gus leans on the ring post in your corner. His tips come out of his mouth as a speech bubble.
+## Gus stands just behind your pilot in the corner, looking over their shoulder (so he never
+## blocks the controller). His tips come out of his mouth as a speech bubble.
 func draw_gus(off: Vector2) -> void:
 	if not gus_here():
 		return
 	var s := clampf(wall_l / 58.0, 1.2, 2.0)
-	var base := Vector2(wall_l * 0.45 + 24.0 * s, floor_y - 6.0 * s) + off * 0.6
+	var base := Vector2(maxf(wall_l * 0.45 - 15.0 * s, 13.0 * s), floor_y - 12.0 * s) + off * 0.6
 	var talking := coach_t > 0.0
 	var overalls := Color(0.2, 0.3, 0.45)
 	var shirt := Color(0.55, 0.42, 0.3)
@@ -2970,7 +2971,8 @@ func draw_gus(off: Vector2) -> void:
 	draw_line(neck + Vector2(-11 * s, 2 * s), hip + Vector2(-15 * s, -10 * s), shirt.darkened(0.1), 5 * s)
 	draw_line(hip + Vector2(-15 * s, -10 * s), hip + Vector2(-9 * s, -6 * s), shirt.darkened(0.1), 5 * s)
 	var wave := sin(clock * 9.0) * 3.0 * s if talking else 0.0
-	var hand := neck + (Vector2(26 * s, -12 * s + wave) if talking else Vector2(16 * s, 16 * s))
+	# talking: points up over the pilot's head at the ring. Quiet: hand on the pilot's shoulder
+	var hand := neck + (Vector2(24 * s, -22 * s + wave) if talking else Vector2(17 * s, 6 * s))
 	draw_line(neck + Vector2(11 * s, 2 * s), hand, Color(0.62, 0.62, 0.68), 5 * s)
 	draw_circle(neck + Vector2(11 * s, 2 * s), 3.5 * s, Color(0.45, 0.45, 0.5))
 	draw_circle(hand, 3 * s, Color(1.0, 0.6, 0.2) if talking else Color(0.5, 0.5, 0.55))
