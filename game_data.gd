@@ -217,7 +217,9 @@ const CONTROLLER_INFO := {
 }
 var pilot_look := DEFAULT_PILOT_LOOK.duplicate()   # how your pilot looks in the corner and in the story
 var owned_controllers: Array = ["gamepad"]
-var tips_seen: Array = []   # Gus's one-time tips (fight and garage) already shown
+var tips_seen: Array = []
+const DIGS_PER_FIGHT := 3
+var digs_left := DIGS_PER_FIGHT   # scrapyard digs; refilled after every fight   # Gus's one-time tips (fight and garage) already shown
 var inventory: Array = []   # [{uid, id, hp}]
 var equipped := {}          # slot -> uid (-1 = empty)
 var wingmen: Array = [{}, {}]   # extra robots for team fights, built from spares: [{slot: uid}, ...]
@@ -420,6 +422,7 @@ func new_game() -> void:
 	pilot_look = DEFAULT_PILOT_LOOK.duplicate()
 	owned_controllers = ["gamepad"]
 	tips_seen = []
+	digs_left = DIGS_PER_FIGHT
 	robot_name = DEFAULT_ROBOT
 	inventory = []
 	equipped = {}
@@ -1131,7 +1134,7 @@ func tip_once(id: String) -> bool:
 
 
 # The garage opens up slowly so new players aren't buried in menus: feature -> story fights won.
-const UNLOCKS := {"style": 1, "scout": 1, "team": 2, "moves": 3, "workshop": 4, "pilot": 5, "paint": 5, "setups": 6, "randomize": 6}
+const UNLOCKS := {"scrapyard": 0, "style": 1, "scout": 1, "team": 2, "moves": 3, "workshop": 4, "pilot": 5, "paint": 5, "setups": 6, "randomize": 6}
 
 
 func unlocked(feature: String) -> bool:
@@ -1143,6 +1146,7 @@ func unlocked(feature: String) -> bool:
 func garage_tip() -> String:
 	var tips := [
 		["repair", repair_all_cost() > 0, "Damage carries over between fights. Hit Repair all before the next one - or fix parts one by one."],
+		["scrapyard", unlocked("scrapyard"), "NEW: the Scrapyard. Dig through the pile for free parts - a few digs after every fight. Mostly rust, sometimes treasure."],
 		["style", unlocked("style"), "NEW: the Style button. Pick how ECHO fights - Tank, Striker, Mechanic or Specialist. Each gets a free signature move."],
 		["scout", unlocked("scout") and scout_key() != "", "NEW: Scout. Pay to peek at the next robot. Careful - their crew might spot you and change their setup."],
 		["backup", unlocked("team"), "NEW: the Team tab. Build a backup robot from spare parts, then use Send to put it in the ring when ECHO's too banged up."],
@@ -1158,6 +1162,7 @@ func garage_tip() -> String:
 
 
 const TAB_TIPS := {
+	"Scrapyard": "GUS: Free junk is always lying around. Digging deeper finds better stuff - but it's beaten up, so budget for repairs.",
 	"Shop": "GUS: The dealer's stock changes after every fight. Mini parts sip power, Heavy parts hit hard but drink it.",
 	"Workshop": "GUS: Design your own part here. Costs more than the dealer, but it's exactly what you want.",
 	"Moves": "GUS: Training chips teach special moves. Better heads hold more chips.",
@@ -1170,6 +1175,32 @@ func tab_tip(tab: String) -> String:
 	if TAB_TIPS.has(tab) and tip_once("tab_" + tab):
 		return TAB_TIPS[tab]
 	return ""
+
+
+## Dig through the scrapyard pile. Returns {"text", "part"} (part = id found, or "").
+func dig_scrap() -> Dictionary:
+	if digs_left <= 0:
+		return {"text": "Too tired to dig. The pile will still be here after the next fight.", "part": ""}
+	digs_left -= 1
+	var r := randf()
+	if r < 0.45:
+		var max_cost := 300 + progress() * 160
+		var pool: Array = []
+		for id in ALL_PARTS:
+			var d: Dictionary = PARTS[id]
+			if d["shop"] and d["cost"] > 0 and d["cost"] <= max_cost and not UNDAMAGEABLE.has(d["kind"]):
+				pool.append(id)
+		if not pool.is_empty():
+			var id: String = pool[randi() % pool.size()]
+			add_part(id, randf_range(0.15, 0.55))
+			return {"text": "Found a %s! Banged up, but it's yours (in Storage)." % part_def(id)["name"], "part": id}
+	if r < 0.7:
+		var cash := randi_range(15, 60)
+		money += cash
+		return {"text": "Just scrap metal - sold it for $%d." % cash, "part": ""}
+	var nothing := ["Nothing but rust and a dead seagull.", "A boot. Not a robot boot. Just a boot.", "Half a toaster. Gus wants it.",
+			"A tangle of wire and an angry rat.", "Somebody's old fight program on a chip. It's corrupted.", "Rust. So much rust."]
+	return {"text": nothing[randi() % nothing.size()], "part": ""}
 
 
 func buy_controller(id: String) -> String:
@@ -1449,6 +1480,7 @@ func record_result(won: bool, part_hp: Dictionary, destroyed: int, salvage_ids: 
 		add_part(id, 1.0 if UNDAMAGEABLE.has(d["kind"]) else 0.5)
 		trophy = d["name"]
 
+	digs_left = DIGS_PER_FIGHT   # the scrapyard pile gets fresh junk after every fight
 	var was_champion := champion
 	var mode := fight_mode()
 	var cup_done := ""
@@ -1825,7 +1857,7 @@ func save_game() -> bool:
 		"losses": losses, "champion": champion, "story_seen": story_seen,
 		"owned_chips": owned_chips, "chips": chips, "circuit": circuit, "circuit_offers": circuit_offers,
 		"circuits_won": circuits_won, "setups": setups, "custom_parts": custom_parts,
-		"style": style, "shop_stock": shop_stock, "scout": scout, "wingmen": wingmen, "sending": sending, "pilot_look": pilot_look, "owned_controllers": owned_controllers, "tips_seen": tips_seen,
+		"style": style, "shop_stock": shop_stock, "scout": scout, "wingmen": wingmen, "sending": sending, "pilot_look": pilot_look, "owned_controllers": owned_controllers, "tips_seen": tips_seen, "digs_left": digs_left,
 	}
 	var f := FileAccess.open(slot_path(save_slot), FileAccess.WRITE)
 	if f == null:
@@ -1892,6 +1924,7 @@ func load_game(slot: int = -1) -> String:
 		pilot_look.merge(data["pilot_look"], true)
 	pilot_look = PilotArt.normalize(pilot_look)
 	tips_seen = data.get("tips_seen", []).duplicate()
+	digs_left = int(data.get("digs_left", DIGS_PER_FIGHT))
 	owned_controllers = ["gamepad"]
 	for c in data.get("owned_controllers", []):
 		if CONTROLLER_INFO.has(str(c)) and not owned_controllers.has(str(c)):

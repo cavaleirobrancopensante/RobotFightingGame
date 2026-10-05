@@ -16,6 +16,10 @@ var highlight := ""
 var t := 0.0
 var _base := Vector2.ZERO
 var _sc := 1.0
+## Garage scenes: the panel turns transparent and the robot stands where the scene wants it
+## ([x as fraction of width, height as fraction of the panel]). Empty = classic centered preview.
+var spot: Array = []
+var robot_height := 0.0   # how tall the robot is drawn, in pixels (for the people around it)
 
 
 func _ready() -> void:
@@ -38,13 +42,17 @@ func _draw() -> void:
 	if look.is_empty():
 		return
 	var floor_y := size.y - 20.0
-	if show_floor:
+	if show_floor and spot.is_empty():
 		draw_rect(Rect2(Vector2.ZERO, size), Color(0.12, 0.12, 0.17))
 		draw_line(Vector2(0, floor_y), Vector2(size.x, floor_y), Color(0.4, 0.4, 0.5), 2.0)
 	var g := RobotArt.geom(look)
 	var tall: float = -(g["head"] as Rect2).position.y + 30.0
 	_sc = clampf((size.y - 30.0) / tall, 0.3, 2.5) / look.get("scale", 1.0)
 	_base = Vector2(size.x * 0.5, floor_y)
+	if not spot.is_empty():
+		_sc = clampf((size.y * float(spot[1]) - 10.0) / tall, 0.2, 2.5) / look.get("scale", 1.0)
+		_base = Vector2(size.x * float(spot[0]), floor_y)
+	robot_height = tall * _sc * look.get("scale", 1.0)
 	RobotArt.draw(self, _base, look, {"scale": _sc, "facing": facing, "time": t})
 	if interactive and highlight != "":
 		for r in _regions():

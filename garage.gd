@@ -29,6 +29,39 @@ var scroll: ScrollContainer
 var tabs_box: HBoxContainer
 var msg_label: Label
 var preview: RobotPreview
+var backdrop: Control
+var scene := "build"          # which garage scene is behind the menus (see garage_art.gd)
+var paint_open := false
+var spark_at := -99.0
+var dig_at := -99.0
+var dig_found := ""
+const GarageArt = preload("res://garage_art.gd")
+const TAB_SCENES := {"Build": "build", "Shop": "shop", "Workshop": "workshop", "Moves": "moves", "Team": "team",
+		"Cups": "cups", "Scrapyard": "scrap"}
+
+
+## The living scene behind the whole garage screen. The robot panel is see-through, so the robot
+## stands in the scene with Gus and the pilot around it.
+class Backdrop extends Control:
+	var garage
+	var t := 0.0
+	var _rt := 0.0
+
+	func _process(delta: float) -> void:
+		t += delta
+		_rt -= delta
+		if _rt <= 0.0 and is_visible_in_tree():
+			_rt = 1.0 / 30.0
+			queue_redraw()
+
+	func _draw() -> void:
+		if garage == null or garage.preview == null:
+			return
+		var pv: Control = garage.preview
+		var stage := Rect2(pv.global_position - global_position, pv.size)
+		var info: Dictionary = garage.scene_info()
+		GarageArt.draw_back(self, size, stage, garage.scene, t, info)
+		GarageArt.draw_front(self, stage, garage.scene, t, info, pv._base, pv.robot_height)
 var fight_button: Button
 var scout_button: Button
 var send_button: Button
@@ -70,7 +103,11 @@ class ChipIcon extends Control:
 func _ready() -> void:
 	Sfx.music("garage")
 	reset_workshop("arm")
-	UI.background(self)
+	backdrop = Backdrop.new()
+	backdrop.garage = self
+	backdrop.set_anchors_preset(Control.PRESET_FULL_RECT)
+	backdrop.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(backdrop)
 	var m := UI.margin(self, 12)
 	var root := VBoxContainer.new()
 	root.add_theme_constant_override("separation", 6)
@@ -102,12 +139,14 @@ func _ready() -> void:
 	left.add_child(preview)
 	stats_box = VBoxContainer.new()
 	stats_box.add_theme_constant_override("separation", 0)
-	left.add_child(stats_box)
+	left.add_child(glass(stats_box, 0.7))
 
 	var right := VBoxContainer.new()
 	right.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	right.add_theme_constant_override("separation", 4)
-	mid.add_child(right)
+	var right_glass := glass(right, 0.55)
+	right_glass.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	mid.add_child(right_glass)
 	tabs_box = HBoxContainer.new()
 	right.add_child(tabs_box)
 	scroll = ScrollContainer.new()
@@ -147,6 +186,8 @@ func _ready() -> void:
 
 func tab_list() -> Array:
 	var t := ["Build", "Shop"]
+	if GameData.unlocked("scrapyard"):
+		t.append("Scrapyard")
 	if GameData.unlocked("workshop"):
 		t.append("Workshop")
 	if GameData.unlocked("moves"):
@@ -234,13 +275,14 @@ func refresh() -> void:
 	scout_button.visible = GameData.scout_key() != "" and GameData.unlocked("scout")
 	scout_button.text = "Scout report" if GameData.scouted() else "Scout $%d" % GameData.scout_cost()
 	preview.look = GameData.player_look()
+	set_scene_for_tab()
 	preview.highlight = selected if tab == "Build" else ""
 	refresh_stats()
 	for c in tabs_box.get_children():
 		c.queue_free()
 	for t in tab_list():
 		# a star marks a tab you haven't opened yet
-		var fresh: bool = not t in ["Build", "Shop"] and not GameData.tips_seen.has("tab_" + t)
+		var fresh: bool = not t in ["Build", "Shop", "Scrapyard"] and not GameData.tips_seen.has("tab_" + t)
 		var b := UI.button(t + (" ★" if fresh else ""), _on_tab.bind(t), 18, Vector2(0, 46))
 		b.toggle_mode = true
 		b.button_pressed = t == tab
@@ -269,6 +311,8 @@ func refresh() -> void:
 			build_moves_tab()
 		"Cups":
 			build_cups_tab()
+		"Scrapyard":
+			build_scrapyard_tab()
 		"Team":
 			build_team_tab()
 	scroll.set_deferred("scroll_vertical", keep)
@@ -569,7 +613,34 @@ func open_popup(title: String) -> VBoxContainer:
 	return col
 
 
+## A dark see-through panel around a control, so the garage scene shows behind the menus.
+func glass(inner: Control, alpha: float) -> PanelContainer:
+	var p := PanelContainer.new()
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = Color(0.06, 0.06, 0.09, alpha)
+	sb.set_corner_radius_all(8)
+	sb.set_content_margin_all(6)
+	p.add_theme_stylebox_override("panel", sb)
+	p.add_child(inner)
+	return p
+
+
+func scene_info() -> Dictionary:
+	var now := Time.get_ticks_msec() / 1000.0
+	var backup := {}
+	for k in GameData.wingmen.size():
+		if GameData.wingman_ready(k):
+			backup = GameData.look_from_spec(GameData.player_spec(GameData.wingmen[k], GameData.wingman_name(k)))
+			break
+	return {"pilot": GameData.pilot_look, "paint": Color(GameData.PAINTS[GameData.paint]["color"]),
+			"spark": now - spark_at, "dig": now - dig_at, "found": dig_found,
+			"trophies": GameData.circuits_won, "backup": backup}
+
+
 func close_popup() -> void:
+	if paint_open:
+		paint_open = false
+		set_scene_for_tab()
 	if overlay:
 		overlay.queue_free()
 		overlay = null
@@ -712,8 +783,18 @@ func _on_controller(id: String) -> void:
 	refresh()
 
 
+func set_scene_for_tab() -> void:
+	scene = "paint" if paint_open else TAB_SCENES.get(tab, "build")
+	preview.spot = GarageArt.robot_spot(scene)
+	preview.facing = 1 if scene == "paint" else -1
+	preview.queue_redraw()
+
+
 func _on_open_paint() -> void:
 	var col := open_popup("PAINT JOB")
+	paint_open = true
+	set_scene_for_tab()
+	(overlay as ColorRect).color = Color(0, 0, 0, 0.2)   # keep the painting scene visible
 	var grid := GridContainer.new()
 	grid.columns = 4
 	grid.add_theme_constant_override("h_separation", 8)
@@ -764,10 +845,30 @@ func build_shop_tab() -> void:
 			row_button(row, "Use", _on_controller.bind(id), true, 115)
 		else:
 			row_button(row, "Buy $%d" % cinfo["cost"], _on_controller.bind(id), GameData.money >= int(cinfo["cost"]), 115)
-	section("SCRAP BIN - free junk, always there:")
+
+
+
+## The scrapyard: a mountain of dead robots. Dig for free (beaten-up) parts, a few digs per fight.
+func build_scrapyard_tab() -> void:
+	var bar := action_bar()
+	var info := UI.label("THE SCRAPYARD - a mountain of dead robots. %d dig%s left until your next fight." % [GameData.digs_left, "" if GameData.digs_left == 1 else "s"], 15, Color(1.0, 0.8, 0.4))
+	info.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	info.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	bar.add_child(info)
+	row_button(bar, "Dig!" if GameData.digs_left > 0 else "Rest", _on_dig, GameData.digs_left > 0, 130)
+	section("FREE JUNK - always lying around:")
 	for d in GameData.scrap_bin():
 		var row := make_row(part_icon(d), d["name"] + "  [%s]" % str(d["kind"]).to_upper(), GameData.part_stat_text(d))
-		row_button(row, "Free", _on_buy.bind(d["id"]), true, 115)
+		row_button(row, "Take", _on_buy.bind(d["id"]), true, 115)
+
+
+func _on_dig() -> void:
+	var res := GameData.dig_scrap()
+	dig_at = Time.get_ticks_msec() / 1000.0
+	dig_found = "Found something!" if res["part"] != "" else ""
+	say(res["text"], "break" if res["part"] != "" else "land")
+	GameData.save_game()
+	refresh()
 
 
 # ---------------------------------------------------------------- WORKSHOP
@@ -987,6 +1088,7 @@ func bot_preview(o: Dictionary) -> RobotPreview:
 
 func _on_tab(t: String) -> void:
 	tab = t
+	paint_open = false
 	if t == "Build":
 		selected = ""
 	var tip := GameData.tab_tip(t)
@@ -1150,6 +1252,7 @@ func _on_unequip(slot: String) -> void:
 
 
 func _on_repair(uid: int) -> void:
+	spark_at = Time.get_ticks_msec() / 1000.0
 	var before := GameData.money
 	var text := GameData.repair(uid)
 	say(text, "repair" if GameData.money < before else "error")
@@ -1157,6 +1260,7 @@ func _on_repair(uid: int) -> void:
 
 
 func _on_repair_all() -> void:
+	spark_at = Time.get_ticks_msec() / 1000.0
 	var before := GameData.money
 	var text := GameData.repair_all()
 	say(text, "repair" if GameData.money < before else "error")
