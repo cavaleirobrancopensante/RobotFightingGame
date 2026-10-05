@@ -7,6 +7,7 @@ var confirm_new := false
 
 
 func _ready() -> void:
+	Sfx.music("menu")
 	UI.background(self)
 	var m := UI.margin(self, 24)
 	var row := HBoxContainer.new()
@@ -14,7 +15,7 @@ func _ready() -> void:
 	m.add_child(row)
 
 	var left := RobotPreview.new()
-	left.look = GameData.look()
+	left.look = GameData.player_look()
 	left.show_floor = false
 	left.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	row.add_child(left)
@@ -45,7 +46,7 @@ func _ready() -> void:
 	col.add_child(msg)
 
 	var right := RobotPreview.new()
-	right.look = GameData.opponent_look(9)
+	right.look = GameData.look_from_spec(GameData.opponent_spec(9))
 	right.facing = -1
 	right.show_floor = false
 	right.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -59,14 +60,17 @@ func _on_new() -> void:
 		return
 	GameData.new_game()
 	GameData.save_game()
-	get_tree().change_scene_to_file("res://garage.tscn")
+	GameData.queue_story("intro", "res://garage.tscn")
+	get_tree().change_scene_to_file("res://story.tscn")
 
 
 func _on_load() -> void:
-	if GameData.load_game():
+	var err := GameData.load_game()
+	if err == "":
 		get_tree().change_scene_to_file("res://garage.tscn")
 	else:
-		msg.text = "Couldn't load the save file."
+		msg.text = err
+		msg.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 
 
 func _on_settings() -> void:

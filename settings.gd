@@ -5,6 +5,7 @@ const SIZE_NAMES := ["Small", "Medium", "Large"]
 const DIFF_NAMES := ["Easy", "Normal", "Hard"]
 
 var sound_button: Button
+var music_button: Button
 var shake_button: Button
 var size_button: Button
 var diff_button: Button
@@ -13,12 +14,13 @@ var confirm_delete := false
 
 
 func _ready() -> void:
+	Sfx.music("menu")
 	UI.background(self)
 	var m := UI.margin(self, 24)
 	var center := CenterContainer.new()
 	m.add_child(center)
 	var col := VBoxContainer.new()
-	col.add_theme_constant_override("separation", 14)
+	col.add_theme_constant_override("separation", 8)
 	col.custom_minimum_size = Vector2(520, 0)
 	center.add_child(col)
 
@@ -28,6 +30,8 @@ func _ready() -> void:
 
 	sound_button = UI.button("", _on_sound, 28)
 	col.add_child(sound_button)
+	music_button = UI.button("", _on_music, 28)
+	col.add_child(music_button)
 	shake_button = UI.button("", _on_shake, 28)
 	size_button = UI.button("", _on_size, 28)
 	diff_button = UI.button("", _on_diff, 28)
@@ -42,7 +46,8 @@ func _ready() -> void:
 
 func refresh() -> void:
 	var s := GameData.settings
-	sound_button.text = "Sound: %s" % ("ON" if s["sound"] else "OFF")
+	sound_button.text = "Sound effects: %s" % ("ON" if s["sound"] else "OFF")
+	music_button.text = "Music: %s" % ("ON" if s["music"] else "OFF")
 	shake_button.text = "Screen shake: %s" % ("ON" if s["shake"] else "OFF")
 	size_button.text = "Touch buttons: %s" % SIZE_NAMES[s["button_size"]]
 	diff_button.text = "CPU difficulty: %s" % DIFF_NAMES[s["difficulty"]]
@@ -60,6 +65,13 @@ func _on_sound() -> void:
 	GameData.save_settings()
 	refresh()
 	Sfx.play("buy")
+
+
+func _on_music() -> void:
+	GameData.settings["music"] = not GameData.settings["music"]
+	GameData.save_settings()
+	Sfx.refresh_music()
+	refresh()
 
 
 func _on_shake() -> void:

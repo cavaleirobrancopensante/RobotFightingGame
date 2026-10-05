@@ -141,4 +141,20 @@ save("victory", seq(*[env(osc(f, 0.11), decay=0.08) for f in (523, 659, 784)],
 save("defeat", seq(env(vibrato(392, 0.3, 0.01, 6), decay=0.3), env(vibrato(370, 0.3, 0.01, 6), decay=0.3),
                    env(vibrato((349, 300), 0.9, 0.03, 6), decay=0.6), gap=0.06), 0.5)
 
+# ---------------------------------------------------------------- parts, garage, story
+# part ripped off: crunch + metal clang + a silly spring "boing-oing"
+save("break", seq(mix(env(lowpass(noise(0.18), 0.6), decay=0.06), ring([420, 990, 1730, 2600], 0.4, 0.12) * 0.8,
+                      env(osc((160, 40), 0.25, "saw"), decay=0.08) * 0.5),
+                  env(vibrato((500, 260), 0.4, 0.12, 22, "sine"), decay=0.2) * 0.5), 0.8)
+save("repair", seq(*[env(lowpass(noise(0.025), 0.6), decay=0.008) for _ in range(5)],
+                   mix(env(osc(1320, 0.3, "sine"), decay=0.15), ring([2640, 3960], 0.3, 0.1) * 0.4), gap=0.04), 0.55)
+save("sell", seq(env(osc(1320, 0.06), decay=0.04), env(osc(880, 0.06), decay=0.04),
+                 env(osc(660, 0.12), decay=0.08), gap=0.02), 0.5)
+save("target", seq(env(osc(1500, 0.04), decay=0.03), env(osc(2000, 0.06), decay=0.04), gap=0.02), 0.4)
+save("untarget", env(osc((1500, 700), 0.08), decay=0.05), 0.35)
+save("talk", env(osc(700, 0.035), decay=0.02), 0.3)
+save("talk_robot", seq(env(osc(1100, 0.03), decay=0.02), env(osc(800, 0.03), decay=0.02), gap=0.0), 0.3)
+save("time", env(osc(220, 0.6), decay=0.5), 0.5)
+save("spark", mix(env(lowpass(noise(0.05), 0.8), decay=0.01), env(osc((3000, 1200), 0.05, "square"), decay=0.02) * 0.4), 0.3)
+
 print("sounds written to", os.path.abspath(OUT))
