@@ -105,6 +105,11 @@ const PART_LIST := [
 	{"id": "leg_tread",    "kind": "leg", "name": "Tread Leg",   "cost": 2300, "hp": 110, "armor": 30, "damage": 20, "speed": -5,  "draw": 6, "shape": "tread",   "color": "#556b2f"},
 	{"id": "leg_thick",    "kind": "leg", "name": "Crusher Leg", "cost": 1400, "hp": 85,  "armor": 20, "damage": 20, "speed": 0,   "draw": 4, "shape": "thick",   "color": "#5e6b7d", "shop": false},
 	# ---- reactors (inside the torso: never damaged)
+	# Margo's forklift parts (TIN CAN): as weak as junk, but they look the part. Not sold, only salvaged.
+	{"id": "fork_head",    "kind": "head", "name": "Forklift Cab",     "cost": 90,  "hp": 30, "armor": 2, "aim": 0, "draw": 1, "chips": 1, "shape": "box", "color": "#e0a81c", "shop": false},
+	{"id": "fork_torso",   "kind": "torso", "name": "Forklift Chassis", "cost": 120, "hp": 82, "armor": 3, "speed": -5, "draw": 1, "shape": "crate", "color": "#e0a81c", "shop": false},
+	{"id": "fork_arm",     "kind": "arm", "name": "Lift Fork",          "cost": 80,  "hp": 30, "armor": 0, "damage": 2, "speed": -5, "draw": 1, "shape": "blade", "color": "#5a5a5a", "size": 0.9, "shop": false},
+	{"id": "fork_leg",     "kind": "leg", "name": "Forklift Wheel",     "cost": 90,  "hp": 34, "armor": 2, "damage": 0, "speed": 0, "draw": 1, "shape": "wheel", "color": "#2b2b2b", "size": 0.9, "shop": false},
 	{"id": "junk_reactor",   "kind": "reactor", "name": "Car Battery", "cost": 0,    "output": 10, "color": "#ff9a3c"},
 	{"id": "reactor_diesel", "kind": "reactor", "name": "Diesel Core", "cost": 300,  "output": 18, "color": "#ff5533"},
 	{"id": "reactor_cell",   "kind": "reactor", "name": "Fuel Cell",   "cost": 900,  "output": 26, "color": "#ffd23f"},
@@ -129,8 +134,8 @@ const STARTER := {"head": "junk_head", "torso": "junk_torso", "arm_front": "junk
 # smart = chance the CPU aims at your weakest part, scale = how big it is.
 const OPPONENTS := [
 	{"name": "TIN CAN", "pilot": "MARGO", "style": "striker", "hp": 0.8, "damage": 0.80, "speed": 0.90, "scale": 0.90, "think": 0.60, "block": 0.10, "smart": 0.0, "reward": 300,
-	 "body": "#9a9a9a", "trim": "#5a5a5a", "eye": "#ffcc00",
-	 "parts": {"head": "junk_head", "torso": "junk_torso", "arm_front": "junk_arm", "arm_back": "junk_arm", "leg_front": "junk_leg", "leg_back": "junk_leg"}, "specials": []},
+	 "body": "#e0a81c", "trim": "#2b2b2b", "eye": "#ff6a00",
+	 "parts": {"head": "fork_head", "torso": "fork_torso", "arm_front": "fork_arm", "arm_back": "fork_arm", "leg_front": "fork_leg", "leg_back": "fork_leg"}, "specials": []},
 	{"name": "RIVET", "pilot": "BRUNO", "style": "tank", "hp": 0.9, "damage": 0.85, "speed": 0.95, "scale": 0.95, "think": 0.55, "block": 0.15, "smart": 0.1, "reward": 450,
 	 "body": "#6d8b74", "trim": "#3e4f42", "eye": "#c6ff4d",
 	 "parts": {"head": "head_box", "torso": "torso_rib", "arm_front": "arm_rod", "arm_back": "arm_rod", "leg_front": "leg_steel", "leg_back": "leg_steel"}, "specials": ["shoulder_charge"]},
