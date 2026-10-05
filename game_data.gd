@@ -1,6 +1,7 @@
 extends Node
 
 # helper scripts, loaded by path so the game also runs without an editor scan
+const Arena = preload("res://arena.gd")
 const Catalog = preload("res://catalog.gd")
 const PilotArt = preload("res://pilot_art.gd")
 const RobotArt = preload("res://robot_art.gd")
@@ -17,6 +18,7 @@ const SETTINGS_PATH := "user://settings.json"
 const SAVE_VERSION := 3
 const START_MONEY := 300
 const DEFAULT_ROBOT := "ECHO"
+const Career = preload("res://career.gd")
 const PILOT_NAMES := ["Rook", "Marisol", "Dex", "Kit", "Juno", "Tavi", "Bram", "Nia", "Otto", "Zara", "Lio", "Mags",
 		"Finn", "Ines", "Cass", "Rafa", "Wren", "Bo", "Sully", "Pia", "Grit", "Nova", "Ash", "Teo"]
 const ROBOT_FIRST := ["ECHO", "RUSTY", "BOLT", "PISTON", "SPARKY", "TANK", "GIZMO", "COPPER", "TORQUE", "DYNAMO",
@@ -226,7 +228,16 @@ var wingmen: Array = [{}, {}]   # extra robots for team fights, built from spare
 var sending := -1           # which robot fights the next 1-on-1: -1 = your main robot, 0/1 = a backup robot
 var next_uid := 1
 var paint := 0
-var fight_index := 0        # next championship fight (0..9); 10 = finished
+var fight_index := 0        # (old saves) story fights won; the career now lives in year/week/event
+var year := 1
+var week := 1
+var rank := "scrap"         # the highest league you've qualified for: scrap / regional / championship
+var event := {}             # the league or playoffs you're in (see career.gd)
+var trophies: Array = []    # [{kind: scrap/regional/championship/cup, medal: 1-3, name, year}]
+var career_stats := {"heads": 0, "arms": 0, "legs": 0, "cores": 0, "parts": 0}
+var story_queue: Array = [] # more story scenes to show after the current one
+var pending_stories: Array = []   # scenes the last result unlocked (shown after the fight)
+var last_ko := ""
 var wins := 0
 var losses := 0
 var champion := false
@@ -235,6 +246,7 @@ var circuit := {}             # active championship: {name, tier, seed, index, s
 var circuit_offers: Array = []  # championships you can enter
 var circuits_won := 0
 var exhibition := false       # an OVERLORD rematch is queued
+var pickup := {}              # a scrapyard pickup fight in a quiet week: {enemy, week, year}
 var quick := {}               # Quick Fight from the menu: {player, enemy} random bots, never saved
 var setups: Array = []        # saved builds: {} or {name, equipped, chips, paint}
 var custom_parts: Array = []  # part definitions you designed in the workshop
@@ -431,6 +443,12 @@ func new_game() -> void:
 		equipped[slot] = add_part(STARTER[slot]) if STARTER.has(slot) else -1
 	paint = 0
 	fight_index = 0
+	year = 1
+	week = 1
+	rank = "scrap"
+	trophies = []
+	career_stats = {"heads": 0, "arms": 0, "legs": 0, "cores": 0, "parts": 0}
+	event = Career.new_event("scrap", 1, randi())
 	wins = 0
 	losses = 0
 	champion = false
@@ -448,6 +466,7 @@ func new_game() -> void:
 	circuit_offers = []
 	circuits_won = 0
 	exhibition = false
+	pickup = {}
 	setups = []
 	for k in SETUP_SLOTS:
 		setups.append({})
@@ -529,7 +548,7 @@ func scrap_bin() -> Array:
 
 ## How far along you are (unlocks better stock in the shop).
 func progress() -> int:
-	return fight_index + circuits_won * 2 + (2 if champion else 0)
+	return mini(wins, 30) / 3 + rank_index() * 2 + circuits_won * 2 + (2 if champion else 0)
 
 
 ## Restock the shop with a random selection. Better parts show up as you progress.
@@ -898,30 +917,46 @@ func global_traits(ids: Dictionary) -> Array:
 func fight_mode() -> String:
 	if not quick.is_empty():
 		return "quick"
-	if not circuit.is_empty():
+	if not circuit.is_empty() and circuit.get("phase", "") != "done":
 		return "circuit"
-	if champion:
+	if not event.is_empty() and event.get("phase", "") != "done" and Career.player_opponent(event) != -1 \
+			and week >= Career.week_of_round(event):
+		return "story"
+	if exhibition:
 		return "exhibition"
-	return "story"
+	if not pickup.is_empty():
+		return "pickup"
+	return "open"   # no fight this week: rest, skip ahead, or enter a cup
 
 
+## The story rival you're about to fight (0-9), or -1 for anyone else.
 func current_opponent_index() -> int:
 	match fight_mode():
-		"circuit":
-			return int(circuit["index"])
+		"story":
+			var e := Career.pilot(event, Career.player_opponent(event))
+			return int(e.get("rival", -1))
 		"exhibition":
 			return OPPONENTS.size() - 1
-	return clampi(fight_index, 0, OPPONENTS.size() - 1)
+	return -1
 
 
 func current_opponent() -> Dictionary:
 	if fight_mode() == "quick":
 		return quick["enemy"]
 	var o: Dictionary
-	if fight_mode() == "circuit":
-		o = circuit_opponent(circuit, int(circuit["index"]))
-	else:
-		o = OPPONENTS[current_opponent_index()]
+	match fight_mode():
+		"circuit":
+			o = Career.robot_of(circuit, Career.player_opponent(circuit))
+		"story":
+			o = Career.robot_of(event, Career.player_opponent(event))
+		"pickup":
+			o = (pickup["enemy"] as Dictionary).duplicate(true)
+		"exhibition":
+			o = OPPONENTS[OPPONENTS.size() - 1].duplicate(true)
+			o["pilot"] = ""
+		_:
+			return {}
+	o["reward"] = current_reward_for(o)
 	# if they caught our scout, they changed something
 	if scouted() and scout.get("spied_back", false):
 		o = o.duplicate(true)
@@ -942,11 +977,13 @@ func current_opponent() -> Dictionary:
 func scout_key() -> String:
 	match fight_mode():
 		"story":
-			return "story:%d" % fight_index
+			return "ev:%d:%s:%d" % [year, event["stage"], int(event["round"])]
 		"circuit":
-			return "cup:%d:%d" % [int(circuit["seed"]), int(circuit["index"])]
+			return "cup:%d:%d" % [int(circuit["seed"]), int(circuit["round"])]
 		"exhibition":
 			return "exhibition:%d" % wins
+		"pickup":
+			return "pickup:%d:%d" % [year, week]
 	return ""
 
 
@@ -999,14 +1036,29 @@ func do_scout() -> String:
 
 
 func current_reward() -> int:
+	var o := current_opponent()
+	return 0 if o.is_empty() else int(o["reward"])
+
+
+## Prize money for the fight against o (league rounds pay a bit more as the season goes on, playoffs more).
+func current_reward_for(o: Dictionary) -> int:
 	match fight_mode():
 		"quick":
 			return 0
-		"circuit":
-			return current_opponent()["reward"]
 		"exhibition":
 			return EXHIBITION_REWARD
-	return current_opponent()["reward"]
+		"pickup":
+			return 70 + 50 * rank_index()
+		"circuit":
+			return 200 + 250 * int(circuit["tier"]) + 100 * int(circuit["round"])
+		"story":
+			var info: Dictionary = Career.STAGES[event["stage"]]
+			var n: float = maxf(1.0, event["weeks"].size() - 1)
+			var r: float = lerpf(info["reward"][0], info["reward"][1], float(event["round"]) / n)
+			if Career.is_playoff(event):
+				r *= 1.6
+			return int(r / 10.0) * 10 + (100 if o.has("team") else 0)
+	return 0
 
 
 func fight_title() -> String:
@@ -1014,10 +1066,115 @@ func fight_title() -> String:
 		"quick":
 			return "QUICK FIGHT"
 		"circuit":
-			return "%s %d/%d" % [str(circuit["name"]).to_upper(), int(circuit["index"]) + 1, int(circuit["size"])]
+			return "%s - %s" % [str(circuit["name"]).to_upper(), Career.round_name(circuit)]
 		"exhibition":
 			return "EXHIBITION"
-	return "FIGHT %d/%d" % [fight_index + 1, OPPONENTS.size()]
+		"pickup":
+			return "SCRAPYARD PICKUP FIGHT"
+		"story":
+			return "%s - %s" % [Career.STAGES[event["stage"]]["short"], Career.round_name(event).to_upper()]
+	return "YEAR %d, WEEK %d" % [year, week]
+
+
+## Arena and crowd for the next fight: story rivals in their own venues, league fights in the
+## league's venues, cups and quick fights anywhere.
+func current_arena() -> Array:
+	var rng := RandomNumberGenerator.new()
+	match fight_mode():
+		"story":
+			return Arena.career_venue(event["stage"], Career.round_name(event))
+		"pickup":
+			return ["scrap_ring", "scrappers"]
+		"exhibition":
+			return ["champ_gala", "high_society"]
+		"circuit":
+			rng.seed = int(circuit["seed"]) + int(circuit["round"]) * 7
+		_:
+			rng.randomize()
+	return [Arena.ARENAS.keys()[rng.randi() % Arena.ARENAS.size()], Arena.CROWDS.keys()[rng.randi() % Arena.CROWDS.size()]]
+
+
+## Quiet weeks: there's always a pickup fight at the scrapyard for a few dollars.
+func start_pickup() -> void:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = year * 1000 + week
+	var lv := 0.3 + rank_index() * 0.8
+	var bot := random_bot(rng, 300.0 + rank_index() * 500.0, lv)
+	bot["pilot"] = Career.PILOT_NAMES[rng.randi() % Career.PILOT_NAMES.size()]
+	pickup = {"enemy": bot, "week": week, "year": year}
+
+
+# ---------------------------------------------------------------- calendar
+
+## The week moves on (after every fight, or when you rest). New leagues start on their week.
+func advance_week(n: int = 1) -> void:
+	for k in n:
+		week += 1
+		if week > Career.WEEKS_PER_YEAR:
+			week = 1
+			year += 1
+		ensure_event()
+
+
+func rank_index() -> int:
+	return Career.ORDER.find(rank)
+
+
+## Start your next league when its week comes round (if you're qualified for it).
+func ensure_event() -> void:
+	if not event.is_empty() and event.get("phase", "") != "done":
+		return
+	for stage in Career.ORDER:
+		var info: Dictionary = Career.STAGES[stage]
+		if int(info["start"]) != week:
+			continue
+		var idx := Career.ORDER.find(stage)
+		var enter: bool = idx == rank_index() if stage == "scrap" else idx <= rank_index()
+		# each year you start from the highest league you've reached
+		if stage == "regional" and rank_index() >= 2:
+			enter = false
+		if enter:
+			event = Career.new_event(stage, year, randi())
+			return
+
+
+## Your next league: [stage, start week, weeks from now] (stage "" if none).
+func next_event_info() -> Array:
+	if not event.is_empty() and event.get("phase", "") != "done":
+		return [event["stage"], Career.week_of_round(event), maxi(0, Career.week_of_round(event) - week)]
+	for add in range(1, Career.WEEKS_PER_YEAR + 2):
+		var w := (week + add - 1) % Career.WEEKS_PER_YEAR + 1
+		for stage in Career.ORDER:
+			if int(Career.STAGES[stage]["start"]) == w:
+				var idx := Career.ORDER.find(stage)
+				var rk := rank_index()
+				var enter: bool = idx == rk if stage == "scrap" else (idx <= rk and not (stage == "regional" and rk >= 2))
+				if enter:
+					return [stage, w, add]
+	return ["", 0, 0]
+
+
+func rest_week() -> String:
+	pickup = {}
+	advance_week(1)
+	digs_left = DIGS_PER_FIGHT
+	save_game()
+	return "A quiet week. Year %d, week %d." % [year, week]
+
+
+func skip_to_next_event() -> String:
+	var nxt := next_event_info()
+	if nxt[0] == "":
+		return "Nothing on the calendar."
+	pickup = {}
+	advance_week(int(nxt[2]))
+	digs_left = DIGS_PER_FIGHT
+	save_game()
+	return "Skipped ahead to week %d: the %s." % [week, Career.STAGES[event.get("stage", nxt[0])]["name"]]
+
+
+func cups_unlocked() -> bool:
+	return champion or rank_index() >= 1 or not trophies.is_empty() or wins + losses >= 5
 
 
 # ---------------------------------------------------------------- multibot teams
@@ -1138,7 +1295,7 @@ const UNLOCKS := {"scrapyard": 0, "style": 1, "scout": 1, "team": 2, "moves": 3,
 
 
 func unlocked(feature: String) -> bool:
-	return champion or fight_index >= int(UNLOCKS.get(feature, 0))
+	return champion or wins >= int(UNLOCKS.get(feature, 0))
 
 
 ## One garage tip from Gus per visit, the first one that applies and hasn't been shown.
@@ -1166,7 +1323,8 @@ const TAB_TIPS := {
 	"Shop": "GUS: The dealer's stock changes after every fight. Mini parts sip power, Heavy parts hit hard but drink it.",
 	"Workshop": "GUS: Design your own part here. Costs more than the dealer, but it's exactly what you want.",
 	"Moves": "GUS: Training chips teach special moves. Better heads hold more chips.",
-	"Cups": "GUS: Cups are random robots, some in tag teams and swarms. Your backups fight beside you then.",
+	"Cups": "GUS: Cups are three-week knockouts in the quiet weeks. Eight pilots, medals for the top three. Some come in tag teams and swarms - your backups fight beside you then.",
+	"Season": "GUS: This is the season. League tables, playoff brackets and the calendar. A win is 3 points; the top of the table goes through.",
 	"Team": "GUS: Teams share one heavyweight's power, so team robots run small. Mini parts are your friend here.",
 }
 
@@ -1354,9 +1512,7 @@ func fight_player_spec() -> Dictionary:
 func current_opponent_spec() -> Dictionary:
 	if fight_mode() == "quick":
 		return opponent_spec_from(quick["enemy"], 1.0)
-	if fight_mode() == "circuit":
-		return opponent_spec_from(current_opponent(), 1.0)
-	return opponent_spec(current_opponent_index())
+	return opponent_spec_from(current_opponent(), 1.0)
 
 
 func opponent_spec(index: int) -> Dictionary:
@@ -1484,55 +1640,123 @@ func record_result(won: bool, part_hp: Dictionary, destroyed: int, salvage_ids: 
 	var was_champion := champion
 	var mode := fight_mode()
 	var cup_done := ""
+	var event_done := ""
+	pending_stories = []
+	# the scoreboard: what you tore off them
+	for sv in salvage_ids:
+		var kind: String = part_def(sv["id"])["kind"]
+		career_stats["parts"] = int(career_stats.get("parts", 0)) + 1
+		if kind == "head" or kind == "arm" or kind == "leg":
+			career_stats[kind + "s"] = int(career_stats.get(kind + "s", 0)) + 1
+	if won and last_ko == "CORE DESTROYED":
+		career_stats["cores"] = int(career_stats.get("cores", 0)) + 1
 	if won:
 		wins += 1
-		match mode:
-			"story":
-				fight_index += 1
-				if fight_index >= OPPONENTS.size():
-					champion = true
-					make_offers()
-			"circuit":
-				circuit["index"] = int(circuit["index"]) + 1
-				if circuit["index"] >= circuit["size"]:
-					cup_done = circuit["name"]
-					money += int(circuit["prize"])
-					var rng := RandomNumberGenerator.new()
-					rng.seed = int(circuit["seed"]) + 1
-					var prize := random_part_id(rng, ["head", "torso", "arm", "leg", "back", "reactor"][rng.randi() % 6], 99999)
-					add_part(prize)
-					cup_done += " - prize $%d and a brand new %s!" % [circuit["prize"], part_def(prize)["name"]]
-					circuits_won += 1
-					circuit = {}
-					make_offers()
 	else:
 		losses += 1
+	match mode:
+		"story":
+			var res: Dictionary = Career.after_player_fight(event, won, destroyed)
+			if res["phase_changed"] and event["stage"] == "regional" and event.get("qualified", []).has(0) and rank_index() < 2:
+				rank = "championship"
+				pending_stories.append("regional_semis")
+			if res["done"]:
+				event_done = finish_event(event)
+			advance_week(1)
+		"circuit":
+			Career.after_player_fight(circuit, won, destroyed)
+			if circuit["phase"] == "done":
+				cup_done = finish_cup()
+			advance_week(1)
+		"exhibition", "pickup":
+			advance_week(1)
 	exhibition = false
+	pickup = {}
 	scout = {}
 	roll_stock()
 	last_result = {"won": won, "reward": reward, "bonus": bonus, "opponent": o["name"], "lost": lost, "wrecked": wrecked,
 			"salvaged": salvaged, "champion": champion and not was_champion,
-			"trophy": trophy, "cup_done": cup_done}
+			"trophy": trophy, "cup_done": cup_done, "event_done": event_done}
 	save_game()
 	return last_result
 
 
 # ---------------------------------------------------------------- championships (after the story)
 
+## An event is over: medals, prize money, trophies, and what you've qualified for.
+func finish_event(ev: Dictionary) -> String:
+	var info: Dictionary = Career.STAGES[ev["stage"]]
+	var m := Career.medal_of(ev, 0)
+	var text := "%s: %s" % [ev["name"], Career.finish_text(ev)]
+	if m > 0:
+		var prize: int = info["prizes"][m - 1]
+		money += prize
+		trophies.append({"kind": ev["stage"], "medal": m, "name": ev["name"], "year": year})
+		text += " - prize $%d and a trophy for the bay!" % prize
+	match ev["stage"]:
+		"scrap":
+			if m > 0 and rank_index() < 1:
+				rank = "regional"
+				pending_stories.append("scrap_medal")
+				make_offers()
+			elif m == 0:
+				pending_stories.append("scrap_out")
+		"regional":
+			if not ev.get("qualified", []).has(0):
+				pending_stories.append("regional_out")
+		"championship":
+			if m == 1:
+				champion = true
+				make_offers()
+			elif ev.get("qualified", []).has(0) == false:
+				pending_stories.append("champ_out")
+	return text
+
+
+func finish_cup() -> String:
+	var m := Career.medal_of(circuit, 0)
+	var text := "%s: %s" % [circuit["name"], Career.finish_text(circuit)]
+	if m > 0:
+		var prize: int = int(int(circuit["prize"]) * [0, 1.0, 0.5, 0.3][m])
+		money += prize
+		trophies.append({"kind": "cup", "medal": m, "name": circuit["name"], "year": year})
+		text += " - $%d" % prize
+		if m == 1:
+			circuits_won += 1
+			var rng := RandomNumberGenerator.new()
+			rng.seed = int(circuit["seed"]) + 1
+			var part := random_part_id(rng, ["head", "torso", "arm", "leg", "back", "reactor"][rng.randi() % 6], 99999)
+			add_part(part)
+			text += " and a brand new %s!" % part_def(part)["name"]
+	circuit = {}
+	make_offers()
+	return text
+
+
 func make_offers() -> void:
 	circuit_offers = []
-	var base := clampi(1 + int(circuits_won / 2.0), 1, 5)
+	var base := clampi(1 + rank_index() + int(circuits_won / 2.0) + (1 if champion else 0), 1, 5)
 	for k in 3:
-		var tier := clampi(base + k, 1, 5)
+		var tier := clampi(base - 1 + k, 1, 5)
 		var seed := randi()
 		var rng := RandomNumberGenerator.new()
 		rng.seed = seed
 		circuit_offers.append({"name": CIRCUIT_NAMES[rng.randi() % CIRCUIT_NAMES.size()], "tier": tier,
-				"seed": seed, "index": 0, "size": 3 + tier, "prize": 1200 * tier})
+				"seed": seed, "prize": 1000 * tier})
+
+
+## A cup takes 3 weeks; it has to fit before your next league starts.
+func cup_fits() -> bool:
+	var nxt := next_event_info()
+	if not event.is_empty() and event.get("phase", "") != "done":
+		return false
+	return nxt[0] == "" or int(nxt[2]) >= 3
 
 
 func enter_circuit(k: int) -> void:
-	circuit = circuit_offers[k].duplicate()
+	var off: Dictionary = circuit_offers[k]
+	pickup = {}
+	circuit = Career.new_cup(off["name"], int(off["tier"]), int(off["seed"]), week, year, int(off["prize"]))
 	circuit_offers.remove_at(k)
 
 
@@ -1540,24 +1764,6 @@ func abandon_circuit() -> void:
 	circuit = {}
 	if circuit_offers.size() < 3:
 		make_offers()
-
-
-## A randomly built bot for fight i of a championship (same every time for that championship).
-func circuit_opponent(c: Dictionary, i: int) -> Dictionary:
-	var rng := RandomNumberGenerator.new()
-	rng.seed = int(c["seed"]) + i * 7919
-	var tier: int = int(c["tier"])
-	var step := float(i) / maxf(1.0, float(c["size"]) - 1.0)   # 0 for the first fight, 1 for the last
-	var level := clampf(tier - 1 + step, 0.0, 5.0)
-	var budget: float = TIER_BUDGET[clampi(tier - 1, 0, 4)] * (0.7 + 0.6 * step)
-	var bot := random_bot(rng, budget, level)
-	var last := i >= int(c["size"]) - 1
-	if not last and i > 0 and rng.randf() < 0.35:
-		bot = random_team(rng, budget, level, 2 if rng.randf() < 0.55 else 3)
-	bot["reward"] = 250 + 300 * tier + int(150 * step * tier)
-	if bot.has("team"):
-		bot["reward"] = int(bot["reward"] * 1.15)
-	return bot
 
 
 func random_bot(rng: RandomNumberGenerator, budget: float, level: float, sizes: Array = []) -> Dictionary:
@@ -1802,6 +2008,18 @@ func queue_story(key: String, return_scene: String) -> bool:
 		return false
 	story_key = key
 	story_return = return_scene
+	story_queue = []
+	return true
+
+
+## Several scenes in a row (the ones already seen are skipped). False if there's nothing to show.
+func queue_stories(keys: Array, return_scene: String) -> bool:
+	var fresh: Array = keys.filter(func(k): return not story_seen.has(k) and Story.SCENES.has(k))
+	if fresh.is_empty():
+		return false
+	story_key = fresh[0]
+	story_queue = fresh.slice(1)
+	story_return = return_scene
 	return true
 
 
@@ -1837,7 +2055,9 @@ func slot_info(slot: int) -> Dictionary:
 	var data = JSON.parse_string(f.get_as_text())
 	if typeof(data) != TYPE_DICTIONARY:
 		return {"broken": true}
-	var progress := "Champion" if data.get("champion", false) else "Fight %d of %d" % [int(data.get("fight_index", 0)) + 1, OPPONENTS.size()]
+	var progress := "Champion" if data.get("champion", false) else "Year %d, week %d" % [int(data.get("year", 1)), int(data.get("week", 1))]
+	if data.has("event") and typeof(data["event"]) == TYPE_DICTIONARY and not data["event"].is_empty() and not data.get("champion", false):
+		progress += " - " + str(Career.STAGES.get(str(data["event"].get("stage", "")), {}).get("short", "")).capitalize()
 	return {"pilot": data.get("pilot_name", "Rook"), "robot": data.get("robot_name", DEFAULT_ROBOT), "progress": progress,
 			"money": int(data.get("money", 0)), "saved": data.get("saved_at", ""),
 			"cups": int(data.get("circuits_won", 0))}
@@ -1856,7 +2076,8 @@ func save_game() -> bool:
 		"next_uid": next_uid, "paint": paint, "fight_index": fight_index, "wins": wins,
 		"losses": losses, "champion": champion, "story_seen": story_seen,
 		"owned_chips": owned_chips, "chips": chips, "circuit": circuit, "circuit_offers": circuit_offers,
-		"circuits_won": circuits_won, "setups": setups, "custom_parts": custom_parts,
+		"circuits_won": circuits_won, "pickup": pickup, "setups": setups, "custom_parts": custom_parts,
+		"year": year, "week": week, "rank": rank, "event": event, "trophies": trophies, "career_stats": career_stats,
 		"style": style, "shop_stock": shop_stock, "scout": scout, "wingmen": wingmen, "sending": sending, "pilot_look": pilot_look, "owned_controllers": owned_controllers, "tips_seen": tips_seen, "digs_left": digs_left,
 	}
 	var f := FileAccess.open(slot_path(save_slot), FileAccess.WRITE)
@@ -1946,14 +2167,60 @@ func load_game(slot: int = -1) -> String:
 		roll_stock()
 	scout = data.get("scout", {})
 	circuit = data.get("circuit", {})
+	if not circuit.is_empty() and not circuit.has("pilots"):
+		circuit = {}   # an old-style cup: start fresh
 	circuit_offers = data.get("circuit_offers", [])
 	circuits_won = int(data.get("circuits_won", 0))
+	pickup = data.get("pickup", {})
+	trophies = data.get("trophies", [])
+	career_stats = {"heads": 0, "arms": 0, "legs": 0, "cores": 0, "parts": 0}
+	if typeof(data.get("career_stats")) == TYPE_DICTIONARY:
+		career_stats.merge(data["career_stats"], true)
+	if data.has("event"):
+		year = int(data.get("year", 1))
+		week = int(data.get("week", 1))
+		rank = str(data.get("rank", "scrap"))
+		event = data.get("event", {})
+		_fix_numbers(event)
+		_fix_numbers(circuit)
+	else:
+		# a save from before the career: put it where its story progress was
+		year = 1
+		rank = "scrap" if fight_index < 3 else ("regional" if fight_index < 6 else "championship")
+		week = int(Career.STAGES[rank]["start"])
+		event = {} if champion else Career.new_event(rank, year, randi())
+		if champion:
+			week = 42
 	var saved_setups: Array = data.get("setups", [])
 	for k in mini(saved_setups.size(), SETUP_SLOTS):
 		setups[k] = saved_setups[k]
 	if champion and circuit.is_empty() and circuit_offers.is_empty():
 		make_offers()
 	return ""
+
+
+## JSON turns every number into a float; the career code wants whole numbers for ids and rounds.
+func _fix_numbers(ev: Dictionary) -> void:
+	if ev.is_empty():
+		return
+	for k in ["round", "year", "seed", "tier", "prize"]:
+		if ev.has(k):
+			ev[k] = int(ev[k])
+	ev["weeks"] = ev.get("weeks", []).map(func(w): return int(w))
+	ev["schedule"] = ev.get("schedule", []).map(func(w): return int(w))
+	for e in ev.get("pilots", []):
+		e["id"] = int(e["id"])
+		if e.has("rival"):
+			e["rival"] = int(e["rival"])
+	for key in ev.get("table", {}):
+		ev["table"][key] = ev["table"][key].map(func(v): return int(v))
+	if not ev.get("bracket", {}).is_empty():
+		ev["bracket"]["r"] = int(ev["bracket"]["r"])
+		for rnd in ev["bracket"]["rounds"]:
+			for m in rnd:
+				for k in ["a", "b", "w"]:
+					m[k] = int(m[k])
+	ev["qualified"] = ev.get("qualified", []).map(func(v): return int(v))
 
 
 func delete_save(slot: int = -1) -> void:

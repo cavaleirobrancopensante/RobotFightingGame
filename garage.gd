@@ -36,7 +36,8 @@ var spark_at := -99.0
 var dig_at := -99.0
 var dig_found := ""
 const GarageArt = preload("res://garage_art.gd")
-const TAB_SCENES := {"Build": "build", "Shop": "shop", "Workshop": "workshop", "Moves": "moves", "Team": "team",
+const Career = preload("res://career.gd")
+const TAB_SCENES := {"Build": "build", "Season": "build", "Shop": "shop", "Workshop": "workshop", "Moves": "moves", "Team": "team",
 		"Cups": "cups", "Scrapyard": "scrap"}
 
 
@@ -185,14 +186,14 @@ func _ready() -> void:
 
 
 func tab_list() -> Array:
-	var t := ["Build", "Shop"]
+	var t := ["Build", "Shop", "Season"]
 	if GameData.unlocked("scrapyard"):
 		t.append("Scrapyard")
 	if GameData.unlocked("workshop"):
 		t.append("Workshop")
 	if GameData.unlocked("moves"):
 		t.append("Moves")
-	if GameData.champion:
+	if GameData.cups_unlocked():
 		t.append("Cups")
 	if GameData.team_unlocked():
 		t.append("Team")
@@ -209,14 +210,16 @@ func show_last_result() -> void:
 	else:
 		var bits: Array = []
 		if r.get("champion", false):
-			bits.append("CHAMPION! You beat %s. Championships are open in the Cups tab!" % r["opponent"])
+			bits.append("CHAMPION! You beat %s!" % r["opponent"])
 		elif r["won"]:
 			bits.append("Beat %s!" % r["opponent"])
 		else:
 			bits.append("Lost to %s." % r["opponent"])
 		bits.append("Earned $%d." % (r["reward"] + r.get("bonus", 0)))
 		if r.get("cup_done", "") != "":
-			bits.append("CUP WON: %s" % r["cup_done"])
+			bits.append("CUP OVER - %s." % r["cup_done"])
+		if r.get("event_done", "") != "":
+			bits.append("SEASON OVER - %s. See the Season tab." % r["event_done"])
 		if r.get("trophy", "") != "":
 			bits.append("Trophy part: %s." % r["trophy"])
 		if not r.get("lost", []).is_empty():
@@ -240,13 +243,10 @@ func say(text: String, sound: String = "") -> void:
 func refresh() -> void:
 	money_label.text = "$%d" % GameData.money
 	var mode := GameData.fight_mode()
-	match mode:
-		"circuit":
-			title_label.text = "GARAGE - %s" % GameData.fight_title()
-		"exhibition":
-			title_label.text = "GARAGE - Champion! (%dW/%dL, %d cups)" % [GameData.wins, GameData.losses, GameData.circuits_won]
-		_:
-			title_label.text = "GARAGE - Fight %d of %d" % [GameData.fight_index + 1, GameData.OPPONENTS.size()]
+	if mode == "open":
+		GameData.start_pickup()   # a quiet week: there's always a pickup fight down at the scrapyard
+		mode = GameData.fight_mode()
+	title_label.text = "GARAGE - Year %d, week %d - %s" % [GameData.year, GameData.week, GameData.fight_title()]
 	var o := GameData.current_opponent()
 	var core := GameData.equipped_inst("torso")
 	# which robot goes in: your main robot, or a backup robot (1-on-1 fights only)
@@ -263,7 +263,8 @@ func refresh() -> void:
 		fight_button.disabled = true
 	else:
 		fight_button.disabled = false
-		var label: String = {"story": "FIGHT: %s ($%d)", "circuit": "CUP FIGHT: %s ($%d)", "exhibition": "REMATCH: %s ($%d)"}.get(mode, "FIGHT: %s ($%d)")
+		var label: String = {"story": "FIGHT: %s ($%d)", "circuit": "CUP FIGHT: %s ($%d)", "exhibition": "REMATCH: %s ($%d)",
+				"pickup": "PICKUP FIGHT: %s ($%d)"}.get(mode, "FIGHT: %s ($%d)")
 		fight_button.text = label % [o["name"], GameData.current_reward()]
 		if o.has("team_label"):
 			fight_button.text += " - %s" % o["team_label"]
@@ -282,7 +283,7 @@ func refresh() -> void:
 		c.queue_free()
 	for t in tab_list():
 		# a star marks a tab you haven't opened yet
-		var fresh: bool = not t in ["Build", "Shop", "Scrapyard"] and not GameData.tips_seen.has("tab_" + t)
+		var fresh: bool = not t in ["Build", "Shop", "Scrapyard", "Season"] and not GameData.tips_seen.has("tab_" + t)
 		var b := UI.button(t + (" ★" if fresh else ""), _on_tab.bind(t), 18, Vector2(0, 46))
 		b.toggle_mode = true
 		b.button_pressed = t == tab
@@ -311,6 +312,8 @@ func refresh() -> void:
 			build_moves_tab()
 		"Cups":
 			build_cups_tab()
+		"Season":
+			build_season_tab()
 		"Scrapyard":
 			build_scrapyard_tab()
 		"Team":
@@ -634,8 +637,8 @@ func scene_info() -> Dictionary:
 			break
 	return {"pilot": GameData.pilot_look, "paint": Color(GameData.PAINTS[GameData.paint]["color"]),
 			"spark": now - spark_at, "dig": now - dig_at, "found": dig_found,
-			"trophies": GameData.circuits_won, "backup": backup,
-			"wins": GameData.fight_index if not GameData.champion else GameData.OPPONENTS.size(), "champion": GameData.champion}
+			"medals": GameData.trophies, "backup": backup, "stats": GameData.career_stats,
+			"wins": GameData.wins, "losses": GameData.losses, "champion": GameData.champion}
 
 
 func close_popup() -> void:
@@ -988,30 +991,195 @@ func build_cups_tab() -> void:
 	var c := GameData.circuit
 	if not c.is_empty():
 		var bar := action_bar()
-		var l := UI.label("%s %s - fight %d of %d - cup prize $%d" % [c["name"], "★".repeat(int(c["tier"])),
-				int(c["index"]) + 1, int(c["size"]), int(c["prize"])], 16, Color(1.0, 0.8, 0.4))
+		var l := UI.label("%s %s - %s - gold $%d" % [c["name"], "★".repeat(int(c["tier"])), Career.round_name(c), int(c["prize"])], 16, Color(1.0, 0.8, 0.4))
 		l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		bar.add_child(l)
 		row_button(bar, "Abandon", _on_abandon, true, 110)
-		for i in range(int(c["index"]), int(c["size"])):
-			var o := GameData.circuit_opponent(c, i)
-			var specials: Array = []
-			for id in o["specials"]:
-				specials.append(Specials.MOVES[id]["name"])
-			make_row(bot_preview(o), "%d. %s%s   ($%d)" % [i + 1, o["name"], "  [%s]" % o["team_label"] if o.has("team_label") else "", o["reward"]],
-					"Moves: " + (", ".join(specials) if not specials.is_empty() else "none"))
+		show_bracket(c)
 		return
-	section("Pick a championship. Robots are built at random for every cup!")
+	var mode := GameData.fight_mode()
+	var free: bool = mode == "pickup" or mode == "open"
+	var fits := GameData.cup_fits()
+	if not free:
+		section("You're busy this week - cups run in the quiet weeks between leagues.")
+	elif not fits:
+		section("A cup takes 3 weeks, and your next league starts too soon. Win this one first!")
+	else:
+		section("Cups: 8 pilots, a three-week knockout. Gold, silver and bronze go on the bay wall.")
 	if GameData.circuit_offers.is_empty():
 		GameData.make_offers()
 	for k in GameData.circuit_offers.size():
 		var off: Dictionary = GameData.circuit_offers[k]
-		var row := make_row(bot_preview(GameData.circuit_opponent(off, int(off["size"]) - 1)), "%s  %s" % [off["name"], "★".repeat(int(off["tier"]))],
-				"%d fights. Cup prize $%d plus a free part. Final boss shown." % [int(off["size"]), int(off["prize"])])
-		row_button(row, "Enter", _on_enter_cup.bind(k), true, 100)
-	make_row(bot_preview(GameData.OPPONENTS[GameData.OPPONENTS.size() - 1]), "OVERLORD rematch",
-			"Exhibition bout for $%d - the fight button starts it when no cup is active." % GameData.EXHIBITION_REWARD)
+		var preview_cup := Career.new_cup(off["name"], int(off["tier"]), int(off["seed"]), GameData.week, GameData.year, int(off["prize"]))
+		var row := make_row(bot_preview(Career.robot_of(preview_cup, 1 + int(off["seed"]) % 7)), "%s  %s" % [off["name"], "★".repeat(int(off["tier"]))],
+				"8 pilots, 3 weeks. Gold $%d + a new part, silver $%d, bronze $%d." % [int(off["prize"]), int(off["prize"] * 0.5), int(off["prize"] * 0.3)])
+		row_button(row, "Enter", _on_enter_cup.bind(k), free and fits, 100)
+	if GameData.champion:
+		var row := make_row(bot_preview(GameData.OPPONENTS[GameData.OPPONENTS.size() - 1]), "OVERLORD rematch",
+				"Exhibition bout in the Grand Hall for $%d. Takes a week." % GameData.EXHIBITION_REWARD)
+		row_button(row, "Book it", _on_rematch, free and not GameData.exhibition, 100)
+
+
+# ---------------------------------------------------------------- season
+
+## The year at a glance: a cell per week, colored by what's on.
+class CalendarStrip extends Control:
+	const COLORS := {"scrap": Color(0.6, 0.38, 0.2), "regional": Color(0.25, 0.45, 0.8), "championship": Color(0.85, 0.68, 0.2)}
+
+	func _draw() -> void:
+		var n: int = Career.WEEKS_PER_YEAR
+		var cw := size.x / n
+		var f := ThemeDB.fallback_font
+		for stage in Career.ORDER:
+			var info: Dictionary = Career.STAGES[stage]
+			var start: int = info["start"]
+			var length: int = int(info["size"]) - 1 + Career.playoff_rounds(int(info["playoff"]))
+			var c: Color = COLORS[stage]
+			ci_rect(Rect2((start - 1) * cw, 6, length * cw, 18), c)
+			draw_string(f, Vector2((start - 1) * cw, 40), str(info["short"]), HORIZONTAL_ALIGNMENT_LEFT, maxf(40.0, length * cw + 40.0), 11, c.lightened(0.3))
+		var cup: Dictionary = GameData.circuit
+		if not cup.is_empty():
+			for w in cup["weeks"]:
+				ci_rect(Rect2((int(w) - 1) * cw, 6, cw, 18), Color(0.65, 0.35, 0.85))
+		for k in n:
+			draw_line(Vector2(k * cw, 6), Vector2(k * cw, 24), Color(0, 0, 0, 0.35), 1.0)
+		var x := (GameData.week - 1) * cw
+		draw_rect(Rect2(x - 1, 2, cw + 2, 26), Color(1, 1, 1), false, 2.0)
+		draw_string(f, Vector2(x - 20, 52), "NOW", HORIZONTAL_ALIGNMENT_CENTER, 40 + cw, 11, Color(1, 1, 1))
+
+	func ci_rect(r: Rect2, c: Color) -> void:
+		draw_rect(r, Color(c, 0.85))
+
+
+func build_season_tab() -> void:
+	var cal := CalendarStrip.new()
+	cal.custom_minimum_size = Vector2(0, 56)
+	list_box.add_child(cal)
+	var ev: Dictionary = GameData.event
+	var mode := GameData.fight_mode()
+	var nxt := GameData.next_event_info()
+	var head := "YEAR %d, WEEK %d.  Record %d-%d.  Medals: %d." % [GameData.year, GameData.week, GameData.wins, GameData.losses, GameData.trophies.size()]
+	if mode == "pickup" or mode == "open":
+		if str(nxt[0]) != "":
+			head += "  Next: the %s in %d week%s." % [Career.STAGES[nxt[0]]["name"], int(nxt[2]), "" if int(nxt[2]) == 1 else "s"]
+	section(head)
+	if mode == "pickup" or mode == "open":
+		section("A quiet week. Pick up a fight at the scrapyard for a few dollars (Fight button), enter a cup, or let the week pass.")
+		var bar := action_bar()
+		row_button(bar, "Rest a week", _on_rest, true, 150)
+		if str(nxt[0]) != "" and int(nxt[2]) > 1:
+			row_button(bar, "Skip to the %s" % Career.STAGES[nxt[0]]["short"].capitalize(), _on_skip, true, 0)
+	if ev.is_empty():
+		return
+	var info: Dictionary = Career.STAGES[ev["stage"]]
+	var status := "%s, year %d - " % [ev["name"], int(ev["year"])]
+	match ev["phase"]:
+		"league":
+			status += Career.round_name(ev)
+		"playoffs":
+			status += "PLAYOFFS: " + Career.round_name(ev)
+		_:
+			status += "FINAL RESULT: you " + Career.finish_text(ev)
+	section(status)
+	var rule := "Top 3 win medals - a medal gets you into the Regional." if int(info["playoff"]) == 0 else \
+			("Top 4 go to the playoffs - reaching the semifinals gets you into the Championship." if ev["stage"] == "regional" else
+			"Top 7 join the defending champion in the playoffs. Win the final to be champion.")
+	section(rule)
+	if not ev.get("bracket", {}).is_empty():
+		show_bracket(ev)
+	show_table(ev)
+
+
+func show_table(ev: Dictionary) -> void:
+	var info: Dictionary = Career.STAGES[ev["stage"]]
+	var zone: int = 3 if int(info["playoff"]) == 0 else int(info["playoff"]) - (1 if info.has("boss") else 0)
+	var widths := [34, 0, 70, 46, 46]
+	table_row(["#", "PILOT - ROBOT", "W-L", "PTS", "PARTS"], widths, Color(0.7, 0.7, 0.75), Color(0, 0, 0, 0))
+	var pos := 0
+	for id in Career.standings(ev):
+		var e := Career.pilot(ev, id)
+		if e.get("rival", -1) == 9 and ev["table"].get(str(id), [0, 0, 0, 0])[0] == 0 and ev["table"].get(str(id), [0, 0, 0, 0])[1] == 0:
+			continue   # the defending champion doesn't play the league
+		pos += 1
+		var t: Array = ev["table"].get(str(id), [0, 0, 0, 0])
+		var col := Color(1, 1, 1)
+		var bg := Color(0, 0, 0, 0)
+		if id == 0:
+			col = Color(1.0, 0.85, 0.3)
+			bg = Color(1.0, 0.7, 0.2, 0.15)
+		elif pos <= zone:
+			col = Color(0.65, 1.0, 0.7)
+		var medal := Career.medal_of(ev, id)
+		var mark: String = ["", " (GOLD)", " (SILVER)", " (BRONZE)"][medal]
+		table_row([str(pos) + ("*" if pos <= zone else ""), who(ev, id) + mark, "%d-%d" % [t[0], t[1]], str(t[2]), str(t[3])], widths, col, bg)
+
+
+func show_bracket(ev: Dictionary) -> void:
+	var br: Dictionary = ev["bracket"]
+	for r in br["rounds"].size():
+		var rnd: Array = br["rounds"][r]
+		var main := rnd.filter(func(m): return not m.get("bronze", false)).size()
+		section({4: "QUARTERFINALS", 2: "SEMIFINALS", 1: "FINAL + BRONZE MATCH" if rnd.size() == 2 else "FINAL"}.get(main, "ROUND"))
+		for m in rnd:
+			var a: int = m["a"]
+			var b: int = m["b"]
+			var w: int = m["w"]
+			var txt := "%s%s  vs  %s" % ["BRONZE: " if m.get("bronze", false) else "", who(ev, a), who(ev, b)]
+			if w >= 0:
+				txt += "   ->  %s wins" % (GameData.pilot_name if w == 0 else str(Career.pilot(ev, w).get("pilot", "?")))
+			var mine := a == 0 or b == 0
+			var col := Color(1.0, 0.85, 0.3) if mine else (Color(0.8, 0.8, 0.85) if w >= 0 else Color(1, 1, 1))
+			table_row([txt], [0], col, Color(1.0, 0.7, 0.2, 0.15) if mine else Color(0, 0, 0, 0))
+
+
+## "PILOT - ROBOT" for the table.
+func who(ev: Dictionary, id: int) -> String:
+	if id == 0:
+		return "%s - %s" % [GameData.pilot_name.to_upper(), GameData.robot_name]
+	var e := Career.pilot(ev, id)
+	var o := Career.robot_of(ev, id)
+	var pilot: String = str(o.get("pilot", e.get("pilot", "")))
+	if pilot == "":
+		pilot = str(e.get("pilot", "?"))
+	return "%s - %s" % [pilot, o.get("name", "?")]
+
+
+func table_row(cells: Array, widths: Array, col: Color, bg: Color) -> void:
+	var p := PanelContainer.new()
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = bg
+	sb.set_content_margin_all(2)
+	p.add_theme_stylebox_override("panel", sb)
+	var row := HBoxContainer.new()
+	p.add_child(row)
+	for k in cells.size():
+		var l := UI.label(str(cells[k]), 15, col)
+		l.clip_text = true
+		if int(widths[k]) > 0:
+			l.custom_minimum_size = Vector2(widths[k], 0)
+		else:
+			l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		row.add_child(l)
+	list_box.add_child(p)
+
+
+func _on_rest() -> void:
+	say(GameData.rest_week(), "click")
+	refresh()
+
+
+func _on_skip() -> void:
+	say(GameData.skip_to_next_event(), "click")
+	refresh()
+
+
+func _on_rematch() -> void:
+	GameData.pickup = {}
+	GameData.exhibition = true
+	GameData.save_game()
+	say("Booked: OVERLORD, in the Grand Hall. Hit the fight button when you're ready.", "fight")
+	refresh()
 
 
 func build_team_tab() -> void:
@@ -1362,7 +1530,7 @@ func _on_enter_cup(k: int) -> void:
 func _on_abandon() -> void:
 	GameData.abandon_circuit()
 	GameData.save_game()
-	say("Left the championship.", "error")
+	say("Left the cup.", "error")
 	refresh()
 
 
@@ -1390,7 +1558,8 @@ func _on_send() -> void:
 
 func _on_fight() -> void:
 	GameData.save_game()
-	if GameData.fight_mode() == "story" and GameData.queue_story("pre_%d" % GameData.fight_index, "res://fight.tscn"):
+	var idx := GameData.current_opponent_index()
+	if idx >= 0 and GameData.queue_story("pre_%d" % idx, "res://fight.tscn"):
 		get_tree().change_scene_to_file("res://story.tscn")
 	else:
 		get_tree().change_scene_to_file("res://fight.tscn")

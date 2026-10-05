@@ -39,7 +39,7 @@ func _ready() -> void:
 	Sfx.music("garage")
 	player_look = GameData.player_look()
 	player_look["scale"] = 1.3
-	enemy_look = GameData.look_from_spec(GameData.opponent_spec(clampi(GameData.fight_index, 0, GameData.OPPONENTS.size() - 1)))
+	enemy_look = GameData.look_from_spec(GameData.opponent_spec(clampi(GameData.current_opponent_index(), 0, GameData.OPPONENTS.size() - 1)))
 	enemy_look["scale"] = minf(enemy_look["scale"] * 1.3, 1.5)
 	layout()
 	crowd = Arena.make_crowd("packed", screen)

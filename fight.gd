@@ -353,8 +353,7 @@ func _ready() -> void:
 		f.foe = cpu
 	cpu = team_c[0]
 	player = team_p[0]
-	var seed_value := int(GameData.circuit.get("seed", 0)) if mode == "circuit" else 0
-	var venue := Arena.pick(mode, fight_idx, seed_value)
+	var venue: Array = GameData.current_arena()
 	arena_id = venue[0]
 	crowd_id = venue[1]
 	crowd = Arena.make_crowd(crowd_id, screen)
@@ -364,15 +363,9 @@ func _ready() -> void:
 	arena_layer.show_behind_parent = true
 	add_child(arena_layer)
 	OS.low_processor_usage_mode = false   # fights animate every frame
-	var boss := false
-	var pick := randi()
-	match mode:
-		"story", "exhibition":
-			boss = fight_idx == GameData.OPPONENTS.size() - 1
-			pick = fight_idx
-		"circuit":
-			boss = fight_idx == int(GameData.circuit["size"]) - 1
-			pick = int(GameData.circuit["seed"]) % 97 + fight_idx
+	# boss music for OVERLORD and for any final
+	var boss: bool = fight_idx == GameData.OPPONENTS.size() - 1 or title_text.ends_with("- FINAL")
+	var pick: int = fight_idx if fight_idx >= 0 else randi() % 97
 	Sfx.music("boss" if boss else Sfx.FIGHT_TRACKS[pick % Sfx.FIGHT_TRACKS.size()])
 	Sfx.play("crowd_cheer", 0.0, -9.0)   # the crowd warms up quietly; it gets loud on big moments
 	cheer = 3.0
@@ -1322,6 +1315,7 @@ func finish_match() -> void:
 	var ripped: Array = []
 	for f in team_c:
 		ripped += f.ripped
+	GameData.last_ko = ko_text
 	result = GameData.record_result(won, part_hp, ripped.size(), ripped, team_hp)
 	phase = "results"
 	phase_timer = 0.0
@@ -1334,8 +1328,12 @@ func leave_after_results() -> void:
 		GameData.quick = {}
 		get_tree().change_scene_to_file("res://main.tscn")
 		return
-	var post := "post_%d" % fight_idx
-	if won and not exhibition and GameData.queue_story(post, "res://garage.tscn"):
+	var keys: Array = []
+	if won and mode == "story" and fight_idx >= 0:
+		keys.append("post_%d" % fight_idx)
+	keys += GameData.pending_stories   # league results: medals, qualifying, going out
+	GameData.pending_stories = []
+	if GameData.queue_stories(keys, "res://garage.tscn"):
 		get_tree().change_scene_to_file("res://story.tscn")
 		return
 	get_tree().change_scene_to_file("res://garage.tscn")
@@ -2237,14 +2235,30 @@ func draw_arena(ci: CanvasItem) -> void:
 	Arena.draw_floor(ci, arena_id, screen, floor_y, clock, off)
 	# ring: corner posts mark the walls, ropes run between them
 	var post_top := floor_y - 190.0
+	var ring: String = ar.get("ring", "")
 	for k in range(3):
 		var y := floor_y - 70.0 - k * 50.0
-		ci.draw_line(Vector2(wall_l, y), Vector2(wall_r, y), Color(Color(ar["rope"]), 0.75), 4.0)
+		if ring == "junk":
+			# chains strung between stacks of oil drums
+			var x := wall_l
+			while x < wall_r:
+				ci.draw_arc(Vector2(x + 6.0, y + sin(x * 0.01) * 4.0), 6.0, 0, TAU, 8, Color(ar["rope"]), 2.5)
+				x += 11.0
+		else:
+			ci.draw_line(Vector2(wall_l, y), Vector2(wall_r, y), Color(Color(ar["rope"]), 0.75), 4.0 if ring != "gold" else 6.0)
 	for x in [wall_l, wall_r]:
+		if ring == "junk":
+			for k in range(3):
+				var dy := floor_y - 62.0 - k * 64.0
+				var dc: Color = [Color(0.5, 0.2, 0.12), Color(0.2, 0.35, 0.5), Color(0.55, 0.45, 0.15)][k]
+				ci.draw_rect(Rect2(Vector2(x - 20.0, dy), Vector2(40.0, 60.0)), dc)
+				ci.draw_line(Vector2(x - 20.0, dy + 18.0), Vector2(x + 20.0, dy + 18.0), dc.darkened(0.35), 3.0)
+				ci.draw_line(Vector2(x - 20.0, dy + 42.0), Vector2(x + 20.0, dy + 42.0), dc.darkened(0.35), 3.0)
+			continue
 		ci.draw_rect(Rect2(Vector2(x - 9.0, post_top), Vector2(18.0, floor_y - post_top)), Color(ar["post"]))
-		ci.draw_rect(Rect2(Vector2(x - 12.0, post_top - 10.0), Vector2(24.0, 14.0)), Color(ar["rope"]))
+		ci.draw_rect(Rect2(Vector2(x - 12.0, post_top - 10.0), Vector2(24.0, 14.0)), Color(ar["rope"]) if ring != "gold" else Color(ar["post"]).lightened(0.2))
 		for k in range(3):
-			ci.draw_rect(Rect2(Vector2(x - 11.0, floor_y - 76.0 - k * 50.0), Vector2(22.0, 12.0)), Color(0.9, 0.9, 0.95))
+			ci.draw_rect(Rect2(Vector2(x - 11.0, floor_y - 76.0 - k * 50.0), Vector2(22.0, 12.0)), Color(0.9, 0.9, 0.95) if ring != "gold" else Color(0.95, 0.8, 0.4))
 
 
 func draw_cables(off: Vector2) -> void:
@@ -2582,7 +2596,7 @@ func draw_hud() -> void:
 			if phase_timer < 1.0 and opp.has("team_label"):
 				draw_string(font, Vector2(0, cy - 70), str(opp["team_label"]), HORIZONTAL_ALIGNMENT_CENTER, screen.x, fs(26), Color(1.0, 0.85, 0.2))
 			draw_string(font, Vector2(0, cy), t, HORIZONTAL_ALIGNMENT_CENTER, screen.x, fs(72), Color(1.0, 0.3, 0.2))
-			if mode == "story" or mode == "exhibition":
+			if mode != "quick":
 				var who := str(opp.get("pilot", ""))
 				draw_string(font, Vector2(0, cy + 78), ("Pilot: %s" % who) if who != "" else "No pilot - Kane Dynamics fight program",
 						HORIZONTAL_ALIGNMENT_CENTER, screen.x, fs(18), Color(1.0, 0.8, 0.5))
@@ -2625,7 +2639,9 @@ func draw_results() -> void:
 	if result.get("champion", false):
 		lines.append(["YOU ARE THE CHAMPION!", Color(1.0, 0.5, 0.2)])
 	if result.get("cup_done", "") != "":
-		lines.append(["CUP WON: %s" % result["cup_done"], Color(1.0, 0.5, 0.2)])
+		lines.append(["CUP OVER - %s" % result["cup_done"], Color(1.0, 0.5, 0.2)])
+	if result.get("event_done", "") != "":
+		lines.append(["SEASON OVER - %s" % result["event_done"], Color(1.0, 0.5, 0.2)])
 	for l in lines:
 		draw_string(font, Vector2(0, y), l[0], HORIZONTAL_ALIGNMENT_CENTER, screen.x, fs(24), l[1])
 		y += 38.0
@@ -2720,7 +2736,7 @@ func setup_pilots() -> void:
 		mine = random_pilot_look(str(GameData.quick["player"]["name"]))
 	var theirs := {}
 	var auto := false
-	if mode == "story" or mode == "exhibition":
+	if mode != "quick":
 		var who := str(opp.get("pilot", ""))
 		auto = who == ""
 		theirs = Story.SPEAKERS.get(who, {}).get("face", {})
