@@ -1464,6 +1464,9 @@ var bet_stake := 50
 
 ## Bets: put money on yourself, or on anyone else's fight this round. Odds come from the table.
 func build_bets() -> void:
+	if GameData.bet_target() == "self":
+		build_self_bets()
+		return
 	var ev := GameData.bet_event()
 	section("This round's fights. Odds come from records and robots - a pilot nobody rates pays big. Bets need real cash. Watch a fight and its result is the real one.")
 	var bar := action_bar()
@@ -1492,6 +1495,27 @@ func build_bets() -> void:
 		for x in mine:
 			var who: String = GameData.pilot_name if x["pick"] == 0 else str(Career.pilot(ev, x["pick"]).get("pilot", "?"))
 			section(tr("  $%d on %s at %.2fx  ->  pays $%d") % [x["stake"], who, x["odds"], int(x["stake"] * x["odds"])])
+
+
+## No league round this week: the bookies still take money on your own fight.
+func build_self_bets() -> void:
+	var o := GameData.current_opponent()
+	section("No league round this week - but the bookies at the scrapyard will still take money on you. Bets need real cash.")
+	var bar := action_bar()
+	bar.add_child(UI.label("Stake:", 16))
+	for st in [10, 50, 100, 250, 500]:
+		var b := row_button(bar, "$%d" % st, _on_stake.bind(st), true, 80)
+		b.toggle_mode = true
+		b.button_pressed = st == bet_stake
+	var odds := GameData.self_odds()
+	var row := make_row(bot_preview(o), tr("%s vs %s") % [GameData.pilot_name, str(o.get("name", "?"))],
+			tr("%s to win: %.2fx - a $%d bet pays $%d.") % [GameData.pilot_name, odds, bet_stake, int(bet_stake * odds)])
+	row_button(row, "Bet", _on_bet.bind(0, -1), GameData.money >= bet_stake, 80)
+	var mine: Array = GameData.bets.filter(func(x): return x["on"] == "self")
+	if not mine.is_empty():
+		section("Your bets on this fight:")
+		for x in mine:
+			section(tr("  $%d on %s at %.2fx  ->  pays $%d") % [x["stake"], GameData.pilot_name, x["odds"], int(x["stake"] * x["odds"])])
 
 
 ## One side of a match: pilot, robot, record, odds and a Bet button.

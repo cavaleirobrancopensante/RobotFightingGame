@@ -267,7 +267,7 @@ var pending_stories: Array = []   # scenes the last result unlocked (shown after
 var last_ko := ""
 var bills_note := 0         # living costs charged since the garage last showed them
 var fight_log: Array = []   # every fight: {y, w, opp, won, mode, title} - for the calendar
-var bets: Array = []        # this week's bets: {on: "event"/"cup", round, pick, vs, stake, odds}
+var bets: Array = []        # this week's bets: {on: "event"/"cup"/"self", round, pick, vs, stake, odds}
 var wins := 0
 var losses := 0
 var champion := false
@@ -1337,6 +1337,7 @@ func next_event_info() -> Array:
 
 
 func rest_week() -> String:
+	refund_self_bets()
 	pickup = {}
 	advance_week(1)
 	save_game()
@@ -1349,6 +1350,7 @@ func skip_to_next_event() -> String:
 		return "Nothing on the calendar."
 	if not circuit.is_empty() and circuit.get("phase", "") != "done":
 		return "You're in a cup - no skipping ahead. Its next round is on Wednesday."
+	refund_self_bets()
 	pickup = {}
 	advance_week(int(nxt[2]))
 	save_game()
@@ -1399,14 +1401,57 @@ func week_plan(y: int, w: int, d: String = "sat") -> Dictionary:
 
 # ---------------------------------------------------------------- betting
 
-## The event you can bet on this week ("event" or "cup"), or "".
+## The event you can bet on this week ("event" or "cup"), "self" (a pickup or exhibition: the
+## bookies only take bets on you), or "" (nothing).
 func bet_target() -> String:
 	match fight_mode():
 		"story":
 			return "event"
 		"circuit":
 			return "cup"
+		"pickup", "exhibition":
+			return "self"
 	return ""
+
+
+## The bookies' price on you winning your next pickup or exhibition fight.
+func self_odds() -> float:
+	var o := current_opponent()
+	var p := 0.5
+	if o.has("parts"):
+		var mine := World.rating({"parts": equipped_ids(), "hp": 1.0, "damage": 1.0}, 0.5)
+		var skill := 0.3
+		if o.has("wid"):
+			skill = float(World.pilot(int(o["wid"])).get("skill", 0.3))
+		elif fight_mode() == "exhibition":
+			skill = 0.95
+		p = World.win_chance(mine, World.rating(o, skill))
+	return snappedf(maxf(1.05, 0.9 / clampf(p, 0.08, 0.92)), 0.05)
+
+
+## Bets on yourself in a pickup or exhibition fight that never happened go back to you.
+func refund_self_bets() -> void:
+	for b in bets:
+		if b["on"] == "self":
+			money += int(b["stake"])
+	bets = bets.filter(func(b): return b["on"] != "self")
+
+
+func settle_self_bets(won: bool) -> Dictionary:
+	var out := {"paid": 0, "staked": 0, "lines": []}
+	for b in bets:
+		if b["on"] != "self":
+			continue
+		out["staked"] += b["stake"]
+		if won:
+			var pay := int(b["stake"] * b["odds"])
+			money += pay
+			out["paid"] += pay
+			out["lines"].append(tr("Bet on %s: +$%d") % [pilot_name, pay])
+		else:
+			out["lines"].append(tr("Bet on %s: lost $%d") % [pilot_name, b["stake"]])
+	bets = bets.filter(func(b): return b["on"] != "self")
+	return out
 
 
 func bet_event() -> Dictionary:
@@ -1415,6 +1460,13 @@ func bet_event() -> Dictionary:
 
 ## Put money on pilot `pick` beating `vs` this round. Needs real cash.
 func place_bet(pick: int, vs: int, stake: int) -> String:
+	if bet_target() == "self":
+		if money < stake:
+			return tr("You need $%d in cash to place that bet.") % stake
+		var so := self_odds()
+		money -= stake
+		bets.append({"on": "self", "round": 0, "pick": 0, "vs": -1, "stake": stake, "odds": so})
+		return tr("$%d on %s at %.2fx - pays $%d if they win.") % [stake, pilot_name, so, int(stake * so)]
 	var ev := bet_event()
 	if ev.is_empty():
 		return "Nothing to bet on this week."
@@ -2174,6 +2226,7 @@ func record_result(won: bool, part_hp: Dictionary, destroyed: int, salvage_ids: 
 				cup_done = finish_cup()
 			day = "sat"   # Wednesday's done: Saturday's next, same week
 		"exhibition", "pickup":
+			bet_result = settle_self_bets(won)
 			advance_week(1)
 	exhibition = false
 	pickup = {}
