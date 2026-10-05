@@ -298,6 +298,8 @@ const TEAM_POWER := 40.0
 var style := "striker"        # fighting style: tank, striker, mechanic, specialist
 var style_locked := false     # one style change between fights (no switching to Mechanic just to repair cheap)
 var shop_stock: Array = []    # part ids for sale right now (changes after every fight)
+var chip_stock: Array = []    # training chips the dealer has right now (rolled with the parts)
+const CHIP_ORDER_MARKUP := 2.0   # ordering a chip made to order costs double
 var scout := {}               # scouting report on the next opponent: {key, spied_back, change}
 var owned_chips: Array = []   # special-move chips bought
 var chips: Array = []         # chips installed (only the first chip_slots() of them run)
@@ -632,6 +634,10 @@ func roll_stock() -> void:
 			stretch.append(id)
 	if not stretch.is_empty():
 		shop_stock.append(stretch[randi() % stretch.size()])
+	# training chips are just more stock: one or two the dealer happens to have
+	var chips_pool: Array = chip_ids().filter(func(id): return not owned_chips.has(id) and int(Specials.MOVES[id]["cost"]) <= max_cost * 1.6)
+	chips_pool.shuffle()
+	chip_stock = chips_pool.slice(0, 1 + (1 if randf() < 0.5 else 0))
 
 
 func reroll_stock() -> String:
@@ -848,13 +854,25 @@ func active_chips() -> Array:
 	return chips.slice(0, chip_slots())
 
 
-func buy_chip(id: String) -> String:
+## Every chip that can be bought (signature moves come with a fighting style instead).
+static func chip_ids() -> Array:
+	return Specials.MOVES.keys().filter(func(x): return not Specials.MOVES[x].has("style"))
+
+
+func chip_price(id: String, ordered: bool = false) -> int:
+	return int(int(Specials.MOVES[id]["cost"]) * (CHIP_ORDER_MARKUP if ordered else 1.0))
+
+
+## Buy a chip from the dealer's stock, or (ordered = true) have any chip made to order for double.
+func buy_chip(id: String, ordered: bool = false) -> String:
 	var m: Dictionary = Specials.MOVES[id]
 	if owned_chips.has(id):
 		return tr("You already own %s.") % tr(m["name"])
-	if money < m["cost"]:
+	var price := chip_price(id, ordered)
+	if money < price:
 		return "Not enough money."
-	money -= m["cost"]
+	money -= price
+	chip_stock.erase(id)
 	owned_chips.append(id)
 	if chips.size() < chip_slots():
 		chips.append(id)
@@ -1613,7 +1631,7 @@ func tip_once(id: String) -> bool:
 
 
 ## Wins needed for each feature: one new thing per win, so Gus can explain each one on its own.
-const UNLOCKS := {"scrapyard": 0, "season": 0, "style": 1, "shop": 2, "scout": 3, "moves": 4, "cups": 5, "team": 6,
+const UNLOCKS := {"scrapyard": 0, "season": 0, "style": 1, "shop": 2, "moves": 2, "scout": 3, "cups": 5, "team": 6,
 		"workshop": 7, "pilot": 8, "paint": 9, "setups": 10, "randomize": 11}
 
 
@@ -1628,10 +1646,10 @@ func unlocked(feature: String) -> bool:
 ## Gus scene ("unlock_<feature>") and then opens it. [feature, garage tab or "" for a button,
 ## the old one-line tip id (saves from before the scenes count it as already explained)]
 const UNLOCK_SCENES := [["scrapyard", "", "scrapyard"], ["storage", "", ""], ["style", "", "style"],
-		["shop", "Shop", "shop"], ["season", "Season", "season"], ["scout", "", "scout"], ["moves", "Moves", "moves"],
+		["shop", "Shop", "shop"], ["season", "Season", "season"], ["scout", "", "scout"], ["moves", "", "moves"],
 		["cups", "Cups", ""], ["team", "Team", "backup"], ["workshop", "", "workshop"], ["pilot", "", "pilot"],
 		["paint", "", "pilot"], ["setups", "", "setups"], ["randomize", "", "setups"]]
-const TAB_FEATURES := {"Shop": "shop", "Season": "season", "Moves": "moves",
+const TAB_FEATURES := {"Shop": "shop", "Season": "season",
 		"Cups": "cups", "Team": "team"}
 var open_tab := ""      # garage tab to open after an unlock scene
 var open_action := ""   # garage button to press after an unlock scene (style, pilot, paint, ...)
@@ -1711,12 +1729,22 @@ func tab_tip(tab: String) -> String:
 
 ## Dig through the scrapyard pile. Returns {"text", "part"} (part = id found, or "").
 ## One dig = one part, always beaten up. Mostly junk, sometimes something decent, rarely a real find.
+const CHIP_DIG_CHANCE := 0.04
+
+
 ## One dig in the scrapyard. kind = "" digs anywhere (better odds of something good), or
 ## "head" / "torso" / "arm" / "leg" digs for that part - you get one, but it's mostly junk.
 func dig_scrap(kind: String = "") -> Dictionary:
 	if digs_left <= 0:
 		return {"text": "Too tired to dig. The pile will still be here after the next fight.", "part": ""}
 	digs_left -= 1
+	# now and then, digging anywhere turns up a training chip (you can't dig for one)
+	var unowned: Array = chip_ids().filter(func(id): return not owned_chips.has(id))
+	if kind == "" and not unowned.is_empty() and randf() < CHIP_DIG_CHANCE:
+		var cid: String = unowned[randi() % unowned.size()]
+		owned_chips.append(cid)
+		var cm: Dictionary = Specials.MOVES[cid]
+		return {"text": tr("Buried in the junk: a training chip - %s! It's yours (see Chips).") % tr(cm["name"]), "part": "", "chip": cid, "grade": "chip"}
 	var r := randf()
 	var good_odds := 0.12 if kind == "" else 0.04
 	var decent_odds := 0.5 if kind == "" else 0.22
@@ -2549,7 +2577,7 @@ func save_game() -> bool:
 		"owned_chips": owned_chips, "chips": chips, "circuit": circuit, "circuit_offers": circuit_offers,
 		"circuits_won": circuits_won, "pickup": pickup, "setups": setups, "custom_parts": custom_parts,
 		"year": year, "week": week, "rank": rank, "event": event, "trophies": trophies, "career_stats": career_stats,
-		"style": style, "style_locked": style_locked, "shop_stock": shop_stock, "scout": scout, "wingmen": wingmen, "sending": sending, "pilot_look": pilot_look, "owned_controllers": owned_controllers, "tips_seen": tips_seen, "digs_left": digs_left, "bills_note": bills_note, "fight_log": fight_log, "bets": bets, "world": world,
+		"style": style, "style_locked": style_locked, "shop_stock": shop_stock, "chip_stock": chip_stock, "scout": scout, "wingmen": wingmen, "sending": sending, "pilot_look": pilot_look, "owned_controllers": owned_controllers, "tips_seen": tips_seen, "digs_left": digs_left, "bills_note": bills_note, "fight_log": fight_log, "bets": bets, "world": world,
 	}
 	var f := FileAccess.open(slot_path(save_slot), FileAccess.WRITE)
 	if f == null:
@@ -2648,6 +2676,7 @@ func load_game(slot: int = -1) -> String:
 	if not Catalog.STYLES.has(style):
 		style = "striker"
 	shop_stock = data.get("shop_stock", []).filter(func(id): return PARTS.has(id))
+	chip_stock = data.get("chip_stock", []).filter(func(id): return Specials.MOVES.has(id) and not owned_chips.has(id))
 	if shop_stock.is_empty():
 		roll_stock()
 	scout = data.get("scout", {})

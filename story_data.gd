@@ -228,7 +228,7 @@ const SCENES := {
 	]},
 	"unlock_moves": {"place": "GUS'S BAY", "lines": [
 		["GUS", "Your dad used to swear by these. Training chips. Each one teaches the robot a special move - rocket punches, sweeps, slams."],
-		["GUS", "They plug into the head, and a better head holds more of them. The Moves tab is where you buy them and slot them in."],
+		["GUS", "They plug into the head, and a better head holds more of them. The dealer keeps a chip or two, you can have one made to order, and now and then one turns up in the scrapyard."],
 		["YOU", "And then I just... do the move?"],
 		["GUS", "You punch in the combo on the controller. Practise it. A move you can't pull off is just an expensive paperweight."],
 	]},

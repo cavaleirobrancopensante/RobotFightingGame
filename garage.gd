@@ -22,6 +22,8 @@ const STAT_NAMES := {"hp": "Health", "armor": "Armor", "damage": "Damage", "spee
 var tab := "Build"
 var selected := ""          # Build tab: "" = overview, a slot name, or "storage"
 var shop_kind := "arm"
+var shop_filter := "all"      # Shop/Storage category dropdowns: "all", a part kind, "chip" or "pilot"
+var storage_filter := "all"
 var ws := {}                # workshop design in progress
 var title_label: Label
 var money_label: Label
@@ -253,6 +255,8 @@ func _ready() -> void:
 		"order":
 			shop_view = "order"
 			refresh()
+		"chips":
+			_on_slot("chips")
 		"scout":
 			open_fight_popup()   # Gus explained scouting: back to the pre-fight window
 
@@ -263,8 +267,6 @@ func tab_list() -> Array:
 		t.append("Shop")
 	if GameData.unlocked("season"):
 		t.append("Season")
-	if GameData.unlocked("moves"):
-		t.append("Moves")
 	if GameData.cups_unlocked():
 		t.append("Cups")
 	if GameData.team_unlocked():
@@ -393,12 +395,12 @@ func refresh() -> void:
 				build_storage()
 			elif selected == "scrapyard":
 				build_scrapyard_tab()
+			elif selected == "chips":
+				build_moves_tab()
 			else:
 				build_slot(selected)
 		"Shop":
 			build_shop_tab()
-		"Moves":
-			build_moves_tab()
 		"Cups":
 			build_cups_tab()
 		"Season":
@@ -546,6 +548,47 @@ func action_bar(parent: Control = null) -> HBoxContainer:
 	return bar
 
 
+## A "Show: All parts (10) v" dropdown. entries: [[key, label, count], ...] - empty categories are left out.
+## Returns the key actually in use (falls back to "all" when the chosen category ran empty).
+func category_dropdown(entries: Array, current: String, cb: Callable) -> String:
+	var shown: Array = entries.filter(func(e): return e[0] == "all" or int(e[2]) > 0)
+	if not shown.any(func(e): return e[0] == current):
+		current = "all"
+	var bar := action_bar()
+	var l := UI.label(tr("Show:"), 16, Color(0.8, 0.8, 0.85))
+	l.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	bar.add_child(l)
+	var ob := OptionButton.new()
+	ob.custom_minimum_size = Vector2(260, 48)
+	ob.add_theme_font_size_override("font_size", 17)
+	ob.get_popup().add_theme_font_size_override("font_size", 22)
+	ob.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
+	for i in shown.size():
+		ob.add_item(tr("%s (%d)") % [tr(shown[i][1]), int(shown[i][2])], i)
+		if shown[i][0] == current:
+			ob.select(i)
+	ob.item_selected.connect(func(i): cb.call(shown[i][0]))
+	bar.add_child(ob)
+	return current
+
+
+func kind_entries(kinds: Array, all_label: String) -> Array:
+	var out := [["all", all_label, kinds.size()]]
+	for k in GameData.KINDS:
+		out.append([k, GameData.KIND_NAMES[k], kinds.count(k)])
+	return out
+
+
+func _on_shop_filter(key: String) -> void:
+	shop_filter = key
+	refresh()
+
+
+func _on_storage_filter(key: String) -> void:
+	storage_filter = key
+	refresh()
+
+
 func health_text(p: Dictionary) -> String:
 	var d := GameData.part_def(p["id"])
 	if GameData.UNDAMAGEABLE.has(d["kind"]):
@@ -575,6 +618,8 @@ func build_overview() -> void:
 	if GameData.unlocked("style"):
 		row_button(bar, star(tr("Style: %s") % tr(Catalog.STYLES[GameData.style]["name"]), "style"), _on_open_style, true, 150)
 	row_button(bar, star(tr("Storage (%d)") % GameData.spares().size(), "storage"), _on_slot.bind("storage"), true, 125)
+	if GameData.unlocked("moves"):
+		row_button(bar, star(tr("Chips (%d/%d)") % [GameData.active_chips().size(), GameData.chip_slots()], "moves"), _on_slot.bind("chips"), true, 125)
 	if GameData.unlocked("scrapyard"):
 		# the star comes back after every fight: there's a fresh dig waiting
 		row_button(bar, tr("Scrapyard") + (" ★" if GameData.digs_left > 0 or GameData.is_new("scrapyard") else ""), _on_slot.bind("scrapyard"), true, 125)
@@ -682,8 +727,12 @@ func build_storage() -> void:
 		section("Storage is empty. Parts you remove, extra purchases, trophies and salvage end up here.")
 		return
 	section("Tap Fit to bolt a part onto the robot. You can also fix, rebuild or sell it here.")
+	var kinds: Array = list.map(func(p): return GameData.part_def(p["id"])["kind"])
+	storage_filter = category_dropdown(kind_entries(kinds, "All parts"), storage_filter, _on_storage_filter)
 	for p in list:
 		var d := GameData.part_def(p["id"])
+		if storage_filter != "all" and d["kind"] != storage_filter:
+			continue
 		var wreck := GameData.is_wreck(p)
 		var tag := tr("  (WRECKED)") if wreck else ("" if d["shop"] else tr("  (rare)"))
 		var row := make_row(part_icon(d, GameData.hp_ratio(p)), tr("%s%s  [%s]") % [d["name"], tag, tr(str(d["kind"]).to_upper())], health_text(p))
@@ -932,6 +981,8 @@ func set_scene_for_tab() -> void:
 		scene = "storage"
 	elif tab == "Build" and selected == "scrapyard":
 		scene = "scrap"
+	elif tab == "Build" and selected == "chips":
+		scene = "moves"
 	preview.spot = GarageArt.robot_spot(scene)
 	preview.facing = 1 if scene == "paint" else -1
 	preview.queue_redraw()
@@ -964,6 +1015,7 @@ func _on_open_paint() -> void:
 
 # ---------------------------------------------------------------- SHOP
 
+var order_kind := "part"   # Order your own: "part" or "chip"
 var shop_view := "stock"   # Shop tab: "stock" (the dealer) or "order" (order your own part)
 
 
@@ -978,6 +1030,22 @@ func build_shop_tab() -> void:
 	else:
 		shop_view = "stock"
 	if shop_view == "order":
+		var kinds := action_bar()
+		for v in [["part", tr("A part")], ["chip", tr("A training chip")]]:
+			var kb := row_button(kinds, v[1], _on_order_kind.bind(v[0]), true, 0)
+			kb.toggle_mode = true
+			kb.button_pressed = order_kind == v[0]
+			kb.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		if order_kind == "chip":
+			section(tr("Any training chip, made to order - double the dealer's price."))
+			var any := false
+			for id in GameData.chip_ids():
+				if not GameData.owned_chips.has(id):
+					chip_row(id, true)
+					any = true
+			if not any:
+				section("You own every chip there is.")
+			return
 		build_workshop()
 		return
 	var bar := action_bar()
@@ -988,14 +1056,29 @@ func build_shop_tab() -> void:
 	row_button(bar, tr("Restock $%d") % GameData.REROLL_COST, _on_reroll, GameData.money >= GameData.REROLL_COST, 150)
 	var stock: Array = GameData.shop_stock.duplicate()
 	stock.sort_custom(func(a, b): return GameData.KINDS.find(GameData.part_def(a)["kind"]) < GameData.KINDS.find(GameData.part_def(b)["kind"]))
+	var chips: Array = GameData.chip_stock if GameData.unlocked("moves") else []
+	var gear: Array = PilotArt.CONTROLLERS if GameData.unlocked("pilot") else []
 	if stock.is_empty():
 		section("Sold out! New stock arrives after your next fight (or pay to restock now).")
+	var kinds: Array = stock.map(func(id): return GameData.part_def(id)["kind"])
+	var entries := kind_entries(kinds, "All parts")
+	entries[0][2] = stock.size() + chips.size() + gear.size()
+	entries.append(["chip", "Chips", chips.size()])
+	entries.append(["pilot", "Pilot gear", gear.size()])
+	shop_filter = category_dropdown(entries, shop_filter, _on_shop_filter)
+	var f := shop_filter
 	for id in stock:
 		var d := GameData.part_def(id)
+		if f != "all" and d["kind"] != f:
+			continue
 		var tag := tr("  [%s]") % tr(str(d["kind"]).to_upper())
 		var row := make_row(part_icon(d), d["name"] + tag, GameData.part_stat_text(d))
 		row_button(row, tr("Buy $%d") % d["cost"], _on_buy.bind(id), GameData.money >= d["cost"], 115)
-	for id in (PilotArt.CONTROLLERS if GameData.unlocked("pilot") else []):
+	if (f == "all" or f == "chip") and not chips.is_empty():
+		section("TRAINING CHIPS - each one teaches your robot a special move:")
+		for id in chips.duplicate():
+			chip_row(id, false)
+	for id in (gear if f == "all" or f == "pilot" else []):
 		if id == PilotArt.CONTROLLERS[0]:
 			section("PILOT GEAR - controllers change how your robots fight:")
 		var cinfo: Dictionary = GameData.CONTROLLER_INFO[id]
@@ -1021,7 +1104,7 @@ func build_scrapyard_tab() -> void:
 	nav.add_child(title)
 	row_button(nav, tr("Storage (%d)") % GameData.spares().size(), _on_slot.bind("storage"), true, 125)
 	var bar := action_bar()
-	var info := UI.label(tr("A mountain of dead robots: one dig after every fight, one part per dig, always beaten up (15-50% health). Dig anywhere for the best odds of something good - or dig for the part you need, and take what the pile gives (mostly junk)."), 15, Color(1.0, 0.8, 0.4))
+	var info := UI.label(tr("A mountain of dead robots: one dig after every fight, one part per dig, always beaten up (15-50% health). Dig anywhere for the best odds of something good - or dig for the part you need, and take what the pile gives (mostly junk).") + "\n" + tr("Digging anywhere can also turn up a training chip, once in a long while - you can't dig for one."), 15, Color(1.0, 0.8, 0.4))
 	info.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	info.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	bar.add_child(info)
@@ -1067,7 +1150,7 @@ func _on_dig(kind: String = "") -> void:
 	var res := GameData.dig_scrap(kind)
 	dig_at = Time.get_ticks_msec() / 1000.0
 	dig_found = tr("Found something!") if res["part"] != "" else ""
-	say(res["text"], "break" if res["part"] != "" else "land")
+	say(res["text"], "buy" if res.has("chip") else ("break" if res["part"] != "" else "land"))
 	GameData.save_game()
 	refresh()
 
@@ -1167,10 +1250,19 @@ func build_workshop() -> void:
 var demo_chip := ""   # the move looping at the top of the Moves tab
 
 
+## Your training chips: plug them into the head (better heads have more slots), watch each move loop.
 func build_moves_tab() -> void:
-	section("Training chips teach special moves. Chip slots used: %d/%d (better heads have more). Inputs: → toward the enemy, ← away, ↓ down. Tap them quickly, then P or K."
+	var nav := action_bar()
+	row_button(nav, "< All parts", _on_slot.bind(""), true, 140)
+	var title := UI.label("CHIPS", 20, Color(1.0, 0.8, 0.4))
+	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	nav.add_child(title)
+	section(tr("Training chips teach special moves. They plug into the head: slots used %d/%d (better heads have more). Inputs: → toward the enemy, ← away, ↓ down. Tap them quickly, then P or K.")
 			% [GameData.active_chips().size(), GameData.chip_slots()])
-	var chip_ids: Array = Specials.MOVES.keys().filter(func(x): return not Specials.MOVES[x].has("style"))
+	var chip_ids: Array = GameData.owned_chips.duplicate()
+	if chip_ids.is_empty():
+		section("No chips yet. The dealer sells a chip or two in the Shop, you can order any chip made to order, and now and then the scrapyard coughs one up.")
+		return
 	if demo_chip == "" or not chip_ids.has(demo_chip):
 		demo_chip = GameData.chips[0] if not GameData.chips.is_empty() else (GameData.owned_chips[0] if not GameData.owned_chips.is_empty() else chip_ids[0])
 	# the selected move, looping: see it before you buy it, and get used to it before a fight
@@ -1186,11 +1278,9 @@ func build_moves_tab() -> void:
 	info.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	info.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	top.add_child(info)
-	for id in Specials.MOVES:
+	for id in chip_ids:
 		var m: Dictionary = Specials.MOVES[id]
-		if m.has("style"):
-			continue   # signature moves come with the fighting style
-		var owned := GameData.owned_chips.has(id)
+		var owned := true
 		var installed := GameData.chips.has(id)
 		var icon := ChipIcon.new()
 		icon.installed = installed
@@ -1684,6 +1774,9 @@ func gus_explains(feature: String, tab_name: String = "") -> bool:
 	if feature == "workshop":
 		GameData.open_tab = "Shop"
 		GameData.open_action = "order"
+	if feature == "moves":
+		GameData.open_tab = "Build"
+		GameData.open_action = "chips"
 	if GameData.queue_story("unlock_" + feature, "res://garage.tscn"):
 		Sfx.play("click")
 		get_tree().change_scene_to_file("res://story.tscn")
@@ -1784,6 +1877,8 @@ func _on_slot(slot: String) -> void:
 		return
 	if slot == "scrapyard" and gus_explains("scrapyard"):
 		return
+	if slot == "chips" and gus_explains("moves"):
+		return
 	selected = slot
 	refresh()
 
@@ -1796,6 +1891,11 @@ func _on_shop_kind(kind: String) -> void:
 func _on_go_shop(kind: String) -> void:
 	tab = "Shop"
 	shop_kind = kind
+	refresh()
+
+
+func _on_order_kind(k: String) -> void:
+	order_kind = k
 	refresh()
 
 
@@ -2086,9 +2186,32 @@ func _on_sell_confirmed(uid: int) -> void:
 	refresh()
 
 
-func _on_buy_chip(id: String) -> void:
+## A chip for sale (from the dealer, or ordered = made to order): name, combo, what it does, a look, buy.
+func chip_row(id: String, ordered: bool) -> void:
+	var m: Dictionary = Specials.MOVES[id]
+	var icon := ChipIcon.new()
+	var row := make_row(icon, tr("%s    %s") % [tr(m["name"]), Specials.seq_text(m["seq"])], tr("%s  Cooldown %ds.") % [tr(m["desc"]), int(m["cd"])])
+	row_button(row, "See it", _on_chip_preview.bind(id), true, 90)
+	var price := GameData.chip_price(id, ordered)
+	row_button(row, (tr("Order $%d") if ordered else tr("Buy $%d")) % price, _on_buy_chip.bind(id, ordered), GameData.money >= price, 115)
+
+
+## Watch a chip's move before you buy it.
+func _on_chip_preview(id: String) -> void:
+	var m: Dictionary = Specials.MOVES[id]
+	var col := open_popup(tr(m["name"]).to_upper())
+	var demo := MoveDemo.new()
+	demo.custom_minimum_size = Vector2(480, 270)
+	demo.move = id
+	col.add_child(demo)
+	var l := UI.label(tr("%s   %s") % [Specials.seq_text(m["seq"]), tr(m["desc"])], 15, Color(0.5, 0.9, 1.0))
+	l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	col.add_child(l)
+
+
+func _on_buy_chip(id: String, ordered: bool = false) -> void:
 	var before := GameData.money
-	var text := GameData.buy_chip(id)
+	var text := GameData.buy_chip(id, ordered)
 	say(text, "buy" if GameData.money < before else "error")
 	refresh()
 
