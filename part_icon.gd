@@ -1,5 +1,7 @@
-class_name PartIcon
 extends Control
+
+# helper scripts, loaded by path so the game also runs without an editor scan
+const RobotArt = preload("res://robot_art.gd")
 ## Draws a single robot part (from a part definition) zoomed to fit the box.
 
 var part := {}       # part definition from GameData.PARTS

@@ -1,4 +1,12 @@
 extends Control
+
+# helper scripts, loaded by path so the game also runs without an editor scan
+const Catalog = preload("res://catalog.gd")
+const PartIcon = preload("res://part_icon.gd")
+const PilotArt = preload("res://pilot_art.gd")
+const RobotPreview = preload("res://robot_preview.gd")
+const Specials = preload("res://specials.gd")
+const UI = preload("res://ui.gd")
 ## Garage, organised in sections:
 ##   BUILD    - your robot slot by slot. Tap a slot (or a part on the robot picture) to swap,
 ##              repair or remove it. Setups, Paint and Storage open as popups.
@@ -32,9 +40,14 @@ class ControllerIcon extends Control:
 	var kind := "gamepad"
 	var t := 0.0
 
+	var _redraw_t := 0.0
+
 	func _process(delta: float) -> void:
 		t += delta
-		queue_redraw()
+		_redraw_t -= delta
+		if _redraw_t <= 0.0 and is_visible_in_tree():
+			_redraw_t = 1.0 / 30.0   # 30 fps is plenty for a little animated icon
+			queue_redraw()
 
 	func _draw() -> void:
 		draw_rect(Rect2(Vector2.ZERO, size), Color(0.12, 0.12, 0.17))

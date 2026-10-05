@@ -1,4 +1,12 @@
 extends Node
+
+# helper scripts, loaded by path so the game also runs without an editor scan
+const Catalog = preload("res://catalog.gd")
+const PilotArt = preload("res://pilot_art.gd")
+const RobotArt = preload("res://robot_art.gd")
+const Specials = preload("res://specials.gd")
+const Story = preload("res://story_data.gd")
+const UI = preload("res://ui.gd")
 ## Global game state (autoload "GameData"):
 ## parts catalog, inventory of part instances (each with its own health), what's equipped,
 ## championship progress, money, story progress, save/load, settings.
@@ -243,10 +251,121 @@ var chips: Array = []         # chips installed (only the first chip_slots() of 
 var last_result := {}       # handed from the fight to the garage
 var story_key := ""         # which story scene to show next
 var story_return := ""      # scene to go to after the story
-var settings := {"sound": true, "music": true, "shake": true, "button_size": 1, "difficulty": 1, "layout": {}, "team_controls": "split"}
+var settings := {"sound": true, "music": true, "shake": true, "button_size": 1, "difficulty": 1, "layout": {}, "team_controls": "split", "battery_saver": false}
+
+
+# ---------------------------------------------------------------- error log
+# Every error the game hits is kept here and saved to user://error_log.txt (so it survives a crash).
+# Settings > Error log shows them with a "Copy all" button.
+
+const ERROR_LOG_PATH := "user://error_log.txt"
+const ERROR_LOG_OLD_PATH := "user://error_log_previous.txt"
+const ERROR_LOG_MAX := 300
+
+
+class ErrorCatcher extends Logger:
+	var lines: Array = []
+	var dirty := false
+	var mutex := Mutex.new()
+
+	func _log_error(function: String, file: String, line: int, code: String, rationale: String,
+			_editor_notify: bool, error_type: int, script_backtraces: Array) -> void:
+		var kinds := ["ERROR", "WARNING", "SCRIPT ERROR", "SHADER ERROR"]
+		var text := "[%s] %s: %s\n    at %s:%d (%s)" % [Time.get_time_string_from_system(), kinds[clampi(error_type, 0, 3)],
+				rationale if rationale != "" else code, file, line, function]
+		for bt in script_backtraces:
+			if bt != null and bt.has_method("format"):
+				text += "\n" + str(bt.format())
+		add(text)
+
+	func _log_message(message: String, error: bool) -> void:
+		if error:
+			add("[%s] %s" % [Time.get_time_string_from_system(), message.strip_edges()])
+
+	func add(text: String) -> void:
+		mutex.lock()
+		lines.append(text)
+		if lines.size() > ERROR_LOG_MAX:
+			lines = lines.slice(lines.size() - ERROR_LOG_MAX)
+		dirty = true
+		mutex.unlock()
+
+	func snapshot() -> Array:
+		mutex.lock()
+		var out := lines.duplicate()
+		mutex.unlock()
+		return out
+
+
+var error_catcher := ErrorCatcher.new()
+var _error_flush_t := 0.0
+
+
+func start_error_log() -> void:
+	# keep the last session's log (that's the one with the crash in it)
+	if FileAccess.file_exists(ERROR_LOG_PATH):
+		DirAccess.rename_absolute(ProjectSettings.globalize_path(ERROR_LOG_PATH), ProjectSettings.globalize_path(ERROR_LOG_OLD_PATH))
+	OS.add_logger(error_catcher)
+	write_project_log()   # a fresh log for this session (also proves the game started)
+
+
+func _process(delta: float) -> void:
+	_error_flush_t -= delta
+	if error_catcher.dirty and _error_flush_t <= 0.0:
+		_error_flush_t = 1.0
+		flush_error_log()
+
+
+func flush_error_log() -> void:
+	error_catcher.dirty = false
+	var f := FileAccess.open(ERROR_LOG_PATH, FileAccess.WRITE)
+	if f:
+		f.store_string("\n\n".join(error_catcher.snapshot()))
+	write_project_log()
+
+
+## When the game runs from the Godot editor, also put the log in the project folder
+## (logs/last_session.txt) so it goes to GitHub with your next MGit push and Claude can read it.
+const PROJECT_LOG_PATH := "res://logs/last_session.txt"
+
+
+func write_project_log() -> void:
+	if not OS.has_feature("editor"):
+		return   # exported builds can't write into the project
+	if not DirAccess.dir_exists_absolute("res://logs"):
+		if DirAccess.make_dir_recursive_absolute("res://logs") != OK:
+			return
+	var f := FileAccess.open(PROJECT_LOG_PATH, FileAccess.WRITE)
+	if f:
+		f.store_string(error_log_text())
+
+
+## Everything for the Error log screen: this session, then the previous one.
+func error_log_text() -> String:
+	var now: Array = error_catcher.snapshot()
+	var text := "ROBOT FIGHTING GAME - error log (%s, Godot %s)\n\n== THIS SESSION: %d ==\n" % [
+			Time.get_datetime_string_from_system(false, true), Engine.get_version_info()["string"], now.size()]
+	text += "\n\n".join(now) if not now.is_empty() else "(no errors)"
+	if FileAccess.file_exists(ERROR_LOG_OLD_PATH):
+		var old := FileAccess.get_file_as_string(ERROR_LOG_OLD_PATH)
+		text += "\n\n== PREVIOUS SESSION ==\n" + (old if old.strip_edges() != "" else "(no errors)")
+	return text
+
+
+func error_count() -> int:
+	return error_catcher.snapshot().size()
+
+
+func clear_error_log() -> void:
+	error_catcher.mutex.lock()
+	error_catcher.lines.clear()
+	error_catcher.mutex.unlock()
+	flush_error_log()
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(ERROR_LOG_OLD_PATH))
 
 
 func _ready() -> void:
+	start_error_log()
 	for p in PART_LIST + Catalog.generate():
 		var d: Dictionary = p.duplicate()
 		ALL_PARTS.append(d["id"])
@@ -281,6 +400,7 @@ func _ready() -> void:
 				PARTS[v["id"]] = v
 				ALL_PARTS.append(v["id"])
 	load_settings()
+	apply_performance()
 	migrate_old_save()
 	get_tree().root.theme = UI.make_theme()
 	new_game()   # sensible defaults so any scene can run on its own
@@ -1466,6 +1586,20 @@ func custom_def(cfg: Dictionary) -> Dictionary:
 	}
 	if d["name"] == "":
 		d["name"] = "Custom %s %s" % [shape.capitalize(), kind.capitalize()]
+	# workshop parts are sized by the size slider: small, medium or large
+	d["size_class"] = "S" if cfg["size"] < 0.9 else ("L" if cfg["size"] > 1.1 else "M")
+	return fill_defaults(d)
+
+
+## Every part definition gets every field, whatever made it (catalog, workshop, old saves).
+static func fill_defaults(d: Dictionary) -> Dictionary:
+	var defaults := {"trait": "", "trait_lv": 0, "mounts": [], "hp": 0, "armor": 0, "damage": 0, "speed": 0,
+			"aim": 0, "draw": 0, "output": 0, "chips": 0, "shop": true, "size": 1.0, "shape": "", "gimmick": "", "size_class": "M"}
+	for k in defaults:
+		if not d.has(k):
+			d[k] = defaults[k] if typeof(defaults[k]) != TYPE_ARRAY else []
+	if d.get("kind", "") == "head" and d["chips"] == 0 and not d.get("custom", false):
+		d["chips"] = 1
 	return d
 
 
@@ -1663,6 +1797,7 @@ func load_game(slot: int = -1) -> String:
 		for k in ["hp", "armor", "damage", "speed", "aim", "draw", "output", "chips", "cost"]:
 			cd[k] = int(cd.get(k, 0))
 		cd["size"] = float(cd.get("size", 1.0))
+		fill_defaults(cd)
 		custom_parts.append(cd)
 		PARTS[cd["id"]] = cd
 	inventory = []
@@ -1741,6 +1876,12 @@ static func random_pilot_name() -> String:
 
 static func random_robot_name() -> String:
 	return ROBOT_FIRST[randi() % ROBOT_FIRST.size()] + ROBOT_LAST[randi() % ROBOT_LAST.size()]
+
+
+## Frame cap: 60, or 30 in battery saver. Menus use low-power mode (only redraw when something changes).
+func apply_performance() -> void:
+	Engine.max_fps = 30 if settings.get("battery_saver", false) else 60
+	OS.low_processor_usage_mode = true
 
 
 func save_settings() -> void:

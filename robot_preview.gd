@@ -1,5 +1,7 @@
-class_name RobotPreview
 extends Control
+
+# helper scripts, loaded by path so the game also runs without an editor scan
+const RobotArt = preload("res://robot_art.gd")
 ## A box that shows a robot standing on a floor. Used in the garage, menu, cups and story.
 ## With interactive = true, tapping a part emits part_tapped(slot) and highlights it.
 
@@ -20,10 +22,16 @@ func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_STOP if interactive else Control.MOUSE_FILTER_IGNORE
 
 
+var _redraw_t := 0.0
+
+
 func _process(delta: float) -> void:
-	if anim:
+	if anim and is_visible_in_tree():
 		t += delta
-		queue_redraw()
+		_redraw_t -= delta
+		if _redraw_t <= 0.0:
+			_redraw_t = 1.0 / 30.0   # idle animation doesn't need 60 fps
+			queue_redraw()
 
 
 func _draw() -> void:

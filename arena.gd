@@ -1,4 +1,3 @@
-class_name Arena
 extends RefCounted
 ## Fight venues and crowds. Any arena can host any crowd: story fights use them in story
 ## order, cups and quick fights mix and match them at random.

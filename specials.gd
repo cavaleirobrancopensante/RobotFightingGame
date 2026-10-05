@@ -1,4 +1,3 @@
-class_name Specials
 extends RefCounted
 ## Special moves (sold as training chips) and gadget parts.
 ##

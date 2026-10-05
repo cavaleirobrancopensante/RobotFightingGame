@@ -1,4 +1,3 @@
-class_name RobotArt
 extends RefCounted
 ## Draws robots out of simple shapes. Every part (head, torso, 2 arms, 2 legs) has its own
 ## shape, size, color and health, so robots look different and show their damage.

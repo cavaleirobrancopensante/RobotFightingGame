@@ -1,4 +1,3 @@
-class_name Story
 extends RefCounted
 ## All the story text. Each scene: {"place": where it happens, "lines": [[speaker, text], ...]}
 ## Scenes: "intro", "pre_N" (before championship fight N, 0-9), "post_N" (after winning it).

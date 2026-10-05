@@ -1,4 +1,8 @@
 extends Control
+
+# helper scripts, loaded by path so the game also runs without an editor scan
+const RobotPreview = preload("res://robot_preview.gd")
+const UI = preload("res://ui.gd")
 ## Main menu: New Game, Load Game, Settings, Quit.
 
 var new_button: Button

@@ -1,4 +1,10 @@
 extends Control
+
+# helper scripts, loaded by path so the game also runs without an editor scan
+const PilotArt = preload("res://pilot_art.gd")
+const RobotArt = preload("res://robot_art.gd")
+const Story = preload("res://story_data.gd")
+const UI = preload("res://ui.gd")
 ## Story screen: shows the scene in GameData.story_key line by line, then goes to GameData.story_return.
 ## Tap to reveal / advance. "Skip" jumps to the end.
 
@@ -24,9 +30,14 @@ class Portrait extends Control:
 	var t := 0.0
 	var talking := false
 
+	var _redraw_t := 0.0
+
 	func _process(delta: float) -> void:
 		t += delta
-		queue_redraw()
+		_redraw_t -= delta
+		if _redraw_t <= 0.0 and is_visible_in_tree():
+			_redraw_t = 1.0 / 30.0   # 30 fps is plenty for a little animated icon
+			queue_redraw()
 
 	func _draw() -> void:
 		draw_rect(Rect2(Vector2.ZERO, size), Color(0.12, 0.12, 0.17))
@@ -39,6 +50,15 @@ class Portrait extends Control:
 				var tall: float = -(g["head"] as Rect2).position.y + 30.0
 				RobotArt.draw(self, Vector2(c.x, size.y - 10.0), robot_look, {"scale": (size.y - 20.0) / tall, "time": t})
 			"GUS":
+				# work shirt and overalls, with the Kane-built robot arm on his right
+				draw_rect(Rect2(c.x - r * 1.25, c.y + r * 0.8, r * 2.5, size.y - c.y - r * 0.8), Color(0.55, 0.42, 0.3))
+				draw_rect(Rect2(c.x - r * 0.8, c.y + r * 1.25, r * 1.6, size.y - c.y - r * 1.25), Color(0.2, 0.3, 0.45))
+				draw_line(c + Vector2(-r * 0.6, r * 0.85), c + Vector2(-r * 0.6, r * 1.35), Color(0.2, 0.3, 0.45), r * 0.18)
+				draw_line(c + Vector2(r * 0.6, r * 0.85), c + Vector2(r * 0.6, r * 1.35), Color(0.2, 0.3, 0.45), r * 0.18)
+				draw_circle(c + Vector2(-r * 0.6, r * 1.3), r * 0.08, Color(0.85, 0.75, 0.3))
+				draw_circle(c + Vector2(r * 0.6, r * 1.3), r * 0.08, Color(0.85, 0.75, 0.3))
+				draw_rect(Rect2(c.x - r * 0.35, c.y + r * 1.55, r * 0.7, r * 0.45), Color(0.17, 0.26, 0.4))   # bib pocket
+				draw_rect(Rect2(c.x - r * 0.3, c.y + r * 0.7, r * 0.6, r * 0.3), Color(0.42, 0.27, 0.18))     # neck
 				draw_circle(c, r, Color(0.42, 0.27, 0.18))
 				draw_rect(Rect2(c.x - r * 1.1, c.y - r * 1.05, r * 2.2, r * 0.5), Color(0.2, 0.3, 0.45))   # cap
 				draw_rect(Rect2(c.x - r * 0.2, c.y - r * 0.65, r * 1.5, r * 0.18), Color(0.2, 0.3, 0.45))
@@ -46,7 +66,10 @@ class Portrait extends Control:
 				draw_circle(c + Vector2(r * 0.35, -r * 0.1), r * 0.1, Color.WHITE)
 				draw_circle(c + Vector2(0, r * 0.55), r * 0.55, Color(0.75, 0.75, 0.75))   # beard
 				draw_rect(Rect2(c.x - r * 0.3, c.y + r * 0.35, r * 0.6, mouth), Color(0.2, 0.1, 0.08))
-				draw_rect(Rect2(c.x + r * 0.9, c.y + r * 0.9, r * 0.5, r * 0.9), Color(0.6, 0.6, 0.65))  # robot arm
+				draw_rect(Rect2(c.x + r * 1.05, c.y + r * 0.9, r * 0.45, r * 1.5), Color(0.6, 0.6, 0.65))   # robot arm
+				draw_circle(c + Vector2(r * 1.27, r * 0.95), r * 0.24, Color(0.45, 0.45, 0.5))
+				draw_circle(c + Vector2(r * 1.27, r * 1.65), r * 0.12, Color(1.0, 0.6, 0.2))
+				draw_rect(Rect2(c.x - r * 1.5, c.y + r * 0.9, r * 0.45, r * 1.5), Color(0.55, 0.42, 0.3))    # flesh arm, sleeve
 			"KANE":
 				draw_circle(c + Vector2(0, -r * 0.15), r * 1.05, Color(0.08, 0.08, 0.1))  # hair
 				draw_circle(c, r * 0.85, Color(0.93, 0.8, 0.72))

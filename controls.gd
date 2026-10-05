@@ -1,4 +1,3 @@
-class_name Controls
 extends RefCounted
 ## Touch button layout, shared by the fight and the layout editor in Settings.
 ##

@@ -1,4 +1,3 @@
-class_name PilotArt
 extends RefCounted
 ## Draws pilots: the little doll in the fight corner, the story portraits and the garage preview.
 ##

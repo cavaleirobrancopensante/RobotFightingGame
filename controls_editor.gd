@@ -1,4 +1,9 @@
 extends Node2D
+
+# helper scripts, loaded by path so the game also runs without an editor scan
+const Arena = preload("res://arena.gd")
+const Controls = preload("res://controls.gd")
+const RobotArt = preload("res://robot_art.gd")
 ## Settings > Edit controls: a fight scene with the touch buttons on top.
 ## Drag any button to move it, tap SMALLER / BIGGER to resize the selected one,
 ## ALL - / ALL + to resize everything. "1 PAD / 2 PADS / 3 PADS" edits the split-control

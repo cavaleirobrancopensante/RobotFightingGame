@@ -1,4 +1,7 @@
 extends Control
+
+# helper scripts, loaded by path so the game also runs without an editor scan
+const UI = preload("res://ui.gd")
 ## Save slots. GameData.slot_mode decides what we're doing:
 ##   "new"  - pick a slot for a new game (empty, or overwrite), then name your pilot and robot
 ##   "load" - load or delete a save

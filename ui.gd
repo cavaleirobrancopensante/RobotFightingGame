@@ -1,4 +1,3 @@
-class_name UI
 extends RefCounted
 ## Small helpers for building menus in code, sized for a phone screen.
 ## SCALE makes every font and button bigger at once (1.25 = 25% bigger).

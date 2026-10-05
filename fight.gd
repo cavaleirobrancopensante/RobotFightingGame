@@ -1,4 +1,13 @@
 extends Node2D
+
+# helper scripts, loaded by path so the game also runs without an editor scan
+const Arena = preload("res://arena.gd")
+const Catalog = preload("res://catalog.gd")
+const Controls = preload("res://controls.gd")
+const PilotArt = preload("res://pilot_art.gd")
+const RobotArt = preload("res://robot_art.gd")
+const Specials = preload("res://specials.gd")
+const Story = preload("res://story_data.gd")
 ## Championship fight: ECHO vs the current opponent. One knockout bout with a timer.
 ##
 ## PARTS: every part (head, torso, 2 arms, 2 legs) has its own health. Tap a part of the enemy to
@@ -350,6 +359,11 @@ func _ready() -> void:
 	crowd_id = venue[1]
 	crowd = Arena.make_crowd(crowd_id, screen)
 	setup_pilots()
+	arena_layer = ArenaLayer.new()
+	arena_layer.fight = self
+	arena_layer.show_behind_parent = true
+	add_child(arena_layer)
+	OS.low_processor_usage_mode = false   # fights animate every frame
 	var boss := false
 	var pick := randi()
 	match mode:
@@ -362,6 +376,25 @@ func _ready() -> void:
 	Sfx.music("boss" if boss else Sfx.FIGHT_TRACKS[pick % Sfx.FIGHT_TRACKS.size()])
 	Sfx.play("crowd_cheer")
 	cheer = 3.0
+
+
+## Robots point at each other (foe), which would keep them alive forever after the fight.
+## Break those links when the fight screen closes so the memory is freed.
+func _exit_tree() -> void:
+	for f in team_p + team_c:
+		f.foe = null
+		f.ai.clear()
+	team_p.clear()
+	team_c.clear()
+	projectiles.clear()
+	gadget_buttons.clear()
+	pilots.clear()
+	player = null
+	cpu = null
+	focus = null
+	if arena_layer:
+		arena_layer.fight = null
+	OS.low_processor_usage_mode = true   # menus only redraw when something changes
 
 
 func make_fighter(spec: Dictionary) -> Fighter:
@@ -1187,6 +1220,10 @@ func _process(delta: float) -> void:
 
 	update_effects(delta)
 	update_pilots(delta)
+	arena_redraw_t -= delta
+	if arena_redraw_t <= 0.0 and arena_layer:
+		arena_redraw_t = 1.0 / ARENA_FPS
+		arena_layer.queue_redraw()
 	queue_redraw()
 
 
@@ -1201,6 +1238,8 @@ func update_effects(delta: float) -> void:
 	for r in rings:
 		r["t"] += delta
 	rings = rings.filter(func(r): return r["t"] < 0.4)
+	if debris.size() > 24:
+		debris = debris.slice(debris.size() - 24)   # old scrap disappears so it can't pile up forever
 	for d in debris:
 		d["vel"].y += GRAVITY * 0.8 * delta
 		d["pos"] += d["vel"] * delta
@@ -2096,7 +2135,8 @@ func _draw() -> void:
 	if shake > 0.0:
 		off = Vector2(randf_range(-shake, shake), randf_range(-shake, shake))
 
-	draw_arena(off)
+	if arena_layer:
+		arena_layer.position = off * 0.6   # screen shake moves the whole arena
 	for pd in pilots:
 		draw_pilot(pd, off)
 	draw_cables(off)
@@ -2152,27 +2192,43 @@ func _draw() -> void:
 		draw_moves_list()
 
 
-func draw_arena(off: Vector2) -> void:
-	draw_rect(Rect2(Vector2.ZERO, screen), Color(0.07, 0.07, 0.11))
-	Arena.draw_backdrop(self, arena_id, screen, floor_y, clock, off)
-	Arena.draw_crowd(self, crowd, crowd_id, screen, clock, cheer, off)
+## The arena lives on its own layer behind the fighters and is redrawn ~24 times a second
+## (the crowd doesn't need 60), which saves a good chunk of work every frame.
+class ArenaLayer extends Node2D:
+	var fight: Node2D
+
+	func _draw() -> void:
+		if fight:
+			fight.draw_arena(self)
+
+
+var arena_layer: ArenaLayer
+var arena_redraw_t := 0.0
+const ARENA_FPS := 24.0
+
+
+func draw_arena(ci: CanvasItem) -> void:
+	var off := Vector2.ZERO
+	ci.draw_rect(Rect2(Vector2(-40, -40), screen + Vector2(80, 80)), Color(0.07, 0.07, 0.11))
+	Arena.draw_backdrop(ci, arena_id, screen, floor_y, clock, off)
+	Arena.draw_crowd(ci, crowd, crowd_id, screen, clock, cheer, off)
 	var top := screen.y * 0.24
 	var ar: Dictionary = Arena.ARENAS[arena_id]
-	draw_rect(Rect2(0, top + 95.0, screen.x, floor_y - top - 95.0), Color(Color(ar["sky"][0]), 0.6))
+	ci.draw_rect(Rect2(0, top + 95.0, screen.x, floor_y - top - 95.0), Color(Color(ar["sky"][0]), 0.6))
 	var lc := Color(ar["light"])
 	for k in range(14):
-		draw_circle(Vector2(screen.x * (k + 0.5) / 14.0, screen.y * 0.21), 5.0, Color(lc, 0.45))
-	Arena.draw_floor(self, arena_id, screen, floor_y, clock, off)
+		ci.draw_circle(Vector2(screen.x * (k + 0.5) / 14.0, screen.y * 0.21), 5.0, Color(lc, 0.45))
+	Arena.draw_floor(ci, arena_id, screen, floor_y, clock, off)
 	# ring: corner posts mark the walls, ropes run between them
 	var post_top := floor_y - 190.0
 	for k in range(3):
 		var y := floor_y - 70.0 - k * 50.0
-		draw_line(Vector2(wall_l, y) + off, Vector2(wall_r, y) + off, Color(Color(ar["rope"]), 0.75), 4.0)
+		ci.draw_line(Vector2(wall_l, y), Vector2(wall_r, y), Color(Color(ar["rope"]), 0.75), 4.0)
 	for x in [wall_l, wall_r]:
-		draw_rect(Rect2(Vector2(x - 9.0, post_top) + off, Vector2(18.0, floor_y - post_top)), Color(ar["post"]))
-		draw_rect(Rect2(Vector2(x - 12.0, post_top - 10.0) + off, Vector2(24.0, 14.0)), Color(ar["rope"]))
+		ci.draw_rect(Rect2(Vector2(x - 9.0, post_top), Vector2(18.0, floor_y - post_top)), Color(ar["post"]))
+		ci.draw_rect(Rect2(Vector2(x - 12.0, post_top - 10.0), Vector2(24.0, 14.0)), Color(ar["rope"]))
 		for k in range(3):
-			draw_rect(Rect2(Vector2(x - 11.0, floor_y - 76.0 - k * 50.0) + off, Vector2(22.0, 12.0)), Color(0.9, 0.9, 0.95))
+			ci.draw_rect(Rect2(Vector2(x - 11.0, floor_y - 76.0 - k * 50.0), Vector2(22.0, 12.0)), Color(0.9, 0.9, 0.95))
 
 
 func draw_cables(off: Vector2) -> void:

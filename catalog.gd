@@ -1,4 +1,3 @@
-class_name Catalog
 extends RefCounted
 ## Extra content: manufacturer brands (with signature traits), fighting styles,
 ## and the generator that turns brands into parts.
