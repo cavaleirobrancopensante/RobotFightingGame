@@ -176,6 +176,7 @@ func _ready() -> void:
 	scroll = ScrollContainer.new()
 	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	UI.drag_scroll(scroll, func(): return overlay != null and is_instance_valid(overlay) and overlay.visible)
 	right.add_child(scroll)
 	list_box = VBoxContainer.new()
 	list_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -389,9 +390,10 @@ func refresh_stats() -> void:
 			Color(1.0, 0.35, 0.2) if over else POWER_COLOR)
 	if over:
 		stats_box.add_child(UI.label(tr("OVERLOADED: %d%% performance!") % int(s["efficiency"] * 100), 13, Color(1.0, 0.5, 0.3)))
-	var tank: float = float(s["power_output"]) * (1.25 if GameData.style == "tank" else 1.0)
-	var pl := UI.label(tr("Fight power %d - a punch costs ~1 per arm power, a kick ~2.6") % int(tank), 12, POWER_COLOR)
-	pl.tooltip_text = "In a fight your power output is your tank. Every move spends some; it refills when you stop attacking. Empty = burnout."
+	var spare: int = maxi(0, int(s["power_output"]) - int(s["power_used"]))
+	var tank: float = GameData.fight_tank(float(s["power_output"]), float(s["power_used"])) * (1.25 if GameData.style == "tank" else 1.0)
+	var pl := UI.label(tr("Fight power %d (+%d unused) - punch ~1 per arm power, kick ~2.6") % [int(tank), spare], 12, POWER_COLOR)
+	pl.tooltip_text = "In a fight your power output is your tank, and power your parts don't use is added on top. Every move spends some; it refills when you stop attacking. Empty = burnout."
 	stats_box.add_child(pl)
 	var wl := UI.label(tr("%s  (%d power)") % [tr(GameData.weight_class(s["power_used"])), s["power_used"]], 13, Color(0.8, 0.8, 0.9))
 	wl.tooltip_text = "Weight class = the power your parts draw. Teams share one heavyweight's power."
@@ -517,7 +519,7 @@ func health_text(p: Dictionary) -> String:
 	var d := GameData.part_def(p["id"])
 	if GameData.UNDAMAGEABLE.has(d["kind"]):
 		return GameData.part_stat_text(d)
-	return tr("Condition %d/%d  %s") % [ceili(p["hp"]), d["hp"], GameData.part_stat_text(d)]
+	return GameData.part_stat_text(d, float(p["hp"]))
 
 
 # ---------------------------------------------------------------- BUILD
@@ -639,12 +641,18 @@ func build_storage() -> void:
 	if list.is_empty():
 		section("Storage is empty. Parts you remove, extra purchases, trophies and salvage end up here.")
 		return
-	section("To fit a part, tap its slot on the robot. Here you can sell, scrap and rebuild.")
+	section("Tap Fit to bolt a part onto the robot. You can also fix, rebuild or sell it here.")
 	for p in list:
 		var d := GameData.part_def(p["id"])
 		var wreck := GameData.is_wreck(p)
 		var tag := tr("  (WRECKED)") if wreck else ("" if d["shop"] else tr("  (rare)"))
 		var row := make_row(part_icon(d, GameData.hp_ratio(p)), tr("%s%s  [%s]") % [d["name"], tag, tr(str(d["kind"]).to_upper())], health_text(p))
+		var fits: Array = GameData.SLOTS.filter(func(sl): return GameData.SLOT_KIND[sl] == d["kind"] and GameData.slot_available(sl))
+		if not fits.is_empty():
+			if fits.size() == 1:
+				row_button(row, "Fit", _on_equip.bind(p["uid"], fits[0]), not wreck, 80)
+			else:
+				row_button(row, "Fit...", _on_fit_choose.bind(p["uid"], fits), not wreck, 80)
 		var c := GameData.repair_cost(p)
 		if c > 0:
 			row_button(row, ("Rebuild $%d" if wreck else "Fix $%d") % c, _on_repair.bind(p["uid"]), GameData.can_repair(c), 125)
@@ -1779,6 +1787,21 @@ func _on_buy(id: String) -> void:
 	var text := GameData.buy(id)
 	say(text, "buy" if GameData.money < before or GameData.part_def(id)["cost"] == 0 else "error")
 	refresh()
+
+
+## A part that fits more than one slot (arms, legs, heads): pick where it goes.
+func _on_fit_choose(uid: int, slots: Array) -> void:
+	var d := GameData.part_def(GameData.inst(uid)["id"])
+	var col := open_popup(tr("FIT %s") % str(d["name"]).to_upper())
+	for sl in slots:
+		var cur := GameData.equipped_inst(sl)
+		var now: String = tr("empty") if cur.is_empty() else str(GameData.part_def(cur["id"])["name"])
+		col.add_child(UI.button(tr("%s  (now: %s)") % [tr(GameData.SLOT_NAMES[sl]), now], _on_fit_pick.bind(uid, sl), 17, Vector2(0, 48)))
+
+
+func _on_fit_pick(uid: int, slot: String) -> void:
+	close_popup()
+	_on_equip(uid, slot)
 
 
 func _on_equip(uid: int, slot: String) -> void:

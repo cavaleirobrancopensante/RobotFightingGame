@@ -48,15 +48,15 @@ static func make_theme() -> Theme:
 	var track := StyleBoxFlat.new()
 	track.bg_color = Color(0.14, 0.14, 0.18)
 	track.set_corner_radius_all(8)
-	track.content_margin_left = 12 * SCALE
-	track.content_margin_right = 12 * SCALE
+	track.content_margin_left = 14.4 * SCALE
+	track.content_margin_right = 14.4 * SCALE
 	track.content_margin_top = 12 * SCALE
 	track.content_margin_bottom = 12 * SCALE
 	var grab := StyleBoxFlat.new()
 	grab.bg_color = Color(0.5, 0.5, 0.58)
 	grab.set_corner_radius_all(8)
-	grab.content_margin_left = 12 * SCALE
-	grab.content_margin_right = 12 * SCALE
+	grab.content_margin_left = 14.4 * SCALE
+	grab.content_margin_right = 14.4 * SCALE
 	grab.content_margin_top = 12 * SCALE
 	grab.content_margin_bottom = 12 * SCALE
 	var grab_hi := grab.duplicate()
@@ -72,3 +72,44 @@ static func make_theme() -> Theme:
 	pb_bg.set_corner_radius_all(4)
 	t.set_stylebox("background", "ProgressBar", pb_bg)
 	return t
+
+
+## Drag anywhere on a list to scroll it (not only on the scroll bar), like a phone list.
+## A small drag still counts as a tap; once it's a real drag, the button under the finger lets go.
+class DragScroll extends Node:
+	const START := 14.0   # pixels before a press turns into a drag
+	var sc: ScrollContainer
+	var blocked := Callable()   # returns true while something covers the list (a popup)
+	var down := false
+	var dragging := false
+	var start := Vector2.ZERO
+	var last_y := 0.0
+
+	func _input(ev: InputEvent) -> void:
+		if not is_instance_valid(sc) or not sc.is_visible_in_tree():
+			return
+		if ev is InputEventMouseButton and ev.button_index == MOUSE_BUTTON_LEFT:
+			if ev.pressed:
+				down = sc.get_global_rect().has_point(ev.position) and not (blocked.is_valid() and blocked.call())
+				dragging = false
+				start = ev.position
+				last_y = ev.position.y
+			else:
+				down = false
+				dragging = false
+		elif ev is InputEventMouseMotion and down:
+			if not dragging and absf(ev.position.y - start.y) > START:
+				dragging = true
+				sc.propagate_notification(Control.NOTIFICATION_SCROLL_BEGIN)   # cancels the press on the button below
+			if dragging:
+				sc.scroll_vertical -= int(ev.position.y - last_y)
+				sc.get_viewport().set_input_as_handled()
+			last_y = ev.position.y
+
+
+static func drag_scroll(sc: ScrollContainer, blocked: Callable = Callable()) -> void:
+	var d := DragScroll.new()
+	d.sc = sc
+	d.blocked = blocked
+	sc.add_child(d)
+

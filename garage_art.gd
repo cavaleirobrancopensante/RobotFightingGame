@@ -11,7 +11,7 @@ const RobotArt = preload("res://robot_art.gd")
 const ROBOT_SPOT := {
 	"build": [0.62, 0.74], "shop": [0.8, 0.5], "workshop": [0.74, 0.56], "scrap": [0.8, 0.5],
 	"paint": [0.5, 0.72], "moves": [0.62, 0.7], "team": [0.64, 0.66], "cups": [0.68, 0.62],
-	"storage": [0.88, 0.5],
+	"storage": [0.72, 0.5],
 }
 
 

@@ -774,7 +774,14 @@ func sell(uid: int) -> String:
 	return tr("Sold %s for $%d.") % [part_def(p["id"])["name"], v]
 
 
-func part_stat_text(d: Dictionary) -> String:
+## Power for the fight (the tank): the reactor's output, plus whatever your parts don't use -
+## a light robot on a big reactor has power to spare.
+static func fight_tank(output: float, used: float) -> float:
+	return output + maxf(0.0, output - used)
+
+
+## cur_hp >= 0: a real part's health is shown as HP now/max.
+func part_stat_text(d: Dictionary, cur_hp: float = -1.0) -> String:
 	var g := gimmick_text(d)
 	if d["kind"] == "reactor":
 		return tr("Power output %d") % d["output"] + g + trait_line(d)
@@ -785,7 +792,7 @@ func part_stat_text(d: Dictionary) -> String:
 		if d["draw"] > 0:
 			b.append(tr("Power %d") % d["draw"])
 		return "  ".join(b) + g + trait_line(d)
-	var bits: Array = [tr("HP %d") % d["hp"]]
+	var bits: Array = [tr("HP %d") % d["hp"] if cur_hp < 0.0 else tr("HP %d/%d") % [ceili(cur_hp), d["hp"]]]
 	if d["armor"] != 0:
 		bits.append(tr("ARM %d%%") % d["armor"])
 	if d["damage"] != 0:
@@ -941,7 +948,7 @@ func player_spec(eq: Dictionary = {}, label: String = "") -> Dictionary:
 	var back := inst(int(eq.get("back", -1)))
 	var reactor := inst(int(eq.get("reactor", -1)))
 	return {"name": robot_name if label == "" else label, "parts": parts, "efficiency": s["efficiency"], "damage_mult": 1.0,
-			"power": float(s["power_output"]),
+			"power": fight_tank(float(s["power_output"]), float(s["power_used"])),
 			"speed_mult": 1.0, "scale": 1.0, "trim": Color(PAINTS[paint]["color"]),
 			"eye": Color(part_def(reactor["id"])["color"]) if not reactor.is_empty() else Color(0.4, 0.9, 1.0),
 			"back": {} if back.is_empty() else {"shape": part_def(back["id"])["shape"], "color": Color(part_def(back["id"])["color"])},
@@ -1571,7 +1578,7 @@ func fight_player_team() -> Array:
 			var st := stats(wingmen[spec["wingman"]] if spec.has("wingman") else equipped)
 			var out := minf(float(st["power_output"]), share)
 			spec["efficiency"] = 1.0 if st["power_used"] <= out else out / float(st["power_used"])
-			spec["power"] = out
+			spec["power"] = fight_tank(out, float(st["power_used"]))
 	return team
 
 
@@ -1938,6 +1945,10 @@ func opponent_spec_from(o: Dictionary, _unused: float) -> Dictionary:
 		output = 10.0
 	if o.has("power_share"):
 		output = minf(output, float(o["power_share"]))
+	var drawn := 0.0
+	for slot in o["parts"]:
+		if o["parts"][slot] != "":
+			drawn += float(part_def(o["parts"][slot])["draw"])
 	var eff := 1.0
 	if o.has("power_share"):
 		var used := 0.0
@@ -1945,7 +1956,7 @@ func opponent_spec_from(o: Dictionary, _unused: float) -> Dictionary:
 			if o["parts"][slot] != "":
 				used += part_def(o["parts"][slot])["draw"]
 		eff = minf(1.0, float(o["power_share"]) / maxf(1.0, used))
-	return {"name": o.get("bot_name", o["name"]), "parts": parts, "efficiency": eff, "damage_mult": o["damage"], "power": output,
+	return {"name": o.get("bot_name", o["name"]), "parts": parts, "efficiency": eff, "damage_mult": o["damage"], "power": fight_tank(output, drawn),
 			"speed_mult": o["speed"], "scale": o["scale"], "trim": Color(o["trim"]), "eye": Color(o["eye"]),
 			"back": back, "gadgets": gadgets, "specials": o["specials"], "style": o.get("style", "striker"),
 			"traits": global_traits(o["parts"])}
