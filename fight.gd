@@ -374,7 +374,7 @@ func _ready() -> void:
 			boss = fight_idx == int(GameData.circuit["size"]) - 1
 			pick = int(GameData.circuit["seed"]) % 97 + fight_idx
 	Sfx.music("boss" if boss else Sfx.FIGHT_TRACKS[pick % Sfx.FIGHT_TRACKS.size()])
-	Sfx.play("crowd_cheer")
+	Sfx.play("crowd_cheer", 0.0, -9.0)   # the crowd warms up quietly; it gets loud on big moments
 	cheer = 3.0
 
 
@@ -1162,6 +1162,7 @@ func _process(delta: float) -> void:
 	if paused:
 		queue_redraw()
 		return
+	update_coach(delta)
 	if hitstop > 0.0:
 		hitstop -= delta
 		queue_redraw()
@@ -1187,10 +1188,10 @@ func _process(delta: float) -> void:
 	match phase:
 		"intro":
 			if phase_timer >= 0.4 and not fight_called and phase_timer < 0.5:
-				Sfx.play("round")
+				Sfx.play("round", 0.0, -4.0)
 			if phase_timer >= 1.0 and not fight_called:
 				fight_called = true
-				Sfx.play("fight")
+				Sfx.play("fight", 0.0, -3.0)
 				pilot_say(0, "start", true)
 				pilot_say(1, "start", true)
 			if phase_timer >= 1.7:
@@ -1222,7 +1223,6 @@ func _process(delta: float) -> void:
 
 	update_effects(delta)
 	update_pilots(delta)
-	update_coach(delta)
 	arena_redraw_t -= delta
 	if arena_redraw_t <= 0.0 and arena_layer:
 		arena_redraw_t = 1.0 / ARENA_FPS
@@ -2153,6 +2153,7 @@ func _draw() -> void:
 		arena_layer.position = off * 0.6   # screen shake moves the whole arena
 	for pd in pilots:
 		draw_pilot(pd, off)
+	draw_gus(off)
 	draw_cables(off)
 	# knocked-out robots first, so the ones still fighting are drawn on top
 	for f in all_fighters():
@@ -2855,6 +2856,8 @@ func draw_pilot(pd: Dictionary, off: Vector2) -> void:
 func draw_pilot_bubble(pd: Dictionary, anchor: Vector2) -> void:
 	if pd["bubble_t"] <= 0.0 or pd["bubble"] == "":
 		return
+	if pd["team"] == 0 and coach_t > 0.0 and gus_here():
+		return   # Gus is talking
 	var size := fs(15)
 	var text: String = pd["bubble"]
 	var tw := font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, size).x
@@ -2880,14 +2883,24 @@ var coach_t := 0.0
 
 
 func coach(id: String, text: String) -> void:
-	if mode == "quick" or not GameData.tip_once(id):
+	if mode == "quick" or GameData.tips_seen.has(id) or id == coach_id:
 		return
-	coach_queue.append(text)
+	for q in coach_queue:
+		if q["id"] == id:
+			return
+	coach_queue.append({"id": id, "text": text, "at": coach_clock})
+
+
+var coach_clock := 0.0   # real time (not slowed by hit-freeze or slow motion)
+var coach_id := ""
+const COACH_SHOW := 3.5   # seconds a tip stays up
+const COACH_STALE := 3.0  # tips that waited longer than this are dropped (they come back next time)
 
 
 func update_coach(delta: float) -> void:
+	coach_clock += delta
 	if phase == "fight":
-		if phase_timer > 0.8:
+		if phase_timer > 0.5:
 			coach("aim", "Tap a part of %s to aim at it - %s hits where you point." % [cpu.label, player.label])
 		if phase_timer > 10.0 and weak_point(cpu) != "":
 			coach("weak", "See the yellow diamond? That's its weakest part - hits there do extra damage.")
@@ -2895,14 +2908,85 @@ func update_coach(delta: float) -> void:
 			coach("moves", "Tap MOVES to see your special moves and how to do them.")
 		if player.ratio("torso") < 0.35:
 			coach("low_core", "Core's hurting! Lose the torso - or the head - and it's lights out. BLOCK!")
+	elif phase != "intro":
+		coach_queue.clear()   # the fight is over: no more tips
+		coach_t = minf(coach_t, 0.3)
 	coach_t = maxf(0.0, coach_t - delta)
+	coach_queue = coach_queue.filter(func(q): return coach_clock - q["at"] < COACH_STALE)
 	if coach_t <= 0.0 and not coach_queue.is_empty():
-		coach_text = coach_queue.pop_front()
-		coach_t = 5.0
+		var q: Dictionary = coach_queue.pop_front()
+		coach_text = q["text"]
+		coach_id = q["id"]
+		coach_t = COACH_SHOW
+		GameData.tip_once(q["id"])   # only counts as seen once it was actually shown
+
+
+const GUS_LOOK := {"skin": "#6b4530", "hair": "#33507a", "hat": "cap", "beard": "full", "beard_color": "#c4c4c4",
+		"eyes": "#5b3a1e", "glasses": "none"}
+
+
+func gus_here() -> bool:
+	return mode != "quick"
+
+
+## Gus leans on the ring post in your corner. His tips come out of his mouth as a speech bubble.
+func draw_gus(off: Vector2) -> void:
+	if not gus_here():
+		return
+	var s := clampf(wall_l / 58.0, 1.2, 2.0)
+	var base := Vector2(wall_l * 0.45 + 24.0 * s, floor_y - 6.0 * s) + off * 0.6
+	var talking := coach_t > 0.0
+	var overalls := Color(0.2, 0.3, 0.45)
+	var shirt := Color(0.55, 0.42, 0.3)
+	# legs
+	draw_rect(Rect2(base + Vector2(-8 * s, -24 * s), Vector2(7 * s, 24 * s)), overalls.darkened(0.2))
+	draw_rect(Rect2(base + Vector2(1 * s, -24 * s), Vector2(7 * s, 24 * s)), overalls.darkened(0.2))
+	draw_rect(Rect2(base + Vector2(-9 * s, -3 * s), Vector2(9 * s, 3 * s)), Color(0.15, 0.1, 0.08))
+	draw_rect(Rect2(base + Vector2(1 * s, -3 * s), Vector2(9 * s, 3 * s)), Color(0.15, 0.1, 0.08))
+	# body: shirt with overalls over it, a bit of a belly
+	var hip := base + Vector2(0, -24 * s)
+	draw_rect(Rect2(hip + Vector2(-12 * s, -30 * s), Vector2(24 * s, 30 * s)), shirt)
+	draw_rect(Rect2(hip + Vector2(-9 * s, -20 * s), Vector2(18 * s, 20 * s)), overalls)
+	draw_line(hip + Vector2(-7 * s, -20 * s), hip + Vector2(-7 * s, -30 * s), overalls, 2.5 * s)
+	draw_line(hip + Vector2(7 * s, -20 * s), hip + Vector2(7 * s, -30 * s), overalls, 2.5 * s)
+	var neck := hip + Vector2(0, -30 * s)
+	# left arm: hand on hip. Right arm: the Kane-built robot arm, pointing at the ring while he talks
+	draw_line(neck + Vector2(-11 * s, 2 * s), hip + Vector2(-15 * s, -10 * s), shirt.darkened(0.1), 5 * s)
+	draw_line(hip + Vector2(-15 * s, -10 * s), hip + Vector2(-9 * s, -6 * s), shirt.darkened(0.1), 5 * s)
+	var wave := sin(clock * 9.0) * 3.0 * s if talking else 0.0
+	var hand := neck + (Vector2(26 * s, -12 * s + wave) if talking else Vector2(16 * s, 16 * s))
+	draw_line(neck + Vector2(11 * s, 2 * s), hand, Color(0.62, 0.62, 0.68), 5 * s)
+	draw_circle(neck + Vector2(11 * s, 2 * s), 3.5 * s, Color(0.45, 0.45, 0.5))
+	draw_circle(hand, 3 * s, Color(1.0, 0.6, 0.2) if talking else Color(0.5, 0.5, 0.55))
+	# head
+	var hc := neck + Vector2(1 * s, -11 * s)
+	var mouth := 10.0 * s * (0.15 + 0.25 * absf(sin(clock * 16.0))) if talking else 1.5 * s
+	PilotArt.draw_head(self, hc, 10.0 * s, GUS_LOOK, 1.0, mouth)
+	gus_head = hc + Vector2(0, -10.0 * s)
+
+
+var gus_head := Vector2.ZERO
 
 
 func draw_coach() -> void:
 	if coach_t <= 0.0 or coach_text == "":
+		return
+	if gus_here() and gus_head != Vector2.ZERO:
+		# a speech bubble from Gus in the corner
+		var size := fs(16)
+		var maxw := minf(560.0, screen.x * 0.48)
+		var text_size := font.get_multiline_string_size(coach_text, HORIZONTAL_ALIGNMENT_LEFT, maxw, size)
+		var w := text_size.x + 24.0
+		var h := text_size.y + size + 22.0
+		var bx := clampf(gus_head.x - 30.0, 6.0, screen.x - w - 6.0)
+		var by := gus_head.y - h - 18.0
+		var a := minf(1.0, coach_t * 4.0)
+		var bg := Color(1.0, 0.97, 0.9, 0.95 * a)
+		draw_rect(Rect2(bx, by, w, h), bg)
+		draw_rect(Rect2(bx, by, w, h), Color(0.95, 0.6, 0.25, a), false, 3.0)
+		draw_colored_polygon(PackedVector2Array([Vector2(gus_head.x - 6, by + h), Vector2(gus_head.x + 10, by + h), Vector2(gus_head.x, by + h + 14)]), bg)
+		draw_string(font, Vector2(bx + 12, by + size + 4), "GUS", HORIZONTAL_ALIGNMENT_LEFT, -1, int(size * 0.85), Color(0.85, 0.45, 0.1, a))
+		draw_multiline_string(font, Vector2(bx + 12, by + size * 2 + 8), coach_text, HORIZONTAL_ALIGNMENT_LEFT, maxw, size, -1, Color(0.1, 0.08, 0.06, a))
 		return
 	var size := fs(17)
 	var label := "GUS: "

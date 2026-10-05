@@ -127,7 +127,7 @@ static func draw_head(ci: CanvasItem, c: Vector2, r: float, raw: Dictionary, dir
 	# mouth, then facial hair over it
 	var mc := c + Vector2(ex - r * 0.25, r * 0.36)
 	ci.draw_rect(Rect2(mc, Vector2(r * 0.5, maxf(1.5, mouth))), Color(0.25, 0.08, 0.06))
-	var bc := hair.lightened(0.12)
+	var bc := Color(look["beard_color"]) if look.has("beard_color") else hair.lightened(0.12)
 	match str(look.get("beard", "none")):
 		"stubble":
 			for k in 9:

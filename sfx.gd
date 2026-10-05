@@ -9,6 +9,8 @@ const NAMES := ["click", "buy", "equip", "error", "swing", "uppercut", "hit", "h
 		"talk", "talk_robot", "time", "spark"]
 const VOICES := 12
 const MUSIC_DB := -9.0
+const FIGHT_MUSIC_DB := -13.5   # fight songs are mixed hot: play them quieter so they don't blast
+const SFX_DB := -3.0            # overall level for sound effects
 
 var streams := {}
 var players: Array = []
@@ -43,7 +45,7 @@ func play(sound: String, pitch_jitter: float = 0.0, volume_db: float = 0.0) -> v
 	next = (next + 1) % VOICES
 	p.stream = streams[sound]
 	p.pitch_scale = 1.0 + randf_range(-pitch_jitter, pitch_jitter)
-	p.volume_db = volume_db
+	p.volume_db = volume_db + SFX_DB
 	p.play()
 
 
@@ -91,7 +93,9 @@ func _play_current() -> void:
 	music_player.stream = s
 	music_player.volume_db = -40.0
 	music_player.play()
-	create_tween().tween_property(music_player, "volume_db", MUSIC_DB, 0.8)
+	# fight music fades in gently instead of hitting at full volume
+	var fight: bool = FIGHT_TRACKS.has(playlist[playlist_pos]) or playlist[playlist_pos] == "boss"
+	create_tween().tween_property(music_player, "volume_db", FIGHT_MUSIC_DB if fight else MUSIC_DB, 2.0 if fight else 0.8)
 
 
 func _on_music_finished() -> void:
