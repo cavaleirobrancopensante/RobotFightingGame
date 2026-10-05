@@ -31,7 +31,7 @@ const SCENES := {
 		["GUS", "Three months behind on rent, kid. Tell me that junk you dug out of the dry dock does something."],
 		["ECHO", "[ PAIRING SIGNAL ... HANDLER LINK FOUND ]"],
 		["YOU", "It paired with my controller first try. I'll call it ECHO."],
-		["GUS", "Then it's in the Scrap Championship. Ten fights, OVERLORD at the end. Win, and we eat."],
+		["GUS", "Then it's in the Scrap Championship. Ten fights, OVERLORD at the end. Win, and we eat. First bout's tonight."],
 	]},
 
 	"pre_0": {"place": "THE FISH MARKET PIT", "lines": [

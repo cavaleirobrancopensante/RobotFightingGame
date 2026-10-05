@@ -233,6 +233,12 @@ func _finish() -> void:
 		return
 	index = lines.size() + 1
 	GameData.mark_story_seen(GameData.story_key)
+	# a new game goes straight from the intro into the first fight - the garage comes after
+	if GameData.story_key == "intro" and GameData.fight_index == 0 and GameData.fight_mode() == "story" \
+			and GameData.queue_story("pre_0", "res://fight.tscn"):
+		GameData.save_game()
+		get_tree().change_scene_to_file("res://story.tscn")
+		return
 	GameData.save_game()
 	var target := GameData.story_return if GameData.story_return != "" else "res://garage.tscn"
 	get_tree().change_scene_to_file(target)
