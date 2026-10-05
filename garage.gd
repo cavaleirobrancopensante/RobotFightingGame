@@ -634,7 +634,8 @@ func scene_info() -> Dictionary:
 			break
 	return {"pilot": GameData.pilot_look, "paint": Color(GameData.PAINTS[GameData.paint]["color"]),
 			"spark": now - spark_at, "dig": now - dig_at, "found": dig_found,
-			"trophies": GameData.circuits_won, "backup": backup}
+			"trophies": GameData.circuits_won, "backup": backup,
+			"wins": GameData.fight_index if not GameData.champion else GameData.OPPONENTS.size(), "champion": GameData.champion}
 
 
 func close_popup() -> void:
@@ -851,7 +852,7 @@ func build_shop_tab() -> void:
 ## The scrapyard: a mountain of dead robots. Dig for free (beaten-up) parts, a few digs per fight.
 func build_scrapyard_tab() -> void:
 	var bar := action_bar()
-	var info := UI.label("THE SCRAPYARD - a mountain of dead robots. %d dig%s left until your next fight." % [GameData.digs_left, "" if GameData.digs_left == 1 else "s"], 15, Color(1.0, 0.8, 0.4))
+	var info := UI.label("THE SCRAPYARD - a mountain of dead robots. One dig after every fight: %s. Anything you dig up is beaten up (15-55%% health)." % ("ready to dig" if GameData.digs_left > 0 else "already dug - come back after your next fight"), 15, Color(1.0, 0.8, 0.4))
 	info.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	info.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	bar.add_child(info)

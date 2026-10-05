@@ -218,7 +218,7 @@ const CONTROLLER_INFO := {
 var pilot_look := DEFAULT_PILOT_LOOK.duplicate()   # how your pilot looks in the corner and in the story
 var owned_controllers: Array = ["gamepad"]
 var tips_seen: Array = []
-const DIGS_PER_FIGHT := 3
+const DIGS_PER_FIGHT := 1
 var digs_left := DIGS_PER_FIGHT   # scrapyard digs; refilled after every fight   # Gus's one-time tips (fight and garage) already shown
 var inventory: Array = []   # [{uid, id, hp}]
 var equipped := {}          # slot -> uid (-1 = empty)
@@ -1146,7 +1146,7 @@ func unlocked(feature: String) -> bool:
 func garage_tip() -> String:
 	var tips := [
 		["repair", repair_all_cost() > 0, "Damage carries over between fights. Hit Repair all before the next one - or fix parts one by one."],
-		["scrapyard", unlocked("scrapyard"), "NEW: the Scrapyard. Dig through the pile for free parts - a few digs after every fight. Mostly rust, sometimes treasure."],
+		["scrapyard", unlocked("scrapyard"), "NEW: the Scrapyard. Dig through the pile for free parts - one dig after every fight. Mostly rust, sometimes treasure."],
 		["style", unlocked("style"), "NEW: the Style button. Pick how ECHO fights - Tank, Striker, Mechanic or Specialist. Each gets a free signature move."],
 		["scout", unlocked("scout") and scout_key() != "", "NEW: Scout. Pay to peek at the next robot. Careful - their crew might spot you and change their setup."],
 		["backup", unlocked("team"), "NEW: the Team tab. Build a backup robot from spare parts, then use Send to put it in the ring when ECHO's too banged up."],

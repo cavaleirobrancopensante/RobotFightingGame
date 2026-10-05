@@ -73,6 +73,7 @@ static func _props_back(ci: CanvasItem, size: Vector2, scene: String, t: float, 
 				ci.draw_line(Vector2(x, pb.position.y + 8), Vector2(x, pb.position.y + 8 + 22 + k % 2 * 10), Color(0.6, 0.6, 0.65), 3.0)
 			ci.draw_circle(pb.get_center() + Vector2(0, 16), 7, Color(0.75, 0.2, 0.2))
 			_sign(ci, Vector2(size.x * 0.62, 30), "GUS'S BAY", Color(0.95, 0.65, 0.35))
+			_bay_trophies(ci, size, info)
 			_lamp(ci, Vector2(size.x * 0.56, 0), size, t)
 			# oil stain and lift platform
 			ci.draw_set_transform(Vector2(size.x * 0.3, floor_y + 8), 0, Vector2(1.0, 0.25))
@@ -321,3 +322,47 @@ static func _scrap_pile(ci: CanvasItem, base: Vector2, w: float, h: float, t: fl
 				ci.draw_circle(p + Vector2(18, -14), 4, c.darkened(0.2))
 			"plate":
 				ci.draw_colored_polygon(PackedVector2Array([p, p + Vector2(16, -6), p + Vector2(20, 6), p + Vector2(2, 8)]), c.darkened(0.15))
+
+
+## The bay's trophy wall: a small trophy for every story win, a gold cup for every cup won,
+## and the championship belt once you've beaten OVERLORD.
+static func _bay_trophies(ci: CanvasItem, size: Vector2, info: Dictionary) -> void:
+	var wins: int = mini(int(info.get("wins", 0)), 10)
+	var cups: int = mini(int(info.get("trophies", 0)), 6)
+	var x0 := size.x * 0.42
+	var w := size.x * 0.56
+	var gold := Color(0.95, 0.78, 0.25)
+	# top shelf: a trophy for every story win (the final one is gold)
+	if wins > 0:
+		var shelf_y := 82.0
+		ci.draw_rect(Rect2(x0, shelf_y, w, 5), Color(0.45, 0.32, 0.2))
+		var step := minf(22.0, (w - 10.0) / wins)
+		for k in wins:
+			var x := x0 + 10.0 + k * step
+			var c := gold if k == 9 else Color(0.78, 0.78, 0.84)
+			ci.draw_rect(Rect2(x - 5, shelf_y - 5, 10, 5), Color(0.35, 0.25, 0.18))
+			ci.draw_rect(Rect2(x - 1.5, shelf_y - 11, 3, 6), c)
+			ci.draw_arc(Vector2(x, shelf_y - 16), 6, 0, PI, 8, c, 5.0)
+			ci.draw_rect(Rect2(x - 6.5, shelf_y - 21, 13, 3), c)
+	# second shelf: big gold cups
+	if cups > 0:
+		var shelf2 := 124.0
+		ci.draw_rect(Rect2(x0, shelf2, w, 5), Color(0.45, 0.32, 0.2))
+		var step2 := minf(30.0, (w - 14.0) / cups)
+		for k in cups:
+			var x := x0 + 16.0 + k * step2
+			ci.draw_rect(Rect2(x - 7, shelf2 - 6, 14, 6), Color(0.35, 0.25, 0.18))
+			ci.draw_rect(Rect2(x - 2, shelf2 - 14, 4, 8), gold)
+			ci.draw_arc(Vector2(x, shelf2 - 21), 9, 0, PI, 10, gold, 7.0)
+			ci.draw_rect(Rect2(x - 9.5, shelf2 - 28, 19, 4), gold)
+			ci.draw_arc(Vector2(x - 10, shelf2 - 23), 4, PI * 0.5, PI * 1.5, 6, gold, 2.0)
+			ci.draw_arc(Vector2(x + 10, shelf2 - 23), 4, -PI * 0.5, PI * 0.5, 6, gold, 2.0)
+	# the championship belt hangs on the wall under the tool board
+	if info.get("champion", false):
+		var bc := Vector2(62, size.y * 0.47)
+		ci.draw_rect(Rect2(bc.x - 52, bc.y - 6, 104, 12), Color(0.15, 0.12, 0.1))
+		ci.draw_circle(bc, 16, gold)
+		ci.draw_circle(bc, 10, Color(0.8, 0.15, 0.2))
+		ci.draw_circle(bc, 4, gold)
+		for side in [-1.0, 1.0]:
+			ci.draw_circle(bc + Vector2(side * 32, 0), 7, gold)
