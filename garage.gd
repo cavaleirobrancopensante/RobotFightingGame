@@ -968,11 +968,23 @@ func build_scrapyard_tab() -> void:
 	# what the pile has given you so far (spare parts that still need fixing)
 	var finds: Array = GameData.spares().filter(func(p): return p.get("dug", false))
 	if not finds.is_empty():
-		section("Dug up and waiting in Storage - fit them in the bay, or sell them (damaged parts sell cheaper):")
+		section("Fresh from the pile - keep it in Storage, or sell it (damaged parts sell cheaper):")
 		for p in finds:
 			var d := GameData.part_def(p["id"])
 			var row := make_row(part_icon(d, GameData.hp_ratio(p)), tr("%s  [%s]") % [d["name"], tr(str(d["kind"]).to_upper())], health_text(p))
+			row_button(row, "To Storage", _on_keep_find.bind(p["uid"]), true, 120)
 			row_button(row, tr("Sell $%d") % GameData.sell_value(p), _on_sell.bind(p["uid"]), true, 110)
+
+
+## Keep a scrapyard find: it leaves the pile list and waits in Storage like any other part.
+func _on_keep_find(uid: int) -> void:
+	var p := GameData.inst(uid)
+	if p.is_empty():
+		return
+	p.erase("dug")
+	say(tr("%s is in Storage.") % GameData.part_def(p["id"])["name"], "equip")
+	GameData.save_game()
+	refresh()
 
 
 func _on_emergency_junk(slot: String) -> void:
@@ -1869,7 +1881,28 @@ func _on_load_setup(k: int) -> void:
 	refresh()
 
 
+## Selling asks first: a misplaced tap shouldn't cost you a part.
 func _on_sell(uid: int) -> void:
+	var p := GameData.inst(uid)
+	if p.is_empty():
+		return
+	var col := open_popup(tr("SELL IT?"))
+	var l := UI.label(tr("Sell %s for $%d? It's gone for good.") % [GameData.part_def(p["id"])["name"], GameData.sell_value(p)], 18)
+	l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	col.add_child(l)
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 10)
+	col.add_child(row)
+	var yes := UI.button(tr("Sell $%d") % GameData.sell_value(p), _on_sell_confirmed.bind(uid), 18, Vector2(0, 50))
+	yes.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.add_child(yes)
+	var no := UI.button("Keep it", close_popup, 18, Vector2(0, 50))
+	no.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.add_child(no)
+
+
+func _on_sell_confirmed(uid: int) -> void:
+	close_popup()
 	say(GameData.sell(uid), "sell")
 	refresh()
 
