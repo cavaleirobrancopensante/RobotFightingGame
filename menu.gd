@@ -44,6 +44,10 @@ func _ready() -> void:
 	col.add_child(load_button)
 	col.add_child(UI.button("Settings", _on_settings, 26, Vector2(0, 56)))
 	col.add_child(UI.button("Quit Game", _on_quit, 26, Vector2(0, 56)))
+	var ver := UI.label("Salgadoido's version " + GameData.VERSION, 16, Color(0.65, 0.65, 0.72))
+	ver.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	ver.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
+	col.add_child(ver)
 
 	msg = UI.label("", 22, Color(1.0, 0.8, 0.4))
 	msg.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
