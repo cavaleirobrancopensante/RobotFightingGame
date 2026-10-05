@@ -621,7 +621,7 @@ func build_overview() -> void:
 	if GameData.unlocked("moves"):
 		row_button(bar, star(tr("Chips (%d/%d)") % [GameData.active_chips().size(), GameData.chip_slots()], "moves"), _on_slot.bind("chips"), true, 125)
 	if GameData.unlocked("scrapyard"):
-		# the star comes back after every fight: there's a fresh dig waiting
+		# the star comes back every Sunday: there's a fresh dig waiting
 		row_button(bar, tr("Scrapyard") + (" ★" if GameData.digs_left > 0 or GameData.is_new("scrapyard") else ""), _on_slot.bind("scrapyard"), true, 125)
 
 	for slot in GameData.SLOTS:
@@ -1049,7 +1049,7 @@ func build_shop_tab() -> void:
 		build_workshop()
 		return
 	var bar := action_bar()
-	var info := UI.label("DEALER'S STOCK - it changes after every fight. Grab the good stuff while it's here!", 15, Color(1.0, 0.8, 0.4))
+	var info := UI.label("DEALER'S STOCK - new stock every Sunday. Grab the good stuff while it's here!", 15, Color(1.0, 0.8, 0.4))
 	info.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	info.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	bar.add_child(info)
@@ -1059,7 +1059,7 @@ func build_shop_tab() -> void:
 	var chips: Array = GameData.chip_stock if GameData.unlocked("moves") else []
 	var gear: Array = PilotArt.CONTROLLERS if GameData.unlocked("pilot") else []
 	if stock.is_empty():
-		section("Sold out! New stock arrives after your next fight (or pay to restock now).")
+		section("Sold out! New stock arrives on Sunday (or pay to restock now).")
 	var kinds: Array = stock.map(func(id): return GameData.part_def(id)["kind"])
 	var entries := kind_entries(kinds, "All parts")
 	entries[0][2] = stock.size() + chips.size() + gear.size()
@@ -1104,12 +1104,12 @@ func build_scrapyard_tab() -> void:
 	nav.add_child(title)
 	row_button(nav, tr("Storage (%d)") % GameData.spares().size(), _on_slot.bind("storage"), true, 125)
 	var bar := action_bar()
-	var info := UI.label(tr("A mountain of dead robots: one dig after every fight, one part per dig, always beaten up (15-50% health). Dig anywhere for the best odds of something good - or dig for the part you need, and take what the pile gives (mostly junk).") + "\n" + tr("Digging anywhere can also turn up a training chip, once in a long while - you can't dig for one."), 15, Color(1.0, 0.8, 0.4))
+	var info := UI.label(tr("A mountain of dead robots: one dig a week - fresh junk comes in every Sunday - one part per dig, always beaten up (15-50% health). Dig anywhere for the best odds of something good - or dig for the part you need, and take what the pile gives (mostly junk).") + "\n" + tr("Digging anywhere can also turn up a training chip, once in a long while - you can't dig for one."), 15, Color(1.0, 0.8, 0.4))
 	info.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	info.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	bar.add_child(info)
 	if GameData.digs_left <= 0:
-		row_button(bar, tr("No digging until next fight"), _on_dig.bind(""), false, 270)
+		row_button(bar, tr("No digging until Sunday"), _on_dig.bind(""), false, 270)
 	else:
 		row_button(bar, tr("Dig anywhere"), _on_dig.bind(""), true, 150)
 		var kinds := action_bar()
@@ -1313,12 +1313,10 @@ func build_cups_tab() -> void:
 	var mode := GameData.fight_mode()
 	var free: bool = mode == "pickup" or mode == "open"
 	var fits := GameData.cup_fits()
-	if not free:
-		section("You're busy this week - cups run in the quiet weeks between leagues.")
-	elif not fits:
-		section("A cup takes 3 weeks, and your next league starts too soon. Win this one first!")
+	if not fits:
+		section("Too close to the end of the year for a three-week cup. New ones start in January.")
 	else:
-		section("Cups: 8 pilots, a three-week knockout. Gold, silver and bronze go on the bay wall.")
+		section("Cups: 8 pilots, a three-week knockout on Wednesday nights - your Saturday league fights carry on as normal. Gold, silver and bronze go on the bay wall. Your first round is next Wednesday.")
 	if GameData.circuit_offers.is_empty():
 		GameData.make_offers()
 	for k in GameData.circuit_offers.size():
@@ -1326,7 +1324,7 @@ func build_cups_tab() -> void:
 		var preview_cup := Career.new_cup(off["name"], int(off["tier"]), int(off["seed"]), GameData.week, GameData.year, int(off["prize"]))
 		var row := make_row(bot_preview(Career.robot_of(preview_cup, 1 + int(off["seed"]) % 7)), tr("%s  %s") % [off["name"], "★".repeat(int(off["tier"]))],
 				tr("8 pilots, 3 weeks. Gold $%d + a new part, silver $%d, bronze $%d.") % [int(off["prize"]), int(off["prize"] * 0.5), int(off["prize"] * 0.3)])
-		row_button(row, "Enter", _on_enter_cup.bind(k), free and fits, 100)
+		row_button(row, "Enter", _on_enter_cup.bind(k), fits, 100)
 	if GameData.champion:
 		var row := make_row(bot_preview(GameData.OPPONENTS[GameData.OPPONENTS.size() - 1]), "OVERLORD rematch",
 				tr("Exhibition bout in the Grand Hall for $%d. Takes a week.") % GameData.EXHIBITION_REWARD)
@@ -1373,7 +1371,8 @@ func _on_season_view(v: String) -> void:
 	refresh()
 
 
-## A wall calendar: 4-week months, fights on Saturday nights, rent on the last Sunday.
+## A wall calendar: 4-week months, cups on Wednesday nights, everything else on Saturday nights,
+## new stock and fresh scrapyard junk every Sunday, rent on the last Sunday.
 ## Only what you're actually in shows up - leagues you haven't qualified for aren't there.
 func build_calendar() -> void:
 	var cur_month := (GameData.week - 1) / GameData.MONTH_WEEKS
@@ -1395,33 +1394,37 @@ func build_calendar() -> void:
 	grid.add_theme_constant_override("v_separation", 3)
 	list_box.add_child(grid)
 	for d in DAY_NAMES:
-		var l := UI.label(d, 13, Color(1.0, 0.8, 0.4) if d == "SAT" else Color(0.7, 0.7, 0.75))
+		var l := UI.label(d, 13, Color(1.0, 0.8, 0.4) if d == "SAT" else (Color(0.75, 0.5, 1.0) if d == "WED" else Color(0.7, 0.7, 0.75)))
 		l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		grid.add_child(l)
 	for row in GameData.MONTH_WEEKS:
 		var w: int = cal_month * GameData.MONTH_WEEKS + row + 1
 		var this_week := w == GameData.week
-		var plan := GameData.week_plan(GameData.year, w)
 		for day in 7:
 			var text := ""
 			var col := Color(0.85, 0.85, 0.9)
 			var bg := Color(0.14, 0.14, 0.18, 0.9)
-			if day == 5:   # Saturday: fight night
+			var tonight := false
+			if day == 5 or day == 2:   # Saturday: fight night. Wednesday: cup night
+				var d := "sat" if day == 5 else "wed"
+				var plan := GameData.week_plan(GameData.year, w, d)
 				text = tr(str(plan["text"]))
 				if plan["kind"] == "done":
 					col = Color(0.5, 1.0, 0.6) if plan["won"] else Color(1.0, 0.45, 0.4)
 				else:
 					col = PLAN_COLORS.get(plan["kind"], col)
-				if this_week and plan["kind"] != "done":
+				tonight = this_week and GameData.day == d and plan["kind"] != "done"
+				if tonight:
 					text = tr("TONIGHT\n") + (text if mode == "open" or mode == "pickup" else GameData.fight_title())
-				bg = Color(0.2, 0.18, 0.12, 0.95)
+				if day == 5 or plan["kind"] == "cup" or plan["kind"] == "done":
+					bg = Color(0.2, 0.18, 0.12, 0.95)
 			elif day == 6 and row == GameData.MONTH_WEEKS - 1 and GameData.living_cost() > 0:
 				text = tr("RENT & FOOD\n-$%d") % GameData.living_cost()
 				col = Color(1.0, 0.45, 0.4)
 			if this_week:
 				bg = bg.lightened(0.08)
-			grid.add_child(day_cell(row * 7 + day + 1, text, col, bg, this_week and day == 5))
+			grid.add_child(day_cell(row * 7 + day + 1, text, col, bg, tonight))
 	var info := tr("Record %d-%d.  Medals %d.") % [GameData.wins, GameData.losses, GameData.trophies.size()]
 	section(info)
 	if mode == "pickup" or mode == "open":
@@ -1429,7 +1432,7 @@ func build_calendar() -> void:
 		section("No league fight this week. Take a pickup fight at the scrapyard for a few dollars (Fight button), enter a cup if you can, or let the week pass.")
 		var bar := action_bar()
 		row_button(bar, "Rest a week", _on_rest, true, 150)
-		if str(nxt[0]) != "" and int(nxt[2]) > 1:
+		if str(nxt[0]) != "" and int(nxt[2]) > 1 and GameData.circuit.is_empty():
 			row_button(bar, tr("Skip to the %s") % tr(Career.STAGES[nxt[0]]["short"]).capitalize(), _on_skip, true, 0)
 
 
@@ -2330,12 +2333,16 @@ func _on_fight() -> void:
 
 func open_fight_popup() -> void:
 	var o := GameData.current_opponent()
-	var col := open_popup(tr("NEXT FIGHT"))
+	var col := open_popup(tr("WEDNESDAY NIGHT - CUP") if GameData.day == "wed" else tr("SATURDAY NIGHT"))
 	col.custom_minimum_size = Vector2(640, 0)
 	var who := str(o.get("pilot", ""))
 	var head := UI.label(GameData.fight_title() + "\n" + (tr("%s, piloted by %s") % [o.get("name", "?"), who] if who != "" else str(o.get("name", "?"))) + "   " + tr("Purse: $%d") % GameData.current_reward(), 18, Color(1.0, 0.85, 0.4))
 	head.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	col.add_child(head)
+	if GameData.day == "wed" and ["league", "playoff"].has(str(GameData.week_plan(GameData.year, GameData.week, "sat")["kind"])):
+		var warn := UI.label(tr("Your league fight is this Saturday - whatever breaks tonight has to be fixed (and paid for) by then."), 15, Color(0.75, 0.85, 1.0))
+		warn.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		col.add_child(warn)
 	# scouting: pay a kid with a camera to look at their robot first
 	if GameData.scout_key() != "" and GameData.unlocked("scout"):
 		var srow := HBoxContainer.new()

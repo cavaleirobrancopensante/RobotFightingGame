@@ -247,7 +247,7 @@ var pilot_look := DEFAULT_PILOT_LOOK.duplicate()   # how your pilot looks in the
 var owned_controllers: Array = ["gamepad"]
 var tips_seen: Array = []
 const DIGS_PER_FIGHT := 1
-var digs_left := DIGS_PER_FIGHT   # scrapyard digs; refilled after every fight   # Gus's one-time tips (fight and garage) already shown
+var digs_left := DIGS_PER_FIGHT   # scrapyard digs; refilled every Sunday   # Gus's one-time tips (fight and garage) already shown
 var inventory: Array = []   # [{uid, id, hp}]
 var equipped := {}          # slot -> uid (-1 = empty)
 var wingmen: Array = [{}, {}]   # extra robots for team fights, built from spares: [{slot: uid}, ...]
@@ -257,6 +257,7 @@ var paint := 0
 var fight_index := 0        # (old saves) story fights won; the career now lives in year/week/event
 var year := 1
 var week := 1
+var day := "sat"            # next fight night this week: "wed" (cup rounds) or "sat" (leagues and everything else)
 var rank := "scrap"         # the highest league you've qualified for: scrap / regional / championship
 var event := {}             # the league or playoffs you're in (see career.gd)
 var trophies: Array = []    # [{kind: scrap/regional/championship/cup, medal: 1-3, name, year}]
@@ -297,7 +298,7 @@ const WEIGHT_CLASSES := [["LIGHTWEIGHT", 12], ["MIDDLEWEIGHT", 22], ["HEAVYWEIGH
 const TEAM_POWER := 40.0
 var style := "striker"        # fighting style: tank, striker, mechanic, specialist
 var style_locked := false     # one style change between fights (no switching to Mechanic just to repair cheap)
-var shop_stock: Array = []    # part ids for sale right now (changes after every fight)
+var shop_stock: Array = []    # part ids for sale right now (new stock every Sunday)
 var chip_stock: Array = []    # training chips the dealer has right now (rolled with the parts)
 const CHIP_ORDER_MARKUP := 2.0   # ordering a chip made to order costs double
 var scout := {}               # scouting report on the next opponent: {key, spied_back, change}
@@ -475,6 +476,7 @@ func new_game() -> void:
 	owned_controllers = ["gamepad"]
 	tips_seen = []
 	digs_left = DIGS_PER_FIGHT
+	day = "sat"
 	robot_name = DEFAULT_ROBOT
 	inventory = []
 	equipped = {}
@@ -1014,7 +1016,7 @@ func fight_mode() -> String:
 		return "quick"
 	if not watching.is_empty():
 		return "watch"
-	if not circuit.is_empty() and circuit.get("phase", "") != "done":
+	if day == "wed" and cup_round_this_week():
 		return "circuit"
 	if not event.is_empty() and event.get("phase", "") != "done" and Career.player_opponent(event) != -1 \
 			and week >= Career.week_of_round(event):
@@ -1244,7 +1246,21 @@ func start_pickup() -> void:
 
 # ---------------------------------------------------------------- calendar
 
-## The week moves on (after every fight, or when you rest). New leagues start on their week.
+## Two fight nights a week: cups on Wednesday, leagues (and pickups, exhibitions) on Saturday.
+## Is there a cup round for you this Wednesday?
+func cup_round_this_week() -> bool:
+	return not circuit.is_empty() and circuit.get("phase", "") != "done" and Career.player_opponent(circuit) != -1 \
+			and Career.week_of_round(circuit) == week
+
+
+## A Wednesday with no cup round just slides on to Saturday.
+func settle_day() -> void:
+	if day == "wed" and not cup_round_this_week():
+		day = "sat"
+
+
+## The week moves on (after Saturday's fight, or when you rest). Sunday: the dealer restocks and the
+## scrapyard gets fresh junk. New leagues start on their week.
 func advance_week(n: int = 1) -> void:
 	for k in n:
 		World.week_passed(year, week, World.busy_ids())   # the rest of Port Ferrum fights and shops too
@@ -1256,6 +1272,11 @@ func advance_week(n: int = 1) -> void:
 			week = 1
 			year += 1
 		ensure_event()
+	if n > 0:
+		roll_stock()
+		digs_left = DIGS_PER_FIGHT
+		day = "wed"
+		settle_day()
 
 
 func living_cost() -> int:
@@ -1318,7 +1339,6 @@ func next_event_info() -> Array:
 func rest_week() -> String:
 	pickup = {}
 	advance_week(1)
-	digs_left = DIGS_PER_FIGHT
 	save_game()
 	return tr("A quiet week. Year %d, week %d.") % [year, week]
 
@@ -1327,9 +1347,10 @@ func skip_to_next_event() -> String:
 	var nxt := next_event_info()
 	if nxt[0] == "":
 		return "Nothing on the calendar."
+	if not circuit.is_empty() and circuit.get("phase", "") != "done":
+		return "You're in a cup - no skipping ahead. Its next round is on Wednesday."
 	pickup = {}
 	advance_week(int(nxt[2]))
-	digs_left = DIGS_PER_FIGHT
 	save_game()
 	return tr("Skipped ahead to week %d: the %s.") % [week, tr(Career.STAGES[event.get("stage", nxt[0])]["name"])]
 
@@ -1345,14 +1366,18 @@ func enters_stage(stage: String) -> bool:
 
 ## What's on your calendar in a week of this year: {kind, text}
 ##   kind: done (a fight you had), league, playoff, cup, open (quiet week), past (nothing happened)
-func week_plan(y: int, w: int) -> Dictionary:
+func week_plan(y: int, w: int, d: String = "sat") -> Dictionary:
 	for e in fight_log:
-		if int(e["y"]) == y and int(e["w"]) == w:
+		if int(e["y"]) == y and int(e["w"]) == w and str(e.get("d", "sat")) == d:
 			return {"kind": "done", "won": e["won"], "text": tr("WON vs %s" if e["won"] else "LOST vs %s") % e["opp"], "title": e["title"]}
-	if y < year or (y == year and w < week):
+	if y < year or (y == year and (w < week or (w == week and d == "wed" and day == "sat"))):
 		return {"kind": "past", "text": ""}
-	if not circuit.is_empty() and circuit.get("phase", "") != "done" and circuit["weeks"].has(w):
-		return {"kind": "cup", "text": "%s" % circuit["name"]}
+	if d == "wed":
+		# Wednesday: cup night
+		if y == year and not circuit.is_empty() and circuit.get("phase", "") != "done" and circuit["weeks"].has(w) \
+				and Career.player_opponent(circuit) != -1:
+			return {"kind": "cup", "text": "%s" % circuit["name"]}
+		return {"kind": "none", "text": ""}
 	if not event.is_empty() and event.get("phase", "") != "done" and int(event.get("year", year)) == y and event["weeks"].has(w):
 		var k: int = event["weeks"].find(w)
 		var short: String = tr(Career.STAGES[event["stage"]]["short"])
@@ -1710,11 +1735,11 @@ func garage_tip() -> String:
 
 const TAB_TIPS := {
 	"Scrapyard": "GUS: Free junk is always lying around. Digging deeper finds better stuff - but it's beaten up, so budget for repairs.",
-	"Shop": "GUS: The dealer's stock changes after every fight. Mini parts sip power, Heavy parts hit hard but drink it.",
+	"Shop": "GUS: The dealer restocks every Sunday. Mini parts sip power, Heavy parts hit hard but drink it.",
 	"Workshop": "GUS: Design your own part here. Costs more than the dealer, but it's exactly what you want.",
 	"Moves": "GUS: Training chips teach special moves. Better heads hold more chips.",
-	"Cups": "GUS: Cups are three-week knockouts in the quiet weeks. Eight pilots, medals for the top three. Some come in tag teams and swarms - your backups fight beside you then.",
-	"Season": "GUS: The calendar. Fight nights are Saturdays, rent's due the last Sunday of the month. The league table's the other button - a win is 3 points.",
+	"Cups": "GUS: Cups are three-week knockouts on Wednesday nights, alongside your league. Eight pilots, medals for the top three. Some come in tag teams and swarms - your backups fight beside you then.",
+	"Season": "GUS: The calendar. League nights are Saturdays, cup nights are Wednesdays, rent's due the last Sunday of the month. The league table's the other button - a win is 3 points.",
 	"Team": "GUS: Teams share one heavyweight's power, so team robots run small. Mini parts are your friend here.",
 }
 
@@ -1736,7 +1761,7 @@ const CHIP_DIG_CHANCE := 0.04
 ## "head" / "torso" / "arm" / "leg" digs for that part - you get one, but it's mostly junk.
 func dig_scrap(kind: String = "") -> Dictionary:
 	if digs_left <= 0:
-		return {"text": "Too tired to dig. The pile will still be here after the next fight.", "part": ""}
+		return {"text": "Too tired to dig. Fresh junk comes in on Sunday.", "part": ""}
 	digs_left -= 1
 	# now and then, digging anywhere turns up a training chip (you can't dig for one)
 	var unowned: Array = chip_ids().filter(func(id): return not owned_chips.has(id))
@@ -2034,7 +2059,7 @@ func record_result(won: bool, part_hp: Dictionary, destroyed: int, salvage_ids: 
 		bonus = destroyed * 50
 	var was_in_debt := money < 0
 	money += reward + bonus
-	fight_log.append({"y": year, "w": week, "opp": str(o.get("name", "?")), "won": won, "mode": fight_mode(), "title": fight_title()})
+	fight_log.append({"y": year, "w": week, "d": day, "opp": str(o.get("name", "?")), "won": won, "mode": fight_mode(), "title": fight_title()})
 	if fight_log.size() > 400:
 		fight_log.pop_front()
 
@@ -2113,7 +2138,6 @@ func record_result(won: bool, part_hp: Dictionary, destroyed: int, salvage_ids: 
 					rng.randomize()
 					World.lose_part(rng, wp, s)
 					break
-	digs_left = DIGS_PER_FIGHT   # the scrapyard pile gets fresh junk after every fight
 	style_locked = false         # a fight later, you may switch style again
 	var was_champion := champion
 	var mode := fight_mode()
@@ -2148,13 +2172,12 @@ func record_result(won: bool, part_hp: Dictionary, destroyed: int, salvage_ids: 
 			bet_result = settle_bets("cup", circuit)
 			if circuit["phase"] == "done":
 				cup_done = finish_cup()
-			advance_week(1)
+			day = "sat"   # Wednesday's done: Saturday's next, same week
 		"exhibition", "pickup":
 			advance_week(1)
 	exhibition = false
 	pickup = {}
 	scout = {}
-	roll_stock()
 	last_result = {"won": won, "reward": reward, "bonus": bonus, "opponent": o["name"], "lost": lost, "wrecked": wrecked,
 			"salvaged": salvaged, "champion": champion and not was_champion,
 			"trophy": trophy, "cup_done": cup_done, "event_done": event_done, "out_of_debt": was_in_debt and money >= 0, "cards": cards, "bets": bet_result}
@@ -2241,19 +2264,21 @@ func make_offers() -> void:
 				"seed": seed, "prize": 1000 * tier})
 
 
-## A cup takes 3 weeks; it has to fit before your next league starts.
+## A cup takes 3 Wednesdays, starting next week. Leagues are on Saturdays, so the two never clash -
+## it just has to finish before the year ends.
 func cup_fits() -> bool:
-	var nxt := next_event_info()
-	if not event.is_empty() and event.get("phase", "") != "done":
-		return false
-	return nxt[0] == "" or int(nxt[2]) >= 3
+	return cup_start_week() + 2 <= Career.WEEKS_PER_YEAR
+
+
+func cup_start_week() -> int:
+	return week if day == "wed" else week + 1
 
 
 func enter_circuit(k: int) -> void:
 	var off: Dictionary = circuit_offers[k]
-	pickup = {}
-	circuit = Career.new_cup(off["name"], int(off["tier"]), int(off["seed"]), week, year, int(off["prize"]))
+	circuit = Career.new_cup(off["name"], int(off["tier"]), int(off["seed"]), cup_start_week(), year, int(off["prize"]))
 	circuit_offers.remove_at(k)
+	settle_day()
 
 
 func abandon_circuit() -> void:
@@ -2576,7 +2601,7 @@ func save_game() -> bool:
 		"losses": losses, "champion": champion, "story_seen": story_seen,
 		"owned_chips": owned_chips, "chips": chips, "circuit": circuit, "circuit_offers": circuit_offers,
 		"circuits_won": circuits_won, "pickup": pickup, "setups": setups, "custom_parts": custom_parts,
-		"year": year, "week": week, "rank": rank, "event": event, "trophies": trophies, "career_stats": career_stats,
+		"year": year, "week": week, "day": day, "rank": rank, "event": event, "trophies": trophies, "career_stats": career_stats,
 		"style": style, "style_locked": style_locked, "shop_stock": shop_stock, "chip_stock": chip_stock, "scout": scout, "wingmen": wingmen, "sending": sending, "pilot_look": pilot_look, "owned_controllers": owned_controllers, "tips_seen": tips_seen, "digs_left": digs_left, "bills_note": bills_note, "fight_log": fight_log, "bets": bets, "world": world,
 	}
 	var f := FileAccess.open(slot_path(save_slot), FileAccess.WRITE)
@@ -2683,6 +2708,12 @@ func load_game(slot: int = -1) -> String:
 	circuit = data.get("circuit", {})
 	if not circuit.is_empty() and not circuit.has("pilots"):
 		circuit = {}   # an old-style cup: start fresh
+	if not circuit.is_empty() and circuit.get("phase", "") != "done" and Career.week_of_round(circuit) < week:
+		# a cup from before Wednesday nights: its next round moves to this week
+		var shift := week - Career.week_of_round(circuit)
+		for i in circuit["weeks"].size():
+			circuit["weeks"][i] = int(circuit["weeks"][i]) + shift
+	settle_day()
 	circuit_offers = data.get("circuit_offers", [])
 	circuits_won = int(data.get("circuits_won", 0))
 	pickup = data.get("pickup", {})
@@ -2695,6 +2726,7 @@ func load_game(slot: int = -1) -> String:
 	if data.has("event"):
 		year = int(data.get("year", 1))
 		week = int(data.get("week", 1))
+		day = str(data.get("day", "wed"))
 		rank = str(data.get("rank", "scrap"))
 		event = data.get("event", {})
 		_fix_numbers(event)

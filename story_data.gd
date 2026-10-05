@@ -198,7 +198,7 @@ const SCENES := {
 	]},
 	# ---- Gus explains each part of the garage the first time it opens (one per win)
 	"unlock_scrapyard": {"place": "THE SCRAPYARD", "lines": [
-		["GUS", "No money for the parts dealer yet. But out back there's a mountain of dead robots - one dig after every fight. One part per dig."],
+		["GUS", "No money for the parts dealer yet. But out back there's a mountain of dead robots - one dig a week, fresh junk every Sunday. One part per dig."],
 		["GUS", "Mostly junk. Once in a while, something good. Whatever you find, I'll bolt it on and you fix it up."],
 	]},
 	"unlock_storage": {"place": "GUS'S STOREROOM", "lines": [
@@ -214,10 +214,10 @@ const SCENES := {
 	"unlock_shop": {"place": "GUS'S BAY", "lines": [
 		["GUS", "Two wins. That's enough prize money to walk into the dealer's without getting laughed out."],
 		["GUS", "Parts-R-Us, down by the docks. Kane's leftovers, salvage off the cargo ships, the odd arm that fell off a truck. I don't ask."],
-		["GUS", "His stock changes after every fight. Mini parts sip power. Heavy parts hit like a truck but drink the battery dry. The Shop's open."],
+		["GUS", "He restocks every Sunday. Mini parts sip power. Heavy parts hit like a truck but drink the battery dry. The Shop's open."],
 	]},
 	"unlock_season": {"place": "GUS'S BAY", "lines": [
-		["GUS", "Pinned a calendar on the wall. Fight nights are Saturdays. Rent's the last Sunday of the month - I circled those in red."],
+		["GUS", "Pinned a calendar on the wall. Fight nights are Saturdays, cup nights are Wednesdays. Rent's the last Sunday of the month - I circled those in red."],
 		["YOU", "You circled all of them."],
 		["GUS", "Because I have to pay all of them. Flip it over: the league table, the other pilots, and the bookies' odds. It's all under Season."],
 		["GUS", "Half this town bets on fight night. If you want to see what you're betting on, you can go and watch the other fights too."],
@@ -234,7 +234,7 @@ const SCENES := {
 	]},
 	"unlock_cups": {"place": "GUS'S BAY", "lines": [
 		["GUS", "Phone's been ringing. People want to know who's piloting the dead man's robot."],
-		["GUS", "That means the cup promoters will take our entry fee. Cups run in the quiet weeks between leagues - eight pilots, three weeks, straight knockout."],
+		["GUS", "That means the cup promoters will take our entry fee. Cups are fought on Wednesday nights, so Saturdays stay free for the league - eight pilots, three weeks, straight knockout."],
 		["GUS", "Pilots from the bigger leagues show up to those. Good money, good beatings. Have a look under Cups."],
 	]},
 	"unlock_team": {"place": "GUS'S BAY", "lines": [
