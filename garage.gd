@@ -302,7 +302,7 @@ func refresh() -> void:
 	if mode == "open":
 		GameData.start_pickup()   # a quiet week: there's always a pickup fight down at the scrapyard
 		mode = GameData.fight_mode()
-	title_label.text = tr("GARAGE - Year %d, week %d - %s") % [GameData.year, GameData.week, GameData.fight_title()]
+	title_label.text = ""   # the top strip is kept free (space for ads); the date lives in the Season calendar
 	var o := GameData.current_opponent()
 	var core := GameData.equipped_inst("torso")
 	# which robot goes in: your main robot, or a backup robot (1-on-1 fights only)
@@ -964,14 +964,14 @@ func build_scrapyard_tab() -> void:
 	info.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	info.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	bar.add_child(info)
-	row_button(bar, tr("Dig!") if GameData.digs_left > 0 else tr("Rest"), _on_dig, GameData.digs_left > 0, 130)
+	row_button(bar, tr("Dig!") if GameData.digs_left > 0 else tr("No digging until next fight"), _on_dig, GameData.digs_left > 0, 130 if GameData.digs_left > 0 else 270)
 	# what the pile has given you so far (spare parts that still need fixing)
 	var finds: Array = GameData.spares().filter(func(p): return p.get("dug", false))
 	if not finds.is_empty():
 		section("Dug up and waiting in Storage - fit them in the bay, or sell them (damaged parts sell cheaper):")
 		for p in finds:
 			var d := GameData.part_def(p["id"])
-			var row := make_row(part_icon(d, GameData.hp_ratio(p)), tr("%s  [%s]  %d%%") % [d["name"], tr(str(d["kind"]).to_upper()), int(GameData.hp_ratio(p) * 100)], GameData.part_stat_text(d))
+			var row := make_row(part_icon(d, GameData.hp_ratio(p)), tr("%s  [%s]") % [d["name"], tr(str(d["kind"]).to_upper())], health_text(p))
 			row_button(row, tr("Sell $%d") % GameData.sell_value(p), _on_sell.bind(p["uid"]), true, 110)
 
 

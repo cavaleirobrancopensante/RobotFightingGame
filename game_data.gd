@@ -1612,8 +1612,8 @@ func tip_once(id: String) -> bool:
 
 
 ## Wins needed for each feature: one new thing per win, so Gus can explain each one on its own.
-const UNLOCKS := {"scrapyard": 0, "style": 1, "shop": 2, "season": 3, "scout": 4, "moves": 5, "cups": 6, "team": 7,
-		"workshop": 8, "pilot": 9, "paint": 10, "setups": 11, "randomize": 12}
+const UNLOCKS := {"scrapyard": 0, "season": 0, "style": 1, "shop": 2, "scout": 3, "moves": 4, "cups": 5, "team": 6,
+		"workshop": 7, "pilot": 8, "paint": 9, "setups": 10, "randomize": 11}
 
 
 ## Wins, and always a fight after the one that earned it: your first visit to the bay is just
