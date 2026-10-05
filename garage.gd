@@ -229,7 +229,14 @@ func show_last_result() -> void:
 			bits.append("Beat %s!" % r["opponent"])
 		else:
 			bits.append("Lost to %s." % r["opponent"])
-		bits.append("Earned $%d." % (r["reward"] + r.get("bonus", 0)))
+		var total: int = r["reward"] + r.get("bonus", 0)
+		if total < 0:
+			bits.append("Paid the winner $%d." % -total)
+		elif total > 0:
+			bits.append("Earned $%d." % total)
+		var bt: Dictionary = r.get("bets", {})
+		if not bt.is_empty() and int(bt.get("staked", 0)) > 0:
+			bits.append("Bets: %s." % ", ".join(bt["lines"]))
 		if r.get("cup_done", "") != "":
 			bits.append("CUP OVER - %s." % r["cup_done"])
 		if r.get("event_done", "") != "":
@@ -1077,15 +1084,23 @@ const PLAN_COLORS := {"league": Color(0.35, 0.6, 1.0), "playoff": Color(1.0, 0.7
 
 func build_season_tab() -> void:
 	var bar := action_bar()
-	for v in [["calendar", "Calendar"], ["table", "League table"]]:
+	var views := [["calendar", "Calendar"], ["table", "League table"]]
+	if GameData.bet_target() != "":
+		views.append(["bets", "Bets"])
+	elif season_view == "bets":
+		season_view = "calendar"
+	for v in views:
 		var b := row_button(bar, v[1], _on_season_view.bind(v[0]), true, 0)
 		b.toggle_mode = true
 		b.button_pressed = season_view == v[0]
 		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	if season_view == "calendar":
-		build_calendar()
-	else:
-		build_league_view()
+	match season_view:
+		"calendar":
+			build_calendar()
+		"bets":
+			build_bets()
+		_:
+			build_league_view()
 
 
 func _on_season_view(v: String) -> void:
@@ -1174,6 +1189,66 @@ func day_cell(n: int, text: String, col: Color, bg: Color, today: bool) -> Panel
 		l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		v.add_child(l)
 	return p
+
+
+var bet_stake := 50
+
+
+## Bets: put money on yourself, or on anyone else's fight this round. Odds come from the table.
+func build_bets() -> void:
+	var ev := GameData.bet_event()
+	section("This round's fights. Odds come from everyone's record - a pilot nobody rates pays big. Bets need real cash.")
+	var bar := action_bar()
+	bar.add_child(UI.label("Stake:", 16))
+	for st in [10, 50, 100, 250, 500]:
+		var b := row_button(bar, "$%d" % st, _on_stake.bind(st), true, 80)
+		b.toggle_mode = true
+		b.button_pressed = st == bet_stake
+	for pr in Career.round_matches(ev):
+		var a: int = pr[0]
+		var b: int = pr[1]
+		var row := HBoxContainer.new()
+		row.add_theme_constant_override("separation", 6)
+		list_box.add_child(row)
+		bet_side(row, ev, a, b)
+		var vs := UI.label("vs", 15, Color(0.6, 0.6, 0.65))
+		vs.custom_minimum_size = Vector2(28, 0)
+		vs.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		row.add_child(vs)
+		bet_side(row, ev, b, a)
+	var mine: Array = GameData.bets.filter(func(x): return x["on"] == GameData.bet_target() and int(x["round"]) == int(ev["round"]))
+	if not mine.is_empty():
+		section("Your bets this round:")
+		for x in mine:
+			var who: String = GameData.pilot_name if x["pick"] == 0 else str(Career.pilot(ev, x["pick"]).get("pilot", "?"))
+			section("  $%d on %s at %.2fx  ->  pays $%d" % [x["stake"], who, x["odds"], int(x["stake"] * x["odds"])])
+
+
+## One side of a match: pilot, robot, record, odds and a Bet button.
+func bet_side(row: HBoxContainer, ev: Dictionary, id: int, other: int) -> void:
+	var box := HBoxContainer.new()
+	box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	box.add_theme_constant_override("separation", 4)
+	row.add_child(box)
+	var t: Array = ev["table"].get(str(id), [0, 0, 0, 0])
+	var odds := Career.odds(ev, id, other)
+	var l := UI.label("%s\n%d-%d   %.2fx" % [who(ev, id), t[0], t[1], odds], 13, Color(1.0, 0.85, 0.3) if id == 0 else Color(0.9, 0.9, 0.95))
+	l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	l.clip_text = true
+	box.add_child(l)
+	if other != 0:
+		row_button(box, "Bet", _on_bet.bind(id, other), GameData.money >= bet_stake, 64)
+
+
+func _on_stake(st: int) -> void:
+	bet_stake = st
+	refresh()
+
+
+func _on_bet(pick: int, vs: int) -> void:
+	say(GameData.place_bet(pick, vs, bet_stake), "buy")
+	GameData.save_game()
+	refresh()
 
 
 func _on_cal_month(step: int) -> void:

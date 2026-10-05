@@ -264,6 +264,7 @@ var pending_stories: Array = []   # scenes the last result unlocked (shown after
 var last_ko := ""
 var bills_note := 0         # living costs charged since the garage last showed them
 var fight_log: Array = []   # every fight: {y, w, opp, won, mode, title} - for the calendar
+var bets: Array = []        # this week's bets: {on: "event"/"cup", round, pick, vs, stake, odds}
 var wins := 0
 var losses := 0
 var champion := false
@@ -496,6 +497,7 @@ func new_game() -> void:
 	pickup = {}
 	bills_note = 0
 	fight_log = []
+	bets = []
 	setups = []
 	for k in SETUP_SLOTS:
 		setups.append({})
@@ -1085,6 +1087,24 @@ func do_scout() -> String:
 
 
 
+## What a defeat pays: in the scrapyard you pay the winner, in the Regional and cups you get nothing,
+## in the Championship (and exhibitions) you still get a small purse.
+func loss_pay(base: int) -> int:
+	match fight_mode():
+		"pickup":
+			return -int(base * 0.5)
+		"story":
+			match str(event.get("stage", "")):
+				"scrap":
+					return -int(base * 0.5)
+				"championship":
+					return int(base * 0.3)
+			return 0
+		"exhibition":
+			return int(base * 0.25)
+	return 0
+
+
 func current_reward() -> int:
 	var o := current_opponent()
 	return 0 if o.is_empty() else int(o["reward"])
@@ -1281,6 +1301,64 @@ func week_plan(y: int, w: int) -> Dictionary:
 			if w >= start and w < start + length and w > week and enters_stage(stage) and (event.is_empty() or event.get("phase", "") == "done" or event["stage"] != stage):
 				return {"kind": "league", "text": "%s\n(qualified)" % info["short"]}
 	return {"kind": "open", "text": "pickup fight"}
+
+
+# ---------------------------------------------------------------- betting
+
+## The event you can bet on this week ("event" or "cup"), or "".
+func bet_target() -> String:
+	match fight_mode():
+		"story":
+			return "event"
+		"circuit":
+			return "cup"
+	return ""
+
+
+func bet_event() -> Dictionary:
+	return event if bet_target() == "event" else (circuit if bet_target() == "cup" else {})
+
+
+## Put money on pilot `pick` beating `vs` this round. Needs real cash.
+func place_bet(pick: int, vs: int, stake: int) -> String:
+	var ev := bet_event()
+	if ev.is_empty():
+		return "Nothing to bet on this week."
+	if vs == 0:
+		return "Betting against yourself? Gus would never speak to you again."
+	if money < stake:
+		return "You need $%d in cash to place that bet." % stake
+	var o := Career.odds(ev, pick, vs)
+	money -= stake
+	bets.append({"on": bet_target(), "round": int(ev["round"]), "pick": pick, "vs": vs, "stake": stake, "odds": o})
+	var who: String = pilot_name if pick == 0 else str(Career.pilot(ev, pick).get("pilot", "?"))
+	return "$%d on %s at %.2fx - pays $%d if they win." % [stake, who, o, int(stake * o)]
+
+
+## After the round: pay out winning bets. Returns {won, lost, net, lines}.
+func settle_bets(on: String, ev: Dictionary) -> Dictionary:
+	var out := {"paid": 0, "staked": 0, "lines": []}
+	var res: Dictionary = ev.get("results", {})
+	var keep: Array = []
+	for b in bets:
+		if b["on"] != on or res.is_empty() or int(b["round"]) != int(res["round"]):
+			keep.append(b)
+			continue
+		var winner := -1
+		for x in res["list"]:
+			if (int(x["a"]) == b["pick"] and int(x["b"]) == b["vs"]) or (int(x["b"]) == b["pick"] and int(x["a"]) == b["vs"]):
+				winner = int(x["w"])
+		out["staked"] += b["stake"]
+		var who: String = pilot_name if b["pick"] == 0 else str(Career.pilot(ev, b["pick"]).get("pilot", "?"))
+		if winner == b["pick"]:
+			var pay := int(b["stake"] * b["odds"])
+			money += pay
+			out["paid"] += pay
+			out["lines"].append("Bet on %s: +$%d" % [who, pay])
+		else:
+			out["lines"].append("Bet on %s: lost $%d" % [who, b["stake"]])
+	bets = keep
+	return out
 
 
 func cups_unlocked() -> bool:
@@ -1715,7 +1793,7 @@ func player_look() -> Dictionary:
 func record_result(won: bool, part_hp: Dictionary, destroyed: int, salvage_ids: Array, team_hp: Array = []) -> Dictionary:
 	var o := current_opponent()
 	var base: int = current_reward()
-	var reward: int = base if won else int(base * 0.35)
+	var reward: int = base if won else loss_pay(base)
 	var bonus := destroyed * 75
 	var was_in_debt := money < 0
 	money += reward + bonus
@@ -1777,6 +1855,7 @@ func record_result(won: bool, part_hp: Dictionary, destroyed: int, salvage_ids: 
 	var mode := fight_mode()
 	var cup_done := ""
 	var event_done := ""
+	var bet_result := {}
 	pending_stories = []
 	# the scoreboard: what you tore off them
 	for sv in salvage_ids:
@@ -1793,6 +1872,7 @@ func record_result(won: bool, part_hp: Dictionary, destroyed: int, salvage_ids: 
 	match mode:
 		"story":
 			var res: Dictionary = Career.after_player_fight(event, won, destroyed)
+			bet_result = settle_bets("event", event)
 			if res["phase_changed"] and event["stage"] == "regional" and event.get("qualified", []).has(0) and rank_index() < 2:
 				rank = "championship"
 				pending_stories.append("regional_semis")
@@ -1801,6 +1881,7 @@ func record_result(won: bool, part_hp: Dictionary, destroyed: int, salvage_ids: 
 			advance_week(1)
 		"circuit":
 			Career.after_player_fight(circuit, won, destroyed)
+			bet_result = settle_bets("cup", circuit)
 			if circuit["phase"] == "done":
 				cup_done = finish_cup()
 			advance_week(1)
@@ -1812,7 +1893,7 @@ func record_result(won: bool, part_hp: Dictionary, destroyed: int, salvage_ids: 
 	roll_stock()
 	last_result = {"won": won, "reward": reward, "bonus": bonus, "opponent": o["name"], "lost": lost, "wrecked": wrecked,
 			"salvaged": salvaged, "champion": champion and not was_champion,
-			"trophy": trophy, "cup_done": cup_done, "event_done": event_done, "out_of_debt": was_in_debt and money >= 0, "cards": cards}
+			"trophy": trophy, "cup_done": cup_done, "event_done": event_done, "out_of_debt": was_in_debt and money >= 0, "cards": cards, "bets": bet_result}
 	save_game()
 	return last_result
 
@@ -1898,6 +1979,7 @@ func enter_circuit(k: int) -> void:
 
 func abandon_circuit() -> void:
 	circuit = {}
+	bets = bets.filter(func(b): return b["on"] != "cup")
 	if circuit_offers.size() < 3:
 		make_offers()
 
@@ -2214,7 +2296,7 @@ func save_game() -> bool:
 		"owned_chips": owned_chips, "chips": chips, "circuit": circuit, "circuit_offers": circuit_offers,
 		"circuits_won": circuits_won, "pickup": pickup, "setups": setups, "custom_parts": custom_parts,
 		"year": year, "week": week, "rank": rank, "event": event, "trophies": trophies, "career_stats": career_stats,
-		"style": style, "shop_stock": shop_stock, "scout": scout, "wingmen": wingmen, "sending": sending, "pilot_look": pilot_look, "owned_controllers": owned_controllers, "tips_seen": tips_seen, "digs_left": digs_left, "bills_note": bills_note, "fight_log": fight_log,
+		"style": style, "shop_stock": shop_stock, "scout": scout, "wingmen": wingmen, "sending": sending, "pilot_look": pilot_look, "owned_controllers": owned_controllers, "tips_seen": tips_seen, "digs_left": digs_left, "bills_note": bills_note, "fight_log": fight_log, "bets": bets,
 	}
 	var f := FileAccess.open(slot_path(save_slot), FileAccess.WRITE)
 	if f == null:
@@ -2283,6 +2365,11 @@ func load_game(slot: int = -1) -> String:
 	tips_seen = data.get("tips_seen", []).duplicate()
 	digs_left = int(data.get("digs_left", DIGS_PER_FIGHT))
 	bills_note = int(data.get("bills_note", 0))
+	bets = []
+	for b in data.get("bets", []):
+		if typeof(b) == TYPE_DICTIONARY:
+			bets.append({"on": str(b["on"]), "round": int(b["round"]), "pick": int(b["pick"]), "vs": int(b["vs"]),
+					"stake": int(b["stake"]), "odds": float(b["odds"])})
 	fight_log = []
 	for e in data.get("fight_log", []):
 		if typeof(e) == TYPE_DICTIONARY:
@@ -2363,6 +2450,14 @@ func _fix_numbers(ev: Dictionary) -> void:
 				for k in ["a", "b", "w"]:
 					m[k] = int(m[k])
 	ev["qualified"] = ev.get("qualified", []).map(func(v): return int(v))
+	if ev.has("pairs"):
+		ev["pairs"]["round"] = int(ev["pairs"]["round"])
+		ev["pairs"]["list"] = ev["pairs"]["list"].map(func(pr): return [int(pr[0]), int(pr[1])])
+	if ev.has("results"):
+		ev["results"]["round"] = int(ev["results"]["round"])
+		for x in ev["results"]["list"]:
+			for k in ["a", "b", "w"]:
+				x[k] = int(x[k])
 
 
 func delete_save(slot: int = -1) -> void:

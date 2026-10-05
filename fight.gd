@@ -2628,7 +2628,16 @@ func draw_results() -> void:
 	if mode == "quick":
 		lines.append(["Quick fight - nothing saved. Tap to go back to the menu.", Color(0.8, 0.8, 0.85)])
 	else:
-		lines.append(["Prize money: +$%d" % result.get("reward", 0), Color(0.95, 0.85, 0.2)])
+		var pay: int = result.get("reward", 0)
+		if pay > 0:
+			lines.append(["Prize money: +$%d" % pay, Color(0.95, 0.85, 0.2)])
+		elif pay < 0:
+			lines.append(["Paid the winner: -$%d" % -pay, Color(1.0, 0.45, 0.4)])
+		else:
+			lines.append(["No purse for the loser", Color(0.75, 0.75, 0.8)])
+		var bt: Dictionary = result.get("bets", {})
+		for bl in bt.get("lines", []):
+			lines.append([bl, Color(0.5, 1.0, 0.6) if str(bl).contains("+$") else Color(1.0, 0.45, 0.4)])
 	if result.get("bonus", 0) > 0:
 		lines.append(["Dismantle bonus: +$%d" % result["bonus"], Color(0.95, 0.85, 0.2)])
 	if result.get("champion", false):

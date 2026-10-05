@@ -138,6 +138,70 @@ static func robot_of(ev: Dictionary, id: int) -> Dictionary:
 	return o
 
 
+## The other league pairings this round (everyone except you and your opponent), fixed when the
+## round begins so you can bet on them.
+static func round_pairs(ev: Dictionary) -> Array:
+	var r: int = ev["round"]
+	var cached: Dictionary = ev.get("pairs", {})
+	if not cached.is_empty() and int(cached["round"]) == r:
+		return cached["list"]
+	var opp := player_opponent(ev)
+	var free: Array = []
+	for e in ev["pilots"]:
+		var id: int = e["id"]
+		if id != 0 and id != opp and not (e.get("rival", -1) == 9 and ev["stage"] == "championship" and ev["phase"] == "league"):
+			free.append(id)
+	var rng := RandomNumberGenerator.new()
+	rng.seed = int(ev["seed"]) * 17 + r * 389 + 1
+	for k in range(free.size() - 1, 0, -1):
+		var j := rng.randi_range(0, k)
+		var tmp = free[k]
+		free[k] = free[j]
+		free[j] = tmp
+	var list: Array = []
+	while free.size() >= 2:
+		list.append([free.pop_back(), free.pop_back()])
+	ev["pairs"] = {"round": r, "list": list}
+	return list
+
+
+## This round's matches to bet on: [[a, b], ...] - yours first.
+static func round_matches(ev: Dictionary) -> Array:
+	var out: Array = []
+	match ev.get("phase", ""):
+		"league":
+			var opp := player_opponent(ev)
+			if opp != -1:
+				out.append([0, opp])
+			out += round_pairs(ev)
+		"playoffs":
+			var br: Dictionary = ev["bracket"]
+			for x in br["rounds"][br["r"]]:
+				if int(x["w"]) == -1:
+					var pair := [int(x["a"]), int(x["b"])]
+					if pair[1] == 0:
+						pair = [0, pair[0]]
+					if pair[0] == 0:
+						out.insert(0, pair)
+					else:
+						out.append(pair)
+	return out
+
+
+## Bookmaker's odds (payout multiplier) on pilot a beating b, from their records in this event.
+static func odds(ev: Dictionary, a: int, b: int) -> float:
+	var ta: Array = ev["table"].get(str(a), [0, 0, 0, 0])
+	var tb: Array = ev["table"].get(str(b), [0, 0, 0, 0])
+	var ra := (float(ta[0]) + 1.0) / (float(ta[0] + ta[1]) + 2.0)
+	var rb := (float(tb[0]) + 1.0) / (float(tb[0] + tb[1]) + 2.0)
+	if pilot(ev, a).get("rival", -1) == 9:
+		ra = 0.95   # everyone knows OVERLORD
+	if pilot(ev, b).get("rival", -1) == 9:
+		rb = 0.95
+	var p := clampf(ra / (ra + rb), 0.08, 0.92)
+	return snappedf(maxf(1.05, 0.9 / p), 0.05)
+
+
 static func is_playoff(ev: Dictionary) -> bool:
 	return ev.get("phase", "") == "playoffs"
 
@@ -238,18 +302,15 @@ static func after_player_fight(ev: Dictionary, won: bool, parts: int) -> Diction
 	var opp := player_opponent(ev)
 	if ev["phase"] == "league":
 		add_result(ev, 0 if won else opp, opp if won else 0, parts if won else rng.randi_range(0, 3))
-		# everyone else plays someone this round too
-		var free: Array = []
-		for e in ev["pilots"]:
-			var id: int = e["id"]
-			if id != 0 and id != opp:
-				free.append(id)
-		free.shuffle()
-		while free.size() >= 2:
-			var a: int = free.pop_back()
-			var b: int = free.pop_back()
+		var results: Array = [{"a": 0, "b": opp, "w": 0 if won else opp}]
+		# everyone else plays someone this round too (the pairings were set when the round began)
+		for pr in round_pairs(ev):
+			var a: int = pr[0]
+			var b: int = pr[1]
 			var w := simulate(ev, a, b, rng)
 			add_result(ev, w, b if w == a else a, rng.randi_range(0, 4))
+			results.append({"a": a, "b": b, "w": w})
+		ev["results"] = {"round": int(ev["round"]), "list": results}
 		ev["round"] = int(ev["round"]) + 1
 		if ev["round"] >= ev["schedule"].size():
 			out["phase_changed"] = true
@@ -265,7 +326,14 @@ static func after_player_fight(ev: Dictionary, won: bool, parts: int) -> Diction
 	var m := player_match(ev)
 	if not m.is_empty():
 		m["w"] = 0 if won else opp
+	var br: Dictionary = ev["bracket"]
+	var cur_r: int = br["r"]
+	var played_round: int = ev["round"]
 	play_round(ev, rng)
+	var res: Array = []
+	for x in br["rounds"][cur_r]:
+		res.append({"a": int(x["a"]), "b": int(x["b"]), "w": int(x["w"])})
+	ev["results"] = {"round": played_round, "list": res}
 	if ev["phase"] == "done":
 		out["done"] = true
 	elif player_opponent(ev) == -1:
