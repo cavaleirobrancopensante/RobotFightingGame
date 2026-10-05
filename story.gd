@@ -57,6 +57,7 @@ class Portrait extends Control:
 				draw_rect(Rect2(c.x - r * 1.2, c.y + r * 0.95, r * 2.4, r), Color(0.15, 0.15, 0.2))  # suit
 			"YOU":
 				draw_face(GameData.pilot_look, c, r, mouth)
+				PilotArt.draw_controller(self, c + Vector2(0, r * 1.45), r / 14.0, str(GameData.pilot_look.get("controller", "gamepad")), talking, t)
 			"ANNOUNCER":
 				draw_circle(c, r, Color(0.85, 0.65, 0.5))
 				draw_rect(Rect2(c.x - r, c.y - r * 1.05, r * 2.0, r * 0.45), Color(0.1, 0.1, 0.1))
@@ -75,46 +76,13 @@ class Portrait extends Control:
 
 	## Rival pilots: a face built from a few traits in Story.SPEAKERS.
 	func draw_face(f: Dictionary, c: Vector2, r: float, mouth: float) -> void:
-		var skin := Color(f.get("skin", "#c8946e"))
-		var hair := Color(f.get("hair", "#2a1d14"))
 		var outfit := Color(f.get("outfit", "#34495e"))
 		var twin: bool = f.get("twin", false)
 		var centers: Array = [c] if not twin else [c + Vector2(-r * 0.62, r * 0.1), c + Vector2(r * 0.62, -r * 0.05)]
 		var rr := r if not twin else r * 0.62
 		for cc in centers:
 			draw_rect(Rect2(cc.x - rr * 1.1, cc.y + rr * 0.95, rr * 2.2, rr), outfit)
-			if f.get("long_hair", false):
-				draw_rect(Rect2(cc.x - rr * 1.05, cc.y - rr * 0.6, rr * 2.1, rr * 1.4), hair)
-			draw_circle(cc, rr, skin)
-			match str(f.get("hat", "")):
-				"cap":
-					draw_rect(Rect2(cc.x - rr * 1.05, cc.y - rr * 1.05, rr * 2.1, rr * 0.5), hair)
-					draw_rect(Rect2(cc.x - rr * 0.2, cc.y - rr * 0.65, rr * 1.4, rr * 0.16), hair)
-				"beanie":
-					draw_rect(Rect2(cc.x - rr, cc.y - rr * 1.05, rr * 2.0, rr * 0.6), hair)
-				"mohawk":
-					draw_rect(Rect2(cc.x - rr * 0.18, cc.y - rr * 1.6, rr * 0.36, rr * 0.8), hair)
-				"helmet":
-					draw_arc(cc, rr * 1.05, PI, TAU, 16, hair, rr * 0.35)
-				"bun":
-					draw_circle(cc + Vector2(0, -rr * 1.05), rr * 0.35, hair)
-					draw_rect(Rect2(cc.x - rr, cc.y - rr * 1.0, rr * 2.0, rr * 0.35), hair)
-				"bald":
-					pass
-				_:
-					draw_rect(Rect2(cc.x - rr, cc.y - rr * 1.0, rr * 2.0, rr * 0.4), hair)
-			draw_circle(cc + Vector2(-rr * 0.35, -rr * 0.08), rr * 0.1, Color.WHITE)
-			draw_circle(cc + Vector2(rr * 0.35, -rr * 0.08), rr * 0.1, Color.WHITE)
-			if f.get("glasses", false):
-				draw_arc(cc + Vector2(-rr * 0.35, -rr * 0.08), rr * 0.2, 0, TAU, 12, Color(0.1, 0.1, 0.1), 2.0)
-				draw_arc(cc + Vector2(rr * 0.35, -rr * 0.08), rr * 0.2, 0, TAU, 12, Color(0.1, 0.1, 0.1), 2.0)
-			if f.get("goggles", false):
-				draw_rect(Rect2(cc.x - rr * 0.75, cc.y - rr * 0.3, rr * 1.5, rr * 0.4), Color(0.2, 0.5, 0.6, 0.85))
-			if f.get("beard", false):
-				draw_circle(cc + Vector2(0, rr * 0.55), rr * 0.5, hair.lightened(0.15))
-			if f.get("scar", false):
-				draw_line(cc + Vector2(rr * 0.15, -rr * 0.5), cc + Vector2(rr * 0.6, rr * 0.2), Color(0.6, 0.25, 0.2), 3.0)
-			draw_rect(Rect2(cc.x - rr * 0.25, cc.y + rr * 0.38, rr * 0.5, mouth * (0.7 if not twin else 0.45)), Color(0.25, 0.08, 0.06))
+			PilotArt.draw_head(self, cc, rr, f, 0.0, mouth * (0.7 if not twin else 0.45))
 
 
 func _ready() -> void:

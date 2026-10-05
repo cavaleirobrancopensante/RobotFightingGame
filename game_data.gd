@@ -185,13 +185,25 @@ var save_slot := 1          # which save file (1..SAVE_SLOTS) this game uses
 var slot_mode := "load"     # what the save-slot screen is for: "new" or "load"
 var pilot_name := "Rook"
 var robot_name := DEFAULT_ROBOT
-const DEFAULT_PILOT_LOOK := {"skin": "#b07a52", "hair": "#d9482f", "hat": "beanie", "outfit": "#3e5c4f"}
-const PILOT_SKINS := ["#f1d0b5", "#e2b48c", "#c8946e", "#b07a52", "#8d5a3b", "#5e3a24"]
-const PILOT_COLORS := ["#d9482f", "#2a1d14", "#e8d36a", "#7a4b2a", "#c0c0c0", "#1f6fd1", "#2ecc71", "#e056fd", "#f39c12", "#ecf0f1", "#3e5c4f", "#34495e", "#8e2c1c", "#222222"]
-const PILOT_HATS := ["beanie", "cap", "helmet", "mohawk", "bun", "bald", ""]
-const PILOT_HAT_NAMES := {"beanie": "Beanie", "cap": "Cap", "helmet": "Helmet", "mohawk": "Mohawk", "bun": "Hair bun", "bald": "Bald", "": "Short hair"}
-const PILOT_EXTRAS := [[], ["glasses"], ["beard"], ["goggles"], ["glasses", "beard"], ["long_hair"], ["long_hair", "glasses"], ["scar"]]
+const DEFAULT_PILOT_LOOK := {"skin": "#b07a52", "hair": "#d9482f", "eyes": "#5b3a1e", "hat": "beanie", "outfit": "#3e5c4f",
+		"beard": "none", "glasses": "none", "controller": "gamepad"}
+# Pilot controllers: bought in the shop, each changes how your robots fight.
+# mods: atk_speed / move / damage (+%), gadget_cd (x), aim (+% aim accuracy), combo (+s combo window),
+#       seq (+s special-move input window), jump (+%), block (x damage taken while blocking)
+const CONTROLLER_INFO := {
+	"gamepad": {"cost": 0, "desc": "The pad you started with. No tricks.", "mods": {}},
+	"brick": {"cost": 250, "desc": "Old retro pad, clicky buttons: +0.25s to keep combos going.", "mods": {"combo": 0.25}},
+	"keyboard": {"cost": 600, "desc": "Every move on its own key: special-move inputs get +0.3s.", "mods": {"seq": 0.3}},
+	"arcade": {"cost": 900, "desc": "Real arcade buttons: attacks 7% faster.", "mods": {"atk_speed": 0.07}},
+	"radio": {"cost": 1000, "desc": "Long-range RC radio: gadgets recharge 20% faster.", "mods": {"gadget_cd": 0.8}},
+	"wheel": {"cost": 1100, "desc": "Racing wheel: walks 12% faster.", "mods": {"move": 0.12}},
+	"joysticks": {"cost": 1200, "desc": "Twin sticks, one per arm: blocked hits do 35% less damage.", "mods": {"block": 0.65}},
+	"yoke": {"cost": 1400, "desc": "Flight yoke: jumps 12% higher and steers better in the air.", "mods": {"jump": 0.12}},
+	"tablet": {"cost": 1500, "desc": "Targeting tablet: aimed hits land on your target 15% more often.", "mods": {"aim": 15}},
+	"gloves": {"cost": 2600, "desc": "Motion gloves, the robot copies your hands: +6% damage and +4% attack speed.", "mods": {"damage": 0.06, "atk_speed": 0.04}},
+}
 var pilot_look := DEFAULT_PILOT_LOOK.duplicate()   # how your pilot looks in the corner and in the story
+var owned_controllers: Array = ["gamepad"]
 var inventory: Array = []   # [{uid, id, hp}]
 var equipped := {}          # slot -> uid (-1 = empty)
 var wingmen: Array = [{}, {}]   # extra robots for team fights, built from spares: [{slot: uid}, ...]
@@ -280,6 +292,7 @@ func new_game() -> void:
 	money = START_MONEY
 	pilot_name = "Rook"
 	pilot_look = DEFAULT_PILOT_LOOK.duplicate()
+	owned_controllers = ["gamepad"]
 	robot_name = DEFAULT_ROBOT
 	inventory = []
 	equipped = {}
@@ -719,6 +732,7 @@ func player_spec(eq: Dictionary = {}, label: String = "") -> Dictionary:
 			"eye": Color(part_def(reactor["id"])["color"]) if not reactor.is_empty() else Color(0.4, 0.9, 1.0),
 			"back": {} if back.is_empty() else {"shape": part_def(back["id"])["shape"], "color": Color(part_def(back["id"])["color"])},
 			"gadgets": gadgets, "specials": active_chips() if eq == equipped else [], "style": style,
+			"controller": str(pilot_look.get("controller", "gamepad")),
 			"traits": global_traits(ids_of(eq))}
 
 
@@ -979,6 +993,19 @@ func sending_name() -> String:
 ## Backup robots and the Team tab unlock after the second story fight.
 func team_unlocked() -> bool:
 	return champion or fight_index >= 2
+
+
+func buy_controller(id: String) -> String:
+	var info: Dictionary = CONTROLLER_INFO[id]
+	if owned_controllers.has(id):
+		pilot_look["controller"] = id
+		return "Your pilot picks up the %s." % PilotArt.CONTROLLER_NAMES[id]
+	if money < int(info["cost"]):
+		return "The %s costs $%d." % [PilotArt.CONTROLLER_NAMES[id], info["cost"]]
+	money -= int(info["cost"])
+	owned_controllers.append(id)
+	pilot_look["controller"] = id
+	return "Bought the %s! %s" % [PilotArt.CONTROLLER_NAMES[id], info["desc"]]
 
 
 func wingman_name(k: int) -> String:
@@ -1607,7 +1634,7 @@ func save_game() -> bool:
 		"losses": losses, "champion": champion, "story_seen": story_seen,
 		"owned_chips": owned_chips, "chips": chips, "circuit": circuit, "circuit_offers": circuit_offers,
 		"circuits_won": circuits_won, "setups": setups, "custom_parts": custom_parts,
-		"style": style, "shop_stock": shop_stock, "scout": scout, "wingmen": wingmen, "sending": sending, "pilot_look": pilot_look,
+		"style": style, "shop_stock": shop_stock, "scout": scout, "wingmen": wingmen, "sending": sending, "pilot_look": pilot_look, "owned_controllers": owned_controllers,
 	}
 	var f := FileAccess.open(slot_path(save_slot), FileAccess.WRITE)
 	if f == null:
@@ -1671,6 +1698,13 @@ func load_game(slot: int = -1) -> String:
 	pilot_look = DEFAULT_PILOT_LOOK.duplicate()
 	if typeof(data.get("pilot_look")) == TYPE_DICTIONARY:
 		pilot_look.merge(data["pilot_look"], true)
+	pilot_look = PilotArt.normalize(pilot_look)
+	owned_controllers = ["gamepad"]
+	for c in data.get("owned_controllers", []):
+		if CONTROLLER_INFO.has(str(c)) and not owned_controllers.has(str(c)):
+			owned_controllers.append(str(c))
+	if not owned_controllers.has(pilot_look["controller"]):
+		pilot_look["controller"] = "gamepad"
 	wingmen = [{}, {}]
 	var wm: Array = data.get("wingmen", [])
 	for k in mini(2, wm.size()):

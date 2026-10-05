@@ -28,6 +28,19 @@ var overlay: Control
 var last_view := ""
 
 
+class ControllerIcon extends Control:
+	var kind := "gamepad"
+	var t := 0.0
+
+	func _process(delta: float) -> void:
+		t += delta
+		queue_redraw()
+
+	func _draw() -> void:
+		draw_rect(Rect2(Vector2.ZERO, size), Color(0.12, 0.12, 0.17))
+		PilotArt.draw_controller(self, size * 0.5 + Vector2(0, 4), minf(size.x, size.y) / 30.0, kind, int(t * 2.0) % 2 == 0, t)
+
+
 class ChipIcon extends Control:
 	var installed := false
 	func _draw() -> void:
@@ -554,70 +567,92 @@ const StoryScript = preload("res://story.gd")
 func _on_open_pilot() -> void:
 	var col := open_popup("YOUR PILOT")
 	var row := HBoxContainer.new()
-	row.add_theme_constant_override("separation", 14)
+	row.add_theme_constant_override("separation", 12)
 	col.add_child(row)
 	var face = StoryScript.Portrait.new()
 	face.who = "YOU"
-	face.custom_minimum_size = Vector2(190, 190)
+	face.custom_minimum_size = Vector2(170, 210)
 	row.add_child(face)
-	var opts := VBoxContainer.new()
-	opts.add_theme_constant_override("separation", 6)
-	opts.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	row.add_child(opts)
+	var grid := GridContainer.new()
+	grid.columns = 2
+	grid.add_theme_constant_override("h_separation", 14)
+	grid.add_theme_constant_override("v_separation", 4)
+	row.add_child(grid)
 	var look: Dictionary = GameData.pilot_look
 	var extras := []
-	for e in ["glasses", "beard", "goggles", "long_hair", "scar"]:
+	for e in ["long_hair", "scar"]:
 		if look.get(e, false):
-			extras.append(e)
+			extras.append(e.replace("_", " "))
+	var eye_i := maxi(0, PilotArt.EYES.find(look.get("eyes", PilotArt.EYES[0])))
 	var lines := [
-		["Skin", "skin", "%d/%d" % [GameData.PILOT_SKINS.find(look["skin"]) + 1, GameData.PILOT_SKINS.size()]],
-		["Hair / hat color", "hair", ""],
-		["Head", "hat", GameData.PILOT_HAT_NAMES.get(look["hat"], "?")],
-		["Jacket", "outfit", ""],
-		["Extras", "extras", "none" if extras.is_empty() else ", ".join(extras).replace("_", " ")],
+		["Skin", "skin", "%d / %d" % [PilotArt.SKINS.find(look["skin"]) + 1, PilotArt.SKINS.size()], ""],
+		["Eyes", "eyes", PilotArt.EYE_NAMES[eye_i], look.get("eyes", "")],
+		["Hair & hat", "hair", "", look["hair"]],
+		["Jacket", "outfit", "", look["outfit"]],
+		["Headwear", "hat", PilotArt.HAT_NAMES.get(look["hat"], "?"), ""],
+		["Beard", "beard", PilotArt.BEARD_NAMES.get(look["beard"], "?"), ""],
+		["Glasses", "glasses", PilotArt.GLASSES_NAMES.get(look["glasses"], "?"), ""],
+		["Extras", "extras", "none" if extras.is_empty() else " + ".join(extras), ""],
 	]
 	for l in lines:
-		var bar := action_bar(opts)
-		var t := UI.label(l[0], 16)
-		t.custom_minimum_size = Vector2(170, 0)
+		var bar := HBoxContainer.new()
+		bar.add_theme_constant_override("separation", 4)
+		grid.add_child(bar)
+		var t := UI.label(l[0], 14)
+		t.custom_minimum_size = Vector2(92, 0)
 		bar.add_child(t)
-		row_button(bar, "<", _on_pilot_change.bind(l[1], -1), true, 54)
-		var v := UI.label(l[2], 15, Color(0.8, 0.8, 0.85))
-		v.custom_minimum_size = Vector2(130, 0)
-		v.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		row_button(bar, "<", _on_pilot_change.bind(l[1], -1), true, 44)
 		if l[2] == "":
 			var sw := ColorRect.new()
-			sw.color = Color(look[l[1]])
-			sw.custom_minimum_size = Vector2(130, 30)
+			sw.color = Color(l[3])
+			sw.custom_minimum_size = Vector2(112, 30)
+			sw.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 			bar.add_child(sw)
 		else:
+			var v := UI.label(l[2], 13, Color(l[3]).lightened(0.3) if l[3] != "" else Color(0.85, 0.85, 0.9))
+			v.custom_minimum_size = Vector2(112, 0)
+			v.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+			v.clip_text = true
 			bar.add_child(v)
-		row_button(bar, ">", _on_pilot_change.bind(l[1], 1), true, 54)
-	var last := action_bar(opts)
-	row_button(last, "Random", _on_pilot_random, true, 130)
-	section("Your pilot stands in your corner during fights, working the controller and shouting at the robot.", col)
+		row_button(bar, ">", _on_pilot_change.bind(l[1], 1), true, 44)
+	var last := action_bar(col)
+	var ctl: String = look.get("controller", "gamepad")
+	var cl := UI.label("Controller: %s - %s  (buy more in the Shop)" % [PilotArt.CONTROLLER_NAMES[ctl], GameData.CONTROLLER_INFO[ctl]["desc"]], 13, Color(0.5, 0.85, 1.0))
+	cl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	cl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	last.add_child(cl)
+	row_button(last, "Switch", _on_pilot_change.bind("controller", 1), GameData.owned_controllers.size() > 1, 90)
+	row_button(last, "Random look", _on_pilot_random, true, 130)
 
 
 func _on_pilot_change(what: String, step: int) -> void:
 	var look: Dictionary = GameData.pilot_look
 	match what:
 		"skin":
-			look["skin"] = cycle(GameData.PILOT_SKINS, look["skin"], step)
+			look["skin"] = cycle(PilotArt.SKINS, look["skin"], step)
+		"eyes":
+			look["eyes"] = cycle(PilotArt.EYES, look.get("eyes", PilotArt.EYES[0]), step)
 		"hair", "outfit":
-			look[what] = cycle(GameData.PILOT_COLORS, look[what], step)
+			look[what] = cycle(PilotArt.COLORS, look[what], step)
 		"hat":
-			look["hat"] = cycle(GameData.PILOT_HATS, look["hat"], step)
+			look["hat"] = cycle(PilotArt.HATS, look["hat"], step)
+		"beard":
+			look["beard"] = cycle(PilotArt.BEARDS, look["beard"], step)
+		"glasses":
+			look["glasses"] = cycle(PilotArt.GLASSES, look["glasses"], step)
+		"controller":
+			look["controller"] = cycle(GameData.owned_controllers, look["controller"], step)
 		"extras":
 			var cur := []
-			for e in ["glasses", "beard", "goggles", "long_hair", "scar"]:
+			for e in ["long_hair", "scar"]:
 				if look.get(e, false):
 					cur.append(e)
 			var k := 0
-			for i in GameData.PILOT_EXTRAS.size():
-				if GameData.PILOT_EXTRAS[i] == cur:
+			for i in PilotArt.EXTRAS.size():
+				if PilotArt.EXTRAS[i] == cur:
 					k = i
-			var nxt: Array = GameData.PILOT_EXTRAS[posmod(k + step, GameData.PILOT_EXTRAS.size())]
-			for e in ["glasses", "beard", "goggles", "long_hair", "scar"]:
+			var nxt: Array = PilotArt.EXTRAS[posmod(k + step, PilotArt.EXTRAS.size())]
+			for e in ["long_hair", "scar"]:
 				look[e] = nxt.has(e)
 	Sfx.play("click")
 	_on_open_pilot()
@@ -630,15 +665,23 @@ func cycle(list: Array, cur, step: int):
 
 func _on_pilot_random() -> void:
 	var look: Dictionary = GameData.pilot_look
-	look["skin"] = GameData.PILOT_SKINS[randi() % GameData.PILOT_SKINS.size()]
-	look["hair"] = GameData.PILOT_COLORS[randi() % GameData.PILOT_COLORS.size()]
-	look["outfit"] = GameData.PILOT_COLORS[randi() % GameData.PILOT_COLORS.size()]
-	look["hat"] = GameData.PILOT_HATS[randi() % GameData.PILOT_HATS.size()]
-	var ex: Array = GameData.PILOT_EXTRAS[randi() % GameData.PILOT_EXTRAS.size()]
-	for e in ["glasses", "beard", "goggles", "long_hair", "scar"]:
+	look["skin"] = PilotArt.SKINS[randi() % PilotArt.SKINS.size()]
+	look["eyes"] = PilotArt.EYES[randi() % PilotArt.EYES.size()]
+	look["hair"] = PilotArt.COLORS[randi() % PilotArt.COLORS.size()]
+	look["outfit"] = PilotArt.COLORS[randi() % PilotArt.COLORS.size()]
+	look["hat"] = PilotArt.HATS[randi() % PilotArt.HATS.size()]
+	look["beard"] = PilotArt.BEARDS[randi() % PilotArt.BEARDS.size()]
+	look["glasses"] = PilotArt.GLASSES[randi() % PilotArt.GLASSES.size()]
+	var ex: Array = PilotArt.EXTRAS[randi() % PilotArt.EXTRAS.size()]
+	for e in ["long_hair", "scar"]:
 		look[e] = ex.has(e)
 	Sfx.play("equip")
 	_on_open_pilot()
+
+
+func _on_controller(id: String) -> void:
+	say(GameData.buy_controller(id), "buy")
+	refresh()
 
 
 func _on_open_paint() -> void:
@@ -679,6 +722,19 @@ func build_shop_tab() -> void:
 		var tag := "  [%s]" % str(d["kind"]).to_upper()
 		var row := make_row(part_icon(d), d["name"] + tag, GameData.part_stat_text(d))
 		row_button(row, "Buy $%d" % d["cost"], _on_buy.bind(id), GameData.money >= d["cost"], 115)
+	section("PILOT GEAR - controllers change how your robots fight:")
+	for id in PilotArt.CONTROLLERS:
+		var cinfo: Dictionary = GameData.CONTROLLER_INFO[id]
+		var icon := ControllerIcon.new()
+		icon.kind = id
+		var row := make_row(icon, PilotArt.CONTROLLER_NAMES[id], cinfo["desc"])
+		var using: bool = GameData.pilot_look.get("controller", "gamepad") == id
+		if using:
+			row_button(row, "In use", _on_controller.bind(id), false, 115)
+		elif GameData.owned_controllers.has(id):
+			row_button(row, "Use", _on_controller.bind(id), true, 115)
+		else:
+			row_button(row, "Buy $%d" % cinfo["cost"], _on_controller.bind(id), GameData.money >= int(cinfo["cost"]), 115)
 	section("SCRAP BIN - free junk, always there:")
 	for d in GameData.scrap_bin():
 		var row := make_row(part_icon(d), d["name"] + "  [%s]" % str(d["kind"]).to_upper(), GameData.part_stat_text(d))

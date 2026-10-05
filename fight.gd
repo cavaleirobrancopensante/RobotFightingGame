@@ -121,6 +121,7 @@ class Fighter:
 	var wingman := -1        # which of the player's wingmen this is (-1 = main robot / not ours)
 	var tag := ""            # little label over its head in team fights
 	var hp_scale := 1.0      # team robots fight with less health (your parts' real damage is scaled back after)
+	var ctrl := {}           # the pilot's controller bonuses (see GameData.CONTROLLER_INFO)
 
 	func alive(slot: String) -> bool:
 		return parts.has(slot) and not parts[slot].is_empty() and parts[slot]["hp"] > 0.0
@@ -183,7 +184,7 @@ class Fighter:
 
 	func mod_damage() -> float:
 		return dmg_mult * eff * (1.4 if over_t > 0.0 else 1.0) * (0.85 if burnout else 1.0) \
-				* (1.15 if style == "striker" else 1.0) * (0.85 if numb_t > 0.0 else 1.0)
+				* (1.15 if style == "striker" else 1.0) * (0.85 if numb_t > 0.0 else 1.0) * (1.0 + ctrl.get("damage", 0.0))
 
 	func mod_speed() -> float:
 		return spd_mult * eff * (1.5 if over_t > 0.0 else 1.0) * (0.75 if burnout else 1.0) \
@@ -200,11 +201,11 @@ class Fighter:
 				s += parts[slot]["speed"]
 				n += 1
 		var leg_factor: float = [0.35, 0.65, 1.0][clampi(n, 0, 2)]
-		return (1.0 + (s / maxf(1, n) + torso_speed()) / 100.0) * leg_factor * mod_speed() * (0.8 if hobble_t > 0.0 else 1.0)
+		return (1.0 + (s / maxf(1, n) + torso_speed()) / 100.0) * leg_factor * mod_speed() * (0.8 if hobble_t > 0.0 else 1.0) * (1.0 + ctrl.get("move", 0.0))
 
 	func attack_speed(limb: String) -> float:
 		var s: float = parts[limb]["speed"] if parts.has(limb) and alive(limb) else 0.0
-		var bonus := (1.1 if style == "striker" else 1.0) * (1.0 + 0.08 * extra_arms())
+		var bonus: float = (1.1 if style == "striker" else 1.0) * (1.0 + 0.08 * extra_arms()) * (1.0 + ctrl.get("atk_speed", 0.0))
 		return maxf(0.5, (1.0 + (s + torso_speed()) / 100.0) * mod_speed() * bonus)
 
 	func get_look() -> Dictionary:
@@ -384,6 +385,7 @@ func make_fighter(spec: Dictionary) -> Fighter:
 	f.specials = spec.get("specials", []).duplicate()
 	f.gadgets = spec.get("gadgets", []).duplicate()
 	f.style = spec.get("style", "striker")
+	f.ctrl = GameData.CONTROLLER_INFO.get(str(spec.get("controller", "")), {}).get("mods", {})
 	if Catalog.STYLES.has(f.style):
 		var sig: String = Catalog.STYLES[f.style]["signature"]
 		if Specials.MOVES.has(sig) and not f.specials.has(sig):
@@ -634,7 +636,7 @@ func match_special(f: Fighter, button: String) -> String:
 		var last_t := clock
 		for k in need:
 			var e: Dictionary = buf[buf.size() - 1 - k]
-			if e["tok"] != seq[need - 1 - k] or last_t - e["t"] > Specials.SEQ_WINDOW:
+			if e["tok"] != seq[need - 1 - k] or last_t - e["t"] > Specials.SEQ_WINDOW + f.ctrl.get("seq", 0.0):
 				ok = false
 				break
 			last_t = e["t"]
@@ -1492,7 +1494,7 @@ func use_gadget(f: Fighter, g: Dictionary) -> void:
 				f.vel.y = minf(f.vel.y, -150.0)
 			Sfx.play("swing")
 			Sfx.play("jump", 0.2)
-	f.cooldowns[id] = info["cd"] * (0.6 if f.style == "specialist" else 1.0)
+	f.cooldowns[id] = info["cd"] * (0.6 if f.style == "specialist" else 1.0) * f.ctrl.get("gadget_cd", 1.0)
 
 
 func shoulder_key(slot: String) -> String:
@@ -1692,7 +1694,7 @@ func update_fighter(f: Fighter, o: Fighter, i: Dictionary, delta: float) -> void
 					f.step_timer = 0.28 / maxf(0.4, spd)
 					Sfx.play("step", 0.2, -10.0)
 			if i["up"] and not f.crouching and not f.blocking and f.legs() > 0:
-				var jump := JUMP_SPEED * (1.0 if f.legs() == 2 else 0.75)
+				var jump: float = JUMP_SPEED * (1.0 if f.legs() == 2 else 0.75) * (1.0 + f.ctrl.get("jump", 0.0))
 				if f.has_gadget("high_jump"):
 					jump *= 1.4
 				f.vel.y = -jump
@@ -1711,7 +1713,7 @@ func update_fighter(f: Fighter, o: Fighter, i: Dictionary, delta: float) -> void
 			# air control: steer left/right while jumping or falling
 			var adir := int(i["right"]) - int(i["left"])
 			if adir != 0:
-				f.vel.x = move_toward(f.vel.x, adir * WALK_SPEED * f.move_speed(), 2200.0 * delta)
+				f.vel.x = move_toward(f.vel.x, adir * WALK_SPEED * f.move_speed(), 2200.0 * (1.0 + f.ctrl.get("jump", 0.0) * 3.0) * delta)
 
 	# physics
 	f.vel.y += GRAVITY * delta
@@ -1738,7 +1740,7 @@ func update_fighter(f: Fighter, o: Fighter, i: Dictionary, delta: float) -> void
 func choose_part(att: Fighter, d: Fighter, zone_name: String, sure: bool = false) -> String:
 	var zone: Dictionary = Specials.ZONES.get(zone_name, Specials.ZONES["any"])
 	if att.target != "" and d.alive(att.target) and (zone.has(att.target) or zone_name == "any"):
-		var accuracy := 0.45 if att.target.begins_with("head") else 0.8
+		var accuracy: float = (0.45 if att.target.begins_with("head") else 0.8) + att.ctrl.get("aim", 0.0) / 100.0
 		if sure or randf() < accuracy:
 			return att.target
 	var total := 0.0
@@ -1837,7 +1839,7 @@ func apply_hit(att: Fighter, d: Fighter, a: Dictionary, at: Vector2) -> void:
 			if d.alive(s2):
 				arm = s2
 				break
-		damage_part(d, arm, dmg * (0.08 if d.style == "tank" else 0.3))
+		damage_part(d, arm, dmg * (0.08 if d.style == "tank" else 0.3) * d.ctrl.get("block", 1.0))
 		d.pos.x += att.facing * 25.0
 		add_spark(spark_pos, Color(0.7, 0.85, 1.0), 18.0)
 		Sfx.play("block", 0.15)
@@ -1848,7 +1850,7 @@ func apply_hit(att: Fighter, d: Fighter, a: Dictionary, at: Vector2) -> void:
 			att.combo += 1
 		else:
 			att.combo = 1
-		att.combo_timer = 1.25
+		att.combo_timer = 1.25 + att.ctrl.get("combo", 0.0)
 		if att.combo >= 2:
 			att.combo_show = 1.2
 			if att.combo == 3 or att.combo == 5 or att.combo >= 8:
@@ -2668,7 +2670,10 @@ func random_pilot_look(seed_text: String) -> Dictionary:
 	var hats := ["cap", "beanie", "mohawk", "helmet", "bun", "bald", ""]
 	return {"skin": skins[rng.randi() % skins.size()], "hair": "#" + Color.from_hsv(rng.randf(), rng.randf_range(0.2, 0.9), rng.randf_range(0.15, 0.85)).to_html(false),
 			"hat": hats[rng.randi() % hats.size()], "outfit": "#" + Color.from_hsv(rng.randf(), rng.randf_range(0.3, 0.8), rng.randf_range(0.25, 0.6)).to_html(false),
-			"glasses": rng.randf() < 0.2, "beard": rng.randf() < 0.25, "goggles": rng.randf() < 0.12}
+			"eyes": PilotArt.EYES[rng.randi() % PilotArt.EYES.size()],
+			"glasses": PilotArt.GLASSES[rng.randi() % PilotArt.GLASSES.size()] if rng.randf() < 0.4 else "none",
+			"beard": PilotArt.BEARDS[rng.randi() % PilotArt.BEARDS.size()] if rng.randf() < 0.45 else "none",
+			"controller": PilotArt.CONTROLLERS[rng.randi() % PilotArt.CONTROLLERS.size()]}
 
 
 func team_robot(team: int) -> Fighter:
@@ -2739,8 +2744,6 @@ func draw_pilot(pd: Dictionary, off: Vector2) -> void:
 		draw_string(font, top + Vector2(0, -4), "KANE", HORIZONTAL_ALIGNMENT_CENTER, tw, int(9 * s), Color(0.88, 0.72, 0.29))
 		draw_pilot_bubble(pd, top + Vector2(tw * 0.5, -14.0 * s))
 		return
-	var skin := Color(look.get("skin", "#c8946e"))
-	var hair := Color(look.get("hair", "#2a1d14"))
 	var outfit := Color(look.get("outfit", "#34495e"))
 	# body language follows the robot: lean in on attacks, flinch when it gets hit, cheer when it wins
 	var lean := 0.0
@@ -2767,39 +2770,8 @@ func draw_pilot(pd: Dictionary, off: Vector2) -> void:
 	# head
 	var hc := neck + Vector2(face * lean * 3 * s, -11 * s)
 	var hr := 10.0 * s
-	if look.get("long_hair", false):
-		draw_rect(Rect2(hc + Vector2(-hr * 1.05, -hr * 0.5), Vector2(hr * 2.1, hr * 1.5)), hair)
-	draw_circle(hc, hr, skin)
-	match str(look.get("hat", "")):
-		"cap":
-			draw_rect(Rect2(hc + Vector2(-hr * 1.05, -hr * 1.05), Vector2(hr * 2.1, hr * 0.5)), hair)
-			draw_rect(Rect2(hc + Vector2(face > 0.0 and 0.0 or -hr * 1.4, -hr * 0.65), Vector2(hr * 1.4, hr * 0.18)), hair)
-		"beanie":
-			draw_rect(Rect2(hc + Vector2(-hr, -hr * 1.05), Vector2(hr * 2.0, hr * 0.6)), hair)
-		"mohawk":
-			draw_rect(Rect2(hc + Vector2(-hr * 0.18, -hr * 1.6), Vector2(hr * 0.36, hr * 0.8)), hair)
-		"helmet":
-			draw_arc(hc, hr * 1.05, PI, TAU, 14, hair, hr * 0.35)
-		"bun":
-			draw_circle(hc + Vector2(0, -hr * 1.05), hr * 0.35, hair)
-			draw_rect(Rect2(hc + Vector2(-hr, -hr), Vector2(hr * 2.0, hr * 0.35)), hair)
-		"bald":
-			pass
-		_:
-			draw_rect(Rect2(hc + Vector2(-hr, -hr), Vector2(hr * 2.0, hr * 0.4)), hair)
-	draw_circle(hc + Vector2(face * hr * 0.15 - hr * 0.3, -hr * 0.05), hr * 0.12, Color.WHITE)
-	draw_circle(hc + Vector2(face * hr * 0.15 + hr * 0.3, -hr * 0.05), hr * 0.12, Color.WHITE)
-	if look.get("goggles", false):
-		draw_rect(Rect2(hc + Vector2(-hr * 0.75, -hr * 0.3), Vector2(hr * 1.5, hr * 0.4)), Color(0.2, 0.5, 0.6, 0.85))
-	if look.get("glasses", false):
-		draw_arc(hc + Vector2(face * hr * 0.15 - hr * 0.3, -hr * 0.05), hr * 0.22, 0, TAU, 10, Color(0.1, 0.1, 0.1), 1.5)
-		draw_arc(hc + Vector2(face * hr * 0.15 + hr * 0.3, -hr * 0.05), hr * 0.22, 0, TAU, 10, Color(0.1, 0.1, 0.1), 1.5)
-	if look.get("beard", false):
-		draw_circle(hc + Vector2(0, hr * 0.55), hr * 0.5, hair.lightened(0.15))
-	if look.get("scar", false):
-		draw_line(hc + Vector2(hr * 0.15, -hr * 0.5), hc + Vector2(hr * 0.6, hr * 0.2), Color(0.6, 0.25, 0.2), 2.0)
 	var shouting: bool = pd["bubble_t"] > 0.0
-	draw_rect(Rect2(hc + Vector2(-hr * 0.25 + face * hr * 0.15, hr * 0.35), Vector2(hr * 0.5, hr * (0.35 if shouting else 0.12))), Color(0.25, 0.08, 0.06))
+	PilotArt.draw_head(self, hc, hr, look, face, hr * (0.35 if shouting else 0.12))
 	# arms and controller: little jerks when the robot attacks, held up high when it wins
 	var j: float = pd["jerk"] / 0.22
 	var jx := sin(clock * 40.0) * 3.0 * s * j
@@ -2807,10 +2779,7 @@ func draw_pilot(pd: Dictionary, off: Vector2) -> void:
 	for side in [-1.0, 1.0]:
 		var sh := neck + Vector2(side * 10 * s, 3 * s)
 		draw_line(sh, pad + Vector2(side * 6 * s, 0), outfit.darkened(0.15), 5 * s)
-	draw_rect(Rect2(pad + Vector2(-10 * s, -5 * s), Vector2(20 * s, 10 * s)), Color(0.15, 0.15, 0.18))
-	draw_circle(pad + Vector2(-5 * s, 0), 2 * s, Color(0.9, 0.3, 0.3))
-	draw_circle(pad + Vector2(5 * s, 0), 2 * s, Color(0.3, 0.8, 1.0) if j > 0.0 else Color(0.2, 0.4, 0.5))
-	draw_line(pad + Vector2(7 * s, -5 * s), pad + Vector2(9 * s, -12 * s), Color(0.5, 0.5, 0.55), 1.5)
+	PilotArt.draw_controller(self, pad, s, str(look.get("controller", "gamepad")), j > 0.0, clock)
 	draw_pilot_bubble(pd, hc + Vector2(0, -hr - 10 * s))
 
 
