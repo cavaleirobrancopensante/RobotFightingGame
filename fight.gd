@@ -2232,9 +2232,13 @@ func apply_hit(att: Fighter, d: Fighter, a: Dictionary, at: Vector2) -> void:
 		if chill > 0.0:
 			d.slow_t = maxf(d.slow_t, chill)
 			add_spark(hit_at, Color(0.6, 0.85, 1.0), 26.0)
-		var leech: float = off_trait(att, src, "leech") + (10.0 if att.style == "mechanic" else 0.0)
+		var leech: float = off_trait(att, src, "leech")
 		if leech > 0.0 and att.alive("torso"):
 			att.parts["torso"]["hp"] = minf(att.parts["torso"]["max_hp"], att.parts["torso"]["hp"] + dmg * leech / 100.0)
+		# mechanics fix themselves with every hit they land: 20% of the damage dealt goes to their most
+		# beaten-up part - dents brought in from earlier fights included (and it stays fixed afterwards)
+		if att.style == "mechanic":
+			mechanic_heal(att, dmg * 0.2)
 		# spikes hurt whoever hits the torso up close
 		if d.has_gadget("thorns") and slot == "torso" and absf(att.pos.x - d.pos.x) < 160.0:
 			var limb := att.attack_limb if att.alive(att.attack_limb) and att.attack_limb != "torso" else "torso"
@@ -2328,6 +2332,16 @@ func weak_point(f: Fighter) -> String:
 			best_v = v
 			best = slot
 	return best
+
+
+func mechanic_heal(f: Fighter, amount: float) -> void:
+	var worst := ""
+	for s in BODY_PARTS:
+		if f.alive(s) and f.parts[s]["hp"] < f.parts[s]["max_hp"] and (worst == "" or f.ratio(s) < f.ratio(worst)):
+			worst = s
+	if worst != "":
+		f.parts[worst]["hp"] = minf(f.parts[worst]["max_hp"], f.parts[worst]["hp"] + amount)
+		f.look_dirty = true
 
 
 func damage_part(f: Fighter, slot: String, amount: float, quiet: bool = false) -> void:

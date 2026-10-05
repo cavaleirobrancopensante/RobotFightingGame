@@ -97,7 +97,7 @@ const STYLES := {
 		"signature": "bulwark_slam", "color": "#5d6d7e"},
 	"striker": {"name": "Striker", "desc": "+15% damage, +10% attack speed, +5% critical hits. Takes 10% more damage.",
 		"signature": "flurry", "color": "#e74c3c"},
-	"mechanic": {"name": "Mechanic", "desc": "Self-repairs during fights, heals 10% of damage dealt, garage repairs 40% cheaper.",
+	"mechanic": {"name": "Mechanic", "desc": "Self-repairs during fights: 20% of the damage it deals fixes its most beaten-up part (old dents too). Garage repairs 40% cheaper.",
 		"signature": "field_repair", "color": "#2ecc71"},
 	"specialist": {"name": "Specialist", "desc": "Gadget cooldowns -40%, +1 chip slot, aimed hits +25% and better salvage.",
 		"signature": "overclock", "color": "#9b59b6"},

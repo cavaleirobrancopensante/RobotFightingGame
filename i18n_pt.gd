@@ -453,6 +453,8 @@ const T := {
 	"New %s - that's not what the scout saw!": "%s novo - não foi isso que o espião viu!",
 	"They swapped in a %s - that's not what the scout saw! Watch it.": "Eles trocaram por: %s - não foi isso que o espião viu! Cuidado.",
 	"PARTS DESTROYED": "PEÇAS DESTRUÍDAS",
+	"Self-repairs during fights: 20% of the damage it deals fixes its most beaten-up part (old dents too). Garage repairs 40% cheaper.": "Se conserta durante as lutas: 20% do dano que causa conserta a peça mais detonada (até amassados antigos). Consertos na garagem 40% mais baratos.",
+	"You've already switched style since your last fight - one switch between fights. Fight with it first.": "Você já trocou de estilo desde a última luta - uma troca entre lutas. Lute com ele primeiro.",
 	"Tap a part of %s to aim at it - %s hits where you point.": "Toque numa peça de %s para mirar - %s acerta onde você apontar.",
 	"See the yellow diamond? That's its weakest part - hits there do extra damage.": "Tá vendo o losango amarelo? É a parte mais fraca - golpes ali causam dano extra.",
 	"That blue bar under your health is POWER. Every move costs some - kicks cost the most. Run it dry and you burn out!": "Essa barra azul embaixo da vida é a ENERGIA. Todo golpe gasta um pouco - chutes gastam mais. Se secar, dá pane!",

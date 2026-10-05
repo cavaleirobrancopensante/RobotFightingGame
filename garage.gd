@@ -1731,6 +1731,8 @@ func _on_open_style() -> void:
 		return
 	var col := open_popup(tr("FIGHTING STYLE"))
 	section("Your style changes how ECHO fights and gives it a free signature move.", col)
+	if GameData.style_locked:
+		section("You've already switched style since your last fight - one switch between fights. Fight with it first.", col)
 	var body := HBoxContainer.new()
 	body.add_theme_constant_override("separation", 14)
 	col.add_child(body)
@@ -1766,7 +1768,7 @@ func _on_open_style() -> void:
 		row.add_child(btns)
 		btns.add_child(UI.button("See it", _on_style_demo.bind(id), 14, Vector2(84, 38)))
 		var b := UI.button("Pick", _on_pick_style.bind(id), 14, Vector2(84, 38))
-		b.disabled = id == GameData.style
+		b.disabled = id == GameData.style or GameData.style_locked
 		btns.add_child(b)
 	_on_style_demo(GameData.style)
 
@@ -1784,7 +1786,10 @@ func _on_style_demo(id: String) -> void:
 
 
 func _on_pick_style(id: String) -> void:
+	if GameData.style_locked:
+		return
 	GameData.style = id
+	GameData.style_locked = true
 	close_popup()
 	say(tr("Fighting style: %s. Signature move: %s.") % [tr(Catalog.STYLES[id]["name"]), tr(Specials.MOVES[Catalog.STYLES[id]["signature"]]["name"])], "equip")
 	refresh()

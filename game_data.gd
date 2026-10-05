@@ -296,6 +296,7 @@ const WEIGHT_CLASSES := [["LIGHTWEIGHT", 12], ["MIDDLEWEIGHT", 22], ["HEAVYWEIGH
 # A team shares one heavyweight's worth of power: 2 robots get half each, 3 get a third.
 const TEAM_POWER := 40.0
 var style := "striker"        # fighting style: tank, striker, mechanic, specialist
+var style_locked := false     # one style change between fights (no switching to Mechanic just to repair cheap)
 var shop_stock: Array = []    # part ids for sale right now (changes after every fight)
 var scout := {}               # scouting report on the next opponent: {key, spied_back, change}
 var owned_chips: Array = []   # special-move chips bought
@@ -498,6 +499,7 @@ func new_game() -> void:
 		PARTS.erase(d["id"])
 	custom_parts = []
 	style = "striker"
+	style_locked = false
 	scout = {}
 	shop_stock = []
 	quick = {}
@@ -2084,6 +2086,7 @@ func record_result(won: bool, part_hp: Dictionary, destroyed: int, salvage_ids: 
 					World.lose_part(rng, wp, s)
 					break
 	digs_left = DIGS_PER_FIGHT   # the scrapyard pile gets fresh junk after every fight
+	style_locked = false         # a fight later, you may switch style again
 	var was_champion := champion
 	var mode := fight_mode()
 	var cup_done := ""
@@ -2536,7 +2539,7 @@ func save_game() -> bool:
 		"owned_chips": owned_chips, "chips": chips, "circuit": circuit, "circuit_offers": circuit_offers,
 		"circuits_won": circuits_won, "pickup": pickup, "setups": setups, "custom_parts": custom_parts,
 		"year": year, "week": week, "rank": rank, "event": event, "trophies": trophies, "career_stats": career_stats,
-		"style": style, "shop_stock": shop_stock, "scout": scout, "wingmen": wingmen, "sending": sending, "pilot_look": pilot_look, "owned_controllers": owned_controllers, "tips_seen": tips_seen, "digs_left": digs_left, "bills_note": bills_note, "fight_log": fight_log, "bets": bets, "world": world,
+		"style": style, "style_locked": style_locked, "shop_stock": shop_stock, "scout": scout, "wingmen": wingmen, "sending": sending, "pilot_look": pilot_look, "owned_controllers": owned_controllers, "tips_seen": tips_seen, "digs_left": digs_left, "bills_note": bills_note, "fight_log": fight_log, "bets": bets, "world": world,
 	}
 	var f := FileAccess.open(slot_path(save_slot), FileAccess.WRITE)
 	if f == null:
@@ -2599,6 +2602,7 @@ func load_game(slot: int = -1) -> String:
 		if owned_chips.has(id) and not chips.has(id):
 			chips.append(id)
 	style = str(data.get("style", "striker"))
+	style_locked = bool(data.get("style_locked", false))
 	sending = int(data.get("sending", -1))
 	pilot_look = DEFAULT_PILOT_LOOK.duplicate()
 	if typeof(data.get("pilot_look")) == TYPE_DICTIONARY:
