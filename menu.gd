@@ -32,9 +32,6 @@ func _ready() -> void:
 	var title := UI.label("ROBOT FIGHTING", 46, Color(1.0, 0.45, 0.2))
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	col.add_child(title)
-	var sub := UI.label("The Scrap Championship", 20, Color(0.75, 0.75, 0.8))
-	sub.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	col.add_child(sub)
 
 	col.add_child(UI.button("Quick Fight", _on_quick, 26, Vector2(0, 56)))
 	new_button = UI.button("New Game", _on_new, 26, Vector2(0, 56))
