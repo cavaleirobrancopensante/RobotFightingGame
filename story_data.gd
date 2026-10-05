@@ -197,7 +197,7 @@ const SCENES := {
 	]},
 	"scrap_out": {"place": "THE SCRAP HEAP RING", "lines": [
 		["GUS", "No medal this time. Doesn't matter. Everybody's first season looks like this."],
-		["GUS", "The scrap league runs again next year. Till then: pickup fights in the quiet weeks, cups, and we keep building."],
+		["GUS", "The scrap league runs again next year. Till then: pickup fights in the quiet weeks, and we keep building."],
 	]},
 	"regional_semis": {"place": "PORT FERRUM SPORTS HALL", "lines": [
 		["ANNOUNCER", "...and that puts them in the SEMIFINALS!"],

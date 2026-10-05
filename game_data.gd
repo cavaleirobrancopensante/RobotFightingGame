@@ -1480,7 +1480,7 @@ func record_watch(a_won: bool, hp: Array, ripped: Array) -> Dictionary:
 
 
 func cups_unlocked() -> bool:
-	return champion or rank_index() >= 1 or not trophies.is_empty() or wins + losses >= 5
+	return unlocked("cups") or rank_index() >= 1 or not trophies.is_empty()
 
 
 # ---------------------------------------------------------------- multibot teams
@@ -1603,34 +1603,40 @@ func tip_once(id: String) -> bool:
 	return true
 
 
-# The garage opens up slowly so new players aren't buried in menus: feature -> story fights won.
-const UNLOCKS := {"scrapyard": 0, "style": 1, "scout": 1, "shop": 2, "season": 2, "team": 2, "moves": 3, "workshop": 4, "pilot": 5, "paint": 5, "setups": 6, "randomize": 6}
+## Wins needed for each feature: one new thing per win, so Gus can explain each one on its own.
+const UNLOCKS := {"scrapyard": 0, "style": 1, "shop": 2, "season": 3, "scout": 4, "moves": 5, "cups": 6, "team": 7,
+		"workshop": 8, "pilot": 9, "paint": 10, "setups": 11, "randomize": 12}
 
 
 func unlocked(feature: String) -> bool:
 	return champion or wins >= int(UNLOCKS.get(feature, 0))
 
 
-## One garage tip from Gus per visit, the first one that applies and hasn't been shown.
-## New features get a "NEW:" tip the first time you see them.
+## Gus's garage tips. Every feature you've just unlocked gets its own line (normally one, since
+## each win opens one thing); if nothing is new, the first other tip that applies.
 func garage_tip() -> String:
-	var tips := [
-		["repair", repair_all_cost() > 0, "Damage carries over between fights. Hit Repair all before the next one - or fix parts one by one."],
+	var news := [
 		["scrapyard", unlocked("scrapyard"), "The Scrapyard's out back. One dig after every fight, one part per dig. Mostly rust, sometimes treasure."],
+		["style", unlocked("style"), "NEW: the Style button, in the bay. Pick how ECHO fights - Tank, Striker, Mechanic or Specialist. Each style comes with a free signature move."],
 		["shop", unlocked("shop"), "NEW: the Shop. We've got a bit of prize money now - the dealer sells real parts, and his stock changes after every fight."],
-		["season", unlocked("season"), "NEW: the Season tab. Your calendar - who you fight and when rent's due - and the league table."],
-		["style", unlocked("style"), "NEW: the Style button. Pick how ECHO fights - Tank, Striker, Mechanic or Specialist. Each gets a free signature move."],
+		["season", unlocked("season"), "NEW: the Season tab. A wall calendar with your fight nights and rent days - plus the league table, the other pilots and the betting."],
 		["scout", unlocked("scout") and scout_key() != "", "NEW: Scout. Pay to peek at the next robot. Careful - their crew might spot you and change their setup."],
-		["backup", unlocked("team"), "NEW: the Team tab. Build a backup robot from spare parts, then use Send to put it in the ring when ECHO's too banged up."],
 		["moves", unlocked("moves"), "NEW: the Moves tab. Training chips teach special moves like Rocket Punch."],
+		["cups", cups_unlocked(), "NEW: the Cups tab. Three-week knockouts in the quiet weeks between leagues - eight pilots, medals for the top three."],
+		["backup", unlocked("team"), "NEW: the Team tab. Build a backup robot from spare parts, then use Send to put it in the ring when ECHO's too banged up."],
 		["workshop", unlocked("workshop"), "NEW: the Workshop. Design your own parts - pricier than the dealer, but exactly what you want."],
-		["pilot", unlocked("pilot"), "NEW: Pilot and Paint. Design yourself and your robot's colors. Controllers in the Shop change how you fight."],
-		["setups", unlocked("setups"), "NEW: Setups saves whole builds, Randomize throws one together from your spares."],
+		["pilot", unlocked("pilot"), "NEW: the Pilot button. Design yourself - face, hair, jacket. And the Shop sells controllers now: each one changes how you fight."],
+		["paint", unlocked("paint"), "NEW: the Paint button. Give ECHO some colour - the crowd remembers a robot they can recognise."],
+		["setups", unlocked("setups"), "NEW: Setups. Save a whole build - parts, chips and paint - and swap back to it in one tap."],
+		["randomize", unlocked("randomize"), "NEW: Randomize. Throws a robot together from your spare parts - handy when you need a build fast."],
 	]
-	for t in tips:
+	var lines: Array = []
+	for t in news:
 		if t[1] and tip_once(t[0]):
-			return tr("GUS: ") + tr(str(t[2])).replace("ECHO", robot_name)
-	return ""
+			lines.append(tr("GUS: ") + tr(str(t[2])).replace("ECHO", robot_name))
+	if lines.is_empty() and repair_all_cost() > 0 and tip_once("repair"):
+		lines.append(tr("GUS: ") + tr("Damage carries over between fights. Hit Repair all before the next one - or fix parts one by one."))
+	return "\n".join(lines)
 
 
 const TAB_TIPS := {
