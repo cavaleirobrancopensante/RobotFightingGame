@@ -52,6 +52,12 @@ class Fighter:
 	var dmg_mult := 1.0
 	var spd_mult := 1.0
 	var scale := 1.0
+	# where the robot was actually drawn last frame (lunges, leans, squash), so crosshairs stick to the parts
+	var vis_base := Vector2.ZERO
+	var vis_rot := 0.0
+	var vis_sx := 1.0
+	var vis_sy := 1.0
+	var vis_ok := false
 	var pos := Vector2.ZERO
 	var vel := Vector2.ZERO
 	var facing := 1
@@ -272,6 +278,7 @@ func make_fighter(spec: Dictionary) -> Fighter:
 	f.dmg_mult = spec["damage_mult"]
 	f.spd_mult = spec["speed_mult"]
 	f.scale = minf(spec["scale"] * BOT_SCALE, 1.5)   # cap so giants still fit under the HUD
+	f.spec["scale"] = f.scale   # draw at the same size the hit boxes use
 	f.specials = spec.get("specials", []).duplicate()
 	f.gadgets = spec.get("gadgets", []).duplicate()
 	return f
@@ -390,8 +397,23 @@ func to_world_point(f: Fighter, l: Vector2) -> Vector2:
 	return f.pos + Vector2(l.x * f.facing, y) * f.scale
 
 
+## Same as to_world_point, but follows the drawn pose (lean, lunge, squash).
+func visual_point(f: Fighter, l: Vector2) -> Vector2:
+	if not f.vis_ok:
+		return to_world_point(f, l)
+	var v := Vector2(l.x * f.facing * f.scale * f.vis_sx, l.y * (0.7 if f.crouching else 1.0) * f.scale * f.vis_sy)
+	return f.vis_base + v.rotated(f.vis_rot)
+
+
+func visual_local(f: Fighter, p: Vector2) -> Vector2:
+	if not f.vis_ok:
+		return to_local_point(f, p)
+	var v := (p - f.vis_base).rotated(-f.vis_rot)
+	return Vector2(v.x / (f.facing * f.scale * f.vis_sx), v.y / ((0.7 if f.crouching else 1.0) * f.scale * f.vis_sy))
+
+
 func part_at(f: Fighter, p: Vector2) -> String:
-	var l := to_local_point(f, p)
+	var l := visual_local(f, p)
 	for r in RobotArt.regions(f.get_look()):
 		if (r[1] as Rect2).grow(10.0).has_point(l):
 			return r[0]
@@ -534,7 +556,7 @@ func read_ai_input(delta: float) -> Dictionary:
 				ai_plan = {"hold": ["block"]}
 			else:
 				ai_plan = {"hold": [away]}
-		elif dist > 120.0 * cpu.scale:
+		elif dist > 82.0 * cpu.scale + 25.0 * player.scale:
 			ai_plan = {"hold": [toward]}
 			if r < 0.08:
 				ai_plan["tap"] = "up_press"
@@ -1169,7 +1191,7 @@ func choose_part(att: Fighter, d: Fighter, zone_name: String, sure: bool = false
 ## Melee hit check: range and height. If it connects, apply it.
 func try_hit(att: Fighter, d: Fighter, a: Dictionary) -> void:
 	var dx := (d.pos.x - att.pos.x) * att.facing
-	var reach: float = a.get("reach", 80.0) * sqrt(att.scale)
+	var reach: float = a.get("reach", 80.0) * att.scale
 	if dx < -10.0 or dx > reach + 35.0 * d.scale:
 		return
 	if absf(d.pos.y - att.pos.y) > 130.0:
@@ -1556,6 +1578,11 @@ func draw_fighter(f: Fighter, off: Vector2) -> void:
 		var span := -0.9 if state == "uppercut" else (0.5 if state == "sweep" else -0.5)
 		draw_arc(c, 100.0 * f.scale, a0 + span * f.facing - 0.35, a0 + span * f.facing + 0.35, 14, Color(1, 1, 1, 0.28), 14.0 * f.scale)
 	var fist_out: Array = f.fist_out.keys()
+	f.vis_base = base - off
+	f.vis_rot = rot
+	f.vis_sx = sx
+	f.vis_sy = sy
+	f.vis_ok = true
 	RobotArt.draw(self, base, f.get_look(), {
 		"facing": f.facing, "state": state, "extended": extended, "attack_limb": f.attack_limb,
 		"swing": sin(f.walk_phase) * 10.0 if f.state == "walk" else 0.0,
@@ -1570,7 +1597,7 @@ func draw_fighter(f: Fighter, off: Vector2) -> void:
 func draw_crosshair(slot: String, f: Fighter, c: Color, off: Vector2, size: float) -> void:
 	if slot == "" or (phase != "fight" and phase != "intro") or not f.alive(slot):
 		return
-	var p := to_world_point(f, RobotArt.part_center(f.get_look(), slot)) + off
+	var p := visual_point(f, RobotArt.part_center(f.get_look(), slot)) + off
 	var r := (22.0 + sin(clock * 6.0) * 3.0) * size
 	draw_arc(p, r, 0.0, TAU, 32, c, 3.0)
 	var spin := clock * 2.0 * (1.0 if size >= 1.0 else -1.0)
