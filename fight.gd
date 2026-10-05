@@ -3461,6 +3461,13 @@ func live_coach(delta: float) -> void:
 			shout("finisher", tr("%s! %s") % [tr(m["name"]), Specials.seq_text(m["seq"])], tr("He's dazed - hit him with your %s: %s") % [tr(m["name"]), Specials.seq_text(m["seq"])], 2, 1, 7.0)
 		else:
 			shout("dazed", tr("He's dazed - P, P, K!"), tr("He's dazed! Punch, punch, kick - chain it!"), 2, 1, 6.0)
+	# --- they caught our scout and swapped a part: Gus spots it
+	if mode != "quick" and GameData.scouted() and GameData.scout.get("spied_back", false) and phase_timer > 1.2:
+		var ch: Dictionary = GameData.scout["change"]
+		if ch.get("type", "") == "part" and cpu == team_c[0]:
+			var nm: String = GameData.part_def(str(ch["id"]))["name"]
+			shout("scout_swap", tr("New %s - that's not what the scout saw!") % nm,
+					tr("They swapped in a %s - that's not what the scout saw! Watch it.") % nm, 3, 1, 999.0)
 	# --- a part that's much better than the rest of his robot
 	var so: String = cpu.spec.get("standout", "")
 	if so != "" and cpu.alive(so) and phase_timer > 1.5:

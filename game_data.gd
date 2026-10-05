@@ -1017,7 +1017,8 @@ func current_opponent_index() -> int:
 	return -1
 
 
-func current_opponent() -> Dictionary:
+## apply_scout = false: the robot as your scout saw it (before they swapped a part on you).
+func current_opponent(apply_scout: bool = true) -> Dictionary:
 	if fight_mode() == "quick":
 		return quick["enemy"]
 	if fight_mode() == "watch":
@@ -1040,7 +1041,7 @@ func current_opponent() -> Dictionary:
 			return {}
 	o["reward"] = current_reward_for(o)
 	# if they caught our scout, they changed something
-	if scouted() and scout.get("spied_back", false):
+	if apply_scout and scouted() and scout.get("spied_back", false):
 		o = o.duplicate(true)
 		var ch: Dictionary = scout["change"]
 		match ch["type"]:
@@ -1088,31 +1089,26 @@ func do_scout() -> String:
 	var o := current_opponent()
 	scout = {"key": scout_key(), "spied_back": false, "change": {}}
 	if randf() < 0.3:
-		var change := {}
-		var r := randf()
-		if r < 0.45:
-			# swap one part for something nastier
-			var slots: Array = []
-			for slot in ["arm_front", "arm_back", "leg_front", "leg_back", "head"]:
-				if o["parts"].has(slot):
-					slots.append(slot)
-			var slot: String = slots[randi() % slots.size()]
-			var old := part_def(o["parts"][slot])
-			var better := ""
+		# spotted! They'll swap one part before the bell, so the report will be wrong about it
+		var slots: Array = []
+		for slot in ["arm_front", "arm_back", "leg_front", "leg_back", "head", "torso"]:
+			if o["parts"].get(slot, "") != "":
+				slots.append(slot)
+		var slot: String = slots[randi() % slots.size()]
+		var old := part_def(o["parts"][slot])
+		var opts: Array = []
+		for id in ALL_PARTS:
+			var d: Dictionary = PARTS[id]
+			if d["kind"] == old["kind"] and id != old["id"] and d["cost"] <= old["cost"] * 2.0 + 600 and d["cost"] >= old["cost"] * 0.6 and d.get("mounts", []).is_empty():
+				opts.append(id)
+		if opts.is_empty():
 			for id in ALL_PARTS:
-				var d: Dictionary = PARTS[id]
-				if d["kind"] == old["kind"] and d["cost"] > old["cost"] and d["cost"] <= old["cost"] * 2.0 + 600 and d["gimmick"] == "" and (better == "" or randf() < 0.4):
-					better = id
-			if better != "":
-				change = {"type": "part", "slot": slot, "id": better,
-						"text": tr("swapped their %s for a %s") % [str(SLOT_NAMES[slot]).to_lower(), part_def(better)["name"]]}
-		if change.is_empty() and r < 0.75:
-			change = {"type": "armor", "text": "bolted extra armor plates onto every part"}
-		if change.is_empty():
-			change = {"type": "smart", "text": "studied your robot - they'll block more and aim at your weak spots"}
-		scout["spied_back"] = true
-		scout["change"] = change
-		return tr("Their crew spotted your scout! They %s.") % change["text"]
+				if PARTS[id]["kind"] == old["kind"] and id != old["id"] and PARTS[id].get("mounts", []).is_empty():
+					opts.append(id)
+		if not opts.is_empty():
+			scout["spied_back"] = true
+			scout["change"] = {"type": "part", "slot": slot, "id": opts[randi() % opts.size()]}
+			return "Their crew spotted your scout! They'll swap something before the bell - one thing in this report won't be what shows up."
 	return "Clean scouting run - they never saw you."
 
 

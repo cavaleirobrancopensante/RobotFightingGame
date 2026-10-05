@@ -1803,11 +1803,13 @@ func _on_open_scout() -> void:
 			return
 		Sfx.play("buy")
 		refresh()
-	var o := GameData.current_opponent()
-	var spec := GameData.current_opponent_spec()
+	# the report shows what the scout saw - if they spotted him, one part will be different on the night
+	var o := GameData.current_opponent(false)
+	var spec := GameData.opponent_spec_from(o, 1.0)
 	var col := open_popup(tr("SCOUTING REPORT: ") + str(o["name"]))
 	if msg == "":
-		msg = tr("Their crew spotted your scout! They %s.") % tr(GameData.scout["change"]["text"]) if GameData.scout.get("spied_back", false) else "Clean scouting run - they never saw you."
+		msg = "Their crew spotted your scout! They'll swap something before the bell - one thing in this report won't be what shows up." if GameData.scout.get("spied_back", false) else "Clean scouting run - they never saw you."
+	msg = tr(msg)
 	var m := UI.label(msg, 15, Color(1.0, 0.5, 0.3) if GameData.scout.get("spied_back", false) else Color(0.5, 1.0, 0.6))
 	m.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	col.add_child(m)
