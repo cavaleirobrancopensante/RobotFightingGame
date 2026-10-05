@@ -60,6 +60,9 @@ class Fighter:
 	var timer := 0.0
 	var hit_done := false
 	var landed := false      # the current attack connected (allows combo cancels)
+	var queued := ""         # attack pressed slightly early, waiting for the current one to allow it
+	var queued_t := 0.0
+	var recovered_at := -10.0   # when this fighter last recovered from being hit
 	var flash := 0.0
 	var crouching := false
 	var blocking := false
@@ -471,7 +474,7 @@ func match_special(f: Fighter, button: String) -> String:
 		var need := seq.size() - 1
 		# the button press itself is the last thing in the buffer: skip it, match what came before
 		var buf: Array = f.buffer
-		if not buf.is_empty() and buf[-1]["tok"] == button and buf[-1]["t"] == clock:
+		if not buf.is_empty() and buf[-1]["tok"] == button and clock - buf[-1]["t"] < 0.5:
 			buf = buf.slice(0, buf.size() - 1)
 		if buf.size() < need:
 			continue
@@ -810,6 +813,22 @@ func start_attack(f: Fighter, attack: String) -> void:
 	Sfx.play("uppercut" if attack == "uppercut" else ("equip" if attack == "grab" else "swing"), 0.15)
 
 
+## Fire the buffered attack (or a special, if the buffered button completes a sequence).
+func start_queued(f: Fighter) -> bool:
+	var q := f.queued
+	f.queued = ""
+	var button := "P" if q == "punch" or q == "uppercut" else "K"
+	var sp := match_special(f, button)
+	if sp != "":
+		start_special(f, sp)
+		return true
+	var a: Dictionary = ATTACKS[q]
+	if f.limb_for(a["limb"], q == "uppercut") == "":
+		return false
+	start_attack(f, q)
+	return true
+
+
 func start_special(f: Fighter, id: String) -> void:
 	var m: Dictionary = Specials.MOVES[id]
 	f.state = "special"
@@ -985,6 +1004,9 @@ func update_projectiles(delta: float) -> void:
 
 func update_fighter(f: Fighter, o: Fighter, i: Dictionary, delta: float) -> void:
 	f.flash = maxf(0.0, f.flash - delta)
+	f.queued_t -= delta
+	if f.queued_t <= 0.0:
+		f.queued = ""
 	for k in f.cooldowns.keys():
 		f.cooldowns[k] = maxf(0.0, f.cooldowns[k] - delta)
 	f.shield_t = maxf(0.0, f.shield_t - delta)
@@ -1026,6 +1048,7 @@ func update_fighter(f: Fighter, o: Fighter, i: Dictionary, delta: float) -> void
 		f.vel.x = move_toward(f.vel.x, 0.0, 1200.0 * delta)
 		if f.timer <= 0.0 and f.on_ground:
 			f.state = "idle"
+			f.recovered_at = clock
 	elif f.state == "special":
 		update_special(f, o, delta)
 	elif ATTACKS.has(f.state):
@@ -1035,16 +1058,19 @@ func update_fighter(f: Fighter, o: Fighter, i: Dictionary, delta: float) -> void
 			f.vel.x = 0.0
 		if not f.hit_done and f.timer >= a["startup"] and f.timer <= a["startup"] + a["active"]:
 			try_hit(f, o, a)
+		# remember an attack pressed a little early so slower button presses still chain
+		if punch or kick:
+			f.queued = ("uppercut" if i["down"] else "punch") if punch else ("sweep" if i["down"] else "kick")
+			f.queued_t = 0.45
 		# combo cancel: a normal that landed can go straight into the next attack or a special
-		if f.landed and f.timer >= a["startup"] + a["active"] and (punch or kick):
-			var sp := match_special(f, "P" if punch else "K")
-			if sp != "":
-				start_special(f, sp)
+		if f.landed and f.timer >= a["startup"] + a["active"] and f.queued != "":
+			if start_queued(f):
 				return
-			start_attack(f, ("uppercut" if i["down"] else "punch") if punch else ("sweep" if i["down"] else "kick"))
 		elif f.timer >= a["startup"] + a["active"] + a["recovery"]:
 			f.state = "idle"
 			f.crouching = false
+			if f.queued != "" and start_queued(f):
+				return
 	else:
 		if f.on_ground:
 			f.facing = 1 if o.pos.x >= f.pos.x else -1
@@ -1091,6 +1117,11 @@ func update_fighter(f: Fighter, o: Fighter, i: Dictionary, delta: float) -> void
 			f.jet_t = 0.35
 			Sfx.play("swing", 0.1)
 			Sfx.play("jump", 0.2, -4.0)
+		elif not f.on_ground:
+			# air control: steer left/right while jumping or falling
+			var adir := int(i["right"]) - int(i["left"])
+			if adir != 0:
+				f.vel.x = move_toward(f.vel.x, adir * WALK_SPEED * f.move_speed(), 2200.0 * delta)
 
 	# physics
 	f.vel.y += GRAVITY * delta
@@ -1196,11 +1227,12 @@ func apply_hit(att: Fighter, d: Fighter, a: Dictionary, at: Vector2) -> void:
 		Sfx.play("block", 0.15)
 	else:
 		# combos: hits while the enemy is still reeling
-		if d.state == "hit" and att.combo_timer > 0.0:
+		# still reeling, or only just recovered (a slightly late press still counts)
+		if att.combo_timer > 0.0 and (d.state == "hit" or clock - d.recovered_at < 0.35):
 			att.combo += 1
 		else:
 			att.combo = 1
-		att.combo_timer = 0.9
+		att.combo_timer = 1.25
 		if att.combo >= 2:
 			att.combo_show = 1.2
 			if att.combo == 3 or att.combo == 5 or att.combo >= 8:

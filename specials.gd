@@ -15,7 +15,7 @@ extends RefCounted
 ##   dash      - forward speed while active; rise - upward speed at start (jumping moves)
 ##   unblockable, emp (stun seconds), projectile, counter (seconds), air (only in the air)
 
-const SEQ_WINDOW := 0.45   # max seconds between inputs of a sequence
+const SEQ_WINDOW := 0.7    # max seconds between inputs of a sequence (generous for touch screens)
 
 const MOVES := {
 	"rocket_punch": {"name": "Rocket Punch", "seq": ["D", "F", "P"], "cost": 400, "cd": 3.0,
