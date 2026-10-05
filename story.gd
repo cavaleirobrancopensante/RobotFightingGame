@@ -76,7 +76,7 @@ class Portrait extends Control:
 
 
 func _ready() -> void:
-	Sfx.music("menu")
+	Sfx.music("anthem" if GameData.story_key == "post_9" else "story")
 	var scene: Dictionary = Story.SCENES.get(GameData.story_key, {"place": "", "lines": []})
 	lines = scene["lines"]
 	UI.background(self)
@@ -126,9 +126,15 @@ func _ready() -> void:
 func show_line() -> void:
 	var who: String = lines[index][0]
 	var info: Dictionary = Story.SPEAKERS.get(who, {"color": "#ffffff"})
-	name_label.text = "" if who == "NARRATOR" else who
+	var shown_name := who
+	if who == "YOU":
+		shown_name = GameData.pilot_name.to_upper()
+	elif who == "ECHO":
+		shown_name = GameData.robot_name
+	name_label.text = "" if who == "NARRATOR" else shown_name
 	name_label.add_theme_color_override("font_color", Color(info["color"]))
-	text_label.text = lines[index][1]
+	# the story was written for ECHO: use whatever the player named their robot
+	text_label.text = str(lines[index][1]).replace("ECHO", GameData.robot_name)
 	text_label.add_theme_color_override("font_color", Color(0.75, 0.75, 0.8) if who == "NARRATOR" else Color.WHITE)
 	text_label.visible_characters = 0
 	shown = 0.0

@@ -30,7 +30,7 @@ func _ready() -> void:
 	music_player = AudioStreamPlayer.new()
 	music_player.volume_db = MUSIC_DB
 	add_child(music_player)
-	music_player.finished.connect(func(): music_player.play())   # loop
+	music_player.finished.connect(_on_music_finished)
 
 
 ## pitch_jitter: random pitch variation (0.1 = +/-10%) so repeated sounds don't get boring.
@@ -47,25 +47,62 @@ func play(sound: String, pitch_jitter: float = 0.0, volume_db: float = 0.0) -> v
 	p.play()
 
 
-## Switch music track. Calling with the track that's already playing does nothing.
-func music(track: String) -> void:
+## Playlists rotate through their songs; a single track name just loops that track.
+const PLAYLISTS := {
+	"menu": ["menu", "lounge", "workshop", "anthem", "garage"],
+	"garage": ["garage", "workshop", "lounge", "menu"],
+	"story": ["story", "lounge"],
+}
+## Fight themes, picked per opponent (boss gets its own).
+const FIGHT_TRACKS := ["fight", "fight_pump", "fight_rush", "fight_heavy", "fight_neon"]
+
+var playlist: Array = []
+var playlist_pos := 0
+
+
+## Play a playlist ("menu", "garage", "story") or loop one track ("boss", "fight_rush"...).
+## Asking for what's already playing does nothing, so the song doesn't restart between screens.
+func music(name: String) -> void:
+	var list: Array = PLAYLISTS.get(name, [name])
+	if name == current_track and music_player.playing:
+		return
+	# moving between menu screens: keep the current song if the new playlist has it
+	if music_player.playing and list.size() > 1 and list.has(now_playing()):
+		playlist_pos = list.find(now_playing())
+		playlist = list
+		current_track = name
+		return
+	current_track = name
+	playlist = list
+	playlist_pos = randi() % list.size() if list.size() > 1 else 0
 	if not GameData.settings.get("music", true):
 		stop_music()
-		current_track = track
 		return
-	if track == current_track and music_player.playing:
-		return
-	current_track = track
-	var path := "res://music/%s.ogg" % track
+	_play_current()
+
+
+func _play_current() -> void:
+	var path := "res://music/%s.ogg" % playlist[playlist_pos]
 	if not ResourceLoader.exists(path):
 		return
 	var s = load(path)
 	if s is AudioStreamOggVorbis:
-		s.loop = true
+		s.loop = playlist.size() == 1
 	music_player.stream = s
 	music_player.volume_db = -40.0
 	music_player.play()
 	create_tween().tween_property(music_player, "volume_db", MUSIC_DB, 0.8)
+
+
+func _on_music_finished() -> void:
+	if playlist.is_empty() or not GameData.settings.get("music", true):
+		return
+	playlist_pos = (playlist_pos + 1) % playlist.size()
+	_play_current()
+
+
+func now_playing() -> String:
+	return "" if playlist.is_empty() else str(playlist[playlist_pos])
 
 
 func stop_music() -> void:
@@ -74,10 +111,8 @@ func stop_music() -> void:
 
 ## Re-apply the music setting (called when it's toggled).
 func refresh_music() -> void:
-	var t := current_track
-	current_track = ""
 	if GameData.settings.get("music", true):
-		music(t)
+		if not playlist.is_empty():
+			_play_current()
 	else:
 		stop_music()
-		current_track = t

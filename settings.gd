@@ -10,7 +10,6 @@ var shake_button: Button
 var size_button: Button
 var diff_button: Button
 var delete_button: Button
-var confirm_delete := false
 
 
 func _ready() -> void:
@@ -24,23 +23,23 @@ func _ready() -> void:
 	col.custom_minimum_size = Vector2(520, 0)
 	center.add_child(col)
 
-	var title := UI.label("SETTINGS", 48, Color(1.0, 0.45, 0.2))
+	var title := UI.label("SETTINGS", 36, Color(1.0, 0.45, 0.2))
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	col.add_child(title)
 
-	sound_button = UI.button("", _on_sound, 28)
+	sound_button = UI.button("", _on_sound, 22, Vector2(0, 48))
 	col.add_child(sound_button)
-	music_button = UI.button("", _on_music, 28)
+	music_button = UI.button("", _on_music, 22, Vector2(0, 48))
 	col.add_child(music_button)
-	shake_button = UI.button("", _on_shake, 28)
-	size_button = UI.button("", _on_size, 28)
-	diff_button = UI.button("", _on_diff, 28)
-	delete_button = UI.button("", _on_delete, 28)
+	shake_button = UI.button("", _on_shake, 22, Vector2(0, 48))
+	size_button = UI.button("", _on_size, 22, Vector2(0, 48))
+	diff_button = UI.button("", _on_diff, 22, Vector2(0, 48))
+	delete_button = UI.button("", _on_delete, 22, Vector2(0, 48))
 	col.add_child(shake_button)
 	col.add_child(size_button)
 	col.add_child(diff_button)
 	col.add_child(delete_button)
-	col.add_child(UI.button("Back", _on_back, 28))
+	col.add_child(UI.button("Back", _on_back, 22, Vector2(0, 48)))
 	refresh()
 
 
@@ -51,13 +50,7 @@ func refresh() -> void:
 	shake_button.text = "Screen shake: %s" % ("ON" if s["shake"] else "OFF")
 	size_button.text = "Touch buttons: %s" % SIZE_NAMES[s["button_size"]]
 	diff_button.text = "CPU difficulty: %s" % DIFF_NAMES[s["difficulty"]]
-	if not GameData.has_save():
-		delete_button.text = "No save file"
-		delete_button.disabled = true
-	elif confirm_delete:
-		delete_button.text = "Really delete? Tap again"
-	else:
-		delete_button.text = "Delete save"
+	delete_button.text = "Manage save files"
 
 
 func _on_sound() -> void:
@@ -93,12 +86,8 @@ func _on_diff() -> void:
 
 
 func _on_delete() -> void:
-	if not confirm_delete:
-		confirm_delete = true
-	else:
-		GameData.delete_save()
-		confirm_delete = false
-	refresh()
+	GameData.slot_mode = "load"
+	get_tree().change_scene_to_file("res://saves.tscn")
 
 
 func _on_back() -> void:

@@ -1,0 +1,126 @@
+class_name Specials
+extends RefCounted
+## Special moves (sold as training chips) and gadget parts.
+##
+## Special moves are triggered by an input sequence ending in a button:
+##   F = toward the enemy, B = away, D = down, U = up, P = punch, K = kick
+## e.g. ["D", "F", "P"] = down, toward, punch. Tap the directions one after another, quickly.
+##
+## Move fields (all optional except the ones every move needs):
+##   pose      - which animation to show: punch / kick / uppercut / sweep / block
+##   limb      - "arm" or "leg": needs a working limb of that kind (and uses its damage bonus)
+##   startup / active / recovery - timing in seconds
+##   hits, interval - multi-hit moves
+##   damage, reach, height (high/mid/low), zone (which parts it can hit), stun, knock, launch
+##   dash      - forward speed while active; rise - upward speed at start (jumping moves)
+##   unblockable, emp (stun seconds), projectile, counter (seconds), air (only in the air)
+
+const SEQ_WINDOW := 0.45   # max seconds between inputs of a sequence
+
+const MOVES := {
+	"rocket_punch": {"name": "Rocket Punch", "seq": ["D", "F", "P"], "cost": 400, "cd": 3.0,
+		"desc": "Dash forward with a flying punch.",
+		"pose": "punch", "limb": "arm", "startup": 0.12, "active": 0.22, "recovery": 0.25, "dash": 700.0,
+		"damage": 15.0, "reach": 85.0, "height": "mid", "zone": "punch", "knock": 420.0, "stun": 0.35},
+	"shoulder_charge": {"name": "Shoulder Charge", "seq": ["F", "F", "P"], "cost": 300, "cd": 4.0,
+		"desc": "Charge in shoulder-first and bulldoze the enemy back.",
+		"pose": "block", "startup": 0.1, "active": 0.3, "recovery": 0.25, "dash": 820.0,
+		"damage": 11.0, "reach": 70.0, "height": "mid", "zone": "torso", "knock": 700.0, "stun": 0.4},
+	"haymaker": {"name": "Haymaker", "seq": ["B", "F", "P"], "cost": 600, "cd": 5.0,
+		"desc": "Big wind-up punch that always lands on your target.",
+		"pose": "punch", "limb": "arm", "startup": 0.35, "active": 0.1, "recovery": 0.3,
+		"damage": 24.0, "reach": 92.0, "height": "mid", "zone": "punch", "knock": 520.0, "stun": 0.5, "sure_aim": true},
+	"piston_barrage": {"name": "Piston Barrage", "seq": ["F", "B", "F", "P"], "cost": 900, "cd": 5.0,
+		"desc": "Five rapid-fire jabs.",
+		"pose": "punch", "limb": "arm", "startup": 0.08, "active": 0.6, "recovery": 0.2, "hits": 5, "interval": 0.11,
+		"damage": 5.0, "reach": 88.0, "height": "mid", "zone": "punch", "knock": 120.0, "stun": 0.22, "jab": true},
+	"tornado_kick": {"name": "Tornado Kick", "seq": ["D", "B", "K"], "cost": 800, "cd": 5.0,
+		"desc": "Three spinning kicks that carry you forward.",
+		"pose": "kick", "limb": "leg", "startup": 0.1, "active": 0.5, "recovery": 0.25, "hits": 3, "interval": 0.16,
+		"dash": 260.0, "damage": 7.0, "reach": 100.0, "height": "mid", "zone": "kick", "knock": 200.0, "stun": 0.3, "spin": true},
+	"scissor_sweep": {"name": "Scissor Sweep", "seq": ["D", "D", "K"], "cost": 500, "cd": 4.0,
+		"desc": "Two low sweeps that knock the enemy off balance. Block it crouching!",
+		"pose": "sweep", "limb": "leg", "startup": 0.1, "active": 0.36, "recovery": 0.3, "hits": 2, "interval": 0.17,
+		"damage": 8.0, "reach": 112.0, "height": "low", "zone": "sweep", "knock": 150.0, "stun": 0.6},
+	"bolt_toss": {"name": "Bolt Toss", "seq": ["B", "B", "P"], "cost": 350, "cd": 2.5,
+		"desc": "Throw a red-hot bolt across the ring.",
+		"pose": "punch", "limb": "arm", "startup": 0.15, "active": 0.05, "recovery": 0.2,
+		"projectile": "bolt", "damage": 9.0, "zone": "punch", "speed": 900.0},
+	"emp_pulse": {"name": "EMP Pulse", "seq": ["D", "D", "P"], "cost": 1000, "cd": 8.0,
+		"desc": "Short-range electric shock that stuns the enemy. Can't be blocked.",
+		"pose": "block", "startup": 0.15, "active": 0.15, "recovery": 0.3,
+		"damage": 4.0, "reach": 140.0, "height": "mid", "zone": "head_torso", "unblockable": true, "emp": 1.2, "knock": 80.0},
+	"grab_slam": {"name": "Grab & Slam", "seq": ["F", "B", "P"], "cost": 1100, "cd": 6.0,
+		"desc": "Grab the enemy and slam it down. Ignores blocks.",
+		"pose": "punch", "limb": "arm", "startup": 0.1, "active": 0.1, "recovery": 0.4,
+		"damage": 18.0, "reach": 75.0, "height": "mid", "zone": "torso", "unblockable": true, "launch": -520.0, "stun": 0.7, "knock": -150.0},
+	"dive_stomp": {"name": "Dive Stomp", "seq": ["D", "K"], "cost": 700, "cd": 3.0, "air": true,
+		"desc": "In mid-air only: dive down feet-first onto the enemy.",
+		"pose": "kick", "limb": "leg", "startup": 0.05, "active": 0.45, "recovery": 0.15, "dash": 420.0, "dive": 950.0,
+		"damage": 15.0, "reach": 95.0, "height": "mid", "zone": "head_torso", "knock": 300.0, "stun": 0.45},
+	"counter_protocol": {"name": "Counter Protocol", "seq": ["B", "B", "K"], "cost": 900, "cd": 6.0,
+		"desc": "Brace for 0.6s. If you get hit, take no damage and strike back hard.",
+		"pose": "block", "startup": 0.0, "active": 0.6, "recovery": 0.2, "counter": 0.6,
+		"damage": 16.0, "reach": 120.0, "height": "mid", "zone": "punch", "knock": 500.0, "stun": 0.5},
+	"rising_piston": {"name": "Rising Piston", "seq": ["F", "D", "F", "P"], "cost": 1400, "cd": 5.0,
+		"desc": "Jumping uppercut. Briefly invincible, launches the enemy.",
+		"pose": "uppercut", "limb": "arm", "startup": 0.05, "active": 0.28, "recovery": 0.3, "rise": 680.0, "dash": 200.0,
+		"damage": 17.0, "reach": 82.0, "height": "mid", "zone": "uppercut", "launch": -760.0, "stun": 0.6, "invuln": 0.22},
+	"lightning_legs": {"name": "Lightning Legs", "seq": ["F", "F", "K"], "cost": 1000, "cd": 5.0,
+		"desc": "A flurry of four lightning-fast kicks.",
+		"pose": "kick", "limb": "leg", "startup": 0.08, "active": 0.6, "recovery": 0.22, "hits": 4, "interval": 0.14,
+		"damage": 6.0, "reach": 102.0, "height": "mid", "zone": "kick", "knock": 140.0, "stun": 0.25, "jab": true},
+	"scrap_fury": {"name": "Scrap Fury", "seq": ["D", "F", "D", "F", "P"], "cost": 2500, "cd": 12.0,
+		"desc": "ULTIMATE: a six-hit frenzy that ends in a launcher.",
+		"pose": "punch", "limb": "arm", "startup": 0.1, "active": 0.9, "recovery": 0.35, "hits": 6, "interval": 0.14,
+		"dash": 140.0, "damage": 6.0, "reach": 90.0, "height": "mid", "zone": "punch", "knock": 100.0, "stun": 0.3,
+		"jab": true, "finisher": true},
+}
+
+# Which parts a move's "zone" can land on (and how often when you're not aiming)
+const ZONES := {
+	"punch": {"head": 0.25, "torso": 0.45, "arm_front": 0.25, "arm_back": 0.05},
+	"uppercut": {"head": 0.6, "torso": 0.4},
+	"kick": {"torso": 0.35, "arm_front": 0.15, "arm_back": 0.05, "leg_front": 0.35, "leg_back": 0.1},
+	"sweep": {"leg_front": 0.7, "leg_back": 0.3},
+	"torso": {"torso": 1.0},
+	"head_torso": {"head": 0.5, "torso": 0.5},
+	"any": {"head": 0.15, "torso": 0.45, "arm_front": 0.15, "arm_back": 0.05, "leg_front": 0.15, "leg_back": 0.05},
+}
+
+# Gadgets come from parts. Active ones get a button in the fight (keys U, I, O on a keyboard).
+const GADGETS := {
+	"rocket_fist": {"name": "Rocket Fist", "short": "FIST", "active": true, "cd": 3.0,
+		"desc": "Gadget: launch your fist across the ring. It flies back after."},
+	"grapple": {"name": "Grapple Claw", "short": "HOOK", "active": true, "cd": 5.0,
+		"desc": "Gadget: fire the claw on a cable and reel the enemy in."},
+	"laser": {"name": "Eye Laser", "short": "LASER", "active": true, "cd": 2.5,
+		"desc": "Gadget: fire a fast laser beam from your eye."},
+	"cannon": {"name": "Chest Cannon", "short": "BOOM", "active": true, "cd": 5.0,
+		"desc": "Gadget: fire a heavy shell from your chest."},
+	"overcharge": {"name": "Overcharge", "short": "OVER", "active": true, "cd": 9999.0,
+		"desc": "Gadget, once per fight: 6s of +50% speed and +40% damage. Then the reactor burns out: -25% speed and -15% damage for the rest of the fight."},
+	"emp": {"name": "EMP Burst", "short": "EMP", "active": true, "cd": 10.0,
+		"desc": "Gadget: electric burst that stuns anything close for a second."},
+	"shield": {"name": "Energy Shield", "short": "SHIELD", "active": true, "cd": 9.0,
+		"desc": "Gadget: a bubble that blocks all damage for 2.5s."},
+	"booster": {"name": "Booster Dash", "short": "BOOST", "active": true, "cd": 4.0,
+		"desc": "Gadget: rocket dash that rams the enemy. Works in mid-air."},
+	"double_jump": {"name": "Jet Pack", "short": "", "active": false,
+		"desc": "Passive: press jump again in mid-air to jump twice."},
+	"high_jump": {"name": "Pogo Spring", "short": "", "active": false,
+		"desc": "Passive: jump much higher (needs this leg working)."},
+	"thorns": {"name": "Spikes", "short": "", "active": false,
+		"desc": "Passive: enemies that hit your torso take damage back."},
+	"regen": {"name": "Self-Repair", "short": "", "active": false,
+		"desc": "Passive: slowly repairs your torso during fights."},
+}
+
+const ARROWS := {"F": "→", "B": "←", "D": "↓", "U": "↑", "P": "P", "K": "K"}
+
+
+static func seq_text(seq: Array) -> String:
+	var bits: Array = []
+	for t in seq:
+		bits.append(ARROWS.get(t, t))
+	return " ".join(bits)

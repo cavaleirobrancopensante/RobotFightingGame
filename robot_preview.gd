@@ -1,12 +1,23 @@
 class_name RobotPreview
 extends Control
-## A box that shows a robot standing on a floor. Used in the garage, menu and story.
+## A box that shows a robot standing on a floor. Used in the garage, menu, cups and story.
+## With interactive = true, tapping a part emits part_tapped(slot) and highlights it.
+
+signal part_tapped(slot: String)
 
 var look := {}
 var facing := 1
 var show_floor := true
 var anim := true
+var interactive := false
+var highlight := ""
 var t := 0.0
+var _base := Vector2.ZERO
+var _sc := 1.0
+
+
+func _ready() -> void:
+	mouse_filter = Control.MOUSE_FILTER_STOP if interactive else Control.MOUSE_FILTER_IGNORE
 
 
 func _process(delta: float) -> void:
@@ -24,5 +35,38 @@ func _draw() -> void:
 		draw_line(Vector2(0, floor_y), Vector2(size.x, floor_y), Color(0.4, 0.4, 0.5), 2.0)
 	var g := RobotArt.geom(look)
 	var tall: float = -(g["head"] as Rect2).position.y + 30.0
-	var sc: float = clampf((size.y - 30.0) / tall, 0.3, 2.5) / look.get("scale", 1.0)
-	RobotArt.draw(self, Vector2(size.x * 0.5, floor_y), look, {"scale": sc, "facing": facing, "time": t})
+	_sc = clampf((size.y - 30.0) / tall, 0.3, 2.5) / look.get("scale", 1.0)
+	_base = Vector2(size.x * 0.5, floor_y)
+	RobotArt.draw(self, _base, look, {"scale": _sc, "facing": facing, "time": t})
+	if interactive and highlight != "":
+		for r in _regions():
+			if r[0] == highlight:
+				var rect: Rect2 = r[1]
+				var k: float = _sc * look.get("scale", 1.0)
+				var world := Rect2(_base + rect.position * k * Vector2(facing, 1), rect.size * k)
+				world = world.abs()
+				draw_rect(world.grow(4.0), Color(1.0, 0.85, 0.2, 0.9 + 0.1 * sin(t * 6.0)), false, 3.0)
+	if interactive:
+		draw_string(ThemeDB.fallback_font, Vector2(6, 22), "Tap a part", HORIZONTAL_ALIGNMENT_LEFT, -1, 16, Color(1, 1, 1, 0.45))
+
+
+func _regions() -> Array:
+	var list := RobotArt.regions(look)
+	var g := RobotArt.geom(look)
+	var tr: Rect2 = g["torso"]
+	list.insert(0, ["back", Rect2(tr.position.x - 34.0, tr.position.y, 34.0, tr.size.y * 0.8)])
+	return list
+
+
+func _gui_input(event: InputEvent) -> void:
+	if not interactive:
+		return
+	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
+		var k: float = _sc * look.get("scale", 1.0)
+		var l: Vector2 = (event.position - _base) / k
+		l.x *= facing
+		for r in _regions():
+			if (r[1] as Rect2).grow(8.0).has_point(l):
+				part_tapped.emit(r[0])
+				accept_event()
+				return

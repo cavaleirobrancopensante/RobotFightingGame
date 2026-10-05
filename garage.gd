@@ -1,71 +1,88 @@
 extends Control
-## Garage: your robot, repairs, the part shop, spare parts, paint, and the next fight.
+## Garage, organised in sections:
+##   BUILD    - your robot slot by slot. Tap a slot (or a part on the robot picture) to swap,
+##              repair or remove it. Setups, Paint and Storage open as popups.
+##   SHOP     - buy parts by type
+##   WORKSHOP - design your own custom part (costs a bit more)
+##   MOVES    - special-move training chips
+##   CUPS     - championships, once the story is done
 
-const TABS := ["Robot", "Shop", "Spares", "Paint"]
+const STAT_NAMES := {"hp": "Health", "armor": "Armor", "damage": "Damage", "speed": "Speed", "aim": "Aim", "chips": "Chip slots"}
 
-var tab := "Robot"
+var tab := "Build"
+var selected := ""          # Build tab: "" = overview, a slot name, or "storage"
 var shop_kind := "arm"
+var ws := {}                # workshop design in progress
 var title_label: Label
 var money_label: Label
 var stats_box: VBoxContainer
 var list_box: VBoxContainer
-var sub_tabs: HBoxContainer
+var scroll: ScrollContainer
+var tabs_box: HBoxContainer
 var msg_label: Label
 var preview: RobotPreview
 var fight_button: Button
-var tab_buttons := {}
+var overlay: Control
+var last_view := ""
+
+
+class ChipIcon extends Control:
+	var installed := false
+	func _draw() -> void:
+		draw_rect(Rect2(Vector2.ZERO, size), Color(0.1, 0.1, 0.14))
+		var r := Rect2(size * 0.2, size * 0.6)
+		for k in 4:
+			var y := r.position.y + 4 + k * (r.size.y - 8) / 3.0
+			draw_line(Vector2(r.position.x - 7, y), Vector2(r.end.x + 7, y), Color(0.8, 0.7, 0.3), 3.0)
+		draw_rect(r, Color(0.1, 0.45, 0.25) if installed else Color(0.2, 0.3, 0.25))
+		draw_rect(r.grow(-6), Color(0.15, 0.15, 0.15))
+		draw_circle(r.get_center(), 4.0, Color(0.4, 1.0, 0.6) if installed else Color(0.4, 0.4, 0.4))
 
 
 func _ready() -> void:
-	Sfx.music("menu")
+	Sfx.music("garage")
+	reset_workshop("arm")
 	UI.background(self)
-	var m := UI.margin(self, 14)
+	var m := UI.margin(self, 12)
 	var root := VBoxContainer.new()
-	root.add_theme_constant_override("separation", 8)
+	root.add_theme_constant_override("separation", 6)
 	m.add_child(root)
 
-	# top bar
 	var top := HBoxContainer.new()
 	root.add_child(top)
-	title_label = UI.label("", 26)
+	title_label = UI.label("", 22)
 	title_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	title_label.clip_text = true
 	top.add_child(title_label)
-	money_label = UI.label("", 32, Color(0.95, 0.85, 0.2))
+	money_label = UI.label("", 26, Color(0.95, 0.85, 0.2))
 	top.add_child(money_label)
 
-	# middle: robot + stats on the left, tabs on the right
 	var mid := HBoxContainer.new()
 	mid.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	mid.add_theme_constant_override("separation", 14)
+	mid.add_theme_constant_override("separation", 12)
 	root.add_child(mid)
 
 	var left := VBoxContainer.new()
-	left.custom_minimum_size = Vector2(330, 0)
-	left.add_theme_constant_override("separation", 4)
+	left.custom_minimum_size = Vector2(300, 0)
+	left.add_theme_constant_override("separation", 2)
 	mid.add_child(left)
 	preview = RobotPreview.new()
-	preview.custom_minimum_size = Vector2(330, 150)
+	preview.interactive = true
+	preview.custom_minimum_size = Vector2(300, 110)
 	preview.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	preview.part_tapped.connect(_on_part_tapped)
 	left.add_child(preview)
 	stats_box = VBoxContainer.new()
-	stats_box.add_theme_constant_override("separation", 2)
+	stats_box.add_theme_constant_override("separation", 0)
 	left.add_child(stats_box)
 
 	var right := VBoxContainer.new()
 	right.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	right.add_theme_constant_override("separation", 6)
+	right.add_theme_constant_override("separation", 4)
 	mid.add_child(right)
-	var tabs := HBoxContainer.new()
-	right.add_child(tabs)
-	for t in TABS:
-		var b := UI.button(t, _on_tab.bind(t), 24, Vector2(0, 52))
-		b.toggle_mode = true
-		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		tabs.add_child(b)
-		tab_buttons[t] = b
-	sub_tabs = HBoxContainer.new()
-	right.add_child(sub_tabs)
-	var scroll := ScrollContainer.new()
+	tabs_box = HBoxContainer.new()
+	right.add_child(tabs_box)
+	scroll = ScrollContainer.new()
 	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	right.add_child(scroll)
@@ -73,48 +90,59 @@ func _ready() -> void:
 	list_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	list_box.add_theme_constant_override("separation", 4)
 	scroll.add_child(list_box)
-	msg_label = UI.label("", 20, Color(0.6, 0.9, 1.0))
+	msg_label = UI.label("", 15, Color(0.6, 0.9, 1.0))
 	msg_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	msg_label.custom_minimum_size = Vector2(0, 44)
 	right.add_child(msg_label)
 
-	# bottom bar
 	var bottom := HBoxContainer.new()
-	bottom.add_theme_constant_override("separation", 10)
+	bottom.add_theme_constant_override("separation", 8)
 	root.add_child(bottom)
-	bottom.add_child(UI.button("Menu", _on_menu, 22, Vector2(110, 56)))
-	bottom.add_child(UI.button("Save", _on_save, 22, Vector2(110, 56)))
+	bottom.add_child(UI.button("Menu", _on_menu, 18, Vector2(90, 48)))
+	bottom.add_child(UI.button("Save", _on_save, 18, Vector2(90, 48)))
 	var spacer := Control.new()
 	spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	bottom.add_child(spacer)
-	fight_button = UI.button("", _on_fight, 24, Vector2(420, 56))
+	fight_button = UI.button("", _on_fight, 19, Vector2(360, 48))
 	bottom.add_child(fight_button)
 
 	show_last_result()
 	refresh()
 
 
+func tab_list() -> Array:
+	var t := ["Build", "Shop", "Workshop", "Moves"]
+	if GameData.champion:
+		t.append("Cups")
+	return t
+
+
 func show_last_result() -> void:
 	var r := GameData.last_result
 	if r.is_empty():
-		msg_label.text = "Welcome to the garage. Tap the tabs to repair, shop, swap parts and paint."
+		msg_label.text = "Tap a part of your robot (or a row) to swap, repair or remove it."
 		return
 	if r.get("quit", false):
 		msg_label.text = "You walked out on %s. No pay, and the dents came home with you." % r["opponent"]
 	else:
 		var bits: Array = []
 		if r.get("champion", false):
-			bits.append("CHAMPION! You beat %s." % r["opponent"])
+			bits.append("CHAMPION! You beat %s. Championships are open in the Cups tab!" % r["opponent"])
 		elif r["won"]:
 			bits.append("Beat %s!" % r["opponent"])
 		else:
 			bits.append("Lost to %s." % r["opponent"])
 		bits.append("Earned $%d." % (r["reward"] + r.get("bonus", 0)))
+		if r.get("cup_done", "") != "":
+			bits.append("CUP WON: %s" % r["cup_done"])
+		if r.get("trophy", "") != "":
+			bits.append("Trophy part: %s." % r["trophy"])
 		if not r.get("lost", []).is_empty():
 			bits.append("Lost: %s." % ", ".join(r["lost"]))
 		if not r.get("wrecked", []).is_empty():
-			bits.append("Wrecked: %s (rebuild in Spares)." % ", ".join(r["wrecked"]))
+			bits.append("Wrecked: %s (rebuild in Storage)." % ", ".join(r["wrecked"]))
 		if not r.get("salvaged", []).is_empty():
-			bits.append("Salvaged: %s (in Spares)." % ", ".join(r["salvaged"]))
+			bits.append("Salvaged: %s." % ", ".join(r["salvaged"]))
 		msg_label.text = " ".join(bits)
 	GameData.last_result = {}
 
@@ -129,39 +157,61 @@ func say(text: String, sound: String = "") -> void:
 
 func refresh() -> void:
 	money_label.text = "$%d" % GameData.money
+	var mode := GameData.fight_mode()
+	match mode:
+		"circuit":
+			title_label.text = "GARAGE - %s" % GameData.fight_title()
+		"exhibition":
+			title_label.text = "GARAGE - Champion! (%dW/%dL, %d cups)" % [GameData.wins, GameData.losses, GameData.circuits_won]
+		_:
+			title_label.text = "GARAGE - Fight %d of %d" % [GameData.fight_index + 1, GameData.OPPONENTS.size()]
 	var o := GameData.current_opponent()
-	if GameData.champion:
-		title_label.text = "GARAGE  -  Champion! (%dW / %dL)" % [GameData.wins, GameData.losses]
-	else:
-		title_label.text = "GARAGE  -  Fight %d of %d" % [GameData.fight_index + 1, GameData.OPPONENTS.size()]
 	var core := GameData.equipped_inst("torso")
 	if not GameData.can_fight():
-		fight_button.text = "Need a head and a torso to fight"
+		fight_button.text = "Need a head and a torso"
 		fight_button.disabled = true
 	else:
 		fight_button.disabled = false
-		var label := "EXHIBITION: %s ($%d)" if GameData.champion else "FIGHT: %s ($%d)"
+		var label: String = {"story": "FIGHT: %s ($%d)", "circuit": "CUP FIGHT: %s ($%d)", "exhibition": "REMATCH: %s ($%d)"}.get(mode, "FIGHT: %s ($%d)")
 		fight_button.text = label % [o["name"], GameData.current_reward()]
 		if not core.is_empty() and GameData.hp_ratio(core) < 0.35:
-			fight_button.text += "  - core damaged!"
+			fight_button.text += " - core damaged!"
 
 	preview.look = GameData.player_look()
+	preview.highlight = selected if tab == "Build" else ""
 	refresh_stats()
-	for t in tab_buttons:
-		tab_buttons[t].button_pressed = t == tab
-	for c in sub_tabs.get_children():
+	for c in tabs_box.get_children():
 		c.queue_free()
+	for t in tab_list():
+		var b := UI.button(t, _on_tab.bind(t), 18, Vector2(0, 46))
+		b.toggle_mode = true
+		b.button_pressed = t == tab
+		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		tabs_box.add_child(b)
+
+	# keep the scroll position when the same view is rebuilt (e.g. tapping + in the workshop)
+	var view := tab + "/" + selected + "/" + shop_kind
+	var keep := scroll.scroll_vertical if view == last_view else 0
+	last_view = view
 	for c in list_box.get_children():
 		c.queue_free()
 	match tab:
-		"Robot":
-			build_robot_tab()
+		"Build":
+			if selected == "":
+				build_overview()
+			elif selected == "storage":
+				build_storage()
+			else:
+				build_slot(selected)
 		"Shop":
 			build_shop_tab()
-		"Spares":
-			build_spares_tab()
-		"Paint":
-			build_paint_tab()
+		"Workshop":
+			build_workshop()
+		"Moves":
+			build_moves_tab()
+		"Cups":
+			build_cups_tab()
+	scroll.set_deferred("scroll_vertical", keep)
 
 
 func refresh_stats() -> void:
@@ -171,174 +221,493 @@ func refresh_stats() -> void:
 	add_stat("Core", s["core"], s["core_max"], "%d/%d" % [s["core"], s["core_max"]], Color(0.4, 0.85, 0.4))
 	add_stat("Damage", s["damage"], 170, "%d%%" % s["damage"], Color(0.95, 0.4, 0.3))
 	add_stat("Speed", s["speed"], 150, "%d%%" % s["speed"], Color(0.35, 0.7, 1.0))
-	add_stat("Aim", s["aim"], 30, "+%d%%" % s["aim"], Color(1.0, 0.45, 0.7))
+	add_stat("Chips", GameData.active_chips().size(), maxf(1, GameData.chip_slots()), "%d/%d" % [GameData.active_chips().size(), GameData.chip_slots()], Color(0.75, 0.45, 1.0))
 	var over: bool = s["power_used"] > s["power_output"]
 	add_stat("Power", s["power_used"], s["power_output"], "%d/%d" % [s["power_used"], s["power_output"]],
 			Color(1.0, 0.35, 0.2) if over else Color(1.0, 0.8, 0.3))
 	if over:
-		var w := UI.label("OVERLOADED: %d%% performance. Get a bigger reactor!" % int(s["efficiency"] * 100), 16, Color(1.0, 0.5, 0.3))
-		w.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		stats_box.add_child(w)
+		stats_box.add_child(UI.label("OVERLOADED: %d%% performance!" % int(s["efficiency"] * 100), 13, Color(1.0, 0.5, 0.3)))
 
 
 func add_stat(title: String, value: float, max_value: float, text: String, color: Color) -> void:
 	var row := HBoxContainer.new()
-	var t := UI.label(title, 18)
+	var t := UI.label(title, 14)
 	t.custom_minimum_size = Vector2(80, 0)
 	row.add_child(t)
-	var bar := ProgressBar.new()
-	bar.max_value = maxf(1.0, max_value)
-	bar.value = value
-	bar.show_percentage = false
-	bar.custom_minimum_size = Vector2(0, 14)
-	bar.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	bar.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	var fill := StyleBoxFlat.new()
-	fill.bg_color = color
-	bar.add_theme_stylebox_override("fill", fill)
-	row.add_child(bar)
-	var v := UI.label(text, 18)
+	row.add_child(make_bar(value, max_value, color))
+	var v := UI.label(text, 14)
 	v.custom_minimum_size = Vector2(84, 0)
 	v.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	row.add_child(v)
 	stats_box.add_child(row)
 
 
+func make_bar(value: float, max_value: float, color: Color) -> ProgressBar:
+	var bar := ProgressBar.new()
+	bar.max_value = maxf(1.0, max_value)
+	bar.value = value
+	bar.show_percentage = false
+	bar.custom_minimum_size = Vector2(0, 16)
+	bar.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	bar.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var fill := StyleBoxFlat.new()
+	fill.bg_color = color
+	bar.add_theme_stylebox_override("fill", fill)
+	return bar
+
+
 # ---------------------------------------------------------------- row helpers
 
-func make_row(def: Dictionary, title: String, subtitle: String, health: float = 1.0) -> HBoxContainer:
+func make_row(icon: Control, title: String, subtitle: String, parent: Control = null) -> HBoxContainer:
 	var panel := PanelContainer.new()
-	list_box.add_child(panel)
+	(parent if parent else list_box).add_child(panel)
 	var row := HBoxContainer.new()
-	row.add_theme_constant_override("separation", 10)
+	row.add_theme_constant_override("separation", 8)
 	panel.add_child(row)
-	var icon := PartIcon.new()
-	icon.part = def
-	icon.health = health
-	icon.custom_minimum_size = Vector2(64, 64)
+	icon.custom_minimum_size = Vector2(66, 66)
+	icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	row.add_child(icon)
 	var info := VBoxContainer.new()
 	info.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	info.alignment = BoxContainer.ALIGNMENT_CENTER
-	var t := UI.label(title, 22)
+	info.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var t := UI.label(title, 17)
 	t.clip_text = true
 	info.add_child(t)
-	var s := UI.label(subtitle, 16, Color(0.72, 0.72, 0.78))
+	if subtitle != "":
+		var s := UI.label(subtitle, 12, Color(0.72, 0.72, 0.78))
+		s.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		info.add_child(s)
+	row.add_child(info)
+	return row
+
+
+## A whole-row button (tap anywhere on it), with an icon, two lines of text and extra widgets.
+func make_tap_row(icon: Control, title: String, subtitle: String, cb: Callable) -> HBoxContainer:
+	var b := Button.new()
+	b.custom_minimum_size = Vector2(0, 74 * UI.SCALE)
+	b.focus_mode = Control.FOCUS_NONE
+	b.pressed.connect(func(): Sfx.play("click", 0.05))
+	b.pressed.connect(cb)
+	list_box.add_child(b)
+	var row := HBoxContainer.new()
+	row.set_anchors_preset(Control.PRESET_FULL_RECT)
+	row.offset_left = 6
+	row.offset_right = -6
+	row.add_theme_constant_override("separation", 8)
+	row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	b.add_child(row)
+	icon.custom_minimum_size = Vector2(66, 66)
+	icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	icon.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	row.add_child(icon)
+	var info := VBoxContainer.new()
+	info.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	info.alignment = BoxContainer.ALIGNMENT_CENTER
+	info.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var t := UI.label(title, 17)
+	t.clip_text = true
+	info.add_child(t)
+	var s := UI.label(subtitle, 12, Color(0.72, 0.72, 0.78))
 	s.clip_text = true
 	info.add_child(s)
 	row.add_child(info)
 	return row
 
 
-func row_button(row: HBoxContainer, text: String, cb: Callable, enabled: bool = true, width: float = 120.0) -> Button:
-	var b := UI.button(text, cb, 18, Vector2(width, 54))
+func part_icon(def: Dictionary, health: float = 1.0) -> PartIcon:
+	var icon := PartIcon.new()
+	icon.part = def
+	icon.health = health
+	return icon
+
+
+func row_button(row: Control, text: String, cb: Callable, enabled: bool = true, width: float = 100.0) -> Button:
+	var b := UI.button(text, cb, 15, Vector2(width, 48))
 	b.disabled = not enabled
+	b.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	row.add_child(b)
 	return b
 
 
+func section(text: String, parent: Control = null) -> void:
+	var l := UI.label(text, 15, Color(1.0, 0.8, 0.4))
+	l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	(parent if parent else list_box).add_child(l)
+
+
+func action_bar(parent: Control = null) -> HBoxContainer:
+	var bar := HBoxContainer.new()
+	bar.add_theme_constant_override("separation", 6)
+	(parent if parent else list_box).add_child(bar)
+	return bar
+
+
 func health_text(p: Dictionary) -> String:
 	var d := GameData.part_def(p["id"])
-	if d["kind"] == "reactor":
+	if GameData.UNDAMAGEABLE.has(d["kind"]):
 		return GameData.part_stat_text(d)
-	return "Condition %d/%d   %s" % [ceili(p["hp"]), d["hp"], GameData.part_stat_text(d)]
+	return "Condition %d/%d  %s" % [ceili(p["hp"]), d["hp"], GameData.part_stat_text(d)]
 
 
-# ---------------------------------------------------------------- tabs
+# ---------------------------------------------------------------- BUILD
 
-func build_robot_tab() -> void:
+func build_overview() -> void:
 	var total := GameData.repair_all_cost()
-	var head := HBoxContainer.new()
-	list_box.add_child(head)
-	var l := UI.label("Equipped parts" if total == 0 else "Damage to fix: $%d" % total, 20)
-	l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	head.add_child(l)
-	row_button(head, "Repair all $%d" % total, _on_repair_all, total > 0, 190)
+	var bar := action_bar()
+	row_button(bar, "Repair all $%d" % total if total > 0 else "All repaired", _on_repair_all, total > 0, 150)
+	row_button(bar, "Randomize", _on_randomize, true, 120)
+	row_button(bar, "Setups", _on_open_setups, true, 100)
+	row_button(bar, "Paint", _on_open_paint, true, 85)
+	row_button(bar, "Storage (%d)" % GameData.spares().size(), _on_slot.bind("storage"), true, 125)
 
 	for slot in GameData.SLOTS:
 		var p := GameData.equipped_inst(slot)
 		var slot_name: String = GameData.SLOT_NAMES[slot]
 		if p.is_empty():
-			var empty := make_row({}, "%s: EMPTY" % slot_name, "Buy one in the Shop or fit one from Spares.")
-			row_button(empty, "Shop", _on_go_shop.bind(GameData.SLOT_KIND[slot]))
+			make_tap_row(part_icon({}), "%s: empty" % slot_name, "Tap to fit or buy one" + (" (optional)" if slot == "back" else ""), _on_slot.bind(slot))
 			continue
 		var d := GameData.part_def(p["id"])
-		var row := make_row(d, "%s: %s" % [slot_name, d["name"]], health_text(p), GameData.hp_ratio(p))
-		if slot != "reactor":
+		var row := make_tap_row(part_icon(d, GameData.hp_ratio(p)), "%s: %s" % [slot_name, d["name"]], GameData.part_stat_text(d), _on_slot.bind(slot))
+		if not GameData.UNDAMAGEABLE.has(d["kind"]):
+			var col := VBoxContainer.new()
+			col.custom_minimum_size = Vector2(120, 0)
+			col.alignment = BoxContainer.ALIGNMENT_CENTER
+			col.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			var h := GameData.hp_ratio(p)
+			col.add_child(make_bar(p["hp"], d["hp"], Color(0.9, 0.25, 0.2).lerp(Color(0.3, 0.9, 0.35), h)))
+			var lbl := UI.label("%d/%d" % [ceili(p["hp"]), d["hp"]], 12)
+			lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+			col.add_child(lbl)
+			row.add_child(col)
 			var c := GameData.repair_cost(p)
-			row_button(row, "Fix $%d" % c if c > 0 else "Perfect", _on_repair.bind(p["uid"]), c > 0, 110)
-			row_button(row, "Remove", _on_unequip.bind(slot), true, 100)
+			if c > 0:
+				row_button(row, "Fix $%d" % c, _on_repair.bind(p["uid"]), GameData.money >= c, 95)
 
 
-func build_shop_tab() -> void:
-	for kind in GameData.KINDS:
-		var b := UI.button(GameData.KIND_NAMES[kind], _on_shop_kind.bind(kind), 18, Vector2(0, 44))
-		b.toggle_mode = true
-		b.button_pressed = kind == shop_kind
-		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		sub_tabs.add_child(b)
-	for d in GameData.shop_parts(shop_kind):
-		var row := make_row(d, d["name"], GameData.part_stat_text(d))
-		row_button(row, "Buy $%d" % d["cost"] if d["cost"] > 0 else "Free", _on_buy.bind(d["id"]), GameData.money >= d["cost"], 130)
+func build_slot(slot: String) -> void:
+	var kind: String = GameData.SLOT_KIND[slot]
+	var bar := action_bar()
+	row_button(bar, "< All parts", _on_slot.bind(""), true, 140)
+	var title := UI.label(str(GameData.SLOT_NAMES[slot]).to_upper(), 20, Color(1.0, 0.8, 0.4))
+	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	bar.add_child(title)
+
+	var p := GameData.equipped_inst(slot)
+	section("Fitted now:")
+	if p.is_empty():
+		make_row(part_icon({}), "Nothing", "This slot is empty.")
+	else:
+		var d := GameData.part_def(p["id"])
+		var row := make_row(part_icon(d, GameData.hp_ratio(p)), d["name"], health_text(p))
+		var c := GameData.repair_cost(p)
+		if c > 0:
+			row_button(row, "Fix $%d" % c, _on_repair.bind(p["uid"]), GameData.money >= c, 95)
+		if slot != "reactor":
+			row_button(row, "Remove", _on_unequip.bind(slot), true, 95)
+
+	var options: Array = []
+	var wrecks: Array = []
+	for sp in GameData.spares():
+		if GameData.part_def(sp["id"])["kind"] == kind:
+			(wrecks if GameData.is_wreck(sp) else options).append(sp)
+	section("Swap in from storage:" if not options.is_empty() else "No spare %s in storage." % str(GameData.KIND_NAMES[kind]).to_lower())
+	for sp in options:
+		var d := GameData.part_def(sp["id"])
+		var row := make_row(part_icon(d, GameData.hp_ratio(sp)), d["name"] + ("" if d["shop"] else "  (rare)"), health_text(sp))
+		row_button(row, "Fit", _on_equip.bind(sp["uid"], slot), true, 80)
+		var v := GameData.sell_value(sp)
+		row_button(row, "Sell $%d" % v if v > 0 else "Scrap", _on_sell.bind(sp["uid"]), true, 95)
+	for sp in wrecks:
+		var d := GameData.part_def(sp["id"])
+		var c := GameData.repair_cost(sp)
+		var row := make_row(part_icon(d, 0.0), d["name"] + "  (WRECKED)", "Rebuild it to use it again.")
+		row_button(row, "Rebuild $%d" % c, _on_repair.bind(sp["uid"]), GameData.money >= c, 130)
+		row_button(row, "Scrap", _on_sell.bind(sp["uid"]), true, 80)
+	var more := action_bar()
+	row_button(more, "Buy new %s" % str(GameData.KIND_NAMES[kind]).to_lower(), _on_go_shop.bind(kind), true, 200)
+	if GameData.CUSTOM_KINDS.has(kind):
+		row_button(more, "Design one in the Workshop", _on_go_workshop.bind(kind), true, 270)
 
 
-func build_spares_tab() -> void:
+func build_storage() -> void:
+	var bar := action_bar()
+	row_button(bar, "< All parts", _on_slot.bind(""), true, 140)
+	var title := UI.label("STORAGE", 20, Color(1.0, 0.8, 0.4))
+	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	bar.add_child(title)
 	var list := GameData.spares()
 	if list.is_empty():
-		var l := UI.label("No spare parts. Parts you buy while your slots are full, parts you remove and parts you salvage end up here.", 20, Color(0.7, 0.7, 0.75))
-		l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		list_box.add_child(l)
+		section("Storage is empty. Parts you remove, extra purchases, trophies and salvage end up here.")
 		return
+	section("To fit a part, tap its slot on the robot. Here you can sell, scrap and rebuild.")
 	for p in list:
 		var d := GameData.part_def(p["id"])
 		var wreck := GameData.is_wreck(p)
-		var tag := "  (WRECKED)" if wreck else ("" if d["shop"] else "  (salvaged)")
-		var row := make_row(d, d["name"] + tag, health_text(p), GameData.hp_ratio(p))
+		var tag := "  (WRECKED)" if wreck else ("" if d["shop"] else "  (rare)")
+		var row := make_row(part_icon(d, GameData.hp_ratio(p)), "%s%s  [%s]" % [d["name"], tag, d["kind"]], health_text(p))
 		var c := GameData.repair_cost(p)
-		if wreck:
-			row_button(row, "Rebuild $%d" % c, _on_repair.bind(p["uid"]), GameData.money >= c, 150)
-			row_button(row, "Scrap", _on_sell.bind(p["uid"]), true, 90)
-			continue
-		match d["kind"]:
-			"arm":
-				row_button(row, "Front", _on_equip.bind(p["uid"], "arm_front"), true, 80)
-				row_button(row, "Back", _on_equip.bind(p["uid"], "arm_back"), true, 80)
-			"leg":
-				row_button(row, "Front", _on_equip.bind(p["uid"], "leg_front"), true, 80)
-				row_button(row, "Back", _on_equip.bind(p["uid"], "leg_back"), true, 80)
-			_:
-				row_button(row, "Fit", _on_equip.bind(p["uid"], d["kind"]), true, 80)
 		if c > 0:
-			row_button(row, "Fix $%d" % c, _on_repair.bind(p["uid"]), GameData.money >= c, 100)
+			row_button(row, ("Rebuild $%d" if wreck else "Fix $%d") % c, _on_repair.bind(p["uid"]), GameData.money >= c, 125)
 		var v := GameData.sell_value(p)
-		row_button(row, "Sell $%d" % v if v > 0 else "Scrap", _on_sell.bind(p["uid"]), true, 110)
+		row_button(row, "Sell $%d" % v if v > 0 else "Scrap", _on_sell.bind(p["uid"]), true, 95)
 
 
-func build_paint_tab() -> void:
-	list_box.add_child(UI.label("Paint job (trim and highlights). Free!", 20))
+# ---------------------------------------------------------------- popups (setups, paint)
+
+func open_popup(title: String) -> VBoxContainer:
+	close_popup()
+	overlay = ColorRect.new()
+	(overlay as ColorRect).color = Color(0, 0, 0, 0.6)
+	overlay.set_anchors_preset(Control.PRESET_FULL_RECT)
+	overlay.mouse_filter = Control.MOUSE_FILTER_STOP
+	add_child(overlay)
+	var center := CenterContainer.new()
+	center.set_anchors_preset(Control.PRESET_FULL_RECT)
+	overlay.add_child(center)
+	var panel := PanelContainer.new()
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = Color(0.12, 0.12, 0.17)
+	sb.set_corner_radius_all(10)
+	sb.set_content_margin_all(18)
+	sb.border_color = Color(1.0, 0.45, 0.2)
+	sb.set_border_width_all(2)
+	panel.add_theme_stylebox_override("panel", sb)
+	center.add_child(panel)
+	var col := VBoxContainer.new()
+	col.add_theme_constant_override("separation", 8)
+	col.custom_minimum_size = Vector2(560, 0)
+	panel.add_child(col)
+	var head := HBoxContainer.new()
+	col.add_child(head)
+	var t := UI.label(title, 22, Color(1.0, 0.45, 0.2))
+	t.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	head.add_child(t)
+	head.add_child(UI.button("Close", close_popup, 16, Vector2(90, 44)))
+	return col
+
+
+func close_popup() -> void:
+	if overlay:
+		overlay.queue_free()
+		overlay = null
+
+
+func _on_open_setups() -> void:
+	var col := open_popup("SAVED SETUPS")
+	section("A setup remembers your parts, chips and paint.", col)
+	for k in GameData.SETUP_SLOTS:
+		var st: Dictionary = GameData.setups[k]
+		var row := action_bar(col)
+		var name := UI.label("Setup %d: %s" % [k + 1, "empty" if st.is_empty() else "saved"], 16)
+		name.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		row.add_child(name)
+		row_button(row, "Save here", _on_save_setup.bind(k), true, 120)
+		row_button(row, "Load", _on_load_setup.bind(k), not st.is_empty(), 90)
+
+
+func _on_open_paint() -> void:
+	var col := open_popup("PAINT JOB")
 	var grid := GridContainer.new()
 	grid.columns = 4
 	grid.add_theme_constant_override("h_separation", 8)
 	grid.add_theme_constant_override("v_separation", 8)
-	list_box.add_child(grid)
+	col.add_child(grid)
 	for k in GameData.PAINTS.size():
 		var paint: Dictionary = GameData.PAINTS[k]
-		var b := UI.button(paint["name"], _on_paint.bind(k), 20, Vector2(150, 64))
+		var b := UI.button(paint["name"], _on_paint.bind(k), 15, Vector2(110, 52))
 		var sb := StyleBoxFlat.new()
 		sb.bg_color = Color(paint["color"]).darkened(0.35)
 		sb.border_color = Color.WHITE if k == GameData.paint else Color(paint["color"])
 		sb.set_border_width_all(4 if k == GameData.paint else 2)
 		sb.set_corner_radius_all(6)
-		b.add_theme_stylebox_override("normal", sb)
-		b.add_theme_stylebox_override("hover", sb)
-		b.add_theme_stylebox_override("pressed", sb)
+		for state in ["normal", "hover", "pressed"]:
+			b.add_theme_stylebox_override(state, sb)
 		grid.add_child(b)
+
+
+# ---------------------------------------------------------------- SHOP
+
+func build_shop_tab() -> void:
+	var bar := action_bar()
+	for kind in GameData.KINDS:
+		var b := UI.button(GameData.KIND_NAMES[kind], _on_shop_kind.bind(kind), 14, Vector2(0, 42))
+		b.toggle_mode = true
+		b.button_pressed = kind == shop_kind
+		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		bar.add_child(b)
+	for d in GameData.shop_parts(shop_kind):
+		var row := make_row(part_icon(d), d["name"], GameData.part_stat_text(d))
+		row_button(row, "Buy $%d" % d["cost"] if d["cost"] > 0 else "Free", _on_buy.bind(d["id"]), GameData.money >= d["cost"], 115)
+
+
+# ---------------------------------------------------------------- WORKSHOP
+
+func reset_workshop(kind: String) -> void:
+	ws = {"kind": kind, "shape": GameData.custom_shapes(kind)[0], "color": GameData.CUSTOM_COLORS[0],
+			"size": 1.0, "grade": 1, "alloc": {}, "gadget": ""}
+
+
+func grade_points() -> int:
+	return GameData.CUSTOM_GRADES[ws["grade"]]["points"]
+
+
+func build_workshop() -> void:
+	var d := GameData.custom_def(ws)
+	var left := grade_points() - GameData.custom_points_used(ws)
+	var head := make_row(part_icon(d), d["name"], GameData.part_stat_text(d))
+	var forge := row_button(head, "FORGE $%d" % d["cost"], _on_forge, GameData.money >= d["cost"], 150)
+	forge.add_theme_color_override("font_color", Color(1.0, 0.8, 0.3))
+
+	section("Part type")
+	var kinds := action_bar()
+	for k in GameData.CUSTOM_KINDS:
+		var b := row_button(kinds, str(k).capitalize(), _on_ws_kind.bind(k), true, 0)
+		b.toggle_mode = true
+		b.button_pressed = k == ws["kind"]
+		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+
+	section("Shape")
+	var grid := GridContainer.new()
+	grid.columns = 5
+	list_box.add_child(grid)
+	for sh in GameData.custom_shapes(ws["kind"]):
+		var b := UI.button(str(sh).capitalize(), _on_ws_set.bind("shape", sh), 13, Vector2(100, 40))
+		b.toggle_mode = true
+		b.button_pressed = sh == ws["shape"]
+		grid.add_child(b)
+
+	section("Colour")
+	var colors := GridContainer.new()
+	colors.columns = 12
+	list_box.add_child(colors)
+	for c in GameData.CUSTOM_COLORS:
+		var b := UI.button("", _on_ws_set.bind("color", c), 12, Vector2(40, 40))
+		var sb := StyleBoxFlat.new()
+		sb.bg_color = Color(c)
+		sb.border_color = Color.WHITE if c == ws["color"] else Color(c).darkened(0.4)
+		sb.set_border_width_all(4 if c == ws["color"] else 1)
+		for state in ["normal", "hover", "pressed"]:
+			b.add_theme_stylebox_override(state, sb)
+		colors.add_child(b)
+
+	section("Size and grade")
+	var sizes := action_bar()
+	for opt in [[0.85, "Small"], [1.0, "Normal"], [1.15, "Large"]]:
+		var b := row_button(sizes, opt[1], _on_ws_set.bind("size", opt[0]), true, 0)
+		b.toggle_mode = true
+		b.button_pressed = is_equal_approx(ws["size"], opt[0])
+		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var grades := action_bar()
+	for g in GameData.CUSTOM_GRADES.size():
+		var gr: Dictionary = GameData.CUSTOM_GRADES[g]
+		var b := row_button(grades, "%s (%d pts)" % [gr["name"], gr["points"]], _on_ws_grade.bind(g), true, 0)
+		b.toggle_mode = true
+		b.button_pressed = g == ws["grade"]
+		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+
+	section("Stats - %d point%s left" % [left, "" if left == 1 else "s"])
+	for stat in GameData.CUSTOM_KINDS[ws["kind"]]["stats"]:
+		var n: int = ws["alloc"].get(stat, 0)
+		var row := action_bar()
+		var l := UI.label(STAT_NAMES[stat], 16)
+		l.custom_minimum_size = Vector2(130, 0)
+		row.add_child(l)
+		row_button(row, "-", _on_ws_stat.bind(stat, -1), n > 0, 54)
+		var bar := make_bar(n, GameData.CUSTOM_MAX_PER_STAT, Color(0.4, 0.8, 1.0))
+		row.add_child(bar)
+		row_button(row, "+", _on_ws_stat.bind(stat, 1), left > 0 and n < GameData.CUSTOM_MAX_PER_STAT, 54)
+
+	section("Gadget (+$%d)" % GameData.CUSTOM_GADGET_PRICE)
+	var gad := action_bar()
+	var none := row_button(gad, "None", _on_ws_set.bind("gadget", ""), true, 0)
+	none.toggle_mode = true
+	none.button_pressed = ws["gadget"] == ""
+	none.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	for g in GameData.CUSTOM_KINDS[ws["kind"]]["gadgets"]:
+		var b := row_button(gad, Specials.GADGETS[g]["name"], _on_ws_set.bind("gadget", g), true, 0)
+		b.toggle_mode = true
+		b.button_pressed = ws["gadget"] == g
+		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+
+
+# ---------------------------------------------------------------- MOVES & CUPS
+
+func build_moves_tab() -> void:
+	section("Training chips teach special moves. Chip slots used: %d/%d (better heads have more). Inputs: → toward the enemy, ← away, ↓ down. Tap them quickly, then P or K."
+			% [GameData.active_chips().size(), GameData.chip_slots()])
+	for id in Specials.MOVES:
+		var m: Dictionary = Specials.MOVES[id]
+		var owned := GameData.owned_chips.has(id)
+		var installed := GameData.chips.has(id)
+		var icon := ChipIcon.new()
+		icon.installed = installed
+		var row := make_row(icon, "%s    %s" % [m["name"], Specials.seq_text(m["seq"])], "%s  Cooldown %ds." % [m["desc"], int(m["cd"])])
+		if not owned:
+			row_button(row, "Buy $%d" % m["cost"], _on_buy_chip.bind(id), GameData.money >= m["cost"], 115)
+		elif installed:
+			row_button(row, "Remove", _on_uninstall_chip.bind(id), true, 115)
+		else:
+			row_button(row, "Install", _on_install_chip.bind(id), GameData.chips.size() < GameData.chip_slots(), 115)
+
+
+func build_cups_tab() -> void:
+	var c := GameData.circuit
+	if not c.is_empty():
+		var bar := action_bar()
+		var l := UI.label("%s %s - fight %d of %d - cup prize $%d" % [c["name"], "★".repeat(int(c["tier"])),
+				int(c["index"]) + 1, int(c["size"]), int(c["prize"])], 16, Color(1.0, 0.8, 0.4))
+		l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		bar.add_child(l)
+		row_button(bar, "Abandon", _on_abandon, true, 110)
+		for i in range(int(c["index"]), int(c["size"])):
+			var o := GameData.circuit_opponent(c, i)
+			var specials: Array = []
+			for id in o["specials"]:
+				specials.append(Specials.MOVES[id]["name"])
+			make_row(bot_preview(o), "%d. %s   ($%d)" % [i + 1, o["name"], o["reward"]],
+					"Moves: " + (", ".join(specials) if not specials.is_empty() else "none"))
+		return
+	section("Pick a championship. Robots are built at random for every cup!")
+	if GameData.circuit_offers.is_empty():
+		GameData.make_offers()
+	for k in GameData.circuit_offers.size():
+		var off: Dictionary = GameData.circuit_offers[k]
+		var row := make_row(bot_preview(GameData.circuit_opponent(off, int(off["size"]) - 1)), "%s  %s" % [off["name"], "★".repeat(int(off["tier"]))],
+				"%d fights. Cup prize $%d plus a free part. Final boss shown." % [int(off["size"]), int(off["prize"])])
+		row_button(row, "Enter", _on_enter_cup.bind(k), true, 100)
+	make_row(bot_preview(GameData.OPPONENTS[GameData.OPPONENTS.size() - 1]), "OVERLORD rematch",
+			"Exhibition bout for $%d - the fight button starts it when no cup is active." % GameData.EXHIBITION_REWARD)
+
+
+func bot_preview(o: Dictionary) -> RobotPreview:
+	var pv := RobotPreview.new()
+	pv.look = GameData.look_from_spec(GameData.opponent_spec_from(o, 1.0))
+	pv.facing = -1
+	pv.anim = false
+	return pv
 
 
 # ---------------------------------------------------------------- actions
 
 func _on_tab(t: String) -> void:
 	tab = t
+	if t == "Build":
+		selected = ""
+	refresh()
+
+
+func _on_part_tapped(slot: String) -> void:
+	tab = "Build"
+	selected = slot
+	Sfx.play("target")
+	refresh()
+
+
+func _on_slot(slot: String) -> void:
+	selected = slot
 	refresh()
 
 
@@ -350,6 +719,12 @@ func _on_shop_kind(kind: String) -> void:
 func _on_go_shop(kind: String) -> void:
 	tab = "Shop"
 	shop_kind = kind
+	refresh()
+
+
+func _on_go_workshop(kind: String) -> void:
+	tab = "Workshop"
+	reset_workshop(kind)
 	refresh()
 
 
@@ -367,7 +742,7 @@ func _on_equip(uid: int, slot: String) -> void:
 
 func _on_unequip(slot: String) -> void:
 	GameData.unequip(slot)
-	say("Removed the %s. It's in your Spares." % GameData.SLOT_NAMES[slot], "equip")
+	say("Removed the %s. It's in Storage." % GameData.SLOT_NAMES[slot], "equip")
 	refresh()
 
 
@@ -385,14 +760,101 @@ func _on_repair_all() -> void:
 	refresh()
 
 
+func _on_randomize() -> void:
+	say(GameData.randomize_robot(), "equip")
+	Sfx.play("repair", 0.2)
+	refresh()
+
+
+func _on_save_setup(k: int) -> void:
+	say(GameData.save_setup(k), "buy")
+	refresh()
+	_on_open_setups()
+
+
+func _on_load_setup(k: int) -> void:
+	say(GameData.load_setup(k), "equip")
+	close_popup()
+	refresh()
+
+
 func _on_sell(uid: int) -> void:
 	say(GameData.sell(uid), "sell")
+	refresh()
+
+
+func _on_buy_chip(id: String) -> void:
+	var before := GameData.money
+	var text := GameData.buy_chip(id)
+	say(text, "buy" if GameData.money < before else "error")
+	refresh()
+
+
+func _on_install_chip(id: String) -> void:
+	say(GameData.install_chip(id), "equip")
+	refresh()
+
+
+func _on_uninstall_chip(id: String) -> void:
+	say(GameData.uninstall_chip(id), "untarget")
 	refresh()
 
 
 func _on_paint(k: int) -> void:
 	GameData.paint = k
 	say("Painted %s." % GameData.PAINTS[k]["name"], "equip")
+	refresh()
+	_on_open_paint()
+
+
+func _on_ws_kind(kind: String) -> void:
+	reset_workshop(kind)
+	refresh()
+
+
+func _on_ws_set(key: String, value) -> void:
+	ws[key] = value
+	refresh()
+
+
+func _on_ws_grade(g: int) -> void:
+	ws["grade"] = g
+	# trim points if the new grade has fewer
+	while GameData.custom_points_used(ws) > grade_points():
+		for k in ws["alloc"].keys():
+			if ws["alloc"][k] > 0 and GameData.custom_points_used(ws) > grade_points():
+				ws["alloc"][k] -= 1
+	refresh()
+
+
+func _on_ws_stat(stat: String, delta: int) -> void:
+	ws["alloc"][stat] = clampi(ws["alloc"].get(stat, 0) + delta, 0, GameData.CUSTOM_MAX_PER_STAT)
+	refresh()
+
+
+func _on_forge() -> void:
+	var before := GameData.money
+	var text := GameData.forge_custom(ws)
+	if GameData.money < before:
+		say(text, "repair")
+		Sfx.play("buy")
+		reset_workshop(ws["kind"])
+	else:
+		say(text, "error")
+	refresh()
+
+
+func _on_enter_cup(k: int) -> void:
+	GameData.enter_circuit(k)
+	GameData.save_game()
+	say("Entered the %s! First opponent: %s." % [GameData.circuit["name"], GameData.current_opponent()["name"]], "fight")
+	refresh()
+
+
+func _on_abandon() -> void:
+	GameData.abandon_circuit()
+	GameData.save_game()
+	say("Left the championship.", "error")
 	refresh()
 
 
@@ -409,7 +871,7 @@ func _on_menu() -> void:
 
 func _on_fight() -> void:
 	GameData.save_game()
-	if not GameData.champion and GameData.queue_story("pre_%d" % GameData.fight_index, "res://fight.tscn"):
+	if GameData.fight_mode() == "story" and GameData.queue_story("pre_%d" % GameData.fight_index, "res://fight.tscn"):
 		get_tree().change_scene_to_file("res://story.tscn")
 	else:
 		get_tree().change_scene_to_file("res://fight.tscn")

@@ -19,6 +19,18 @@ func _draw() -> void:
 		draw_circle(c, size.y * 0.26, col)
 		draw_circle(c, size.y * 0.1, Color(1, 1, 1, 0.8))
 		return
+	if kind == "back":
+		var bparts := {}
+		for s2 in ["head", "torso", "arm_front", "arm_back", "leg_front", "leg_back"]:
+			bparts[s2] = {"alive": false}
+		bparts["torso"] = {"alive": true, "shape": "box", "size": 1.0, "color": Color(0.25, 0.25, 0.3), "health": 1.0}
+		var blook := {"parts": bparts, "trim": trim, "eye": Color(0.3, 0.3, 0.3), "scale": 1.0, "icon": true,
+				"back": {"shape": part["shape"], "color": Color(part["color"])}}
+		var bg := RobotArt.geom(blook)
+		var br := Rect2((bg["torso"] as Rect2).position.x - 40.0, bg["top"] - 34.0, 70.0, bg["th"] + 50.0)
+		var bsc := minf((size.x - 8.0) / br.size.x, (size.y - 8.0) / br.size.y)
+		RobotArt.draw(self, size * 0.5 - br.get_center() * bsc, blook, {"scale": bsc, "jet": true, "boost": true})
+		return
 	var slot: String = {"head": "head", "torso": "torso", "arm": "arm_front", "leg": "leg_front"}[kind]
 	var parts := {}
 	for s in ["head", "torso", "arm_front", "arm_back", "leg_front", "leg_back"]:
