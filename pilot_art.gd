@@ -24,6 +24,20 @@ const EXTRAS := [[], ["long_hair"], ["scar"], ["long_hair", "scar"]]
 
 
 ## Older saves and story faces used true/false for beard / glasses / goggles.
+## Roll a random face and outfit (keeps the controller).
+static func randomize_look(look: Dictionary) -> void:
+	look["skin"] = SKINS[randi() % SKINS.size()]
+	look["eyes"] = EYES[randi() % EYES.size()]
+	look["hair"] = COLORS[randi() % COLORS.size()]
+	look["outfit"] = COLORS[randi() % COLORS.size()]
+	look["hat"] = HATS[randi() % HATS.size()]
+	look["beard"] = BEARDS[randi() % BEARDS.size()]
+	look["glasses"] = GLASSES[randi() % GLASSES.size()]
+	var ex: Array = EXTRAS[randi() % EXTRAS.size()]
+	for e in ["long_hair", "scar"]:
+		look[e] = ex.has(e)
+
+
 static func normalize(look: Dictionary) -> Dictionary:
 	var l := look.duplicate()
 	var beard = l.get("beard", "none")

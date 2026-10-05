@@ -106,6 +106,20 @@ const PART_LIST := [
 	{"id": "leg_wheel",    "kind": "leg", "name": "Wheel Leg",   "cost": 1400, "hp": 55,  "armor": 10, "damage": 0,  "speed": 45,  "draw": 4, "shape": "wheel",   "color": "#444a55"},
 	{"id": "leg_tread",    "kind": "leg", "name": "Tread Leg",   "cost": 2300, "hp": 110, "armor": 30, "damage": 20, "speed": -5,  "draw": 6, "shape": "tread",   "color": "#556b2f"},
 	{"id": "leg_thick",    "kind": "leg", "name": "Crusher Leg", "cost": 1400, "hp": 85,  "armor": 20, "damage": 20, "speed": 0,   "draw": 4, "shape": "thick",   "color": "#5e6b7d", "shop": false},
+	# Junk you can build your first robot from on the new-game screen: same weak stats as the
+	# junk parts above, different looks. Not sold.
+	{"id": "junk_head_box",   "kind": "head", "name": "Scrap Crate",     "cost": 0, "hp": 30, "armor": 0, "aim": 0, "draw": 1, "chips": 1, "shape": "box",   "color": "#7f7a6e", "shop": false},
+	{"id": "junk_head_tv",    "kind": "head", "name": "Busted TV",       "cost": 0, "hp": 30, "armor": 0, "aim": 0, "draw": 1, "chips": 1, "shape": "tv",    "color": "#6b6352", "shop": false},
+	{"id": "junk_head_dome",  "kind": "head", "name": "Salad Bowl",      "cost": 0, "hp": 30, "armor": 0, "aim": 0, "draw": 1, "chips": 1, "shape": "dome",  "color": "#8c9196", "shop": false},
+	{"id": "junk_torso_box",  "kind": "torso", "name": "Old Toolbox",    "cost": 0, "hp": 80, "armor": 0, "speed": 0, "draw": 1, "shape": "box",     "color": "#8a4b3a", "shop": false},
+	{"id": "junk_torso_crate", "kind": "torso", "name": "Fruit Crate",   "cost": 0, "hp": 80, "armor": 0, "speed": 0, "draw": 1, "shape": "crate",   "color": "#8d7350", "shop": false},
+	{"id": "junk_torso_rib",  "kind": "torso", "name": "Bed Frame",      "cost": 0, "hp": 80, "armor": 0, "speed": 0, "draw": 1, "shape": "ribcage", "color": "#7b7b80", "shop": false},
+	{"id": "junk_arm_piston", "kind": "arm", "name": "Shock Absorber",   "cost": 0, "hp": 30, "armor": 0, "damage": 0, "speed": 0, "draw": 1, "shape": "piston", "color": "#7a7f86", "size": 0.8, "shop": false},
+	{"id": "junk_arm_claw",   "kind": "arm", "name": "Grabber Tongs",    "cost": 0, "hp": 30, "armor": 0, "damage": 0, "speed": 0, "draw": 1, "shape": "claw",   "color": "#6f7a6a", "size": 0.8, "shop": false},
+	{"id": "junk_arm_blade",  "kind": "arm", "name": "Bent Shovel",      "cost": 0, "hp": 30, "armor": 0, "damage": 0, "speed": 0, "draw": 1, "shape": "blade",  "color": "#6e6458", "size": 0.8, "shop": false},
+	{"id": "junk_leg_piston", "kind": "leg", "name": "Jack Stand",       "cost": 0, "hp": 35, "armor": 0, "damage": 0, "speed": -5, "draw": 1, "shape": "piston", "color": "#7a6f62", "size": 0.8, "shop": false},
+	{"id": "junk_leg_wheel",  "kind": "leg", "name": "Cart Wheel",       "cost": 0, "hp": 35, "armor": 0, "damage": 0, "speed": -5, "draw": 1, "shape": "wheel",  "color": "#5d5a55", "size": 0.8, "shop": false},
+	{"id": "junk_leg_thick",  "kind": "leg", "name": "Fence Post",       "cost": 0, "hp": 35, "armor": 0, "damage": 0, "speed": -5, "draw": 1, "shape": "thick",  "color": "#6b5d4c", "size": 0.8, "shop": false},
 	# ---- reactors (inside the torso: never damaged)
 	# Margo's forklift parts (TIN CAN): as weak as junk, but they look the part. Not sold, only salvaged.
 	{"id": "fork_head",    "kind": "head", "name": "Forklift Cab",     "cost": 90,  "hp": 30, "armor": 2, "aim": 0, "draw": 1, "chips": 1, "shape": "box", "color": "#e0a81c", "shop": false},
@@ -128,6 +142,11 @@ const PART_LIST := [
 	{"id": "back_shield",    "kind": "back", "name": "Shield Generator", "cost": 1700, "draw": 5, "shape": "shield",  "color": "#4fa3d1", "gimmick": "shield"},
 ]
 
+## The junk your first robot can be built from (new-game screen): all equally weak.
+const STARTER_OPTIONS := {"head": ["junk_head", "junk_head_box", "junk_head_tv", "junk_head_dome"],
+		"torso": ["junk_torso", "junk_torso_box", "junk_torso_crate", "junk_torso_rib"],
+		"arm": ["junk_arm", "junk_arm_piston", "junk_arm_claw", "junk_arm_blade"],
+		"leg": ["junk_leg", "junk_leg_piston", "junk_leg_wheel", "junk_leg_thick"]}
 const STARTER := {"head": "junk_head", "torso": "junk_torso", "arm_front": "junk_arm", "arm_back": "junk_arm",
 		"leg_front": "junk_leg", "leg_back": "junk_leg", "reactor": "junk_reactor"}
 
@@ -472,6 +491,25 @@ func new_game() -> void:
 		setups.append({})
 	last_result = {}
 	roll_stock()
+
+
+## New-game screen: swap one starter slot group (head / torso / arm / leg) to another junk part.
+func set_starter(kind: String, id: String) -> void:
+	for slot in SLOTS:
+		if SLOT_KIND.get(slot, "") == kind and STARTER.has(slot):
+			var p := inst(int(equipped.get(slot, -1)))
+			if not p.is_empty():
+				p["id"] = id
+				p["hp"] = float(part_def(id)["hp"])
+
+
+func starter_id(kind: String) -> String:
+	for slot in SLOTS:
+		if SLOT_KIND.get(slot, "") == kind and STARTER.has(slot):
+			var p := inst(int(equipped.get(slot, -1)))
+			if not p.is_empty():
+				return p["id"]
+	return ""
 
 
 func part_def(id: String) -> Dictionary:
