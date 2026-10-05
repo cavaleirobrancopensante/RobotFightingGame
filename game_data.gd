@@ -1626,11 +1626,11 @@ func unlocked(feature: String) -> bool:
 ## Things that open up in the garage. Each one shows up with a star; the first tap plays a short
 ## Gus scene ("unlock_<feature>") and then opens it. [feature, garage tab or "" for a button,
 ## the old one-line tip id (saves from before the scenes count it as already explained)]
-const UNLOCK_SCENES := [["scrapyard", "Scrapyard", "scrapyard"], ["storage", "", ""], ["style", "", "style"],
+const UNLOCK_SCENES := [["scrapyard", "", "scrapyard"], ["storage", "", ""], ["style", "", "style"],
 		["shop", "Shop", "shop"], ["season", "Season", "season"], ["scout", "", "scout"], ["moves", "Moves", "moves"],
 		["cups", "Cups", ""], ["team", "Team", "backup"], ["workshop", "Workshop", "workshop"], ["pilot", "", "pilot"],
 		["paint", "", "pilot"], ["setups", "", "setups"], ["randomize", "", "setups"]]
-const TAB_FEATURES := {"Scrapyard": "scrapyard", "Shop": "shop", "Season": "season", "Moves": "moves",
+const TAB_FEATURES := {"Shop": "shop", "Season": "season", "Moves": "moves",
 		"Cups": "cups", "Team": "team", "Workshop": "workshop"}
 var open_tab := ""      # garage tab to open after an unlock scene
 var open_action := ""   # garage button to press after an unlock scene (style, pilot, paint, ...)

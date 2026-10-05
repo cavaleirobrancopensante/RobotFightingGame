@@ -417,6 +417,7 @@ const T := {
 	"empty": "vazio",
 	"Fight power %d (+%d unused) - punch ~1 per arm power, kick ~2.6": "Energia de luta %d (+%d sobrando) - soco ~1 por energia do braço, chute ~2,6",
 	"Tap Fit to bolt a part onto the robot. You can also fix, rebuild or sell it here.": "Toque em Instalar para parafusar uma peça no robô. Aqui você também conserta, reconstrói ou vende.",
+	"SCRAPYARD": "FERRO-VELHO",
 	"Tap a part of %s to aim at it - %s hits where you point.": "Toque numa peça de %s para mirar - %s acerta onde você apontar.",
 	"See the yellow diamond? That's its weakest part - hits there do extra damage.": "Tá vendo o losango amarelo? É a parte mais fraca - golpes ali causam dano extra.",
 	"That blue bar under your health is POWER. Every move costs some - kicks cost the most. Run it dry and you burn out!": "Essa barra azul embaixo da vida é a ENERGIA. Todo golpe gasta um pouco - chutes gastam mais. Se secar, dá pane!",

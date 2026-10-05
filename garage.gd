@@ -40,7 +40,7 @@ var dig_found := ""
 const GarageArt = preload("res://garage_art.gd")
 const Career = preload("res://career.gd")
 const TAB_SCENES := {"Build": "build", "Season": "build", "Shop": "shop", "Workshop": "workshop", "Moves": "moves", "Team": "team",
-		"Cups": "cups", "Scrapyard": "scrap"}
+		"Cups": "cups"}
 
 
 ## The living scene behind the whole garage screen. The robot panel is see-through, so the robot
@@ -221,12 +221,12 @@ func _ready() -> void:
 			_on_open_setups()
 		"storage":
 			_on_slot("storage")
+		"scrapyard":
+			_on_slot("scrapyard")
 
 
 func tab_list() -> Array:
 	var t := ["Build"]
-	if GameData.unlocked("scrapyard"):
-		t.append("Scrapyard")
 	if GameData.unlocked("shop"):
 		t.append("Shop")
 	if GameData.unlocked("season"):
@@ -358,6 +358,8 @@ func refresh() -> void:
 				build_overview()
 			elif selected == "storage":
 				build_storage()
+			elif selected == "scrapyard":
+				build_scrapyard_tab()
 			else:
 				build_slot(selected)
 		"Shop":
@@ -370,8 +372,6 @@ func refresh() -> void:
 			build_cups_tab()
 		"Season":
 			build_season_tab()
-		"Scrapyard":
-			build_scrapyard_tab()
 		"Team":
 			build_team_tab()
 	scroll.set_deferred("scroll_vertical", keep)
@@ -526,7 +526,11 @@ func health_text(p: Dictionary) -> String:
 
 func build_overview() -> void:
 	var total := GameData.repair_all_cost()
-	var bar := action_bar()
+	# the bay's buttons wrap onto a second row as more of them unlock
+	var bar := HFlowContainer.new()
+	bar.add_theme_constant_override("h_separation", 6)
+	bar.add_theme_constant_override("v_separation", 6)
+	list_box.add_child(bar)
 	row_button(bar, tr("Repair all $%d") % total if total > 0 else tr("All repaired"), _on_repair_all, total > 0, 150)
 	# more buttons appear as the story goes on (see GameData.UNLOCKS)
 	if GameData.unlocked("randomize"):
@@ -540,6 +544,8 @@ func build_overview() -> void:
 	if GameData.unlocked("style"):
 		row_button(bar, star(tr("Style: %s") % tr(Catalog.STYLES[GameData.style]["name"]), "style"), _on_open_style, true, 150)
 	row_button(bar, star(tr("Storage (%d)") % GameData.spares().size(), "storage"), _on_slot.bind("storage"), true, 125)
+	if GameData.unlocked("scrapyard"):
+		row_button(bar, star(tr("Scrapyard") + (" •" if GameData.digs_left > 0 else ""), "scrapyard"), _on_slot.bind("scrapyard"), true, 125)
 
 	for slot in GameData.SLOTS:
 		if not GameData.slot_available(slot):
@@ -626,7 +632,7 @@ func build_slot(slot: String) -> void:
 	if GameData.unlocked("shop"):
 		row_button(more, "Dealer's stock", _on_go_shop.bind(kind), true, 200)
 	else:
-		row_button(more, "Dig in the Scrapyard", _on_tab.bind("Scrapyard"), true, 220)
+		row_button(more, "Dig in the Scrapyard", _on_slot.bind("scrapyard"), true, 220)
 	if GameData.CUSTOM_KINDS.has(kind) and GameData.unlocked("workshop"):
 		row_button(more, "Design one in the Workshop", _on_go_workshop.bind(kind), true, 270)
 
@@ -637,6 +643,8 @@ func build_storage() -> void:
 	var title := UI.label("STORAGE", 20, Color(1.0, 0.8, 0.4))
 	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	bar.add_child(title)
+	if GameData.unlocked("scrapyard"):
+		row_button(bar, "Dig in the Scrapyard", _on_slot.bind("scrapyard"), true, 220)
 	var list := GameData.spares()
 	if list.is_empty():
 		section("Storage is empty. Parts you remove, extra purchases, trophies and salvage end up here.")
@@ -876,6 +884,8 @@ func set_scene_for_tab() -> void:
 	scene = "paint" if paint_open else TAB_SCENES.get(tab, "build")
 	if tab == "Build" and selected == "storage":
 		scene = "storage"
+	elif tab == "Build" and selected == "scrapyard":
+		scene = "scrap"
 	preview.spot = GarageArt.robot_spot(scene)
 	preview.facing = 1 if scene == "paint" else -1
 	preview.queue_redraw()
@@ -943,6 +953,12 @@ func build_shop_tab() -> void:
 
 ## The scrapyard: a mountain of dead robots. Dig for free (beaten-up) parts, a few digs per fight.
 func build_scrapyard_tab() -> void:
+	var nav := action_bar()
+	row_button(nav, "< All parts", _on_slot.bind(""), true, 140)
+	var title := UI.label("SCRAPYARD", 20, Color(1.0, 0.8, 0.4))
+	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	nav.add_child(title)
+	row_button(nav, tr("Storage (%d)") % GameData.spares().size(), _on_slot.bind("storage"), true, 125)
 	var bar := action_bar()
 	var info := UI.label(tr("THE SCRAPYARD - a mountain of dead robots. One dig after every fight, one part per dig - %s. Mostly junk, sometimes something good, always beaten up (15-50%% health). Fix it up in the bay.") % ("ready to dig" if GameData.digs_left > 0 else "already dug, come back after your next fight"), 15, Color(1.0, 0.8, 0.4))
 	info.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -1582,7 +1598,7 @@ func gus_explains(feature: String, tab_name: String = "") -> bool:
 		return false
 	GameData.open_tab = tab_name
 	GameData.open_action = "" if tab_name != "" else feature
-	if feature == "storage":
+	if feature == "storage" or feature == "scrapyard":
 		GameData.open_tab = "Build"
 	if GameData.queue_story("unlock_" + feature, "res://garage.tscn"):
 		Sfx.play("click")
@@ -1617,6 +1633,8 @@ func _on_part_tapped(slot: String) -> void:
 
 func _on_slot(slot: String) -> void:
 	if slot == "storage" and gus_explains("storage"):
+		return
+	if slot == "scrapyard" and gus_explains("scrapyard"):
 		return
 	selected = slot
 	refresh()
