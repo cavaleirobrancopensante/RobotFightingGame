@@ -32,6 +32,9 @@ func _ready() -> void:
 	var title := UI.label("ROBOT FIGHTING", 46, Color(1.0, 0.45, 0.2))
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	col.add_child(title)
+	var spacer := Control.new()   # breathing room between the title and the buttons
+	spacer.custom_minimum_size = Vector2(0, 20 * UI.SCALE)
+	col.add_child(spacer)
 
 	col.add_child(UI.button("Quick Fight", _on_quick, 26, Vector2(0, 56)))
 	new_button = UI.button("New Game", _on_new, 26, Vector2(0, 56))
