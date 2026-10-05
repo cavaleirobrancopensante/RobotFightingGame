@@ -75,28 +75,44 @@ const MOVES := {
 		"pose": "punch", "limb": "arm", "startup": 0.1, "active": 0.9, "recovery": 0.35, "hits": 6, "interval": 0.14,
 		"dash": 140.0, "damage": 6.0, "reach": 90.0, "height": "mid", "zone": "punch", "knock": 100.0, "stun": 0.3,
 		"jab": true, "finisher": true},
+
+	# --- signature moves: every fighting style knows one for free (not sold as chips)
+	"bulwark_slam": {"name": "Bulwark Slam", "seq": ["B", "F", "K"], "cost": 0, "cd": 7.0, "style": "tank",
+		"desc": "TANK SIGNATURE: a shoulder slam that flattens the enemy and hardens your armor (+15) for 4s.",
+		"pose": "block", "startup": 0.18, "active": 0.22, "recovery": 0.3, "dash": 520.0,
+		"damage": 16.0, "reach": 80.0, "height": "mid", "zone": "torso", "knock": 650.0, "stun": 0.55, "effect": "armor_up"},
+	"flurry": {"name": "Striker Flurry", "seq": ["D", "F", "K"], "cost": 0, "cd": 7.5, "style": "striker",
+		"desc": "STRIKER SIGNATURE: four lightning jabs ending in a launcher.",
+		"pose": "punch", "limb": "arm", "startup": 0.06, "active": 0.56, "recovery": 0.22, "hits": 4, "interval": 0.13,
+		"damage": 5.0, "reach": 92.0, "height": "mid", "zone": "punch", "knock": 160.0, "stun": 0.28, "jab": true, "finisher": true},
+	"field_repair": {"name": "Field Repair", "seq": ["B", "D", "P"], "cost": 0, "cd": 14.0, "style": "mechanic",
+		"desc": "MECHANIC SIGNATURE: weld yourself back together - repairs your torso and your most damaged part. Do it at a distance!",
+		"pose": "block", "startup": 0.1, "active": 0.5, "recovery": 0.2, "damage": 0.0, "nohit": true, "effect": "repair"},
+	"overclock": {"name": "Overclock", "seq": ["F", "B", "K"], "cost": 0, "cd": 16.0, "style": "specialist",
+		"desc": "SPECIALIST SIGNATURE: instantly recharge every gadget and move 30% faster for 4s.",
+		"pose": "uppercut", "startup": 0.05, "active": 0.2, "recovery": 0.15, "damage": 0.0, "nohit": true, "effect": "overclock"},
 }
 
 # Which parts a move's "zone" can land on (and how often when you're not aiming)
 const ZONES := {
-	"punch": {"head": 0.25, "torso": 0.45, "arm_front": 0.25, "arm_back": 0.05},
-	"uppercut": {"head": 0.6, "torso": 0.4},
-	"kick": {"torso": 0.35, "arm_front": 0.15, "arm_back": 0.05, "leg_front": 0.35, "leg_back": 0.1},
+	"punch": {"head": 0.25, "head2": 0.12, "torso": 0.45, "arm_front": 0.25, "arm_back": 0.05, "arm_front2": 0.15, "arm_back2": 0.04},
+	"uppercut": {"head": 0.6, "head2": 0.35, "torso": 0.4},
+	"kick": {"torso": 0.35, "arm_front": 0.15, "arm_back": 0.05, "arm_front2": 0.12, "arm_back2": 0.04, "leg_front": 0.35, "leg_back": 0.1},
 	"sweep": {"leg_front": 0.7, "leg_back": 0.3},
 	"torso": {"torso": 1.0},
-	"head_torso": {"head": 0.5, "torso": 0.5},
-	"any": {"head": 0.15, "torso": 0.45, "arm_front": 0.15, "arm_back": 0.05, "leg_front": 0.15, "leg_back": 0.05},
+	"head_torso": {"head": 0.5, "head2": 0.3, "torso": 0.5},
+	"any": {"head": 0.15, "head2": 0.08, "torso": 0.45, "arm_front": 0.15, "arm_back": 0.05, "arm_front2": 0.08, "arm_back2": 0.04, "leg_front": 0.15, "leg_back": 0.05},
 }
 
 # Gadgets come from parts. Active ones get a button in the fight (keys U, I, O on a keyboard).
 const GADGETS := {
-	"rocket_fist": {"name": "Rocket Fist", "short": "FIST", "active": true, "cd": 3.0,
+	"rocket_fist": {"name": "Rocket Fist", "short": "FIST", "active": true, "cd": 4.5,
 		"desc": "Gadget: launch your fist across the ring. It flies back after."},
 	"grapple": {"name": "Grapple Claw", "short": "HOOK", "active": true, "cd": 5.0,
 		"desc": "Gadget: fire the claw on a cable and reel the enemy in."},
-	"laser": {"name": "Eye Laser", "short": "LASER", "active": true, "cd": 2.5,
+	"laser": {"name": "Eye Laser", "short": "LASER", "active": true, "cd": 3.5,
 		"desc": "Gadget: fire a fast laser beam from your eye."},
-	"cannon": {"name": "Chest Cannon", "short": "BOOM", "active": true, "cd": 5.0,
+	"cannon": {"name": "Chest Cannon", "short": "BOOM", "active": true, "cd": 6.0,
 		"desc": "Gadget: fire a heavy shell from your chest."},
 	"overcharge": {"name": "Overcharge", "short": "OVER", "active": true, "cd": 9999.0,
 		"desc": "Gadget, once per fight: 6s of +50% speed and +40% damage. Then the reactor burns out: -25% speed and -15% damage for the rest of the fight."},

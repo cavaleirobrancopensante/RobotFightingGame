@@ -49,12 +49,12 @@ func play(sound: String, pitch_jitter: float = 0.0, volume_db: float = 0.0) -> v
 
 ## Playlists rotate through their songs; a single track name just loops that track.
 const PLAYLISTS := {
-	"menu": ["menu", "lounge", "workshop", "anthem", "garage"],
-	"garage": ["garage", "workshop", "lounge", "menu"],
+	"menu": ["menu", "chiptune_cafe", "lounge", "workshop", "sunset_drive", "anthem", "garage"],
+	"garage": ["garage", "sunset_drive", "workshop", "chiptune_cafe", "lounge", "menu"],
 	"story": ["story", "lounge"],
 }
 ## Fight themes, picked per opponent (boss gets its own).
-const FIGHT_TRACKS := ["fight", "fight_pump", "fight_rush", "fight_heavy", "fight_neon"]
+const FIGHT_TRACKS := ["fight", "fight_pump", "fight_rush", "fight_heavy", "fight_neon", "fight_chrome", "fight_scrapyard", "fight_thunder"]
 
 var playlist: Array = []
 var playlist_pos := 0

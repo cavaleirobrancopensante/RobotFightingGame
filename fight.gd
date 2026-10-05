@@ -26,9 +26,11 @@ const DIFF_DAMAGE := [0.75, 1.0, 1.2]
 const CORE_SHARE := 0.35      # share of a limb/head hit that also hurts the torso
 const HEAD_FACTOR := 0.6      # heads are hard to hit cleanly
 const COMBO_BONUS := 0.08     # extra damage per hit in a combo
-const BODY_PARTS := ["head", "torso", "arm_front", "arm_back", "leg_front", "leg_back"]
-const PART_LABELS := {"head": "HEAD", "torso": "TORSO", "arm_front": "FRONT ARM", "arm_back": "BACK ARM",
-		"leg_front": "FRONT LEG", "leg_back": "BACK LEG"}
+const BODY_PARTS := ["head", "head2", "torso", "arm_front", "arm_back", "arm_front2", "arm_back2", "leg_front", "leg_back"]
+const ARM_SLOTS := ["arm_front", "arm_back", "arm_front2", "arm_back2"]
+const PART_LABELS := {"head": "HEAD", "head2": "2ND HEAD", "torso": "TORSO", "arm_front": "FRONT ARM", "arm_back": "BACK ARM",
+		"arm_front2": "LOWER FRONT ARM", "arm_back2": "LOWER BACK ARM", "leg_front": "FRONT LEG", "leg_back": "BACK LEG"}
+const WEAK_BONUS := 0.15      # extra damage on the part the scanner marks as weakest
 const GADGET_KEYS := [KEY_U, KEY_I, KEY_O]
 
 const ATTACKS := {
@@ -102,6 +104,16 @@ class Fighter:
 	var jet_t := 0.0
 	var air_jumps := 0
 	var squash := 0.0        # landing squash timer (animation)
+	# fighting style, traits and status effects
+	var style := "striker"
+	var gtraits := {}        # robot-wide traits from reactor / back gear: trait -> value
+	var arm_turn := 0        # extra arms take turns punching
+	var slow_t := 0.0        # frost
+	var hobble_t := 0.0      # leg got hit: slower walking
+	var numb_t := 0.0        # arm got hit: weaker hits
+	var armor_t := 0.0       # bulwark slam armor buff
+	var haste_t := 0.0       # overclock
+	var burns: Array = []    # [{slot, dps, t}]
 
 	func alive(slot: String) -> bool:
 		return parts.has(slot) and not parts[slot].is_empty() and parts[slot]["hp"] > 0.0
@@ -115,18 +127,39 @@ class Fighter:
 		return int(alive("leg_front")) + int(alive("leg_back"))
 
 	func arms() -> int:
-		return int(usable_arm("arm_front")) + int(usable_arm("arm_back"))
+		var n := 0
+		for s in ["arm_front", "arm_back", "arm_front2", "arm_back2"]:
+			n += int(usable_arm(s))
+		return n
+
+	func heads() -> int:
+		return int(alive("head")) + int(alive("head2"))
+
+	func extra_arms() -> int:
+		return int(alive("arm_front2")) + int(alive("arm_back2"))
+
+	func best_aim() -> float:
+		var a := 0.0
+		for s in ["head", "head2"]:
+			if alive(s):
+				a = maxf(a, parts[s].get("aim", 0.0))
+		return a
 
 	func usable_arm(slot: String) -> bool:
 		return alive(slot) and not fist_out.has(slot)
 
 	func limb_for(kind: String, prefer_back: bool = false) -> String:
 		if kind == "arm":
-			var order := ["arm_back", "arm_front"] if prefer_back else ["arm_front", "arm_back"]
+			var order := ["arm_back", "arm_front", "arm_back2", "arm_front2"] if prefer_back else ["arm_front", "arm_back", "arm_front2", "arm_back2"]
+			var ok: Array = []
 			for s in order:
 				if usable_arm(s):
-					return s
-			return ""
+					ok.append(s)
+			if ok.is_empty():
+				return ""
+			if ok.size() > 2:
+				return ok[arm_turn % ok.size()]   # four-armed robots punch with each arm in turn
+			return ok[0]
 		if kind == "leg":
 			return "leg_front" if alive("leg_front") else ("leg_back" if alive("leg_back") else "")
 		return "torso"
@@ -142,10 +175,12 @@ class Fighter:
 		return not parts.has(slot) or alive(slot)
 
 	func mod_damage() -> float:
-		return dmg_mult * eff * (1.4 if over_t > 0.0 else 1.0) * (0.85 if burnout else 1.0)
+		return dmg_mult * eff * (1.4 if over_t > 0.0 else 1.0) * (0.85 if burnout else 1.0) \
+				* (1.15 if style == "striker" else 1.0) * (0.85 if numb_t > 0.0 else 1.0)
 
 	func mod_speed() -> float:
-		return spd_mult * eff * (1.5 if over_t > 0.0 else 1.0) * (0.75 if burnout else 1.0)
+		return spd_mult * eff * (1.5 if over_t > 0.0 else 1.0) * (0.75 if burnout else 1.0) \
+				* (0.9 if style == "tank" else 1.0) * (0.65 if slow_t > 0.0 else 1.0) * (1.3 if haste_t > 0.0 else 1.0)
 
 	func torso_speed() -> float:
 		return parts["torso"]["speed"] if alive("torso") else 0.0
@@ -157,12 +192,13 @@ class Fighter:
 			if alive(slot):
 				s += parts[slot]["speed"]
 				n += 1
-		var leg_factor: float = [0.35, 0.65, 1.0][n]
-		return (1.0 + (s / maxf(1, n) + torso_speed()) / 100.0) * leg_factor * mod_speed()
+		var leg_factor: float = [0.35, 0.65, 1.0][clampi(n, 0, 2)]
+		return (1.0 + (s / maxf(1, n) + torso_speed()) / 100.0) * leg_factor * mod_speed() * (0.8 if hobble_t > 0.0 else 1.0)
 
 	func attack_speed(limb: String) -> float:
 		var s: float = parts[limb]["speed"] if parts.has(limb) and alive(limb) else 0.0
-		return maxf(0.5, (1.0 + (s + torso_speed()) / 100.0) * mod_speed())
+		var bonus := (1.1 if style == "striker" else 1.0) * (1.0 + 0.08 * extra_arms())
+		return maxf(0.5, (1.0 + (s + torso_speed()) / 100.0) * mod_speed() * bonus)
 
 	func get_look() -> Dictionary:
 		if look_dirty:
@@ -200,7 +236,9 @@ var ai_plan := {}
 var ai_think := 0.4
 var ai_block := 0.2
 var ai_smart := 0.0
-var ai_special_cd := 3.0   # CPU waits between specials / gadgets so it doesn't spam them
+var ai_special_cd := 3.0   # CPU waits between specials so it doesn't spam them
+var ai_gadget_cd := 1.5
+var ai_kit := {"range": 0.0, "air": false}
 
 var phase := "intro"   # intro, fight, ko, results
 var phase_timer := 0.0
@@ -223,6 +261,8 @@ var popups: Array = []
 var rings: Array = []
 var projectiles: Array = []
 var crowd: Array = []
+var arena_id := "fish_market"
+var crowd_id := "fishmongers"
 
 
 func fs(size: float) -> int:
@@ -245,14 +285,16 @@ func _ready() -> void:
 	ai_block = minf(0.85, opp["block"] * DIFF_BLOCK[diff])
 	ai_smart = opp["smart"]
 	cpu.dmg_mult *= DIFF_DAMAGE[diff]
+	ai_build_kit()
 
 	player.pos = Vector2(screen.x * 0.3, floor_y)
 	cpu.pos = Vector2(screen.x * 0.7, floor_y)
 	cpu.facing = -1
-	for k in 70:
-		crowd.append({"x": randf() * screen.x, "row": k % 3, "phase": randf() * TAU,
-				"color": Color.from_hsv(randf(), randf_range(0.2, 0.6), randf_range(0.25, 0.55))})
-	crowd.sort_custom(func(a, b): return a["row"] < b["row"])
+	var seed_value := int(GameData.circuit.get("seed", 0)) if mode == "circuit" else 0
+	var venue := Arena.pick(mode, fight_idx, seed_value)
+	arena_id = venue[0]
+	crowd_id = venue[1]
+	crowd = Arena.make_crowd(crowd_id, screen)
 	var boss := false
 	var pick := randi()
 	match mode:
@@ -273,7 +315,7 @@ func make_fighter(spec: Dictionary) -> Fighter:
 	f.label = spec["name"]
 	f.parts = {}
 	for slot in BODY_PARTS:
-		f.parts[slot] = (spec["parts"][slot] as Dictionary).duplicate()
+		f.parts[slot] = (spec["parts"].get(slot, {}) as Dictionary).duplicate()
 	f.eff = spec["efficiency"]
 	f.dmg_mult = spec["damage_mult"]
 	f.spd_mult = spec["speed_mult"]
@@ -281,6 +323,14 @@ func make_fighter(spec: Dictionary) -> Fighter:
 	f.spec["scale"] = f.scale   # draw at the same size the hit boxes use
 	f.specials = spec.get("specials", []).duplicate()
 	f.gadgets = spec.get("gadgets", []).duplicate()
+	f.style = spec.get("style", "striker")
+	if Catalog.STYLES.has(f.style):
+		var sig: String = Catalog.STYLES[f.style]["signature"]
+		if Specials.MOVES.has(sig) and not f.specials.has(sig):
+			f.specials.append(sig)
+	for t in spec.get("traits", []):
+		var tid: String = t["trait"]
+		f.gtraits[tid] = f.gtraits.get(tid, 0.0) + Catalog.trait_value(t)
 	return f
 
 
@@ -531,51 +581,33 @@ func read_ai_input(delta: float) -> Dictionary:
 		return i
 	ai_timer -= delta
 	ai_special_cd -= delta
+	ai_gadget_cd -= delta
 	var dx := player.pos.x - cpu.pos.x
 	var dist := absf(dx)
 	var toward := "right" if dx > 0 else "left"
 	var away := "left" if dx > 0 else "right"
 
+	# react to incoming shots: shield, jump over, or block (smarter bots react more often)
+	for p in projectiles:
+		if p["owner"] != player or p["returning"] or p.get("ai_seen", false):
+			continue
+		var pdx: float = cpu.pos.x - p["pos"].x
+		if absf(pdx) < 300.0 and signf(pdx) == signf(p["vel"].x):
+			p["ai_seen"] = true
+			if randf() < 0.25 + ai_smart * 0.6 and cpu.state in ["idle", "walk"]:
+				var sh := ai_gadget("shield")
+				if not sh.is_empty():
+					use_gadget(cpu, sh)
+				elif cpu.legs() > 0 and cpu.on_ground and randf() < 0.6:
+					ai_plan = {"hold": ["up", away], "fresh": true}
+				elif cpu.arms() > 0:
+					ai_plan = {"hold": ["block"], "fresh": true}
+				ai_timer = 0.4
+
 	if ai_timer <= 0.0:
 		ai_timer = randf_range(ai_think * 0.5, ai_think)
 		ai_pick_target()
-		if ai_special_cd <= 0.0:
-			ai_use_gadgets(dist)
-		var r := randf()
-		var can_punch := cpu.arms() > 0
-		var can_kick := cpu.legs() > 0
-		var free := cpu.state in ["idle", "walk", "jump"]
-		var special := ai_pick_special(dist) if free else ""
-		if special != "":
-			start_special(cpu, special)
-			ai_plan = {}
-		elif player.blocking and dist < 100.0 * cpu.scale and can_punch and randf() < 0.3 + ai_smart * 0.5:
-			ai_plan = {"tap": "grab"}
-		elif ATTACKS.has(player.state) or player.state == "special":
-			if dist < 150.0 and cpu.arms() > 0 and randf() < ai_block:
-				ai_plan = {"hold": ["block"]}
-			else:
-				ai_plan = {"hold": [away]}
-		elif dist > 82.0 * cpu.scale + 25.0 * player.scale:
-			ai_plan = {"hold": [toward]}
-			if r < 0.08:
-				ai_plan["tap"] = "up_press"
-		elif r < 0.30 and can_punch:
-			ai_plan = {"tap": "punch"}
-		elif r < 0.50 and can_kick:
-			ai_plan = {"tap": "kick"}
-		elif r < 0.60 and can_kick:
-			ai_plan = {"hold": ["down"], "tap": "kick"}
-		elif r < 0.68 and can_punch:
-			ai_plan = {"hold": ["down"], "tap": "punch"}
-		elif r < 0.85 and cpu.arms() > 0:
-			ai_plan = {"hold": ["block"]}
-		elif can_punch:
-			ai_plan = {"tap": "punch"}
-		elif can_kick:
-			ai_plan = {"tap": "kick"}
-		else:
-			ai_plan = {"hold": [away]}
+		ai_plan = ai_decide(dist, toward, away)
 		ai_plan["fresh"] = true
 
 	for k in ai_plan.get("hold", []):
@@ -583,14 +615,107 @@ func read_ai_input(delta: float) -> Dictionary:
 	if ai_plan.get("fresh", false) and ai_plan.has("tap"):
 		i[ai_plan["tap"]] = true
 	ai_plan["fresh"] = false
+	var melee := 82.0 * cpu.scale + 25.0 * player.scale
+	# hook follow-up: reel them in, then punish
+	if ai_plan.get("follow", "") != "" and (player.state == "hit" or dist < melee) and dist < melee + 30.0 and cpu.state in ["idle", "walk"]:
+		i[ai_plan["follow"]] = true
+		ai_plan["follow"] = ""
+	# jet packs: second jump at the top of the first one
+	if ai_plan.get("air", false) and not cpu.on_ground and cpu.air_jumps > 0 and cpu.vel.y > -150.0 and randf() < 0.25:
+		i["up_press"] = true
+		var ad := toward if ai_plan.get("air_in", true) else away
+		i[ad] = true
+	# in the air above the enemy: dive stomp if we know it
+	if not cpu.on_ground and cpu.state == "jump" and dist < 200.0 and cpu.specials.has("dive_stomp") and can_special(cpu, "dive_stomp") and randf() < 0.08 + ai_smart * 0.15:
+		start_special(cpu, "dive_stomp")
 	# combo: smarter bots follow up a landed hit
-	if ATTACKS.has(cpu.state) and cpu.landed and randf() < ai_smart * 0.08:
+	if ATTACKS.has(cpu.state) and cpu.landed and randf() < ai_smart * 0.08 + (0.05 if cpu.style == "striker" else 0.0):
 		i["punch" if randf() < 0.6 else "kick"] = true
 	return i
 
 
-func ai_pick_special(dist: float) -> String:
-	if cpu.specials.is_empty() or ai_special_cd > 0.0 or randf() > 0.12 + ai_smart * 0.2:
+## The CPU's plan for the next fraction of a second, built around the parts it actually has.
+func ai_decide(dist: float, toward: String, away: String) -> Dictionary:
+	var free := cpu.state in ["idle", "walk", "jump"]
+	var can_punch := cpu.arms() > 0
+	var can_kick := cpu.legs() > 0
+	var melee := 82.0 * cpu.scale + 25.0 * player.scale
+	var threatened: bool = ATTACKS.has(player.state) or (player.state == "special" and not Specials.MOVES[player.special_id].get("nohit", false))
+	var hurt := cpu.ratio("torso")
+	var aggro: bool = cpu.over_t > 0.0 or cpu.haste_t > 0.0 or cpu.style == "striker"
+	var r := randf()
+
+	# 1) gadgets, used for what they're good at
+	if free and ai_gadget_cd <= 0.0:
+		var plan := ai_use_gadgets(dist, threatened, toward)
+		if not plan.is_empty():
+			ai_gadget_cd = randf_range(0.6, 1.4) - ai_smart * 0.4
+			return plan
+	# 2) special moves
+	if free:
+		var special := ai_pick_special(dist, threatened)
+		if special != "":
+			start_special(cpu, special)
+			return {}
+	# 3) defend
+	if threatened and dist < 170.0 * cpu.scale:
+		if cpu.arms() > 0 and (randf() < ai_block or (cpu.style == "tank" and randf() < 0.5)):
+			return {"hold": ["block"]}
+		if ai_kit["air"] and can_kick and randf() < 0.45:
+			return {"hold": ["up", away], "air": true, "air_in": false}   # jump away
+		return {"hold": [away]}
+	# grab beats a turtle
+	if player.blocking and dist < 100.0 * cpu.scale and can_punch and randf() < 0.3 + ai_smart * 0.5:
+		return {"tap": "grab"}
+	# 4) self-repairing robots back off to heal when hurt
+	if (cpu.style == "mechanic" or cpu.has_gadget("regen")) and hurt < 0.4 and dist < 320.0 and randf() < 0.55:
+		return {"hold": [away]}
+	# 5) shooters keep their distance while a shot is ready
+	if ai_kit["range"] > 0.0 and ai_ranged_ready() and not aggro:
+		var want: float = ai_kit["range"]
+		var near_wall := cpu.pos.x < wall_l + 140.0 or cpu.pos.x > wall_r - 140.0
+		if dist < want * 0.7 and not near_wall:
+			if ai_kit["air"] and randf() < 0.3:
+				return {"hold": ["up", away], "air": true, "air_in": false}
+			return {"hold": [away]}
+		if dist > want * 1.4:
+			return {"hold": [toward]}
+		if dist > melee:
+			return {"hold": ["down"]} if randf() < 0.3 else {}   # wait for the gadget, duck under high shots
+	# 6) jumpers come in from above
+	if ai_kit["air"] and can_kick and dist > melee and dist < 420.0 and randf() < 0.35:
+		return {"hold": ["up", toward], "air": true, "air_in": true}
+	# 7) close the distance
+	if dist > melee:
+		var plan := {"hold": [toward]}
+		if r < 0.06 and can_kick:
+			plan["tap"] = "up_press"
+		return plan
+	# 8) up close
+	if cpu.has_gadget("thorns") and randf() < 0.3:
+		return {"hold": ["block"]} if cpu.arms() > 0 else {}   # spiky bots let you hit them
+	var atk := 0.68 if aggro else 0.55
+	if cpu.style == "tank":
+		atk = 0.45
+	if r < atk * 0.45 and can_punch:
+		return {"tap": "punch"}
+	if r < atk * 0.75 and can_kick:
+		return {"tap": "kick"}
+	if r < atk * 0.88 and can_kick:
+		return {"hold": ["down"], "tap": "kick"}
+	if r < atk and can_punch:
+		return {"hold": ["down"], "tap": "punch"}
+	if r < 0.88 and cpu.arms() > 0:
+		return {"hold": ["block"]}
+	if can_punch:
+		return {"tap": "punch"}
+	if can_kick:
+		return {"tap": "kick"}
+	return {"hold": [away]}
+
+
+func ai_pick_special(dist: float, threatened: bool = false) -> String:
+	if cpu.specials.is_empty() or ai_special_cd > 0.0 or randf() > 0.14 + ai_smart * 0.25:
 		return ""
 	var options: Array = []
 	for id in cpu.specials:
@@ -598,38 +723,98 @@ func ai_pick_special(dist: float) -> String:
 			continue
 		var m: Dictionary = Specials.MOVES[id]
 		var reach: float = m.get("reach", 0.0) + m.get("dash", 0.0) * m.get("active", 0.0) * 0.6
-		if m.has("projectile"):
+		if m.get("nohit", false):
+			if m.get("effect", "") == "repair" and cpu.ratio("torso") < 0.6 and dist > 160.0:
+				options.append(id)
+			elif m.get("effect", "") == "overclock" and dist > 200.0:
+				for g in cpu.gadgets:
+					if cpu.cooldowns.get(g["id"], 0.0) > 2.0:
+						options.append(id)
+						break
+		elif m.has("counter"):
+			if threatened and dist < 160.0 * cpu.scale:
+				options.append(id)
+		elif m.get("air", false):
+			continue   # handled while jumping
+		elif m.has("projectile"):
 			if dist > 200.0:
 				options.append(id)
 		elif dist < (reach + 40.0) * cpu.scale:
+			if m.get("effect", "") == "armor_up" and not threatened and randf() < 0.5:
+				continue
 			options.append(id)
 	if options.is_empty():
 		return ""
-	ai_special_cd = randf_range(2.5, 4.5) - ai_smart
+	ai_special_cd = randf_range(2.0, 4.0) - ai_smart
 	return options[randi() % options.size()]
 
 
-func ai_use_gadgets(dist: float) -> void:
+func ai_gadget(id: String) -> Dictionary:
 	for g in cpu.gadgets:
-		var info: Dictionary = Specials.GADGETS[g["id"]]
-		if not info["active"] or not cpu.gadget_working(g) or cpu.cooldowns.get(g["id"], 0.0) > 0.0:
-			continue
-		var use := false
-		match g["id"]:
-			"rocket_fist", "laser", "cannon", "grapple":
-				use = dist > 180.0 and randf() < 0.35
-			"shield":
-				use = (ATTACKS.has(player.state) or player.state == "special") and dist < 170.0 and randf() < 0.5
-			"overcharge":
-				use = cpu.ratio("torso") < 0.75 or randf() < 0.03
-			"emp":
-				use = dist < 190.0 and randf() < 0.4
-			"booster":
-				use = dist > 240.0 and randf() < 0.3
-		if use:
+		if g["id"] == id and cpu.gadget_working(g) and cpu.cooldowns.get(id, 0.0) <= 0.0:
+			if id in ["rocket_fist", "grapple"] and cpu.fist_out.has(g["slot"]):
+				continue
+			return g
+	return {}
+
+
+func ai_ranged_ready() -> bool:
+	for id in ["rocket_fist", "laser", "cannon"]:
+		for g in cpu.gadgets:
+			if g["id"] == id and cpu.gadget_working(g) and cpu.cooldowns.get(id, 0.0) < 1.2:
+				return true
+	return cpu.specials.has("bolt_toss") and cpu.cooldowns.get("bolt_toss", 0.0) < 1.0
+
+
+## Uses a gadget when it makes sense and returns what to do next ({} = nothing used).
+func ai_use_gadgets(dist: float, threatened: bool, toward: String) -> Dictionary:
+	var lined_up := absf(player.pos.y - cpu.pos.y) < 120.0
+	var g := {}
+	g = ai_gadget("shield")
+	if not g.is_empty() and threatened and dist < 200.0 * cpu.scale and randf() < 0.4 + ai_smart * 0.4:
+		use_gadget(cpu, g)
+		return {"hold": [toward]}   # walk through their attack behind the bubble
+	g = ai_gadget("emp")
+	if not g.is_empty() and dist < 200.0 and (player.blocking or threatened or randf() < 0.35):
+		use_gadget(cpu, g)
+		return {"hold": [toward], "follow": "punch"}   # stunned enemy: go hit it
+	g = ai_gadget("grapple")
+	if not g.is_empty() and dist > 180.0 and dist < 540.0 and lined_up:
+		use_gadget(cpu, g)
+		return {"follow": "punch"}   # reel in, then punch
+	for id in ["cannon", "laser", "rocket_fist"]:
+		g = ai_gadget(id)
+		if not g.is_empty() and dist > 170.0 and lined_up and player.invuln_t <= 0.0 and randf() < 0.35 + ai_smart * 0.5:
 			use_gadget(cpu, g)
-			ai_special_cd = randf_range(2.0, 3.5) - ai_smart
-			return
+			return {}
+	g = ai_gadget("booster")
+	if not g.is_empty() and dist > 220.0 and dist < 620.0 and lined_up and randf() < 0.6:
+		use_gadget(cpu, g)
+		return {"follow": "kick"}
+	g = ai_gadget("overcharge")
+	if not g.is_empty() and ((dist < 260.0 and cpu.ratio("torso") > 0.3) or cpu.ratio("torso") < 0.5):
+		use_gadget(cpu, g)
+		return {"hold": [toward]}   # burn it while it lasts
+	return {}
+
+
+## What the CPU's parts are good at (worked out once, at the start of the fight).
+func ai_build_kit() -> void:
+	ai_kit = {"range": 0.0, "air": false}
+	for g in cpu.gadgets:
+		match g["id"]:
+			"laser", "cannon":
+				ai_kit["range"] = maxf(ai_kit["range"], 420.0)
+			"rocket_fist":
+				ai_kit["range"] = maxf(ai_kit["range"], 320.0)
+			"grapple":
+				ai_kit["range"] = maxf(ai_kit["range"], 300.0)
+			"double_jump", "high_jump":
+				ai_kit["air"] = true
+	if cpu.specials.has("bolt_toss"):
+		ai_kit["range"] = maxf(ai_kit["range"], 380.0)
+	if cpu.specials.has("dive_stomp"):
+		ai_kit["air"] = true
 
 
 ## Smarter opponents aim at your weakest part.
@@ -827,6 +1012,7 @@ func start_attack(f: Fighter, attack: String) -> void:
 		return
 	f.state = attack
 	f.attack_limb = limb
+	f.arm_turn += 1
 	f.timer = 0.0
 	f.hit_done = false
 	f.landed = false
@@ -872,6 +1058,27 @@ func start_special(f: Fighter, id: String) -> void:
 		f.counter_t = m["counter"]
 	if m.has("invuln"):
 		f.invuln_t = m["invuln"]
+	match m.get("effect", ""):
+		"armor_up":
+			f.armor_t = 4.0
+		"repair":
+			var heal_t: float = f.parts["torso"]["max_hp"] * 0.22
+			f.parts["torso"]["hp"] = minf(f.parts["torso"]["max_hp"], f.parts["torso"]["hp"] + heal_t)
+			var worst := ""
+			for slot in BODY_PARTS:
+				if slot != "torso" and f.alive(slot) and (worst == "" or f.ratio(slot) < f.ratio(worst)):
+					worst = slot
+			if worst != "":
+				f.parts[worst]["hp"] = minf(f.parts[worst]["max_hp"], f.parts[worst]["hp"] + f.parts[worst]["max_hp"] * 0.3)
+			f.look_dirty = true
+			rings.append({"pos": f.pos + Vector2(0, -90.0 * f.scale), "t": 0.0, "color": Color(0.3, 1.0, 0.5), "r": 140.0})
+			Sfx.play("repair")
+		"overclock":
+			for g in f.gadgets:
+				if g["id"] != "overcharge":
+					f.cooldowns[g["id"]] = 0.0
+			f.haste_t = 4.0
+			rings.append({"pos": f.pos + Vector2(0, -90.0 * f.scale), "t": 0.0, "color": Color(0.75, 0.45, 1.0), "r": 160.0})
 	popup(m["name"].to_upper() + "!", f.pos + Vector2(0, -230.0 * f.scale), Color(0.5, 0.9, 1.0) if f == player else Color(1.0, 0.6, 0.3))
 	Sfx.play("uppercut", 0.1)
 	Sfx.play("target", 0.2, -6.0)
@@ -894,7 +1101,7 @@ func update_special(f: Fighter, o: Fighter, delta: float) -> void:
 		if f.timer >= st and not f.projectile_fired:
 			f.projectile_fired = true
 			fire_projectile(f, m["projectile"], m["damage"] * f.mod_damage(), m["zone"])
-	elif not m.has("counter"):
+	elif not m.has("counter") and not m.get("nohit", false):
 		var hits: int = m.get("hits", 1)
 		if hits == 1:
 			if active and not f.hit_done:
@@ -928,7 +1135,7 @@ func use_gadget(f: Fighter, g: Dictionary) -> void:
 				return
 			f.fist_out[g["slot"]] = true
 			var arm: Dictionary = f.parts[g["slot"]]
-			var dmg: float = (14.0 if id == "rocket_fist" else 5.0) * (1.0 + arm["damage"] / 100.0) * f.mod_damage()
+			var dmg: float = (12.0 if id == "rocket_fist" else 5.0) * (1.0 + arm["damage"] / 100.0) * f.mod_damage()
 			fire_projectile(f, "fist" if id == "rocket_fist" else "claw", dmg, "punch", g["slot"])
 			Sfx.play("uppercut", 0.1)
 		"laser":
@@ -963,20 +1170,32 @@ func use_gadget(f: Fighter, g: Dictionary) -> void:
 				f.vel.y = minf(f.vel.y, -150.0)
 			Sfx.play("swing")
 			Sfx.play("jump", 0.2)
-	f.cooldowns[id] = info["cd"]
+	f.cooldowns[id] = info["cd"] * (0.6 if f.style == "specialist" else 1.0)
+
+
+func shoulder_key(slot: String) -> String:
+	if slot.begins_with("arm"):
+		return slot.replace("arm", "shoulder")
+	return "shoulder_front"
 
 
 func fire_projectile(f: Fighter, kind: String, dmg: float, zone: String, slot: String = "") -> void:
 	var start := f.pos + Vector2(f.facing * 50.0, -110.0) * f.scale
 	if slot != "":
 		var g := RobotArt.geom(f.get_look())
-		start = to_world_point(f, (g["shoulder_front"] if slot == "arm_front" else g["shoulder_back"]) + Vector2(40, 10))
-	elif kind == "laser" and f.alive("head"):
-		start = to_world_point(f, RobotArt.part_center(f.get_look(), "head") + Vector2(24, 0))
+		start = to_world_point(f, g[shoulder_key(slot)] + Vector2(40, 10))
+	elif kind == "laser" and (f.alive("head") or f.alive("head2")):
+		var hs := "head" if f.alive("head") else "head2"
+		start = to_world_point(f, RobotArt.part_center(f.get_look(), hs) + Vector2(24, 0))
 	elif kind == "shell":
 		start = to_world_point(f, (RobotArt.geom(f.get_look())["torso"] as Rect2).get_center() + Vector2(40, 0))
 	var speed: float = {"bolt": 900.0, "fist": 1050.0, "claw": 1100.0, "laser": 1700.0, "shell": 760.0}[kind]
-	projectiles.append({"owner": f, "kind": kind, "pos": start, "vel": Vector2(f.facing * speed, 0.0),
+	var src := slot
+	if kind == "laser":
+		src = "head" if f.alive("head") else "head2"
+	elif kind == "bolt":
+		src = f.attack_limb
+	projectiles.append({"owner": f, "kind": kind, "pos": start, "src": src, "vel": Vector2(f.facing * speed, 0.0),
 			"damage": dmg, "zone": zone, "travel": 0.0, "max": 560.0 if kind in ["fist", "claw"] else 2000.0,
 			"returning": false, "slot": slot, "hit": false, "spin": 0.0})
 
@@ -988,7 +1207,7 @@ func update_projectiles(delta: float) -> void:
 		var o := cpu if owner == player else player
 		p["spin"] += delta * 20.0
 		if p["returning"]:
-			var hand := to_world_point(owner, RobotArt.geom(owner.get_look())["shoulder_front" if p["slot"] == "arm_front" else "shoulder_back"])
+			var hand := to_world_point(owner, RobotArt.geom(owner.get_look())[shoulder_key(p["slot"])])
 			var to: Vector2 = hand - p["pos"]
 			if to.length() < 40.0 or owner.state == "ko" and to.length() < 400.0:
 				owner.fist_out.erase(p["slot"])
@@ -1006,7 +1225,7 @@ func update_projectiles(delta: float) -> void:
 				hit_now = true
 		if hit_now:
 			p["hit"] = true
-			var a := {"damage": p["damage"], "zone": p["zone"], "stun": 0.3, "knock": 260.0, "height": "mid"}
+			var a := {"damage": p["damage"], "zone": p["zone"], "stun": 0.3, "knock": 260.0, "height": "mid", "src": p.get("src", "")}
 			if p["kind"] == "claw":
 				a["stun"] = 0.6
 				a["knock"] = -700.0   # reel them in
@@ -1047,6 +1266,26 @@ func update_fighter(f: Fighter, o: Fighter, i: Dictionary, delta: float) -> void
 			Sfx.play("ko", 0.1, -8.0)
 	if f.has_gadget("regen") and f.alive("torso") and phase == "fight":
 		f.parts["torso"]["hp"] = minf(f.parts["torso"]["max_hp"], f.parts["torso"]["hp"] + 1.2 * delta)
+	f.slow_t = maxf(0.0, f.slow_t - delta)
+	f.hobble_t = maxf(0.0, f.hobble_t - delta)
+	f.numb_t = maxf(0.0, f.numb_t - delta)
+	f.armor_t = maxf(0.0, f.armor_t - delta)
+	f.haste_t = maxf(0.0, f.haste_t - delta)
+	if phase == "fight" and f.state != "ko":
+		# mechanics patch themselves up as they fight
+		if f.style == "mechanic":
+			for slot in BODY_PARTS:
+				if f.alive(slot) and f.parts[slot]["hp"] < f.parts[slot]["max_hp"]:
+					f.parts[slot]["hp"] = minf(f.parts[slot]["max_hp"], f.parts[slot]["hp"] + (1.0 if slot == "torso" else 0.4) * delta)
+		# burning parts
+		for b in f.burns:
+			b["t"] -= delta
+			if f.alive(b["slot"]):
+				damage_part(f, b["slot"], b["dps"] * delta, true)
+				if randf() < delta * 12.0:
+					add_spark(visual_point(f, RobotArt.part_center(f.get_look(), b["slot"])) + Vector2(randf_range(-14, 14), randf_range(-14, 8)), Color(1.0, 0.5, 0.1), 12.0)
+		f.burns = f.burns.filter(func(b): return b["t"] > 0.0)
+		check_ko(o, f)
 	if i["gadget"] >= 0 and i["gadget"] < gadget_buttons.size():
 		use_gadget(f, gadget_buttons[i["gadget"]]["gadget"])
 	if f.boost_t > 0.0:
@@ -1170,7 +1409,7 @@ func update_fighter(f: Fighter, o: Fighter, i: Dictionary, delta: float) -> void
 func choose_part(att: Fighter, d: Fighter, zone_name: String, sure: bool = false) -> String:
 	var zone: Dictionary = Specials.ZONES.get(zone_name, Specials.ZONES["any"])
 	if att.target != "" and d.alive(att.target) and (zone.has(att.target) or zone_name == "any"):
-		var accuracy := 0.45 if att.target == "head" else 0.8
+		var accuracy := 0.45 if att.target.begins_with("head") else 0.8
 		if sure or randf() < accuracy:
 			return att.target
 	var total := 0.0
@@ -1191,7 +1430,7 @@ func choose_part(att: Fighter, d: Fighter, zone_name: String, sure: bool = false
 ## Melee hit check: range and height. If it connects, apply it.
 func try_hit(att: Fighter, d: Fighter, a: Dictionary) -> void:
 	var dx := (d.pos.x - att.pos.x) * att.facing
-	var reach: float = a.get("reach", 80.0) * att.scale
+	var reach: float = (a.get("reach", 80.0) + limb_trait(att, att.attack_limb, "magnet")) * att.scale
 	if dx < -10.0 or dx > reach + 35.0 * d.scale:
 		return
 	if absf(d.pos.y - att.pos.y) > 130.0:
@@ -1208,6 +1447,7 @@ func try_hit(att: Fighter, d: Fighter, a: Dictionary) -> void:
 	var limb: Dictionary = att.parts[att.attack_limb] if att.parts.has(att.attack_limb) and att.alive(att.attack_limb) else {"damage": 0}
 	var hit := a.duplicate()
 	hit["damage"] = a["damage"] * (1.0 + limb["damage"] / 100.0) * att.mod_damage()
+	hit["src"] = att.attack_limb
 	var at := Vector2(att.pos.x + att.facing * minf(dx, reach), d.pos.y - 90.0 * d.scale)
 	apply_hit(att, d, hit, at)
 
@@ -1239,11 +1479,23 @@ func apply_hit(att: Fighter, d: Fighter, a: Dictionary, at: Vector2) -> void:
 		apply_hit(d, att, back, att.pos + Vector2(0, -90.0 * att.scale))
 		return
 
+	var src: String = a.get("src", "")
 	var blocked: bool = d.blocking and d.arms() > 0 and not a.get("unblockable", false) \
 			and (a.get("height", "mid") != "low" or d.crouching)
+	# evasion: a clean miss
+	var dodge: float = minf(25.0, part_trait_sum(d, "dodge") * 0.6 + d.gtraits.get("dodge", 0.0))
+	if not blocked and not a.get("unblockable", false) and randf() * 100.0 < dodge:
+		popup("DODGE", d.pos + Vector2(0, -200.0 * d.scale), Color(0.7, 1.0, 1.0))
+		Sfx.play("swing", 0.2)
+		d.pos.x += att.facing * 20.0
+		return
 	if blocked:
-		var arm := "arm_front" if d.alive("arm_front") else "arm_back"
-		damage_part(d, arm, dmg * 0.3)
+		var arm := "arm_front"
+		for s2 in ARM_SLOTS:
+			if d.alive(s2):
+				arm = s2
+				break
+		damage_part(d, arm, dmg * (0.08 if d.style == "tank" else 0.3))
 		d.pos.x += att.facing * 25.0
 		add_spark(spark_pos, Color(0.7, 0.85, 1.0), 18.0)
 		Sfx.play("block", 0.15)
@@ -1260,12 +1512,46 @@ func apply_hit(att: Fighter, d: Fighter, a: Dictionary, at: Vector2) -> void:
 			if att.combo == 3 or att.combo == 5 or att.combo >= 8:
 				Sfx.play("crowd_ooh", 0.2, -6.0)
 		dmg *= 1.0 + COMBO_BONUS * minf(att.combo - 1, 6)
-		if slot == att.target and att.alive("head"):
-			dmg *= 1.0 + att.parts["head"]["aim"] / 100.0
-		var part_dmg := dmg * (HEAD_FACTOR if slot == "head" else 1.0)
+		if slot == att.target:
+			dmg *= 1.0 + att.best_aim() / 100.0
+			if att.style == "specialist":
+				dmg *= 1.25
+		if slot == weak_point(d):
+			dmg *= 1.0 + WEAK_BONUS
+		# precision: critical hits
+		var crit: float = off_trait(att, src, "crit") + (5.0 if att.style == "striker" else 0.0)
+		if randf() * 100.0 < crit:
+			dmg *= 2.0
+			popup("CRITICAL!", hit_at + Vector2(0, -30), Color(1.0, 0.95, 0.3))
+		# reactive armor: this part may shrug it off
+		if randf() * 100.0 < limb_trait(d, slot, "reactive") * 2.0 / (1.0 if slot.begins_with("head") or slot == "torso" else 2.0):
+			dmg *= 0.25
+			popup("DEFLECTED", hit_at + Vector2(0, -30), Color(0.7, 0.8, 1.0))
+			add_spark(hit_at, Color(0.7, 0.8, 1.0), 30.0)
+		var part_dmg := dmg * (HEAD_FACTOR if slot.begins_with("head") else 1.0)
 		damage_part(d, slot, part_dmg)
 		if slot != "torso" and d.alive("torso"):
 			damage_part(d, "torso", dmg * CORE_SHARE)
+		# every part matters: hurt legs slow you down, hurt arms hit softer
+		if slot.begins_with("leg"):
+			if d.hobble_t <= 0.0 and d == cpu:
+				popup("HOBBLED", hit_at + Vector2(0, 20), Color(1.0, 0.75, 0.4))
+			d.hobble_t = 1.5
+		elif slot.begins_with("arm"):
+			if d.numb_t <= 0.0 and d == cpu:
+				popup("NUMBED", hit_at + Vector2(0, 20), Color(1.0, 0.75, 0.4))
+			d.numb_t = 1.5
+		# offensive traits
+		var burn := off_trait(att, src, "burn")
+		if burn > 0.0 and d.alive(slot):
+			d.burns.append({"slot": slot, "dps": burn / 3.0, "t": 3.0})
+		var chill := off_trait(att, src, "chill")
+		if chill > 0.0:
+			d.slow_t = maxf(d.slow_t, chill)
+			add_spark(hit_at, Color(0.6, 0.85, 1.0), 26.0)
+		var leech: float = off_trait(att, src, "leech") + (10.0 if att.style == "mechanic" else 0.0)
+		if leech > 0.0 and att.alive("torso"):
+			att.parts["torso"]["hp"] = minf(att.parts["torso"]["max_hp"], att.parts["torso"]["hp"] + dmg * leech / 100.0)
 		# spikes hurt whoever hits the torso up close
 		if d.has_gadget("thorns") and slot == "torso" and absf(att.pos.x - d.pos.x) < 160.0:
 			var limb := att.attack_limb if att.alive(att.attack_limb) and att.attack_limb != "torso" else "torso"
@@ -1279,9 +1565,16 @@ func apply_hit(att: Fighter, d: Fighter, a: Dictionary, at: Vector2) -> void:
 			d.special_id = ""
 			d.boost_t = 0.0
 			d.vel.x = att.facing * a.get("knock", 320.0)
+			if off_trait(att, src, "magnet") > 0.0:
+				d.vel.x = -att.facing * 260.0   # magnets yank the enemy in
 			if a.has("launch"):
 				d.vel.y = a["launch"]
 				d.on_ground = false
+			if randf() * 100.0 < off_trait(att, src, "stun"):
+				d.timer = maxf(d.timer, 0.8)
+				d.stun_t = maxf(d.stun_t, 0.8)
+				popup("SHOCKED!", hit_at + Vector2(0, -30), Color(1.0, 1.0, 0.4))
+				add_spark(hit_at, Color(1.0, 1.0, 0.5), 40.0)
 		if a.has("emp"):
 			d.stun_t = a["emp"]
 			add_spark(hit_at, Color(0.7, 0.55, 1.0), 40.0)
@@ -1291,20 +1584,76 @@ func apply_hit(att: Fighter, d: Fighter, a: Dictionary, at: Vector2) -> void:
 		add_spark(spark_pos, Color(1.0, 0.85, 0.3), 30.0)
 		Sfx.play("hit_big" if dmg >= 12.0 else "hit", 0.15)
 
-	if phase == "fight":
-		if not d.alive("torso"):
-			knockout(att, d, "CORE DESTROYED")
-		elif not d.alive("head"):
-			knockout(att, d, "HEAD KNOCKED OFF")
-		elif not att.alive("torso"):   # thorns can finish an attacker
-			knockout(d, att, "IMPALED ON SPIKES")
+	check_ko(att, d)
 
 
-func damage_part(f: Fighter, slot: String, amount: float) -> void:
+## Knock out whoever has lost their core or every head. att = the fighter that caused it.
+func check_ko(att: Fighter, d: Fighter) -> void:
+	if phase != "fight":
+		return
+	if not d.alive("torso"):
+		knockout(att, d, "CORE DESTROYED")
+	elif d.heads() == 0:
+		knockout(att, d, "HEAD KNOCKED OFF" if d.parts["head2"].is_empty() else "BOTH HEADS KNOCKED OFF")
+	elif not att.alive("torso"):   # thorns or explosions can finish an attacker
+		knockout(d, att, "BLOWN APART")
+	elif att.heads() == 0:
+		knockout(d, att, "BLOWN APART")
+
+
+## Trait value on one part (heads and torso give half, limbs full).
+func limb_trait(f: Fighter, slot: String, t: String) -> float:
+	if slot == "" or not f.alive(slot):
+		return 0.0
+	var pd: Dictionary = f.parts[slot]
+	if pd.get("trait", "") != t:
+		return 0.0
+	return Catalog.trait_value(pd) * (0.5 if slot.begins_with("head") or slot == "torso" else 1.0)
+
+
+## Offensive trait for a hit: the striking part plus half of any robot-wide (reactor) trait.
+func off_trait(f: Fighter, src: String, t: String) -> float:
+	return limb_trait(f, src, t) + f.gtraits.get(t, 0.0) * 0.5
+
+
+func part_trait_sum(f: Fighter, t: String) -> float:
+	var n := 0.0
+	for slot in BODY_PARTS:
+		n += limb_trait(f, slot, t)
+	return n
+
+
+## The part the scanner marks: least effective health left, ignoring the torso.
+func weak_point(f: Fighter) -> String:
+	var best := ""
+	var best_v := 1e9
+	for slot in BODY_PARTS:
+		if slot == "torso" or not f.alive(slot):
+			continue
+		var pd: Dictionary = f.parts[slot]
+		var v: float = pd["hp"] / maxf(0.1, 1.0 - pd["armor"] / 100.0)
+		if slot.begins_with("head"):
+			v /= HEAD_FACTOR
+		if v < best_v:
+			best_v = v
+			best = slot
+	return best
+
+
+func damage_part(f: Fighter, slot: String, amount: float, quiet: bool = false) -> void:
 	if not f.alive(slot):
 		return
 	var p: Dictionary = f.parts[slot]
-	p["hp"] -= amount * (1.0 - p["armor"] / 100.0)
+	var armor: float = p["armor"]
+	if f.style == "tank":
+		armor += 10.0
+	if f.armor_t > 0.0:
+		armor += 15.0
+	if slot == "torso":
+		armor += f.gtraits.get("plating", 0.0)
+	if f.style == "striker":
+		amount *= 1.1
+	p["hp"] -= amount * (1.0 - minf(armor, 75.0) / 100.0)
 	f.look_dirty = true
 	if p["hp"] <= 0.0:
 		p["hp"] = 0.0
@@ -1314,8 +1663,11 @@ func damage_part(f: Fighter, slot: String, amount: float) -> void:
 
 func rip_off(f: Fighter, slot: String) -> void:
 	var p: Dictionary = f.parts[slot]
-	f.ripped.append(p["id"])
+	var o := cpu if f == player else player
+	f.ripped.append({"id": p["id"], "aimed": o.target == slot})
 	f.fist_out.erase(slot)
+	f.burns = f.burns.filter(func(b): return b["slot"] != slot)
+	var boom: float = limb_trait(f, slot, "explosive") + f.gtraits.get("explosive", 0.0)
 	var at := to_world_point(f, RobotArt.part_center(f.get_look(), slot))
 	var size := Vector2(46, 14) if slot.begins_with("arm") else (Vector2(16, 52) if slot.begins_with("leg") else Vector2(36, 32))
 	debris.append({"pos": at, "vel": Vector2(-f.facing * randf_range(150, 350), randf_range(-650, -400)),
@@ -1331,6 +1683,13 @@ func rip_off(f: Fighter, slot: String) -> void:
 	cheer = maxf(cheer, 1.5)
 	Sfx.play("break")
 	Sfx.play("crowd_ooh", 0.1)
+	if boom > 0.0:
+		rings.append({"pos": at, "t": 0.0, "color": Color(1.0, 0.5, 0.1), "r": 180.0})
+		Sfx.play("hit_big")
+		popup("KABOOM!", at + Vector2(0, -40), Color(1.0, 0.5, 0.1))
+		if absf(o.pos.x - f.pos.x) < 200.0 * f.scale:
+			damage_part(o, "torso", boom)
+			o.flash = 0.12
 
 
 func knockout(att: Fighter, d: Fighter, why: String) -> void:
@@ -1346,7 +1705,10 @@ func knockout(att: Fighter, d: Fighter, why: String) -> void:
 
 func separate() -> void:
 	var dx := cpu.pos.x - player.pos.x
-	var gap := 70.0 * (player.scale + cpu.scale) * 0.5
+	# keep bodies apart by their real torso widths, so wide robots don't overlap (and stay easy to tap)
+	var tw_p: float = RobotArt.geom(player.get_look())["tw"]
+	var tw_c: float = RobotArt.geom(cpu.get_look())["tw"]
+	var gap := tw_p * 0.5 * player.scale + tw_c * 0.5 * cpu.scale + 12.0
 	if absf(dx) < gap and absf(cpu.pos.y - player.pos.y) < 120.0:
 		var push := (gap - absf(dx)) * 0.5
 		var s := 1.0 if dx >= 0.0 else -1.0
@@ -1393,6 +1755,7 @@ func _draw() -> void:
 		c.a = 1.0 - t
 		draw_arc(r["pos"] + off, r["r"] * t, 0, TAU, 40, c, 6.0)
 
+	draw_weak_point(cpu, off)
 	draw_crosshair(player.target, cpu, Color(1.0, 0.2, 0.2, 0.9), off, 1.0)
 	draw_crosshair(cpu.target, player, Color(1.0, 0.6, 0.1, 0.75), off, 0.75)
 	for p in popups:
@@ -1410,34 +1773,23 @@ func _draw() -> void:
 
 func draw_arena(off: Vector2) -> void:
 	draw_rect(Rect2(Vector2.ZERO, screen), Color(0.07, 0.07, 0.11))
+	Arena.draw_backdrop(self, arena_id, screen, floor_y, clock, off)
+	Arena.draw_crowd(self, crowd, crowd_id, screen, clock, cheer, off)
 	var top := screen.y * 0.24
-	for c in crowd:
-		var row: int = c["row"]
-		var y: float = top + row * 34.0 + 20.0
-		var bob := 0.0
-		if cheer > 0.0:
-			bob = -absf(sin(clock * 9.0 + c["phase"])) * 10.0 * minf(1.0, cheer)
-		else:
-			bob = sin(clock * 1.5 + c["phase"]) * 1.5
-		var col: Color = (c["color"] as Color).darkened(0.25 * (2 - row))
-		var p := Vector2(c["x"], y + bob) + off * 0.3
-		draw_rect(Rect2(p.x - 13, p.y + 6, 26, 40), col.darkened(0.2))
-		draw_circle(p, 10.0, col)
-		if cheer > 0.5 and int(c["phase"] * 10) % 3 == 0:
-			draw_line(p + Vector2(8, 10), p + Vector2(16, -14 + bob * 0.5), col, 5.0)
-	draw_rect(Rect2(0, top + 95.0, screen.x, floor_y - top - 95.0), Color(0.07, 0.07, 0.11, 0.6))
+	var ar: Dictionary = Arena.ARENAS[arena_id]
+	draw_rect(Rect2(0, top + 95.0, screen.x, floor_y - top - 95.0), Color(Color(ar["sky"][0]), 0.6))
+	var lc := Color(ar["light"])
 	for k in range(14):
-		draw_circle(Vector2(screen.x * (k + 0.5) / 14.0, screen.y * 0.21), 5.0, Color(1.0, 0.9, 0.6, 0.45))
-	draw_rect(Rect2(Vector2(0, floor_y) + off, Vector2(screen.x, screen.y - floor_y + 20.0)), Color(0.17, 0.17, 0.21))
-	draw_line(Vector2(0, floor_y) + off, Vector2(screen.x, floor_y) + off, Color(0.55, 0.55, 0.65), 3.0)
+		draw_circle(Vector2(screen.x * (k + 0.5) / 14.0, screen.y * 0.21), 5.0, Color(lc, 0.45))
+	Arena.draw_floor(self, arena_id, screen, floor_y, clock, off)
 	# ring: corner posts mark the walls, ropes run between them
 	var post_top := floor_y - 190.0
 	for k in range(3):
 		var y := floor_y - 70.0 - k * 50.0
-		draw_line(Vector2(wall_l, y) + off, Vector2(wall_r, y) + off, Color(0.75, 0.12, 0.12, 0.7), 4.0)
+		draw_line(Vector2(wall_l, y) + off, Vector2(wall_r, y) + off, Color(Color(ar["rope"]), 0.75), 4.0)
 	for x in [wall_l, wall_r]:
-		draw_rect(Rect2(Vector2(x - 9.0, post_top) + off, Vector2(18.0, floor_y - post_top)), Color(0.5, 0.5, 0.56))
-		draw_rect(Rect2(Vector2(x - 12.0, post_top - 10.0) + off, Vector2(24.0, 14.0)), Color(0.85, 0.2, 0.2))
+		draw_rect(Rect2(Vector2(x - 9.0, post_top) + off, Vector2(18.0, floor_y - post_top)), Color(ar["post"]))
+		draw_rect(Rect2(Vector2(x - 12.0, post_top - 10.0) + off, Vector2(24.0, 14.0)), Color(ar["rope"]))
 		for k in range(3):
 			draw_rect(Rect2(Vector2(x - 11.0, floor_y - 76.0 - k * 50.0) + off, Vector2(22.0, 12.0)), Color(0.9, 0.9, 0.95))
 
@@ -1447,7 +1799,7 @@ func draw_cables(off: Vector2) -> void:
 		if p["kind"] == "claw":
 			var owner: Fighter = p["owner"]
 			var g := RobotArt.geom(owner.get_look())
-			var s := to_world_point(owner, g["shoulder_front"] if p["slot"] == "arm_front" else g["shoulder_back"])
+			var s := to_world_point(owner, g[shoulder_key(p["slot"])])
 			draw_line(s + off, p["pos"] + off, Color(0.3, 0.3, 0.32), 3.0)
 
 
@@ -1610,16 +1962,36 @@ func draw_crosshair(slot: String, f: Fighter, c: Color, off: Vector2, size: floa
 	draw_string(font, p + Vector2(-120, -r - 10.0), label, HORIZONTAL_ALIGNMENT_CENTER, 240, fs(15), c)
 
 
+## Scanner: a small pulsing marker on the enemy's weakest part (hits there do +15%).
+func draw_weak_point(f: Fighter, off: Vector2) -> void:
+	if phase != "fight" or f.state == "ko":
+		return
+	var slot := weak_point(f)
+	if slot == "" or slot == player.target:
+		return
+	var p := visual_point(f, RobotArt.part_center(f.get_look(), slot)) + off
+	var r := 9.0 + sin(clock * 5.0) * 2.0
+	var c := Color(1.0, 0.9, 0.2, 0.85)
+	draw_colored_polygon(PackedVector2Array([p + Vector2(0, -r), p + Vector2(r, 0), p + Vector2(0, r), p + Vector2(-r, 0)]), Color(c.r, c.g, c.b, 0.25))
+	draw_polyline(PackedVector2Array([p + Vector2(0, -r), p + Vector2(r, 0), p + Vector2(0, r), p + Vector2(-r, 0), p + Vector2(0, -r)]), c, 2.0)
+	draw_string(font, p + Vector2(-60, r + 16), "WEAK", HORIZONTAL_ALIGNMENT_CENTER, 120, fs(11), c)
+
+
 func draw_part_map(f: Fighter, at: Vector2, mirror: bool) -> void:
 	var m := -1.0 if mirror else 1.0
 	var k := UI_SCALE
 	var boxes := {
-		"head": Rect2(-7, 0, 14, 12), "torso": Rect2(-10, 14, 20, 22),
-		"arm_front": Rect2(12 * m - (6 if mirror else 0), 14, 6, 20), "arm_back": Rect2(-18 * m - (6 if mirror else 0), 14, 6, 20),
-		"leg_front": Rect2(1 * m - (7 if mirror else 0), 38, 7, 18), "leg_back": Rect2(-8 * m - (7 if mirror else 0), 38, 7, 18),
+		"head": Rect2(-7, 0, 14, 12), "head2": Rect2(-19, 2, 10, 10), "torso": Rect2(-10, 14, 20, 22),
+		"arm_front": Rect2(12, 14, 6, 20), "arm_back": Rect2(-18, 14, 6, 20),
+		"arm_front2": Rect2(20, 20, 5, 16), "arm_back2": Rect2(-25, 20, 5, 16),
+		"leg_front": Rect2(1, 38, 7, 18), "leg_back": Rect2(-8, 38, 7, 18),
 	}
 	for slot in boxes:
+		if not f.parts.has(slot) or f.parts[slot].is_empty():
+			continue
 		var r: Rect2 = boxes[slot]
+		if mirror:
+			r.position.x = -(r.position.x + r.size.x)
 		r = Rect2(at + r.position * k, r.size * k)
 		var c := Color(0.25, 0.25, 0.28)
 		if f.alive(slot):
@@ -1635,6 +2007,9 @@ func draw_hud() -> void:
 	var w := screen.x * 0.32
 	var y := screen.y * 0.03
 	var bh := 28.0
+	# soft dark band so the HUD reads on bright arenas
+	for k in 6:
+		draw_rect(Rect2(0, k * (y + bh + 50) / 6.0, screen.x, (y + bh + 50) / 6.0 + 1), Color(0, 0, 0, 0.42 * (1.0 - k / 6.0)))
 	var px := 100.0
 	var cx := screen.x - 100.0 - w
 	draw_rect(Rect2(px, y, w, bh), Color(0.35, 0.05, 0.05))
@@ -1646,6 +2021,14 @@ func draw_hud() -> void:
 	draw_rect(Rect2(cx, y, w, bh), Color.WHITE, false, 2.0)
 	draw_string(font, Vector2(px, y + bh + 28), player.label, HORIZONTAL_ALIGNMENT_LEFT, -1, fs(22), Color.WHITE)
 	draw_string(font, Vector2(cx, y + bh + 28), cpu.label, HORIZONTAL_ALIGNMENT_RIGHT, w, fs(22), Color.WHITE)
+	for f in [player, cpu]:
+		if Catalog.STYLES.has(f.style):
+			var st: Dictionary = Catalog.STYLES[f.style]
+			var sw := font.get_string_size(f.label, HORIZONTAL_ALIGNMENT_LEFT, -1, fs(22)).x
+			if f == player:
+				draw_string(font, Vector2(px + sw + 12, y + bh + 26), st["name"].to_upper(), HORIZONTAL_ALIGNMENT_LEFT, -1, fs(14), Color(st["color"]).lightened(0.35))
+			else:
+				draw_string(font, Vector2(cx, y + bh + 26), st["name"].to_upper(), HORIZONTAL_ALIGNMENT_RIGHT, w - sw - 12, fs(14), Color(st["color"]).lightened(0.35))
 	var status: Array = []
 	if player.eff < 1.0:
 		status.append("OVERLOADED")
@@ -1653,8 +2036,16 @@ func draw_hud() -> void:
 		status.append("OVERCHARGE %.0f" % ceilf(player.over_t))
 	if player.burnout:
 		status.append("BURNOUT")
+	if player.hobble_t > 0.0:
+		status.append("LEG HIT: SLOWED")
+	if player.numb_t > 0.0:
+		status.append("ARM HIT: WEAKER")
+	if player.slow_t > 0.0:
+		status.append("FROZEN")
+	if not player.burns.is_empty():
+		status.append("ON FIRE")
 	if not status.is_empty():
-		draw_string(font, Vector2(px + 110, y + bh + 26), "  ".join(status), HORIZONTAL_ALIGNMENT_LEFT, -1, fs(16), Color(1.0, 0.5, 0.2))
+		draw_string(font, Vector2(px, y + bh + 50), "  ".join(status), HORIZONTAL_ALIGNMENT_LEFT, -1, fs(16), Color(1.0, 0.5, 0.2))
 	draw_part_map(player, Vector2(44, y), false)
 	draw_part_map(cpu, Vector2(screen.x - 44, y), true)
 	for f in [player, cpu]:
@@ -1680,6 +2071,8 @@ func draw_hud() -> void:
 		"intro":
 			var t := cpu.label if phase_timer < 1.0 else "FIGHT!"
 			draw_string(font, Vector2(0, cy), t, HORIZONTAL_ALIGNMENT_CENTER, screen.x, fs(72), Color(1.0, 0.3, 0.2))
+			draw_string(font, Vector2(0, cy + 44), "%s  -  %s" % [Arena.ARENAS[arena_id]["name"].to_upper(), Arena.CROWDS[crowd_id]["name"]],
+					HORIZONTAL_ALIGNMENT_CENTER, screen.x, fs(18), Color(0.85, 0.85, 0.9))
 		"ko":
 			var big := "K.O." if ko_text != "TIME!" else "TIME!"
 			draw_string(font, Vector2(0, cy), big, HORIZONTAL_ALIGNMENT_CENTER, screen.x, fs(84), Color(1.0, 0.2, 0.1))

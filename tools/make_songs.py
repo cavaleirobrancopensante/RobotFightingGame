@@ -240,7 +240,20 @@ SONGS = {
     "workshop": {"seed": 113, "key": 43, "mode": "mixolydian", "bpm": 112, "prog": [0, 6, 3, 0, 0, 6, 3, 4],
                  "drums": "rock", "bass": "funk", "lead": "pulse12", "layers": ["stabs", "arp"], "arp_from": 8,
                  "rhythms": [3, 0]},
+    "chiptune_cafe": {"seed": 131, "key": 47, "mode": "major", "bpm": 104, "prog": [0, 5, 3, 4, 0, 5, 1, 4],
+                      "drums": "half", "bass": "walk", "lead": "tri", "layers": ["bells", "arp"], "arp_from": 8,
+                      "rhythms": [3, 2]},
+    "sunset_drive": {"seed": 149, "key": 42, "mode": "mixolydian", "bpm": 92, "prog": [0, 6, 3, 0, 5, 6, 3, 4],
+                     "drums": "rock", "bass": "funk", "lead": "epiano", "layers": ["pad"], "rhythms": [4, 0]},
     # fights
+    "fight_chrome": {"seed": 157, "key": 41, "mode": "harmonic", "bpm": 140, "prog": [0, 0, 5, 4, 0, 5, 3, 4],
+                     "drums": "break", "bass": "octave", "lead": "saw", "layers": ["stabs", "arp16"], "arp_from": 4,
+                     "rhythms": [1, 0]},
+    "fight_scrapyard": {"seed": 163, "key": 44, "mode": "dorian", "bpm": 118, "prog": [0, 0, 3, 3, 6, 6, 4, 4],
+                        "drums": "rock", "bass": "funk", "lead": "pulse12", "layers": ["chug"], "rhythms": [3, 5]},
+    "fight_thunder": {"seed": 179, "key": 39, "mode": "phrygian", "bpm": 172, "prog": [0, 1, 0, 6, 0, 1, 5, 6],
+                      "drums": "gallop", "bass": "eighths", "lead": "pulse", "layers": ["choir", "arp16"], "arp_from": 8,
+                      "rhythms": [5, 1], "double": True},
     "fight_pump": {"seed": 31, "key": 45, "mode": "dorian", "bpm": 132, "prog": [0, 0, 6, 6, 5, 5, 6, 4],
                    "drums": "four", "bass": "octave", "lead": "saw", "layers": ["stabs"], "rhythms": [1, 3]},
     "fight_rush": {"seed": 47, "key": 40, "mode": "minor", "bpm": 165, "prog": [0, 5, 3, 4, 0, 5, 6, 4],
@@ -258,5 +271,7 @@ SONGS = {
 
 if __name__ == "__main__":
     out_dir = os.path.join(mm.ROOT, "music")
+    only = sys.argv[1:]   # optional: names of songs to (re)build
     for name, recipe in SONGS.items():
-        Composer(recipe).compose(os.path.join(out_dir, name + ".ogg"))
+        if not only or name in only:
+            Composer(recipe).compose(os.path.join(out_dir, name + ".ogg"))

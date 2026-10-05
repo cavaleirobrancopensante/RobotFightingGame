@@ -16,15 +16,19 @@ const ROBOT_FIRST := ["ECHO", "RUSTY", "BOLT", "PISTON", "SPARKY", "TANK", "GIZM
 const ROBOT_LAST := ["", "", "", " JR", " MK II", " 3000", "-9", " PRIME", " ZERO", "-X"]
 
 # Robot slots. Front = the side facing the camera (drawn in front).
-const SLOTS := ["head", "torso", "arm_front", "arm_back", "leg_front", "leg_back", "back", "reactor"]
-const SLOT_NAMES := {"head": "Head", "torso": "Torso", "arm_front": "Front Arm", "arm_back": "Back Arm",
+const SLOTS := ["head", "head2", "torso", "arm_front", "arm_back", "arm_front2", "arm_back2", "leg_front", "leg_back", "back", "reactor"]
+const SLOT_NAMES := {"head": "Head", "head2": "Second Head", "torso": "Torso", "arm_front": "Front Arm", "arm_back": "Back Arm",
+		"arm_front2": "Lower Front Arm", "arm_back2": "Lower Back Arm",
 		"leg_front": "Front Leg", "leg_back": "Back Leg", "back": "Back Gear", "reactor": "Reactor"}
-const SLOT_KIND := {"head": "head", "torso": "torso", "arm_front": "arm", "arm_back": "arm",
-		"leg_front": "leg", "leg_back": "leg", "back": "back", "reactor": "reactor"}
+const SLOT_KIND := {"head": "head", "head2": "head", "torso": "torso", "arm_front": "arm", "arm_back": "arm",
+		"arm_front2": "arm", "arm_back2": "arm", "leg_front": "leg", "leg_back": "leg", "back": "back", "reactor": "reactor"}
+const EXTRA_SLOTS := ["head2", "arm_front2", "arm_back2"]   # only exist on torsos with mount points
 const KINDS := ["head", "torso", "arm", "leg", "back", "reactor"]
 const KIND_NAMES := {"head": "Heads", "torso": "Torsos", "arm": "Arms", "leg": "Legs", "back": "Back", "reactor": "Reactors"}
 const UNDAMAGEABLE := ["reactor", "back"]   # kinds that sit inside/behind the robot and never take damage
-const BODY_SLOTS := ["head", "torso", "arm_front", "arm_back", "leg_front", "leg_back"]
+const BODY_SLOTS := ["head", "head2", "torso", "arm_front", "arm_back", "arm_front2", "arm_back2", "leg_front", "leg_back"]
+const STOCK_SIZE := 10
+const REROLL_COST := 150
 
 const PAINTS := [
 	{"name": "Chrome", "color": "#d9d9e0"}, {"name": "Hazard", "color": "#f2c230"},
@@ -116,34 +120,34 @@ const STARTER := {"head": "junk_head", "torso": "junk_torso", "arm_front": "junk
 # think = seconds between CPU decisions, block = chance to block your attacks,
 # smart = chance the CPU aims at your weakest part, scale = how big it is.
 const OPPONENTS := [
-	{"name": "TIN CAN", "hp": 0.8, "damage": 0.80, "speed": 0.90, "scale": 0.90, "think": 0.60, "block": 0.10, "smart": 0.0, "reward": 300,
+	{"name": "TIN CAN", "style": "striker", "hp": 0.8, "damage": 0.80, "speed": 0.90, "scale": 0.90, "think": 0.60, "block": 0.10, "smart": 0.0, "reward": 300,
 	 "body": "#9a9a9a", "trim": "#5a5a5a", "eye": "#ffcc00",
 	 "parts": {"head": "junk_head", "torso": "junk_torso", "arm_front": "junk_arm", "arm_back": "junk_arm", "leg_front": "junk_leg", "leg_back": "junk_leg"}, "specials": []},
-	{"name": "RIVET", "hp": 0.9, "damage": 0.85, "speed": 0.95, "scale": 0.95, "think": 0.55, "block": 0.15, "smart": 0.1, "reward": 450,
+	{"name": "RIVET", "style": "tank", "hp": 0.9, "damage": 0.85, "speed": 0.95, "scale": 0.95, "think": 0.55, "block": 0.15, "smart": 0.1, "reward": 450,
 	 "body": "#6d8b74", "trim": "#3e4f42", "eye": "#c6ff4d",
 	 "parts": {"head": "head_box", "torso": "torso_rib", "arm_front": "arm_rod", "arm_back": "arm_rod", "leg_front": "leg_steel", "leg_back": "leg_steel"}, "specials": ["shoulder_charge"]},
-	{"name": "SCRAPJAW", "hp": 0.95, "damage": 0.90, "speed": 1.0, "scale": 1.0, "think": 0.50, "block": 0.20, "smart": 0.2, "reward": 600,
+	{"name": "SCRAPJAW", "style": "mechanic", "hp": 0.95, "damage": 0.90, "speed": 1.0, "scale": 1.0, "think": 0.50, "block": 0.20, "smart": 0.2, "reward": 600,
 	 "body": "#8c6239", "trim": "#4a3420", "eye": "#ff7b00",
-	 "parts": {"head": "head_jaw", "torso": "torso_vee", "arm_front": "arm_claw", "arm_back": "arm_claw", "leg_front": "leg_piston", "leg_back": "leg_piston"}, "specials": ["grab_slam", "bolt_toss"]},
-	{"name": "GEARBOX", "hp": 1.0, "damage": 0.90, "speed": 0.90, "scale": 1.05, "think": 0.45, "block": 0.30, "smart": 0.3, "reward": 750,
+	 "parts": {"head": "head_jaw", "torso": "scrap_hydra", "head2": "head_box", "arm_front": "arm_claw", "arm_back": "arm_claw", "leg_front": "leg_piston", "leg_back": "leg_piston"}, "specials": ["grab_slam", "bolt_toss"]},
+	{"name": "GEARBOX", "style": "tank", "hp": 1.0, "damage": 0.90, "speed": 0.90, "scale": 1.05, "think": 0.45, "block": 0.30, "smart": 0.3, "reward": 750,
 	 "body": "#5e6b7d", "trim": "#c0c8d2", "eye": "#00e5ff",
 	 "parts": {"head": "head_visor", "torso": "torso_plate", "arm_front": "arm_piston", "arm_back": "arm_piston", "leg_front": "leg_thick", "leg_back": "leg_thick", "back": "back_spikes"}, "specials": ["counter_protocol", "shoulder_charge"]},
-	{"name": "HAMMERHEAD", "hp": 1.0, "damage": 0.92, "speed": 1.0, "scale": 1.0, "think": 0.40, "block": 0.30, "smart": 0.4, "reward": 900,
+	{"name": "HAMMERHEAD", "style": "striker", "hp": 1.0, "damage": 0.92, "speed": 1.0, "scale": 1.0, "think": 0.40, "block": 0.30, "smart": 0.4, "reward": 900,
 	 "body": "#3f5f8f", "trim": "#a0b4d0", "eye": "#ff3355",
 	 "parts": {"head": "head_wedge", "torso": "torso_box", "arm_front": "arm_hammer", "arm_back": "arm_rocket", "leg_front": "leg_piston", "leg_back": "leg_piston"}, "specials": ["haymaker", "rocket_punch"]},
-	{"name": "VOLTAGE", "hp": 1.0, "damage": 0.95, "speed": 1.15, "scale": 0.95, "think": 0.35, "block": 0.35, "smart": 0.5, "reward": 1100,
+	{"name": "VOLTAGE", "style": "specialist", "hp": 1.0, "damage": 0.95, "speed": 1.15, "scale": 0.95, "think": 0.35, "block": 0.35, "smart": 0.5, "reward": 1100,
 	 "body": "#d4c21f", "trim": "#2b2b2b", "eye": "#00b7ff",
 	 "parts": {"head": "head_bulb", "torso": "torso_slim", "arm_front": "arm_claw", "arm_back": "arm_claw", "leg_front": "leg_pogo", "leg_back": "leg_spring", "back": "back_jet", "reactor": "reactor_cap"}, "specials": ["lightning_legs", "emp_pulse", "dive_stomp"]},
-	{"name": "SLEDGE", "hp": 1.05, "damage": 0.95, "speed": 0.95, "scale": 1.10, "think": 0.30, "block": 0.42, "smart": 0.55, "reward": 1300,
+	{"name": "SLEDGE", "style": "tank", "hp": 1.05, "damage": 0.95, "speed": 0.95, "scale": 1.10, "think": 0.30, "block": 0.42, "smart": 0.55, "reward": 1300,
 	 "body": "#7a2e2e", "trim": "#d6c9a8", "eye": "#ffe14d",
 	 "parts": {"head": "head_tv", "torso": "torso_hex", "arm_front": "arm_hammer", "arm_back": "arm_hammer", "leg_front": "leg_pillar", "leg_back": "leg_pillar", "reactor": "reactor_over"}, "specials": ["haymaker", "grab_slam"]},
-	{"name": "BRIMSTONE", "hp": 1.1, "damage": 1.00, "speed": 1.15, "scale": 1.05, "think": 0.26, "block": 0.48, "smart": 0.65, "reward": 1500,
+	{"name": "BRIMSTONE", "style": "striker", "hp": 1.1, "damage": 1.00, "speed": 1.15, "scale": 1.05, "think": 0.26, "block": 0.48, "smart": 0.65, "reward": 1500,
 	 "body": "#c4501f", "trim": "#1f1f1f", "eye": "#ffd000",
 	 "parts": {"head": "head_laser", "torso": "torso_core", "arm_front": "arm_spike", "arm_back": "arm_saw", "leg_front": "leg_raptor", "leg_back": "leg_raptor", "back": "back_booster"}, "specials": ["tornado_kick", "rocket_punch", "bolt_toss"]},
-	{"name": "JUGGERNAUT", "hp": 1.2, "damage": 1.05, "speed": 1.05, "scale": 1.20, "think": 0.22, "block": 0.54, "smart": 0.75, "reward": 1750,
+	{"name": "JUGGERNAUT", "style": "mechanic", "hp": 1.2, "damage": 1.05, "speed": 1.05, "scale": 1.20, "think": 0.22, "block": 0.54, "smart": 0.75, "reward": 1750,
 	 "body": "#2f3a2f", "trim": "#8f9f8f", "eye": "#ff2020",
-	 "parts": {"head": "head_visor", "torso": "torso_tank", "arm_front": "arm_bulky", "arm_back": "arm_grapple", "leg_front": "leg_tread", "leg_back": "leg_tread", "back": "back_shield"}, "specials": ["shoulder_charge", "grab_slam", "scissor_sweep"]},
-	{"name": "OVERLORD", "hp": 1.3, "damage": 1.10, "speed": 1.20, "scale": 1.25, "think": 0.18, "block": 0.60, "smart": 0.9, "reward": 2200,
+	 "parts": {"head": "head_visor", "torso": "torso_monster", "head2": "ironclad_head_1", "arm_front2": "arm_piston", "arm_back2": "arm_piston", "arm_front": "arm_bulky", "arm_back": "arm_grapple", "leg_front": "leg_tread", "leg_back": "leg_tread", "back": "back_shield"}, "specials": ["shoulder_charge", "grab_slam", "scissor_sweep"]},
+	{"name": "OVERLORD", "style": "specialist", "hp": 1.3, "damage": 1.10, "speed": 1.20, "scale": 1.25, "think": 0.18, "block": 0.60, "smart": 0.9, "reward": 2200,
 	 "body": "#1a1a2e", "trim": "#e0b84a", "eye": "#ff00aa",
 	 "parts": {"head": "head_mast", "torso": "torso_cannon", "arm_front": "arm_drill", "arm_back": "arm_rocket", "leg_front": "leg_raptor", "leg_back": "leg_raptor", "back": "back_shield", "reactor": "reactor_over"}, "specials": ["scrap_fury", "rising_piston", "piston_barrage", "rocket_punch"]},
 ]
@@ -197,6 +201,10 @@ var exhibition := false       # an OVERLORD rematch is queued
 var quick := {}               # Quick Fight from the menu: {player, enemy} random bots, never saved
 var setups: Array = []        # saved builds: {} or {name, equipped, chips, paint}
 var custom_parts: Array = []  # part definitions you designed in the workshop
+var ALL_PARTS: Array = []     # every catalog part id (classic + brand parts), in order
+var style := "striker"        # fighting style: tank, striker, mechanic, specialist
+var shop_stock: Array = []    # part ids for sale right now (changes after every fight)
+var scout := {}               # scouting report on the next opponent: {key, spied_back, change}
 var owned_chips: Array = []   # special-move chips bought
 var chips: Array = []         # chips installed (only the first chip_slots() of them run)
 var last_result := {}       # handed from the fight to the garage
@@ -206,8 +214,16 @@ var settings := {"sound": true, "music": true, "shake": true, "button_size": 1, 
 
 
 func _ready() -> void:
-	for p in PART_LIST:
+	for p in PART_LIST + Catalog.generate():
 		var d: Dictionary = p.duplicate()
+		ALL_PARTS.append(d["id"])
+		if not d.has("trait"):
+			d["trait"] = ""
+			d["trait_lv"] = 0
+		if not d.has("mounts"):
+			d["mounts"] = []
+		if d["kind"] == "head" and not d.has("chips"):
+			d["chips"] = 1
 		for k in ["hp", "armor", "damage", "speed", "aim", "draw", "output", "chips"]:
 			if not d.has(k):
 				d[k] = 0
@@ -248,6 +264,9 @@ func new_game() -> void:
 	for d in custom_parts:
 		PARTS.erase(d["id"])
 	custom_parts = []
+	style = "striker"
+	scout = {}
+	shop_stock = []
 	quick = {}
 	circuit = {}
 	circuit_offers = []
@@ -257,6 +276,7 @@ func new_game() -> void:
 	for k in SETUP_SLOTS:
 		setups.append({})
 	last_result = {}
+	roll_stock()
 
 
 func part_def(id: String) -> Dictionary:
@@ -298,10 +318,68 @@ func spares() -> Array:
 
 func shop_parts(kind: String) -> Array:
 	var out: Array = []
-	for p in PART_LIST:
-		if p["kind"] == kind and PARTS[p["id"]]["shop"]:
-			out.append(PARTS[p["id"]])
+	for id in ALL_PARTS:
+		var d: Dictionary = PARTS[id]
+		if d["kind"] == kind and d["shop"]:
+			out.append(d)
 	return out
+
+
+## Free junk, always available so you can never get stuck without a part.
+func scrap_bin() -> Array:
+	var out: Array = []
+	for id in ALL_PARTS:
+		if PARTS[id]["cost"] == 0:
+			out.append(PARTS[id])
+	return out
+
+
+## How far along you are (unlocks better stock in the shop).
+func progress() -> int:
+	return fight_index + circuits_won * 2 + (2 if champion else 0)
+
+
+## Restock the shop with a random selection. Better parts show up as you progress.
+func roll_stock() -> void:
+	var max_cost := 600 + progress() * 380
+	var pool: Array = []
+	for id in ALL_PARTS:
+		var d: Dictionary = PARTS[id]
+		if d["shop"] and d["cost"] > 0 and d["cost"] <= max_cost:
+			pool.append(id)
+	pool.shuffle()
+	shop_stock = pool.slice(0, STOCK_SIZE)
+	# one "special order" a bit above your level, if there is one
+	var stretch: Array = []
+	for id in ALL_PARTS:
+		var d: Dictionary = PARTS[id]
+		if d["shop"] and d["cost"] > max_cost and d["cost"] <= max_cost * 1.6:
+			stretch.append(id)
+	if not stretch.is_empty():
+		shop_stock.append(stretch[randi() % stretch.size()])
+
+
+func reroll_stock() -> String:
+	if money < REROLL_COST:
+		return "Restocking costs $%d." % REROLL_COST
+	money -= REROLL_COST
+	roll_stock()
+	return "The dealer wheeled in a fresh load of parts."
+
+
+## Is this slot usable right now? Extra slots need a torso with the right mount.
+func slot_available(slot: String) -> bool:
+	if not EXTRA_SLOTS.has(slot):
+		return true
+	var t := equipped_inst("torso")
+	return not t.is_empty() and part_def(t["id"])["mounts"].has(slot)
+
+
+## After a torso swap, extra parts the new torso can't hold go back to storage.
+func drop_unmounted() -> void:
+	for slot in EXTRA_SLOTS:
+		if not slot_available(slot):
+			equipped[slot] = -1
 
 
 func is_wreck(p: Dictionary) -> bool:
@@ -318,9 +396,10 @@ func buy(id: String) -> String:
 	if money < d["cost"]:
 		return "Not enough money."
 	money -= d["cost"]
+	shop_stock.erase(id)
 	var uid := add_part(id)
 	for slot in SLOTS:
-		if SLOT_KIND[slot] == d["kind"] and equipped[slot] == -1:
+		if SLOT_KIND[slot] == d["kind"] and equipped[slot] == -1 and slot_available(slot):
 			equipped[slot] = uid
 			return "Bought %s and fitted it to the %s." % [d["name"], SLOT_NAMES[slot]]
 	return "Bought %s. It's in your Spares - equip it from there." % d["name"]
@@ -335,10 +414,14 @@ func equip(uid: int, slot: String) -> String:
 		return "%s is a wreck. Rebuild it first." % d["name"]
 	if SLOT_KIND[slot] != d["kind"]:
 		return "A %s doesn't fit the %s." % [d["name"], SLOT_NAMES[slot]]
+	if not slot_available(slot):
+		return "Your torso has no mount for a %s." % str(SLOT_NAMES[slot]).to_lower()
 	var old_slot := slot_of_uid(uid)
 	if old_slot != "":
 		equipped[old_slot] = equipped[slot] if old_slot != slot else -1
 	equipped[slot] = uid
+	if slot == "torso":
+		drop_unmounted()
 	return "Fitted %s to the %s." % [d["name"], SLOT_NAMES[slot]]
 
 
@@ -348,6 +431,8 @@ func unequip(slot: String) -> void:
 		return
 	if slot != "reactor":
 		equipped[slot] = -1
+	if slot == "torso":
+		drop_unmounted()
 
 
 func repair_cost(p: Dictionary) -> int:
@@ -355,9 +440,10 @@ func repair_cost(p: Dictionary) -> int:
 	var missing := 1.0 - hp_ratio(p)
 	if missing <= 0.0:
 		return 0
+	var discount := 0.6 if style == "mechanic" else 1.0   # mechanics fix things cheaper
 	if is_wreck(p):
-		return maxi(30, int(d["cost"] * 0.5))   # rebuilding a wreck
-	return maxi(1, ceili(missing * maxf(20.0, d["cost"] * 0.2)))
+		return maxi(20, int(d["cost"] * 0.5 * discount))   # rebuilding a wreck
+	return maxi(1, ceili(missing * maxf(20.0, d["cost"] * 0.2) * discount))
 
 
 func repair(uid: int) -> String:
@@ -412,14 +498,14 @@ func sell(uid: int) -> String:
 func part_stat_text(d: Dictionary) -> String:
 	var g := gimmick_text(d)
 	if d["kind"] == "reactor":
-		return "Power output %d" % d["output"] + g
+		return "Power output %d" % d["output"] + g + trait_line(d)
 	if d["kind"] == "back":
 		var b: Array = []
 		if d["output"] > 0:
 			b.append("Power +%d" % d["output"])
 		if d["draw"] > 0:
 			b.append("Power %d" % d["draw"])
-		return "  ".join(b) + g
+		return "  ".join(b) + g + trait_line(d)
 	var bits: Array = ["HP %d" % d["hp"]]
 	if d["armor"] != 0:
 		bits.append("ARM %d%%" % d["armor"])
@@ -431,10 +517,19 @@ func part_stat_text(d: Dictionary) -> String:
 		bits.append("AIM %+d%%" % d["aim"])
 	if d["output"] != 0:
 		bits.append("PWR +%d" % d["output"])
-	if d["chips"] > 0:
+	if d["kind"] == "head" and d["chips"] > 0:
 		bits.append("CHIPS %d" % d["chips"])
 	bits.append("Power %d" % d["draw"])
-	return "  ".join(bits) + g
+	if not d["mounts"].is_empty():
+		var m: Array = []
+		for slot in d["mounts"]:
+			m.append(str(SLOT_NAMES[slot]).to_lower())
+		bits.append("| Mounts: " + ", ".join(m))
+	return "  ".join(bits) + g + trait_line(d)
+
+
+func trait_line(d: Dictionary) -> String:
+	return "" if d.get("trait", "") == "" else "  |  " + Catalog.trait_text(d)
 
 
 func gimmick_text(d: Dictionary) -> String:
@@ -446,8 +541,14 @@ func gimmick_text(d: Dictionary) -> String:
 # ---------------------------------------------------------------- chips (special moves)
 
 func chip_slots() -> int:
-	var h := equipped_inst("head")
-	return 0 if h.is_empty() else int(part_def(h["id"])["chips"])
+	var n := 0
+	for slot in ["head", "head2"]:
+		var h := equipped_inst(slot)
+		if not h.is_empty() and not is_wreck(h):
+			n += int(part_def(h["id"])["chips"])
+	if n > 0 and style == "specialist":
+		n += 1
+	return n
 
 
 func active_chips() -> Array:
@@ -485,7 +586,7 @@ func uninstall_chip(id: String) -> String:
 # ---------------------------------------------------------------- stats
 
 func can_fight() -> bool:
-	return equipped["head"] != -1 and equipped["torso"] != -1
+	return (equipped["head"] != -1 or equipped["head2"] != -1) and equipped["torso"] != -1
 
 
 func stats() -> Dictionary:
@@ -516,12 +617,12 @@ func stats() -> Dictionary:
 			"torso":
 				torso_spd = d["speed"]
 			"head":
-				aim = d["aim"]
+				aim = maxf(aim, d["aim"])
 		if not UNDAMAGEABLE.has(SLOT_KIND[slot]):
 			armor += d["armor"]
 			parts += 1
 	var eff := 1.0 if used <= output or used == 0 else float(output) / used
-	var leg_factor: float = [0.35, 0.65, 1.0][legs]
+	var leg_factor: float = [0.35, 0.65, 1.0][mini(legs, 2)]
 	var speed := (100.0 + (leg_spd / maxf(1, legs)) + torso_spd) * leg_factor * eff
 	var damage := (100.0 + arm_dmg / maxf(1, arms)) * eff if arms > 0 else 0.0
 	var t := equipped_inst("torso")
@@ -544,7 +645,8 @@ func player_spec() -> Dictionary:
 			var d := part_def(p["id"])
 			parts[slot] = {"id": d["id"], "hp": p["hp"], "max_hp": float(d["hp"]), "armor": d["armor"],
 					"damage": d["damage"], "speed": d["speed"], "aim": d["aim"],
-					"shape": d["shape"], "size": d["size"], "color": Color(d["color"])}
+					"shape": d["shape"], "size": d["size"], "color": Color(d["color"]),
+					"trait": d["trait"], "trait_lv": d["trait_lv"]}
 	var s := stats()
 	var gadgets: Array = []
 	for slot in SLOTS:
@@ -556,7 +658,28 @@ func player_spec() -> Dictionary:
 			"speed_mult": 1.0, "scale": 1.0, "trim": Color(PAINTS[paint]["color"]),
 			"eye": Color(part_def(equipped_inst("reactor")["id"])["color"]),
 			"back": {} if back.is_empty() else {"shape": part_def(back["id"])["shape"], "color": Color(part_def(back["id"])["color"])},
-			"gadgets": gadgets, "specials": active_chips()}
+			"gadgets": gadgets, "specials": active_chips(), "style": style,
+			"traits": global_traits(equipped_ids())}
+
+
+func equipped_ids() -> Dictionary:
+	var out := {}
+	for slot in SLOTS:
+		var p := equipped_inst(slot)
+		if not p.is_empty():
+			out[slot] = p["id"]
+	return out
+
+
+## Traits from reactor and back gear (they don't take hits, so they work robot-wide).
+func global_traits(ids: Dictionary) -> Array:
+	var out: Array = []
+	for slot in ["reactor", "back"]:
+		if ids.has(slot) and ids[slot] != "":
+			var d := part_def(ids[slot])
+			if d.get("trait", "") != "":
+				out.append({"trait": d["trait"], "trait_lv": d["trait_lv"]})
+	return out
 
 
 func fight_mode() -> String:
@@ -581,9 +704,85 @@ func current_opponent_index() -> int:
 func current_opponent() -> Dictionary:
 	if fight_mode() == "quick":
 		return quick["enemy"]
+	var o: Dictionary
 	if fight_mode() == "circuit":
-		return circuit_opponent(circuit, int(circuit["index"]))
-	return OPPONENTS[current_opponent_index()]
+		o = circuit_opponent(circuit, int(circuit["index"]))
+	else:
+		o = OPPONENTS[current_opponent_index()]
+	# if they caught our scout, they changed something
+	if scouted() and scout.get("spied_back", false):
+		o = o.duplicate(true)
+		var ch: Dictionary = scout["change"]
+		match ch["type"]:
+			"part":
+				o["parts"][ch["slot"]] = ch["id"]
+			"armor":
+				o["armor_bonus"] = 8
+			"smart":
+				o["smart"] = minf(1.0, o["smart"] + 0.3)
+				o["block"] = minf(0.8, o["block"] + 0.1)
+	return o
+
+
+# ---------------------------------------------------------------- scouting
+
+func scout_key() -> String:
+	match fight_mode():
+		"story":
+			return "story:%d" % fight_index
+		"circuit":
+			return "cup:%d:%d" % [int(circuit["seed"]), int(circuit["index"])]
+		"exhibition":
+			return "exhibition:%d" % wins
+	return ""
+
+
+func scout_cost() -> int:
+	return maxi(60, int(current_reward() * 0.15))
+
+
+func scouted() -> bool:
+	return scout_key() != "" and scout.get("key", "") == scout_key()
+
+
+## Pay to look at the next opponent. 30% of the time their crew spots the scout and adapts.
+func do_scout() -> String:
+	if scouted():
+		return "You already have a scouting report."
+	var cost := scout_cost()
+	if money < cost:
+		return "Scouting costs $%d." % cost
+	money -= cost
+	var o := current_opponent()
+	scout = {"key": scout_key(), "spied_back": false, "change": {}}
+	if randf() < 0.3:
+		var change := {}
+		var r := randf()
+		if r < 0.45:
+			# swap one part for something nastier
+			var slots: Array = []
+			for slot in ["arm_front", "arm_back", "leg_front", "leg_back", "head"]:
+				if o["parts"].has(slot):
+					slots.append(slot)
+			var slot: String = slots[randi() % slots.size()]
+			var old := part_def(o["parts"][slot])
+			var better := ""
+			for id in ALL_PARTS:
+				var d: Dictionary = PARTS[id]
+				if d["kind"] == old["kind"] and d["cost"] > old["cost"] and d["cost"] <= old["cost"] * 2.0 + 600 and d["gimmick"] == "" and (better == "" or randf() < 0.4):
+					better = id
+			if better != "":
+				change = {"type": "part", "slot": slot, "id": better,
+						"text": "swapped their %s for a %s" % [str(SLOT_NAMES[slot]).to_lower(), part_def(better)["name"]]}
+		if change.is_empty() and r < 0.75:
+			change = {"type": "armor", "text": "bolted extra armor plates onto every part"}
+		if change.is_empty():
+			change = {"type": "smart", "text": "studied your robot - they'll block more and aim at your weak spots"}
+		scout["spied_back"] = true
+		scout["change"] = change
+		return "Their crew spotted your scout! They %s." % change["text"]
+	return "Clean scouting run - they never saw you."
+
 
 
 func current_reward() -> int:
@@ -642,6 +841,9 @@ func opponent_spec_from(o: Dictionary, _unused: float) -> Dictionary:
 	var body := Color(o["body"])
 	var parts := {}
 	for slot in BODY_SLOTS:
+		if not o["parts"].has(slot) or o["parts"][slot] == "":
+			parts[slot] = {}
+			continue
 		var d := part_def(o["parts"][slot])
 		var c := body
 		match SLOT_KIND[slot]:
@@ -652,9 +854,10 @@ func opponent_spec_from(o: Dictionary, _unused: float) -> Dictionary:
 			"head":
 				c = body.lerp(Color(d["color"]), 0.3)
 		var mx: float = d["hp"] * o["hp"]
-		parts[slot] = {"id": d["id"], "hp": mx, "max_hp": mx, "armor": d["armor"],
+		parts[slot] = {"id": d["id"], "hp": mx, "max_hp": mx, "armor": d["armor"] + o.get("armor_bonus", 0),
 				"damage": d["damage"], "speed": d["speed"], "aim": d["aim"],
-				"shape": d["shape"], "size": d["size"], "color": c}
+				"shape": d["shape"], "size": d["size"], "color": c,
+				"trait": d["trait"], "trait_lv": d["trait_lv"]}
 	var gadgets: Array = []
 	for slot in o["parts"]:
 		var g: String = part_def(o["parts"][slot])["gimmick"]
@@ -666,7 +869,8 @@ func opponent_spec_from(o: Dictionary, _unused: float) -> Dictionary:
 		back = {"shape": bd["shape"], "color": Color(bd["color"])}
 	return {"name": o["name"], "parts": parts, "efficiency": 1.0, "damage_mult": o["damage"],
 			"speed_mult": o["speed"], "scale": o["scale"], "trim": Color(o["trim"]), "eye": Color(o["eye"]),
-			"back": back, "gadgets": gadgets, "specials": o["specials"]}
+			"back": back, "gadgets": gadgets, "specials": o["specials"], "style": o.get("style", "striker"),
+			"traits": global_traits(o["parts"])}
 
 
 ## Build the look dictionary that RobotArt draws from a spec (player or opponent).
@@ -722,15 +926,19 @@ func record_result(won: bool, part_hp: Dictionary, destroyed: int, salvage_ids: 
 	# salvage: winners get a chance to keep ripped-off enemy parts
 	var salvaged: Array = []
 	if won:
-		for id in salvage_ids:
-			if randf() < 0.4:
-				add_part(id, 0.25)
-				salvaged.append(part_def(id)["name"])
+		for sv in salvage_ids:
+			# parts you aimed at come off cleanly: much better odds
+			var chance := 0.75 if sv["aimed"] else 0.25
+			if style == "specialist":
+				chance += 0.15
+			if randf() < chance:
+				add_part(sv["id"], 0.35 if sv["aimed"] else 0.2)
+				salvaged.append(part_def(sv["id"])["name"] + (" (aimed)" if sv["aimed"] else ""))
 
 	# trophy: sometimes the beaten robot's crew hands over one of its parts
 	var trophy := ""
 	if won and randf() < 0.3:
-		var ids: Array = o["parts"].values()
+		var ids: Array = o["parts"].values().filter(func(x): return x != "")
 		var id: String = ids[randi() % ids.size()]
 		var d := part_def(id)
 		add_part(id, 1.0 if UNDAMAGEABLE.has(d["kind"]) else 0.5)
@@ -763,6 +971,8 @@ func record_result(won: bool, part_hp: Dictionary, destroyed: int, salvage_ids: 
 	else:
 		losses += 1
 	exhibition = false
+	scout = {}
+	roll_stock()
 	last_result = {"won": won, "reward": reward, "bonus": bonus, "opponent": o["name"], "lost": lost, "wrecked": wrecked,
 			"salvaged": salvaged, "champion": champion and not was_champion,
 			"trophy": trophy, "cup_done": cup_done}
@@ -819,8 +1029,10 @@ func random_bot(rng: RandomNumberGenerator, budget: float, level: float) -> Dict
 	if rng.randf() < 0.5:   # matching pairs look more like a real build
 		parts["arm_back"] = parts["arm_front"] if rng.randf() < 0.5 else parts["arm_back"]
 		parts["leg_back"] = parts["leg_front"]
+	for slot in part_def(parts["torso"])["mounts"]:
+		parts[slot] = random_part_id(rng, SLOT_KIND[slot], budget)
 	var specials: Array = []
-	var ids := Specials.MOVES.keys()
+	var ids: Array = Specials.MOVES.keys().filter(func(x): return not Specials.MOVES[x].has("style"))
 	for k in clampi(int(level) + rng.randi_range(0, 1), 0, 5):
 		var id: String = ids[rng.randi() % ids.size()]
 		if not specials.has(id):
@@ -833,21 +1045,22 @@ func random_bot(rng: RandomNumberGenerator, budget: float, level: float) -> Dict
 		"smart": minf(0.95, 0.1 + level * 0.18), "body": "#" + body.to_html(false),
 		"trim": "#" + Color.from_hsv(rng.randf(), 0.3, rng.randf_range(0.2, 0.9)).to_html(false),
 		"eye": "#" + Color.from_hsv(rng.randf(), 0.9, 1.0).to_html(false),
-		"parts": parts, "specials": specials,
+		"parts": parts, "specials": specials, "style": Catalog.STYLES.keys()[rng.randi() % 4],
 	}
 
 
 func random_part_id(rng: RandomNumberGenerator, kind: String, budget: float) -> String:
 	var options: Array = []
-	for p in PART_LIST:
+	for id in ALL_PARTS:
+		var p: Dictionary = PARTS[id]
 		if p["kind"] == kind and p["cost"] <= budget:
 			options.append(p["id"])
 	if options.is_empty():
 		if kind == "back":
 			return ""   # can't afford any back gear: go without
-		for p in PART_LIST:
-			if p["kind"] == kind:
-				options.append(p["id"])
+		for id in ALL_PARTS:
+			if PARTS[id]["kind"] == kind:
+				options.append(id)
 				break
 	options.sort_custom(func(a, b): return PARTS[a]["cost"] < PARTS[b]["cost"])
 	# favour the better parts the budget allows, with some randomness
@@ -942,9 +1155,11 @@ func randomize_robot() -> String:
 	for attempt in 80:
 		var used := {}
 		var trial := {}
-		for slot in SLOTS:
+		for slot in ["torso"] + SLOTS.filter(func(x): return x != "torso"):
 			var choices: Array = pool.get(SLOT_KIND[slot], []).filter(func(u): return not used.has(u))
 			if slot == "back" and randf() < 0.25:
+				choices = []
+			if EXTRA_SLOTS.has(slot) and (trial.get("torso", -1) == -1 or not part_def(inst(trial["torso"])["id"])["mounts"].has(slot)):
 				choices = []
 			if choices.is_empty():
 				trial[slot] = -1
@@ -1060,6 +1275,7 @@ func save_game() -> bool:
 		"losses": losses, "champion": champion, "story_seen": story_seen,
 		"owned_chips": owned_chips, "chips": chips, "circuit": circuit, "circuit_offers": circuit_offers,
 		"circuits_won": circuits_won, "setups": setups, "custom_parts": custom_parts,
+		"style": style, "shop_stock": shop_stock, "scout": scout,
 	}
 	var f := FileAccess.open(slot_path(save_slot), FileAccess.WRITE)
 	if f == null:
@@ -1118,6 +1334,13 @@ func load_game(slot: int = -1) -> String:
 	for id in data.get("chips", []):
 		if owned_chips.has(id) and not chips.has(id):
 			chips.append(id)
+	style = str(data.get("style", "striker"))
+	if not Catalog.STYLES.has(style):
+		style = "striker"
+	shop_stock = data.get("shop_stock", []).filter(func(id): return PARTS.has(id))
+	if shop_stock.is_empty():
+		roll_stock()
+	scout = data.get("scout", {})
 	circuit = data.get("circuit", {})
 	circuit_offers = data.get("circuit_offers", [])
 	circuits_won = int(data.get("circuits_won", 0))

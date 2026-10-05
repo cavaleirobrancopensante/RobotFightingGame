@@ -22,6 +22,7 @@ var tabs_box: HBoxContainer
 var msg_label: Label
 var preview: RobotPreview
 var fight_button: Button
+var scout_button: Button
 var overlay: Control
 var last_view := ""
 
@@ -103,6 +104,8 @@ func _ready() -> void:
 	var spacer := Control.new()
 	spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	bottom.add_child(spacer)
+	scout_button = UI.button("", _on_open_scout, 17, Vector2(150, 48))
+	bottom.add_child(scout_button)
 	fight_button = UI.button("", _on_fight, 19, Vector2(360, 48))
 	bottom.add_child(fight_button)
 
@@ -177,6 +180,8 @@ func refresh() -> void:
 		if not core.is_empty() and GameData.hp_ratio(core) < 0.35:
 			fight_button.text += " - core damaged!"
 
+	scout_button.visible = GameData.scout_key() != ""
+	scout_button.text = "Scout report" if GameData.scouted() else "Scout $%d" % GameData.scout_cost()
 	preview.look = GameData.player_look()
 	preview.highlight = selected if tab == "Build" else ""
 	refresh_stats()
@@ -360,13 +365,17 @@ func build_overview() -> void:
 	row_button(bar, "Randomize", _on_randomize, true, 120)
 	row_button(bar, "Setups", _on_open_setups, true, 100)
 	row_button(bar, "Paint", _on_open_paint, true, 85)
+	row_button(bar, "Style: %s" % Catalog.STYLES[GameData.style]["name"], _on_open_style, true, 150)
 	row_button(bar, "Storage (%d)" % GameData.spares().size(), _on_slot.bind("storage"), true, 125)
 
 	for slot in GameData.SLOTS:
+		if not GameData.slot_available(slot):
+			continue   # extra heads/arms need a torso with mounts for them
 		var p := GameData.equipped_inst(slot)
 		var slot_name: String = GameData.SLOT_NAMES[slot]
 		if p.is_empty():
-			make_tap_row(part_icon({}), "%s: empty" % slot_name, "Tap to fit or buy one" + (" (optional)" if slot == "back" else ""), _on_slot.bind(slot))
+			var opt: bool = slot == "back" or GameData.EXTRA_SLOTS.has(slot)
+			make_tap_row(part_icon({}), "%s: empty" % slot_name, "Tap to fit or buy one" + (" (optional)" if opt else ""), _on_slot.bind(slot))
 			continue
 		var d := GameData.part_def(p["id"])
 		var row := make_tap_row(part_icon(d, GameData.hp_ratio(p)), "%s: %s" % [slot_name, d["name"]], GameData.part_stat_text(d), _on_slot.bind(slot))
@@ -425,8 +434,15 @@ func build_slot(slot: String) -> void:
 		var row := make_row(part_icon(d, 0.0), d["name"] + "  (WRECKED)", "Rebuild it to use it again.")
 		row_button(row, "Rebuild $%d" % c, _on_repair.bind(sp["uid"]), GameData.money >= c, 130)
 		row_button(row, "Scrap", _on_sell.bind(sp["uid"]), true, 80)
+	var for_sale: Array = GameData.shop_stock.filter(func(id): return GameData.part_def(id)["kind"] == kind)
+	if not for_sale.is_empty():
+		section("In the dealer's stock right now:")
+		for id in for_sale:
+			var d := GameData.part_def(id)
+			var row := make_row(part_icon(d), d["name"], GameData.part_stat_text(d))
+			row_button(row, "Buy $%d" % d["cost"], _on_buy.bind(id), GameData.money >= d["cost"], 115)
 	var more := action_bar()
-	row_button(more, "Buy new %s" % str(GameData.KIND_NAMES[kind]).to_lower(), _on_go_shop.bind(kind), true, 200)
+	row_button(more, "Dealer's stock", _on_go_shop.bind(kind), true, 200)
 	if GameData.CUSTOM_KINDS.has(kind):
 		row_button(more, "Design one in the Workshop", _on_go_workshop.bind(kind), true, 270)
 
@@ -531,15 +547,24 @@ func _on_open_paint() -> void:
 
 func build_shop_tab() -> void:
 	var bar := action_bar()
-	for kind in GameData.KINDS:
-		var b := UI.button(GameData.KIND_NAMES[kind], _on_shop_kind.bind(kind), 14, Vector2(0, 42))
-		b.toggle_mode = true
-		b.button_pressed = kind == shop_kind
-		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		bar.add_child(b)
-	for d in GameData.shop_parts(shop_kind):
-		var row := make_row(part_icon(d), d["name"], GameData.part_stat_text(d))
-		row_button(row, "Buy $%d" % d["cost"] if d["cost"] > 0 else "Free", _on_buy.bind(d["id"]), GameData.money >= d["cost"], 115)
+	var info := UI.label("DEALER'S STOCK - it changes after every fight. Grab the good stuff while it's here!", 15, Color(1.0, 0.8, 0.4))
+	info.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	info.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	bar.add_child(info)
+	row_button(bar, "Restock $%d" % GameData.REROLL_COST, _on_reroll, GameData.money >= GameData.REROLL_COST, 150)
+	var stock: Array = GameData.shop_stock.duplicate()
+	stock.sort_custom(func(a, b): return GameData.KINDS.find(GameData.part_def(a)["kind"]) < GameData.KINDS.find(GameData.part_def(b)["kind"]))
+	if stock.is_empty():
+		section("Sold out! New stock arrives after your next fight (or pay to restock now).")
+	for id in stock:
+		var d := GameData.part_def(id)
+		var tag := "  [%s]" % str(d["kind"]).to_upper()
+		var row := make_row(part_icon(d), d["name"] + tag, GameData.part_stat_text(d))
+		row_button(row, "Buy $%d" % d["cost"], _on_buy.bind(id), GameData.money >= d["cost"], 115)
+	section("SCRAP BIN - free junk, always there:")
+	for d in GameData.scrap_bin():
+		var row := make_row(part_icon(d), d["name"] + "  [%s]" % str(d["kind"]).to_upper(), GameData.part_stat_text(d))
+		row_button(row, "Free", _on_buy.bind(d["id"]), true, 115)
 
 
 # ---------------------------------------------------------------- WORKSHOP
@@ -639,6 +664,8 @@ func build_moves_tab() -> void:
 			% [GameData.active_chips().size(), GameData.chip_slots()])
 	for id in Specials.MOVES:
 		var m: Dictionary = Specials.MOVES[id]
+		if m.has("style"):
+			continue   # signature moves come with the fighting style
 		var owned := GameData.owned_chips.has(id)
 		var installed := GameData.chips.has(id)
 		var icon := ChipIcon.new()
@@ -726,6 +753,113 @@ func _on_go_workshop(kind: String) -> void:
 	tab = "Workshop"
 	reset_workshop(kind)
 	refresh()
+
+
+func _on_reroll() -> void:
+	var before := GameData.money
+	say(GameData.reroll_stock(), "buy" if GameData.money < before else "error")
+	refresh()
+
+
+func _on_open_style() -> void:
+	var col := open_popup("FIGHTING STYLE")
+	section("Your style changes how ECHO fights and gives it a free signature move.", col)
+	for id in Catalog.STYLES:
+		var st: Dictionary = Catalog.STYLES[id]
+		var sig: Dictionary = Specials.MOVES[st["signature"]]
+		var row := HBoxContainer.new()
+		row.add_theme_constant_override("separation", 10)
+		col.add_child(row)
+		var text := VBoxContainer.new()
+		text.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		row.add_child(text)
+		text.add_child(UI.label(st["name"].to_upper() + ("   (current)" if id == GameData.style else ""), 18, Color(st["color"]).lightened(0.3)))
+		var d := UI.label(st["desc"], 13)
+		d.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		d.custom_minimum_size = Vector2(380, 0)
+		text.add_child(d)
+		text.add_child(UI.label("Signature: %s  %s" % [sig["name"], Specials.seq_text(sig["seq"])], 13, Color(0.5, 0.9, 1.0)))
+		var b := UI.button("Pick", _on_pick_style.bind(id), 16, Vector2(90, 46))
+		b.disabled = id == GameData.style
+		row.add_child(b)
+
+
+func _on_pick_style(id: String) -> void:
+	GameData.style = id
+	close_popup()
+	say("Fighting style: %s. Signature move: %s." % [Catalog.STYLES[id]["name"], Specials.MOVES[Catalog.STYLES[id]["signature"]]["name"]], "equip")
+	refresh()
+
+
+func _on_open_scout() -> void:
+	var msg := ""
+	if not GameData.scouted():
+		var before := GameData.money
+		msg = GameData.do_scout()
+		if GameData.money == before:
+			say(msg, "error")
+			return
+		Sfx.play("buy")
+		refresh()
+	var o := GameData.current_opponent()
+	var spec := GameData.current_opponent_spec()
+	var col := open_popup("SCOUTING REPORT: " + str(o["name"]))
+	if msg == "":
+		msg = "Their crew spotted your scout! They %s." % GameData.scout["change"]["text"] if GameData.scout.get("spied_back", false) else "Clean scouting run - they never saw you."
+	var m := UI.label(msg, 15, Color(1.0, 0.5, 0.3) if GameData.scout.get("spied_back", false) else Color(0.5, 1.0, 0.6))
+	m.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	col.add_child(m)
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 12)
+	col.add_child(row)
+	var pv := RobotPreview.new()
+	pv.look = GameData.look_from_spec(spec)
+	pv.facing = -1
+	pv.custom_minimum_size = Vector2(200, 230)
+	row.add_child(pv)
+	var info := VBoxContainer.new()
+	info.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.add_child(info)
+	var st: String = spec.get("style", "striker")
+	info.add_child(UI.label("Style: %s" % Catalog.STYLES[st]["name"], 16, Color(Catalog.STYLES[st]["color"]).lightened(0.3)))
+	var weak := ""
+	var weak_v := 1e9
+	for slot in GameData.BODY_SLOTS:
+		var p: Dictionary = spec["parts"].get(slot, {})
+		if p.is_empty():
+			continue
+		var d := GameData.part_def(p["id"])
+		var line := "%s: %s  (HP %d, armor %d)" % [GameData.SLOT_NAMES[slot], d["name"], int(p["max_hp"]), int(p["armor"])]
+		if d.get("trait", "") != "":
+			line += "  - " + Catalog.TRAITS[d["trait"]]["name"]
+		if d["gimmick"] != "":
+			line += "  - " + Specials.GADGETS[d["gimmick"]]["name"]
+		var l := UI.label(line, 12)
+		l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		info.add_child(l)
+		if slot != "torso":
+			var v: float = p["max_hp"] / maxf(0.1, 1.0 - p["armor"] / 100.0) / (0.6 if slot.begins_with("head") else 1.0)
+			if v < weak_v:
+				weak_v = v
+				weak = slot
+	for slot in ["back", "reactor"]:
+		if o["parts"].get(slot, "") != "":
+			var d := GameData.part_def(o["parts"][slot])
+			var extra := ""
+			if d.get("trait", "") != "":
+				extra = "  - " + Catalog.TRAITS[d["trait"]]["name"]
+			elif d["gimmick"] != "":
+				extra = "  - " + Specials.GADGETS[d["gimmick"]]["name"]
+			info.add_child(UI.label("%s: %s%s" % [GameData.SLOT_NAMES[slot], d["name"], extra], 12))
+	var moves: Array = []
+	for id in o["specials"]:
+		moves.append(Specials.MOVES[id]["name"])
+	moves.append(Specials.MOVES[Catalog.STYLES[st]["signature"]]["name"] + " (signature)")
+	var ml := UI.label("Moves: " + ", ".join(moves), 13, Color(0.5, 0.9, 1.0))
+	ml.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	info.add_child(ml)
+	if weak != "":
+		info.add_child(UI.label("Weak point: %s - aim there!" % GameData.SLOT_NAMES[weak], 15, Color(1.0, 0.9, 0.3)))
 
 
 func _on_buy(id: String) -> void:

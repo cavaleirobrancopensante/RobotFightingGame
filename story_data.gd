@@ -33,17 +33,23 @@ const SCENES := {
 		["GUS", "Listen: tap a part of the other robot to aim at it. Head, torso, an arm, a leg. ECHO will go for it."],
 		["ECHO", "TARGETING ONLINE. I HIT WHERE YOU POINT, PARTNER."],
 		["GUS", "Break a limb and it falls off for good. Same goes for us: anything we lose, we buy again. Anything dented, we repair."],
+		["GUS", "Here's the trick: if you AIM at a part and rip it off, it comes off clean. The crew can usually haul it home after a win. Free parts!"],
+		["GUS", "And every part matters. Hit the legs and it slows down. Hit the arms and its punches go soft. The scanner marks its weakest part, too."],
+		["GUS", "Heads? Small, tough and hard to hit. Go for the head if you like, but don't count on it."],
 		["GUS", "Lose the head or the torso and it's lights out. Keep your guard up."],
 	]},
 	"post_0": {"place": "THE FISH MARKET PIT", "lines": [
 		["GUS", "Ha! Did you see that crowd? Forty people and a seagull, and they LOVED it."],
 		["ECHO", "I ENJOYED THE SEAGULL."],
 		["GUS", "Spend the money in the garage. Arms first. Always arms first."],
+		["GUS", "The parts dealer's stock changes after every fight, so if you see something good, grab it before it's gone."],
+		["GUS", "And pick a fighting style. Tank soaks hits, Striker hits hard, Mechanic patches itself up, Specialist runs gadgets and chips."],
 	]},
 
 	"pre_1": {"place": "DOCK 9 ARENA", "lines": [
 		["NARRATOR", "RIVET belongs to the Dock 9 crew. They've never lost a bet, mostly because nobody bets against them."],
 		["GUS", "Their bot's all elbows. Aim for its arms and it can't hit back."],
+		["GUS", "Want an edge? Pay a scout to peek at their robot from the garage. Careful - sometimes their crew spots the scout and changes their setup."],
 		["ECHO", "PARTNER, YOUR HANDS ARE SHAKING."],
 		["YOU", "Yeah. Yours aren't."],
 		["ECHO", "I DO NOT HAVE HANDS. I HAVE PIPES."],
