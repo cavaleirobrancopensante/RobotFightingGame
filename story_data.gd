@@ -173,7 +173,7 @@ const SCENES := {
 	# ---- career moments (shown after the fight that decides them)
 	"scrap_medal": {"place": "THE SCRAP HEAP RING", "lines": [
 		["ANNOUNCER", "...and that's the Scrap Heap League done! Step up for your medal - and mind the rust!"],
-		["GUS", "Look at that trophy. Welded out of dead robots. Ugliest thing I ever saw. It's going on the bay wall."],
+		["GUS", "Look at that trophy. Welded out of dead robots. Ugliest thing I ever saw. It's going on the bay wall.", {"trophy": "scrap"}],
 		["GUS", "And it gets us into the Port Ferrum Regional. A real ring, real seats, real money. It starts week eight."],
 		["GUS", "Quiet weeks, there's always a pickup fight down here for a few bucks. And now people know your name, the cups will let you in."],
 	]},

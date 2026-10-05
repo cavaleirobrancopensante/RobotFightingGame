@@ -991,7 +991,7 @@ func ai_decide(dist: float, toward: String, away: String) -> Dictionary:
 	if player.blocking and dist < 100.0 * cpu.scale and can_punch and randf() < 0.3 + ai_smart * 0.5:
 		return {"tap": "grab"}
 	# 4) self-repairing robots back off to heal when hurt
-	if (cpu.style == "mechanic" or cpu.has_gadget("regen")) and hurt < 0.4 and dist < 320.0 and randf() < 0.55:
+	if cpu.has_gadget("regen") and hurt < 0.4 and dist < 320.0 and randf() < 0.55:
 		return {"hold": [away]}
 	# 5) shooters keep their distance while a shot is ready
 	if ai_kit["range"] > 0.0 and ai_ranged_ready() and not aggro:
@@ -1845,11 +1845,8 @@ func update_fighter(f: Fighter, o: Fighter, i: Dictionary, delta: float) -> void
 	f.armor_t = maxf(0.0, f.armor_t - delta)
 	f.haste_t = maxf(0.0, f.haste_t - delta)
 	if phase == "fight" and f.state != "ko":
-		# mechanics patch themselves up as they fight
-		if f.style == "mechanic":
-			for slot in BODY_PARTS:
-				if f.alive(slot) and f.parts[slot]["hp"] < f.parts[slot]["max_hp"]:
-					f.parts[slot]["hp"] = minf(f.parts[slot]["max_hp"], f.parts[slot]["hp"] + (1.0 if slot == "torso" else 0.4) * delta)
+		# (mechanics repair by landing hits - see mechanic_heal - not by just standing there: the old
+		# repair-over-time patched a whole robot back to full over a long fight)
 		# burning parts
 		for b in f.burns:
 			b["t"] -= delta

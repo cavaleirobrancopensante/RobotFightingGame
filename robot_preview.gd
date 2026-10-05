@@ -6,6 +6,7 @@ const RobotArt = preload("res://robot_art.gd")
 ## With interactive = true, tapping a part emits part_tapped(slot) and highlights it.
 
 signal part_tapped(slot: String)
+signal background_tapped(pos: Vector2)   # a tap that missed the robot (the garage checks the trophy shelf)
 
 var look := {}
 var facing := 1
@@ -100,6 +101,7 @@ func _gui_input(event: InputEvent) -> void:
 				part_tapped.emit(r[0])
 				accept_event()
 				return
+		background_tapped.emit(event.position)
 
 
 ## Little green body over the robot: green = healthy, red = hurt, dark with a red edge = missing.

@@ -5,6 +5,7 @@ const PilotArt = preload("res://pilot_art.gd")
 const RobotArt = preload("res://robot_art.gd")
 const Story = preload("res://story_data.gd")
 const UI = preload("res://ui.gd")
+const GarageArt = preload("res://garage_art.gd")
 ## Story screen: shows the scene in GameData.story_key line by line, then goes to GameData.story_return.
 ## Tap to reveal / advance. "Skip" jumps to the end.
 
@@ -22,11 +23,23 @@ var hint_label: Label
 var portrait: Portrait
 var skip_button: Button
 var last_tap := 0
+var trophy_view: TrophyPic
+
+
+## A trophy shown under the text while someone talks about it (line extra {"trophy": kind}).
+class TrophyPic extends Control:
+	var kind := "scrap"
+	var medal := 1
+	func _draw() -> void:
+		var s := size.y / 46.0
+		draw_circle(Vector2(size.x * 0.5, size.y * 0.55), size.y * 0.5, Color(1.0, 0.9, 0.6, 0.07))
+		GarageArt.draw_trophy(self, Vector2(size.x * 0.5, size.y - 4.0), kind, medal, s)
 
 
 class Portrait extends Control:
 	## Simple drawn faces for the humans; ECHO is drawn as the player's robot.
 	var who := ""
+	var place := ""          # where the scene is: the announcer dresses for the venue
 	var robot_look := {}
 	var t := 0.0
 	var talking := false
@@ -82,6 +95,39 @@ class Portrait extends Control:
 			"YOU":
 				draw_face(GameData.pilot_look, c, r, mouth)
 				PilotArt.draw_controller(self, c + Vector2(0, r * 1.45), r / 14.0, str(GameData.pilot_look.get("controller", "gamepad")), talking, t)
+			"ANNOUNCER" when place.contains("SCRAP"):
+				# the scrap heap's announcer: sunburnt, stubbled, bandana, sleeveless vest, a dented megaphone
+				draw_rect(Rect2(c.x - r * 1.15, c.y + r * 0.9, r * 2.3, r * 1.1), Color(0.36, 0.38, 0.22))   # vest
+				draw_rect(Rect2(c.x - r * 1.45, c.y + r * 0.95, r * 0.35, r * 0.9), Color(0.72, 0.48, 0.34))  # bare arms
+				draw_rect(Rect2(c.x + r * 1.1, c.y + r * 0.95, r * 0.35, r * 0.9), Color(0.72, 0.48, 0.34))
+				draw_circle(c, r, Color(0.72, 0.48, 0.34))
+				for k in 14:   # stubble
+					var a := PI * (0.15 + 0.7 * k / 13.0)
+					draw_circle(c + Vector2(cos(a), sin(a)) * r * 0.78, r * 0.035, Color(0.2, 0.15, 0.12))
+				draw_rect(Rect2(c.x - r * 1.05, c.y - r * 1.0, r * 2.1, r * 0.42), Color(0.75, 0.15, 0.12))  # bandana
+				draw_colored_polygon(PackedVector2Array([c + Vector2(r * 0.9, -r * 0.8), c + Vector2(r * 1.4, -r * 0.5), c + Vector2(r * 1.2, -r * 0.2)]), Color(0.75, 0.15, 0.12))
+				draw_circle(c + Vector2(-r * 0.35, -r * 0.1), r * 0.1, Color.WHITE)
+				draw_line(c + Vector2(r * 0.15, -r * 0.12), c + Vector2(r * 0.55, -r * 0.08), Color(0.25, 0.15, 0.1), r * 0.1)   # squint
+				draw_line(c + Vector2(r * 0.1, -r * 0.45), c + Vector2(r * 0.6, r * 0.15), Color(0.55, 0.3, 0.25), 2.0)          # scar
+				draw_rect(Rect2(c.x - r * 0.4, c.y + r * 0.3, r * 0.8, mouth * 1.3), Color(0.3, 0.05, 0.05))
+				# the megaphone
+				var mp := c + Vector2(r * 1.05, r * 0.45)
+				draw_colored_polygon(PackedVector2Array([mp, mp + Vector2(r * 0.9, -r * 0.45), mp + Vector2(r * 0.9, r * 0.55), mp + Vector2(0, r * 0.2)]), Color(0.85, 0.7, 0.2))
+				draw_rect(Rect2(mp + Vector2(-r * 0.25, r * 0.05), Vector2(r * 0.3, r * 0.15)), Color(0.3, 0.3, 0.3))
+			"ANNOUNCER" when place.contains("KANE") or place.contains("GRAND"):
+				# the Championship's announcer: tuxedo, bow tie, silver slicked hair, a gold microphone
+				draw_rect(Rect2(c.x - r * 1.2, c.y + r * 0.9, r * 2.4, r * 1.1), Color(0.07, 0.07, 0.09))     # jacket
+				draw_colored_polygon(PackedVector2Array([c + Vector2(-r * 0.4, r * 0.9), c + Vector2(r * 0.4, r * 0.9), c + Vector2(0, r * 1.7)]), Color(0.95, 0.95, 0.95))   # shirt
+				draw_colored_polygon(PackedVector2Array([c + Vector2(-r * 0.3, r * 0.95), c + Vector2(0, r * 1.05), c + Vector2(-r * 0.3, r * 1.15)]), Color(0.6, 0.05, 0.1))   # bow tie
+				draw_colored_polygon(PackedVector2Array([c + Vector2(r * 0.3, r * 0.95), c + Vector2(0, r * 1.05), c + Vector2(r * 0.3, r * 1.15)]), Color(0.6, 0.05, 0.1))
+				draw_circle(c, r, Color(0.92, 0.78, 0.66))
+				draw_colored_polygon(PackedVector2Array([c + Vector2(-r, -r * 0.2), c + Vector2(-r * 0.9, -r * 0.9), c + Vector2(0, -r * 1.15),
+						c + Vector2(r * 0.95, -r * 0.8), c + Vector2(r, -r * 0.3), c + Vector2(r * 0.3, -r * 0.7)]), Color(0.78, 0.8, 0.84))   # slicked hair
+				draw_circle(c + Vector2(-r * 0.35, -r * 0.1), r * 0.09, Color(0.2, 0.2, 0.25))
+				draw_circle(c + Vector2(r * 0.35, -r * 0.1), r * 0.09, Color(0.2, 0.2, 0.25))
+				draw_rect(Rect2(c.x - r * 0.3, c.y + r * 0.35, r * 0.6, mouth), Color(0.45, 0.1, 0.1))
+				draw_rect(Rect2(c.x + r * 0.62, c.y + r * 0.42, r * 0.12, r * 0.8), Color(0.75, 0.6, 0.2))   # gold mic
+				draw_circle(c + Vector2(r * 0.68, r * 0.35), r * 0.19, Color(0.95, 0.8, 0.3))
 			"ANNOUNCER":
 				draw_circle(c, r, Color(0.85, 0.65, 0.5))
 				draw_rect(Rect2(c.x - r, c.y - r * 1.05, r * 2.0, r * 0.45), Color(0.1, 0.1, 0.1))
@@ -132,6 +178,7 @@ func _ready() -> void:
 	row.add_theme_constant_override("separation", 20)
 	col.add_child(row)
 	portrait = Portrait.new()
+	portrait.place = str(scene.get("place", ""))
 	portrait.custom_minimum_size = Vector2(260, 260)
 	portrait.robot_look = GameData.player_look()
 	row.add_child(portrait)
@@ -146,6 +193,10 @@ func _ready() -> void:
 	text_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	text_label.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	box.add_child(text_label)
+	trophy_view = TrophyPic.new()
+	trophy_view.custom_minimum_size = Vector2(0, 170)
+	trophy_view.visible = false
+	box.add_child(trophy_view)
 
 	hint_label = UI.label("Tap to continue", 20, Color(0.6, 0.6, 0.65))
 	hint_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
@@ -168,10 +219,13 @@ func build_screens(raw: Array) -> Array:
 		text = text.replace("ECHO", GameData.robot_name)
 		if text == "":
 			continue
+		var extra: Dictionary = l[2] if l.size() > 2 else {}
 		if not out.is_empty() and out[-1][0] == who and str(out[-1][1]).length() + text.length() < SCREEN_CHARS:
 			out[-1][1] = str(out[-1][1]) + " " + text
+			if not extra.is_empty():
+				out[-1][2] = extra
 		else:
-			out.append([who, text])
+			out.append([who, text, extra])
 	return out
 
 
@@ -186,6 +240,15 @@ func show_line() -> void:
 	name_label.text = "" if who == "NARRATOR" else shown_name
 	name_label.add_theme_color_override("font_color", Color(info["color"]))
 	text_label.text = str(lines[index][1])
+	var extra: Dictionary = lines[index][2] if lines[index].size() > 2 else {}
+	trophy_view.visible = extra.has("trophy")
+	if extra.has("trophy"):
+		trophy_view.kind = str(extra["trophy"])
+		trophy_view.medal = 1
+		for t in GameData.trophies:   # the medal you actually won there
+			if str(t.get("kind", "")) == trophy_view.kind:
+				trophy_view.medal = int(t.get("medal", 1))
+		trophy_view.queue_redraw()
 	text_label.add_theme_color_override("font_color", Color(0.75, 0.75, 0.8) if who == "NARRATOR" else Color.WHITE)
 	text_label.visible_characters = 0
 	shown = 0.0

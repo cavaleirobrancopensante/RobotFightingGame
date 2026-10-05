@@ -182,6 +182,7 @@ func _ready() -> void:
 	preview.custom_minimum_size = Vector2(300, 110)
 	preview.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	preview.part_tapped.connect(_on_part_tapped)
+	preview.background_tapped.connect(_on_backdrop_tapped)
 	left.add_child(preview)
 	stats_box = VBoxContainer.new()
 	stats_box.add_theme_constant_override("separation", 0)
@@ -301,7 +302,7 @@ func show_last_result() -> void:
 		if r.get("cup_done", "") != "":
 			bits.append(tr("CUP OVER - %s.") % r["cup_done"])
 		if r.get("event_done", "") != "":
-			bits.append(tr("SEASON OVER - %s. See the Season tab.") % r["event_done"])
+			bits.append(tr("SEASON OVER - %s. See the Season tab.") % str(r["event_done"]).trim_suffix("!").trim_suffix("."))
 		if r.get("trophy", "") != "":
 			bits.append(tr("Trophy part: %s.") % r["trophy"])
 		if not r.get("lost", []).is_empty():
@@ -1705,6 +1706,70 @@ func _on_tab(t: String) -> void:
 	if tip != "":
 		say(tip)
 	refresh()
+
+
+## Tapping a trophy on the bay's shelf: zoom in on it.
+func _on_backdrop_tapped(pos: Vector2) -> void:
+	if scene != "build":
+		return
+	for s in GarageArt.trophy_spots(preview.size, GameData.trophies.size()):
+		var base: Vector2 = s[1]
+		if Rect2(base + Vector2(-13, -40), Vector2(26, 42)).has_point(pos):
+			Sfx.play("click")
+			open_trophy(int(s[0]))
+			return
+
+
+class TrophyView extends Control:
+	var kind := "cup"
+	var medal := 1
+	var t := 0.0
+
+	func _process(delta: float) -> void:
+		t += delta
+		queue_redraw()
+
+	func _draw() -> void:
+		var s := size.y / 46.0
+		draw_rect(Rect2(Vector2.ZERO, size), Color(0.08, 0.08, 0.1))
+		# a spotlight and a slow shine
+		draw_circle(Vector2(size.x * 0.5, size.y * 0.55), size.y * 0.45, Color(1.0, 0.9, 0.6, 0.06))
+		GarageArt.draw_trophy(self, Vector2(size.x * 0.5, size.y - 6.0), kind, medal, s)
+		var shine := fmod(t * 0.5, 1.6) - 0.3
+		if shine > 0.0 and shine < 1.0:
+			var x := size.x * (0.3 + shine * 0.4)
+			draw_line(Vector2(x, size.y * 0.2), Vector2(x - 12, size.y * 0.8), Color(1, 1, 1, 0.25), 4.0)
+
+
+func open_trophy(i: int) -> void:
+	var tr_: Dictionary = GameData.trophies[i]
+	var medal := int(tr_.get("medal", 1))
+	var col := open_popup(tr("%s - %s") % [tr(Career.MEDALS[medal]), tr(str(tr_.get("name", "")))])
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 16)
+	col.add_child(row)
+	var tv := TrophyView.new()
+	tv.kind = str(tr_.get("kind", "cup"))
+	tv.medal = medal
+	tv.custom_minimum_size = Vector2(200, 230)
+	row.add_child(tv)
+	var info := VBoxContainer.new()
+	info.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.add_child(info)
+	var when := tr("Won in year %d") % int(tr_.get("year", 1))
+	if tr_.has("week"):
+		when = tr("Won in year %d, week %d") % [int(tr_.get("year", 1)), int(tr_["week"])]
+	info.add_child(UI.label(when, 17, Color(1.0, 0.85, 0.4)))
+	var fights: Array = tr_.get("fights", [])
+	if fights.is_empty():
+		info.add_child(UI.label(tr("(The fight records from before this was kept are lost.)"), 13, Color(0.6, 0.6, 0.65)))
+	else:
+		var w := fights.filter(func(f): return f["won"]).size()
+		info.add_child(UI.label(tr("Record: %d-%d") % [w, fights.size() - w], 17, Color(0.9, 0.9, 0.95)))
+		for f in fights:
+			var l := UI.label(tr("Week %d: %s %s") % [int(f["w"]), tr("beat") if f["won"] else tr("lost to"), str(f["opp"])], 14,
+					Color(0.5, 1.0, 0.6) if f["won"] else Color(1.0, 0.55, 0.45))
+			info.add_child(l)
 
 
 func _on_part_tapped(slot: String) -> void:

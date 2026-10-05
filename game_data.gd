@@ -2141,6 +2141,16 @@ func dismantle_pay(id: String) -> int:
 	return 50 + int(float(part_def(id).get("cost", 0)) * 0.1) if id != "" else 50
 
 
+## A trophy for the bay wall, with when you won it and the fights that got you there.
+func trophy_record(ev: Dictionary, kind: String, medal: int) -> Dictionary:
+	var fights: Array = []
+	var wk: Array = ev.get("weeks", [])
+	for e in fight_log:
+		if int(e["y"]) == int(ev.get("year", year)) and wk.has(int(e["w"])) and (e["mode"] == "story" or e["mode"] == "circuit"):
+			fights.append({"opp": e["opp"], "won": e["won"], "w": int(e["w"])})
+	return {"kind": kind, "medal": medal, "name": ev["name"], "year": year, "week": week, "fights": fights}
+
+
 ## An event is over: medals, prize money, trophies, and what you've qualified for.
 func finish_event(ev: Dictionary) -> String:
 	var info: Dictionary = Career.STAGES[ev["stage"]]
@@ -2149,7 +2159,7 @@ func finish_event(ev: Dictionary) -> String:
 	if m > 0:
 		var prize: int = info["prizes"][m - 1]
 		money += prize
-		trophies.append({"kind": ev["stage"], "medal": m, "name": ev["name"], "year": year})
+		trophies.append(trophy_record(ev, ev["stage"], m))
 		text += tr(" - prize $%d and a trophy for the bay!") % prize
 	match ev["stage"]:
 		"scrap":
@@ -2177,7 +2187,7 @@ func finish_cup() -> String:
 	if m > 0:
 		var prize: int = int(int(circuit["prize"]) * [0, 1.0, 0.5, 0.3][m])
 		money += prize
-		trophies.append({"kind": "cup", "medal": m, "name": circuit["name"], "year": year})
+		trophies.append(trophy_record(circuit, "cup", m))
 		text += tr(" - $%d") % prize
 		if m == 1:
 			circuits_won += 1

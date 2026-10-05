@@ -388,20 +388,31 @@ const MEDAL_COLORS := [Color(0.5, 0.5, 0.5), Color(0.95, 0.78, 0.25), Color(0.8,
 
 ## The bay's trophy wall: one trophy per medal - first, second or third place in a league, a
 ## playoff or a cup. Gold, silver or bronze; the shape tells you which event it's from.
+## Where each trophy stands on the bay's shelves: [index into the trophy list, base point] (newest ones
+## shown). Used for drawing them and for tapping them.
+static func trophy_spots(size: Vector2, count: int) -> Array:
+	var x0 := size.x * 0.42
+	var w := size.x * 0.56
+	var per_shelf := maxi(1, int((w - 10.0) / 26.0))
+	var shown := mini(count, per_shelf * 2)
+	var out: Array = []
+	for k in shown:
+		out.append([count - shown + k, Vector2(x0 + 14.0 + (k % per_shelf) * 26.0, 86.0 + (k / per_shelf) * 44.0)])
+	return out
+
+
 static func _bay_trophies(ci: CanvasItem, size: Vector2, info: Dictionary) -> void:
 	var list: Array = info.get("medals", [])
 	var x0 := size.x * 0.42
 	var w := size.x * 0.56
-	var per_shelf := maxi(1, int((w - 10.0) / 26.0))
-	var shown := mini(list.size(), per_shelf * 2)
-	for k in shown:
-		var shelf := k / per_shelf
-		var shelf_y := 86.0 + shelf * 44.0
-		if k % per_shelf == 0:
-			ci.draw_rect(Rect2(x0, shelf_y, w, 5), Color(0.45, 0.32, 0.2))
-		var tr: Dictionary = list[list.size() - shown + k]   # the newest ones
-		var x := x0 + 14.0 + (k % per_shelf) * 26.0
-		draw_trophy(ci, Vector2(x, shelf_y), str(tr.get("kind", "cup")), int(tr.get("medal", 1)), 1.0)
+	var shelves := {}
+	for s in trophy_spots(size, list.size()):
+		var base: Vector2 = s[1]
+		if not shelves.has(base.y):
+			shelves[base.y] = true
+			ci.draw_rect(Rect2(x0, base.y, w, 5), Color(0.45, 0.32, 0.2))
+		var tr: Dictionary = list[s[0]]
+		draw_trophy(ci, base, str(tr.get("kind", "cup")), int(tr.get("medal", 1)), 1.0)
 	_scoreboard(ci, Rect2(10, 24, size.x * 0.4, 82), info)
 	# the championship belt hangs on the wall under the scoreboard
 	if info.get("champion", false):
