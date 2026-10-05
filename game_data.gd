@@ -1629,10 +1629,10 @@ func unlocked(feature: String) -> bool:
 ## the old one-line tip id (saves from before the scenes count it as already explained)]
 const UNLOCK_SCENES := [["scrapyard", "", "scrapyard"], ["storage", "", ""], ["style", "", "style"],
 		["shop", "Shop", "shop"], ["season", "Season", "season"], ["scout", "", "scout"], ["moves", "Moves", "moves"],
-		["cups", "Cups", ""], ["team", "Team", "backup"], ["workshop", "Workshop", "workshop"], ["pilot", "", "pilot"],
+		["cups", "Cups", ""], ["team", "Team", "backup"], ["workshop", "", "workshop"], ["pilot", "", "pilot"],
 		["paint", "", "pilot"], ["setups", "", "setups"], ["randomize", "", "setups"]]
 const TAB_FEATURES := {"Shop": "shop", "Season": "season", "Moves": "moves",
-		"Cups": "cups", "Team": "team", "Workshop": "workshop"}
+		"Cups": "cups", "Team": "team"}
 var open_tab := ""      # garage tab to open after an unlock scene
 var open_action := ""   # garage button to press after an unlock scene (style, pilot, paint, ...)
 

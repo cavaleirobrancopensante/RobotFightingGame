@@ -112,7 +112,7 @@ static func _props_back(ci: CanvasItem, size: Vector2, scene: String, t: float, 
 					ci.draw_rect(Rect2(bx + 4, w.end.y - bh + 6, 3, 3), Color(1.0, 0.85, 0.4))
 			ci.draw_rect(w, Color(0.35, 0.35, 0.4), false, 3.0)
 		"workshop":
-			_sign(ci, Vector2(size.x * 0.3, 30), I18n.t("WORKSHOP"), Color(0.6, 0.85, 1.0))
+			_sign(ci, Vector2(size.x * 0.3, 30), I18n.t("CUSTOM ORDERS"), Color(0.6, 0.85, 1.0))
 			# shelves of parts
 			for row in 2:
 				var y := 50.0 + row * 34.0

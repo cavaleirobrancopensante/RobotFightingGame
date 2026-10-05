@@ -249,6 +249,9 @@ func _ready() -> void:
 			_on_slot("storage")
 		"scrapyard":
 			_on_slot("scrapyard")
+		"order":
+			shop_view = "order"
+			refresh()
 		"scout":
 			open_fight_popup()   # Gus explained scouting: back to the pre-fight window
 
@@ -259,8 +262,6 @@ func tab_list() -> Array:
 		t.append("Shop")
 	if GameData.unlocked("season"):
 		t.append("Season")
-	if GameData.unlocked("workshop"):
-		t.append("Workshop")
 	if GameData.unlocked("moves"):
 		t.append("Moves")
 	if GameData.cups_unlocked():
@@ -369,7 +370,8 @@ func refresh() -> void:
 		c.queue_free()
 	for t in tab_list():
 		# a star marks a tab you haven't opened yet
-		var fresh: bool = GameData.TAB_FEATURES.has(t) and GameData.is_new(GameData.TAB_FEATURES[t])
+		var fresh: bool = (GameData.TAB_FEATURES.has(t) and GameData.is_new(GameData.TAB_FEATURES[t])) \
+				or (t == "Shop" and GameData.unlocked("workshop") and GameData.is_new("workshop"))
 		var b := UI.button(tr(t) + (" ★" if fresh else ""), _on_tab.bind(t), 18, Vector2(0, 46))
 		b.toggle_mode = true
 		b.button_pressed = t == tab
@@ -394,8 +396,6 @@ func refresh() -> void:
 				build_slot(selected)
 		"Shop":
 			build_shop_tab()
-		"Workshop":
-			build_workshop()
 		"Moves":
 			build_moves_tab()
 		"Cups":
@@ -665,7 +665,7 @@ func build_slot(slot: String) -> void:
 	else:
 		row_button(more, "Dig in the Scrapyard", _on_slot.bind("scrapyard"), true, 220)
 	if GameData.CUSTOM_KINDS.has(kind) and GameData.unlocked("workshop"):
-		row_button(more, "Design one in the Workshop", _on_go_workshop.bind(kind), true, 270)
+		row_button(more, "Order your own part", _on_go_workshop.bind(kind), true, 270)
 
 
 func build_storage() -> void:
@@ -925,6 +925,8 @@ func body_health() -> Dictionary:
 
 func set_scene_for_tab() -> void:
 	scene = "paint" if paint_open else TAB_SCENES.get(tab, "build")
+	if tab == "Shop" and shop_view == "order":
+		scene = "workshop"
 	if tab == "Build" and selected == "storage":
 		scene = "storage"
 	elif tab == "Build" and selected == "scrapyard":
@@ -961,7 +963,22 @@ func _on_open_paint() -> void:
 
 # ---------------------------------------------------------------- SHOP
 
+var shop_view := "stock"   # Shop tab: "stock" (the dealer) or "order" (order your own part)
+
+
 func build_shop_tab() -> void:
+	if GameData.unlocked("workshop"):
+		var views := action_bar()
+		for v in [["stock", tr("Dealer's stock")], ["order", star(tr("Order your own part"), "workshop")]]:
+			var vb := row_button(views, v[1], _on_shop_view.bind(v[0]), true, 0)
+			vb.toggle_mode = true
+			vb.button_pressed = shop_view == v[0]
+			vb.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	else:
+		shop_view = "stock"
+	if shop_view == "order":
+		build_workshop()
+		return
 	var bar := action_bar()
 	var info := UI.label("DEALER'S STOCK - it changes after every fight. Grab the good stuff while it's here!", 15, Color(1.0, 0.8, 0.4))
 	info.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -1663,6 +1680,9 @@ func gus_explains(feature: String, tab_name: String = "") -> bool:
 	GameData.open_action = "" if tab_name != "" else feature
 	if feature == "storage" or feature == "scrapyard":
 		GameData.open_tab = "Build"
+	if feature == "workshop":
+		GameData.open_tab = "Shop"
+		GameData.open_action = "order"
 	if GameData.queue_story("unlock_" + feature, "res://garage.tscn"):
 		Sfx.play("click")
 		get_tree().change_scene_to_file("res://story.tscn")
@@ -1714,8 +1734,16 @@ func _on_go_shop(kind: String) -> void:
 	refresh()
 
 
+func _on_shop_view(v: String) -> void:
+	if v == "order" and gus_explains("workshop"):
+		return
+	shop_view = v
+	refresh()
+
+
 func _on_go_workshop(kind: String) -> void:
-	tab = "Workshop"
+	tab = "Shop"
+	shop_view = "order"
 	reset_workshop(kind)
 	refresh()
 

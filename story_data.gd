@@ -245,7 +245,7 @@ const SCENES := {
 	"unlock_workshop": {"place": "GUS'S BAY", "lines": [
 		["GUS", "The dealer sells what the dealer's got. Sometimes you want a part nobody sells."],
 		["GUS", "So I cleared the workbench. Tell me the shape, the size, what it should do, and I'll build it from scratch. Costs more than buying - but it's exactly what you want."],
-		["GUS", "That's the Workshop. And don't touch the welder without gloves."],
+		["GUS", "You'll find it in the Shop: Order your own part. And don't touch the welder without gloves."],
 	]},
 	"unlock_pilot": {"place": "GUS'S BAY", "lines": [
 		["GUS", "People recognise you in the street now, kid. Time you looked like a pilot and not like my nephew."],
