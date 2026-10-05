@@ -147,13 +147,21 @@ func choice_row(parent: Control, label: String, value: String, cb_prev: Callable
 		sw.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 		bar.add_child(sw)
 	else:
-		var v := UI.label(value, 13, Color(0.85, 0.85, 0.9))
+		var v := UI.label(value, fitting_size(value, 13, 104.0), Color(0.85, 0.85, 0.9))
 		v.custom_minimum_size = Vector2(110, 0)
 		v.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		v.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		v.clip_text = true
 		bar.add_child(v)
 	bar.add_child(UI.button(">", cb_next, 16, Vector2(40, 32)))
+
+
+## Shrink a label's font until the text fits the box (long values like "Long hair + scar").
+func fitting_size(text: String, size: int, width: float) -> int:
+	var f := ThemeDB.fallback_font
+	while size > 9 and f.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, int(size * UI.SCALE)).x > width:
+		size -= 1
+	return size
 
 
 # ---------------------------------------------------------------- pilot

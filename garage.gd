@@ -712,7 +712,10 @@ func _on_open_pilot() -> void:
 			sw.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 			bar.add_child(sw)
 		else:
-			var v := UI.label(l[2], 13, Color(l[3]).lightened(0.3) if l[3] != "" else Color(0.85, 0.85, 0.9))
+			var vs := 13
+			while vs > 9 and ThemeDB.fallback_font.get_string_size(l[2], HORIZONTAL_ALIGNMENT_LEFT, -1, int(vs * UI.SCALE)).x > 108.0:
+				vs -= 1
+			var v := UI.label(l[2], vs, Color(l[3]).lightened(0.3) if l[3] != "" else Color(0.85, 0.85, 0.9))
 			v.custom_minimum_size = Vector2(112, 0)
 			v.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 			v.clip_text = true
