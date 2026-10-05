@@ -557,7 +557,7 @@ func build_overview() -> void:
 			make_tap_row(part_icon({}), tr("%s: empty") % slot_name, "Tap to fit or buy one" + (" (optional)" if opt else ""), _on_slot.bind(slot))
 			continue
 		var d := GameData.part_def(p["id"])
-		var row := make_tap_row(part_icon(d, GameData.hp_ratio(p)), tr("%s: %s") % [slot_name, d["name"]], GameData.part_stat_text(d), _on_slot.bind(slot))
+		var row := make_tap_row(part_icon(d, GameData.hp_ratio(p)), tr("%s: %s") % [slot_name, d["name"]], health_text(p), _on_slot.bind(slot))
 		if not GameData.UNDAMAGEABLE.has(d["kind"]):
 			var col := VBoxContainer.new()
 			col.custom_minimum_size = Vector2(120, 0)

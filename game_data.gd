@@ -792,7 +792,10 @@ func part_stat_text(d: Dictionary, cur_hp: float = -1.0) -> String:
 		if d["draw"] > 0:
 			b.append(tr("Power %d") % d["draw"])
 		return "  ".join(b) + g + trait_line(d)
-	var bits: Array = [tr("HP %d") % d["hp"] if cur_hp < 0.0 else tr("HP %d/%d") % [ceili(cur_hp), d["hp"]]]
+	var bits: Array = [tr("HP %d") % d["hp"]]
+	if cur_hp >= 0.0:
+		var lost := 100 - ceili(cur_hp / maxf(1.0, float(d["hp"])) * 100.0)
+		bits = [tr("HP %d/%d") % [ceili(cur_hp), d["hp"]] + ((tr(" (-%d%%)") % lost) if lost > 0 else "")]
 	if d["armor"] != 0:
 		bits.append(tr("ARM %d%%") % d["armor"])
 	if d["damage"] != 0:
