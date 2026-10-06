@@ -2,7 +2,7 @@ extends Node
 
 # helper scripts, loaded by path so the game also runs without an editor scan
 ## The game's version, shown on the main menu. Bump it with every change (1.1, 1.2, ...).
-const VERSION := "1.31"
+const VERSION := "1.32"
 const Arena = preload("res://arena.gd")
 const I18n = preload("res://i18n.gd")
 const Catalog = preload("res://catalog.gd")
@@ -267,7 +267,12 @@ var tips_seen: Array = []
 const DIGS_PER_FIGHT := 1
 ## Scrapyard digs: [grade, chance] (cumulative, checked rarest first): anything can turn up, rarely.
 const DIG_RARE := [[5, 0.0004], [4, 0.002], [3, 0.007], [2, 0.022]]
-var digs_left := DIGS_PER_FIGHT   # scrapyard digs; refilled every Sunday   # Gus's one-time tips (fight and garage) already shown
+var digs_left := DIGS_PER_FIGHT   # scrapyard digs: one a day
+## The longer you leave the pile alone, the better your odds of something rare on the next dig:
+## +5% for every day you don't dig, up to 50%. Digging spends it.
+const DIG_LUCK_STEP := 0.05
+const DIG_LUCK_MAX := 0.5
+var dig_luck := 0.0   # Gus's one-time tips (fight and garage) already shown
 var inventory: Array = []   # [{uid, id, hp}]
 var equipped := {}          # slot -> uid (-1 = empty)
 var gantries := 0          # gantries bought for backup robots (each one is a robot more, and more rent)
@@ -364,7 +369,7 @@ var last_result := {}       # handed from the fight to the garage
 var story_key := ""         # which story scene to show next
 var story_return := ""      # scene to go to after the story
 const DEFAULT_SETTINGS := {"sound": true, "music": true, "shake": true, "button_size": 1, "difficulty": 1, "layout": {}, "team_controls": "split", "battery_saver": false,
-		"start_money": START_MONEY, "living_cost": LIVING_COST, "coaching": 2, "lang": "en", "pecking": 1}
+		"start_money": START_MONEY, "living_cost": LIVING_COST, "coaching": 2, "lang": "en", "pecking": 1, "edges": 0}
 var settings := DEFAULT_SETTINGS.duplicate(true)
 
 
@@ -855,8 +860,6 @@ func repair_all() -> String:
 	var c := repair_all_cost()
 	if c == 0:
 		return "Your robot is in perfect shape." if not has_work("m") else "Everything's already on the job board."
-	if tour == 0:
-		c = 0   # Gus's tour, first stop: this one's on the house
 	if not can_repair(c):
 		return tr("Repairing everything costs $%d. You don't have the cash. Fix the worst parts one at a time, or fight with the dents.") % c
 	var h := 0.0
@@ -865,8 +868,6 @@ func repair_all() -> String:
 		if not p.is_empty() and repair_cost(p) > 0:
 			h += queue_repair(p)
 	money -= c
-	if c == 0:
-		return tr("On the house, kid. About %s of work on the board.") % hours_text(h)
 	return tr("Everything's on the job board: $%d, about %s of work.") % [c, hours_text(h)]
 
 
@@ -1212,6 +1213,7 @@ func sell(uid: int) -> String:
 	var v := sell_value(p)
 	money += v
 	inventory.erase(p)
+	jobs = jobs.filter(func(j): return int(j["uid"]) != uid)   # nothing left on the board for a part that's gone
 	return tr("Sold %s for $%d.") % [part_def(p["id"])["name"], v]
 
 
@@ -1973,6 +1975,10 @@ func day_index() -> int:
 ## week starts on Monday.
 func next_day() -> void:
 	phase = 0
+	# a day without digging: the pile settles and the odds of something rare go up
+	if digs_left > 0:
+		dig_luck = minf(DIG_LUCK_MAX, dig_luck + DIG_LUCK_STEP)
+	digs_left = DIGS_PER_FIGHT
 	if day == "sun":
 		advance_week(1)
 	else:
@@ -2968,8 +2974,28 @@ const CHIP_DIG_CHANCE := 0.04
 ## "head" / "torso" / "arm" / "leg" digs for that part - you get one, but it's mostly junk.
 func dig_scrap(kind: String = "") -> Dictionary:
 	if digs_left <= 0:
-		return {"text": "Too tired to dig. Fresh junk comes in on Sunday.", "part": ""}
+		return {"text": "You've dug today. Come back tomorrow.", "part": ""}
 	digs_left -= 1
+	# the luck you saved up by staying away: a chip, or a part from a grade above yours
+	var lucky := randf() < dig_luck
+	dig_luck = 0.0
+	if lucky:
+		var free_chips: Array = chip_ids().filter(func(id): return not owned_chips.has(id))
+		if kind == "" and not free_chips.is_empty() and randf() < 0.35:
+			var lc: String = free_chips[randi() % free_chips.size()]
+			owned_chips.append(lc)
+			return {"text": tr("Lucky dig! A training chip, %s, and it still works. It's yours (see Chips).") % tr(Specials.MOVES[lc]["name"]), "part": "", "chip": lc, "grade": "chip"}
+		var up := mini(5, my_grade() + 1)
+		var lpool: Array = []
+		for lid in ALL_PARTS:
+			var ld: Dictionary = PARTS[lid]
+			if ld["shop"] and int(ld.get("grade", 0)) == up and not UNDAMAGEABLE.has(ld["kind"]) and (kind == "" or ld["kind"] == kind):
+				lpool.append(lid)
+		if not lpool.is_empty():
+			var lid2: String = lpool[randi() % lpool.size()]
+			var luid := add_part(lid2, randf_range(0.3, 0.6))
+			inst(luid)["dug"] = true
+			return {"text": tr("Lucky dig! A %s, a grade above anything the dealer sells you. Battered, but it's ours (in Storage).") % part_def(lid2)["name"], "part": lid2, "grade": "rare", "uid": luid}
 	# now and then, digging anywhere turns up a training chip (you can't dig for one)
 	var unowned: Array = chip_ids().filter(func(id): return not owned_chips.has(id))
 	if kind == "" and not unowned.is_empty() and randf() < CHIP_DIG_CHANCE:
@@ -3442,6 +3468,14 @@ func record_result(won: bool, part_hp: Dictionary, destroyed: int, salvage_ids: 
 			bet_result = settle_bets("event", event)
 			if res["phase_changed"]:
 				event_done = league_end(event)
+			if event.get("trials", false) and not res["done"]:
+				# the Open Trials: one win is all it takes; a loss means another chance next Saturday
+				if won:
+					pending_talk.append({"lines": [["GUS", tr("That's the one we needed! We're in the Scrap League, kid. The Trials finish without us, the league starts in week 4."), {}]]})
+				elif not Career.finals_match_of(event, 0).is_empty():
+					var left: int = event.get("slots", []).size() - int(event.get("po_round", 0))
+					pending_talk.append({"lines": [["GUS", (tr("Lost it. Shake it off: one more chance, next Saturday. Lose that and it's a year in the gutter.") if left == 1
+							else tr("Lost it. That's not the end: %d more chances, one every Saturday. One win is all we need.") % left), {}]]})
 			if res["done"]:
 				event_done = finish_title(event) if event.get("stage", "") == "title" else finish_event(event)
 				if event.get("stage", "") == "open":
@@ -4040,7 +4074,7 @@ func save_game() -> bool:
 		"owned_chips": owned_chips, "chips": chips, "circuit": circuit, "circuit_offers": circuit_offers,
 		"circuits_won": circuits_won, "pickup": pickup, "setups": setups, "custom_parts": custom_parts,
 		"year": year, "week": week, "day": day, "rank": rank, "event": {}, "leagues": leagues, "title_seeds": title_seeds, "trophies": trophies, "career_stats": career_stats,
-		"pecking_k": pecking_k(), "style": style, "style_locked": style_locked, "shop_stock": shop_stock, "chip_stock": chip_stock, "scout": scout, "wingmen": wingmen, "sending": sending, "pilot_look": pilot_look, "owned_controllers": owned_controllers, "tips_seen": tips_seen, "h2h": h2h, "rivals": rivals, "grudge": grudge, "pending_talk": pending_talk, "inbox": inbox, "inbox_seen": inbox_seen, "tour": tour, "streak": streak, "pub_seen": pub_seen, "digs_left": digs_left, "bills_note": bills_note, "fight_log": fight_log, "bets": bets, "world": world,
+		"pecking_k": pecking_k(), "style": style, "style_locked": style_locked, "shop_stock": shop_stock, "chip_stock": chip_stock, "scout": scout, "wingmen": wingmen, "sending": sending, "pilot_look": pilot_look, "owned_controllers": owned_controllers, "tips_seen": tips_seen, "h2h": h2h, "rivals": rivals, "grudge": grudge, "pending_talk": pending_talk, "inbox": inbox, "inbox_seen": inbox_seen, "tour": tour, "streak": streak, "pub_seen": pub_seen, "digs_left": digs_left, "dig_luck": dig_luck, "bills_note": bills_note, "fight_log": fight_log, "bets": bets, "world": world,
 	}
 	var f := FileAccess.open(slot_path(save_slot), FileAccess.WRITE)
 	if f == null:
@@ -4141,6 +4175,7 @@ func load_game(slot: int = -1) -> String:
 	streak = int(data.get("streak", 0))
 	pub_seen = str(data.get("pub_seen", ""))
 	digs_left = int(data.get("digs_left", DIGS_PER_FIGHT))
+	dig_luck = float(data.get("dig_luck", 0.0))
 	bills_note = int(data.get("bills_note", 0))
 	bets = []
 	for b in data.get("bets", []):

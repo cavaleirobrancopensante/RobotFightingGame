@@ -326,20 +326,20 @@ func _finish() -> void:
 	if not GameData.story_queue.is_empty():
 		GameData.story_key = GameData.story_queue.pop_front()
 		GameData.save_game()
-		get_tree().change_scene_to_file("res://story.tscn")
+		Loading.go("res://story.tscn")
 		return
 	if GameData.story_key == "intro" and GameData.wins + GameData.losses == 0 and GameData.rank == "open":
 		# a new game: a few words, then straight into a coached pickup fight. The bay comes after.
 		GameData.start_first_fight()
 		if GameData.queue_story("first_fight", "res://fight.tscn"):
 			GameData.save_game()
-			get_tree().change_scene_to_file("res://story.tscn")
+			Loading.go("res://story.tscn")
 			return
 	if GameData.story_key == "intro" and GameData.wins + GameData.losses == 0 and GameData.current_opponent_index() == 0 \
 			and GameData.queue_story("pre_0", "res://fight.tscn"):
 		GameData.save_game()
-		get_tree().change_scene_to_file("res://story.tscn")
+		Loading.go("res://story.tscn")
 		return
 	GameData.save_game()
 	var target := GameData.story_return if GameData.story_return != "" else "res://garage.tscn"
-	get_tree().change_scene_to_file(target)
+	Loading.go(target)

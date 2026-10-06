@@ -2,7 +2,7 @@ extends RefCounted
 ## The career: a pyramid of four leagues, the open dates at the start of the year, and cups.
 ##
 ##   the gutter ("open")  no league at all: pilots live on pickups and cups. At the start of the
-##                        year the best 32 fight the Open Trials (2 rounds): 8 go up to Scrap.
+##                        year the best 16 fight the Open Trials (3 chances, 1 win needed): 14 go up to Scrap.
 ##   Scrap League   64    the bottom league.
 ##   Rust League    48
 ##   Iron League    40
@@ -32,12 +32,12 @@ const ROUNDS := 24
 const UP_DOWN := 5     # straight up / down from the table each year (plus 3 through a playoff)
 const PLAYOFF_SLOTS := [[51, 2], [51, 5], [52, 5]]   # [week, day]: Wednesday and Saturday of week 51, Saturday of week 52
 const PLAYOFF_WEEKS := [51, 52]
-const TRIALS_SLOTS := [[1, 5], [2, 5]]               # the Open Trials: Saturdays of weeks 1 and 2
+const TRIALS_SLOTS := [[1, 5], [2, 5], [3, 5]]       # the Open Trials: Saturdays of weeks 1-3 (three chances)
 const TITLE_WEEKS := [1, 2, 3]                       # the Titanium Championship: Saturdays of weeks 1-3
 const LEAGUE_START := 4
 
 const STAGES := {
-	"open": {"name": "Open Trials", "short": "OPEN TRIALS", "size": 32,
+	"open": {"name": "Open Trials", "short": "OPEN TRIALS", "size": 16,
 		"rivals": [], "rival_rounds": [], "reward": [250, 350], "budget": [0, 300], "level": [0.0, 0.4],
 		"prizes": [900, 600, 300], "arenas": ["scrap_ring"], "crowds": ["scrappers"]},
 	"scrap": {"name": "Scrap League", "short": "SCRAP LEAGUE", "size": 64,
@@ -689,11 +689,12 @@ static func play_finals_round(ev: Dictionary, rng: RandomNumberGenerator) -> Arr
 		if r + 1 >= ev.get("slots", PLAYOFF_SLOTS).size():
 			continue   # that was the last round
 		if ev.get("trials", false):
-			# the Open Trials: round 1 winners fight again, and those winners are in
+			# the Open Trials: a win and you're in; the losers get another chance next Saturday
 			var nxt: Array = []
 			for m in cur:
-				nxt.append(int(m["w"]))
-			rounds.append(_pairs(nxt, true))
+				nxt.append(_loser(m))
+			if nxt.size() >= 2:
+				rounds.append(_pairs(nxt, r + 1 >= 2))
 			continue
 		if r == 0:
 			# semis: promotion = quarterfinal winners; relegation = quarterfinal losers
@@ -723,8 +724,9 @@ static func end_finals(ev: Dictionary) -> void:
 	if ev["finals"].has("up"):
 		var rounds: Array = ev["finals"]["up"]["rounds"]
 		if ev.get("trials", false):
-			for m in rounds[rounds.size() - 1]:
-				up.append(int(m["w"]))
+			for rd in rounds:
+				for m in rd:
+					up.append(int(m["w"]))
 		else:
 			up = order.slice(0, UP_DOWN)
 			for m in rounds[1]:
@@ -743,9 +745,10 @@ static func end_finals(ev: Dictionary) -> void:
 	ev["phase"] = "done"
 
 
-## The Open Trials: the best 32 of the gutter, on the open dates at the start of the year.
-## Round 1 (Saturday of week 1): 16 fights. Round 2 (week 2): the winners fight again, and those 8
-## winners are in the Scrap League this year.
+## The Open Trials: the best 16 of the gutter, on the open dates at the start of the year. Three
+## chances, one win needed: round 1 (Saturday of week 1), 8 fights, the winners are in the Scrap
+## League this year; the losers fight again on week 2 (4 more in), and those losers get a last
+## chance on week 3 (2 more in). 14 go up; the Scrap League drops its weakest to make room.
 static func new_trials(year: int, seed_value: int, with_player: bool, wids: Array) -> Dictionary:
 	var pilots: Array = []
 	var ids: Array = []
@@ -807,7 +810,7 @@ static func new_title(year: int, seed_value: int, entries: Array) -> Dictionary:
 static func finals_round_name(ev: Dictionary, side: String, at: int = -1) -> String:
 	var r: int = ev.get("po_round", 0) if at < 0 else at
 	if ev.get("trials", false):
-		return ["ROUND 1", "ROUND 2"][mini(r, 1)]
+		return ["FIRST CHANCE", "SECOND CHANCE", "LAST CHANCE"][mini(r, 2)]
 	if ev.get("stage", "") == "steel" and side == "up":
 		return ["TITLE PLAYOFF QUARTERFINAL", "TITLE PLAYOFF SEMIFINAL", "LAST TITLE TICKET"][mini(r, 2)]
 	if side == "up":

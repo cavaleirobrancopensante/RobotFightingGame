@@ -23,6 +23,8 @@ var coach_button: Button
 const COACH_NAMES := ["OFF", "A little", "Normal", "Lots (easier)"]
 var living_button: Button
 var pecking_button: Button
+var edges_button: Button
+const EDGE_NAMES := ["OFF", "Small", "Medium", "Large"]   # dark bars down the sides, for phone buttons that never hide
 
 
 var diff_overlay: Control
@@ -104,7 +106,8 @@ func _ready() -> void:
 	battery_button = UI.button("", _on_battery, 19, Vector2(470, 50))
 	errors_button = UI.button("", _on_errors, 19, Vector2(470, 50))
 	reset_button = UI.button("", _on_reset, 19, Vector2(470, 50))
-	for b in [sound_button, music_button, shake_button, battery_button, size_button,
+	edges_button = UI.button("", _on_edges, 19, Vector2(470, 50))
+	for b in [sound_button, music_button, shake_button, battery_button, size_button, edges_button,
 			UI.button("Edit controls (move & resize)", _on_controls, 19, Vector2(470, 50)), team_button,
 			UI.button("Difficulty...", _on_difficulty, 19, Vector2(470, 50)), delete_button, errors_button, reset_button]:
 		grid.add_child(b)
@@ -118,6 +121,7 @@ func refresh() -> void:
 	music_button.text = tr("Music: %s") % tr("ON" if s["music"] else "OFF")
 	shake_button.text = tr("Screen shake: %s") % tr("ON" if s["shake"] else "OFF")
 	size_button.text = tr("Touch buttons: %s") % tr(SIZE_NAMES[s["button_size"]])
+	edges_button.text = tr("Screen edges: %s") % tr(EDGE_NAMES[clampi(int(s.get("edges", 0)), 0, EDGE_NAMES.size() - 1)])
 	var n := GameData.error_count()
 	errors_button.text = tr("Error log (%d)") % n if n > 0 else tr("Error log (no errors)")
 	battery_button.text = tr("Battery saver: %s") % tr("ON (30 fps)" if s.get("battery_saver", false) else "OFF (60 fps)")
@@ -317,6 +321,13 @@ func _on_start_money() -> void:
 	var i := opts.find(int(GameData.settings.get("start_money", GameData.START_MONEY)))
 	GameData.settings["start_money"] = opts[(i + 1) % opts.size()]
 	GameData.save_settings()
+	refresh()
+
+
+func _on_edges() -> void:
+	GameData.settings["edges"] = (int(GameData.settings.get("edges", 0)) + 1) % EDGE_NAMES.size()
+	GameData.save_settings()
+	Loading.apply_edges()
 	refresh()
 
 

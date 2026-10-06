@@ -392,6 +392,8 @@ func _ready() -> void:
 		setup_demo()
 		return
 	touch_device = DisplayServer.is_touchscreen_available()
+	if GameData.fight_mode() == "open":
+		GameData.start_pickup()   # (shouldn't happen: with nothing booked, FIGHT sends you to the bar first)
 	fight_idx = GameData.current_opponent_index()
 	mode = GameData.fight_mode()
 	exhibition = mode != "story"
@@ -1690,7 +1692,7 @@ func leave_after_results() -> void:
 	if mode == "watch":
 		GameData.watching = {}
 		GameData.last_result = {}
-		get_tree().change_scene_to_file("res://garage.tscn")
+		Loading.go("res://garage.tscn")
 		return
 	if mode == "quick":
 		GameData.quick = {}
@@ -1706,10 +1708,10 @@ func leave_after_results() -> void:
 		var named: Array = keys.filter(func(k): return typeof(k) == TYPE_STRING)
 		if GameData.queue_stories(named, "res://garage.tscn"):
 			GameData.bay_stories = keys.filter(func(k): return typeof(k) != TYPE_STRING)
-			get_tree().change_scene_to_file("res://story.tscn")
+			Loading.go("res://story.tscn")
 			return
 	GameData.bay_stories = keys
-	get_tree().change_scene_to_file("res://garage.tscn")
+	Loading.go("res://garage.tscn")
 
 
 ## Back to where the test drive started (the scrapyard, or the dealer's part you were trying).
@@ -1719,7 +1721,7 @@ func leave_test_drive() -> void:
 	GameData.open_tab = "Parts"
 	GameData.open_action = from
 	GameData.last_result = {}
-	get_tree().change_scene_to_file("res://garage.tscn")
+	Loading.go("res://garage.tscn")
 
 
 func quit_fight() -> void:
@@ -1730,7 +1732,7 @@ func quit_fight() -> void:
 	Sfx.play("error")
 	if mode == "watch":
 		GameData.watching = {}   # walked out: the round will decide it on paper
-		get_tree().change_scene_to_file("res://garage.tscn")
+		Loading.go("res://garage.tscn")
 		return
 	if mode == "quick":
 		GameData.quick = {}
@@ -1750,7 +1752,7 @@ func quit_fight() -> void:
 						p["hp"] = maxf(1.0, f.parts[slot]["hp"] / f.hp_scale)
 	GameData.last_result = {"quit": true, "opponent": opp["name"]}
 	GameData.save_game()
-	get_tree().change_scene_to_file("res://garage.tscn")
+	Loading.go("res://garage.tscn")
 
 
 # ---------------------------------------------------------------- moves

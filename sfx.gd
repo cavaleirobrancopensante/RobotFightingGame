@@ -65,7 +65,7 @@ const VOICE_OF := {
 	"ANNOUNCER_SCRAP": ["voice_gravel", 1.45],  # the scrap heap's rough guy with the megaphone
 	"ANNOUNCER_GRAND": ["voice_smooth", 0.8],   # the Championship's man in the tux
 }
-const VOICE_DB := -10.0   # blips sit well under the music
+const VOICE_DB := -5.0   # blips sit under the music but stay audible on phone speakers
 
 
 ## One talking blip for `who` (call it every ~0.07s while their line types out).

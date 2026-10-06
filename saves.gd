@@ -109,9 +109,95 @@ func show_names() -> void:
 	col.add_child(row)
 	var back := UI.button("Back", show_slots, 20, Vector2(200, 52))
 	row.add_child(back)
+	# how hard: the same settings as Menu > Settings > Difficulty, right here before you start
+	diff_button = UI.button("", _on_open_difficulty, 18, Vector2(330, 52))
+	row.add_child(diff_button)
+	update_diff_button()
 	var start := UI.button("START", _on_start, 24, Vector2(0, 52))
 	start.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	row.add_child(start)
+
+
+var diff_box: VBoxContainer
+var diff_button: Button
+var diff_cover: Control
+const SETTINGS = preload("res://settings.gd")
+
+
+func update_diff_button() -> void:
+	var s := GameData.settings
+	var pk: Dictionary = GameData.PECKING[clampi(int(s.get("pecking", 1)), 0, GameData.PECKING.size() - 1)]
+	diff_button.text = tr("Difficulty: %s · %s ›") % [tr(SETTINGS.DIFF_NAMES[int(s["difficulty"])]), tr(pk["name"])]
+
+
+## Difficulty, picked before the first fight: the CPU, Gus's coaching, the money you start with
+## and the Pecking Order, in a window over the new-game screen. Each button cycles; the same
+## choices live in Settings > Difficulty.
+func _on_open_difficulty() -> void:
+	Sfx.play("click")
+	diff_cover = ColorRect.new()
+	(diff_cover as ColorRect).color = Color(0.06, 0.06, 0.09, 0.97)
+	diff_cover.mouse_filter = Control.MOUSE_FILTER_STOP
+	diff_cover.set_anchors_preset(Control.PRESET_FULL_RECT)
+	add_child(diff_cover)
+	var center := CenterContainer.new()
+	center.set_anchors_preset(Control.PRESET_FULL_RECT)
+	diff_cover.add_child(center)
+	var box := VBoxContainer.new()
+	box.add_theme_constant_override("separation", 8)
+	box.custom_minimum_size = Vector2(560, 0)
+	center.add_child(box)
+	var t := UI.label(tr("DIFFICULTY"), 28, Color(1.0, 0.45, 0.2))
+	t.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	box.add_child(t)
+	diff_box = VBoxContainer.new()
+	diff_box.add_theme_constant_override("separation", 8)
+	box.add_child(diff_box)
+	var note := UI.label(tr("Pecking Order: how much tougher and harder hitting each part grade is. Underdog lets a good pilot punch above their grade; Brutal means a robot two grades up flattens you in seconds.") + "\n" + tr("You can change all of this later in Settings > Difficulty."), 13, Color(0.65, 0.65, 0.72))
+	note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	box.add_child(note)
+	box.add_child(UI.button("Done", _on_close_difficulty, 19, Vector2(560, 52)))
+	build_difficulty()
+
+
+func _on_close_difficulty() -> void:
+	if diff_cover:
+		diff_cover.queue_free()
+		diff_cover = null
+	update_diff_button()
+
+
+func build_difficulty() -> void:
+	for c in diff_box.get_children():
+		c.queue_free()
+	var s := GameData.settings
+	var pk: Dictionary = GameData.PECKING[clampi(int(s.get("pecking", 1)), 0, GameData.PECKING.size() - 1)]
+	var items := [
+		[tr("CPU difficulty: %s") % tr(SETTINGS.DIFF_NAMES[int(s["difficulty"])]), _on_diff_step.bind("difficulty")],
+		[tr("Gus's coaching: %s") % tr(SETTINGS.COACH_NAMES[clampi(int(s.get("coaching", 2)), 0, 3)]), _on_diff_step.bind("coaching")],
+		[tr("Starting money: %s (new games)") % GameData.money_text(int(s.get("start_money", GameData.START_MONEY))), _on_diff_step.bind("start_money")],
+		[tr("Pecking Order: %s (x%.1f a grade)") % [tr(pk["name"]), float(pk["k"])], _on_diff_step.bind("pecking")],
+	]
+	for it in items:
+		diff_box.add_child(UI.button(it[0], it[1], 19, Vector2(560, 52)))
+
+
+func _on_diff_step(key: String) -> void:
+	var s := GameData.settings
+	match key:
+		"difficulty":
+			s["difficulty"] = (int(s["difficulty"]) + 1) % SETTINGS.DIFF_NAMES.size()
+		"coaching":
+			s["coaching"] = (int(s.get("coaching", 2)) + 1) % SETTINGS.COACH_NAMES.size()
+		"start_money":
+			var opts: Array = GameData.START_MONEY_OPTIONS
+			s["start_money"] = opts[(opts.find(int(s.get("start_money", GameData.START_MONEY))) + 1) % opts.size()]
+			GameData.money = int(s["start_money"])
+		"pecking":
+			GameData.set_pecking((int(s.get("pecking", 1)) + 1) % GameData.PECKING.size())
+	GameData.save_settings()
+	Sfx.play("click")
+	build_difficulty()
 
 
 func pilot_name_default() -> String:
@@ -440,7 +526,7 @@ func _on_start() -> void:
 	GameData.robot_name = robot if robot != "" else GameData.DEFAULT_ROBOT
 	GameData.save_game()
 	GameData.queue_story("intro", "res://garage.tscn")
-	get_tree().change_scene_to_file("res://story.tscn")
+	Loading.go("res://story.tscn")
 
 
 func _on_back() -> void:

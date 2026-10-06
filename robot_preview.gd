@@ -107,6 +107,15 @@ func _regions() -> Array:
 	return list
 
 
+## The garage zooms the preview in, so its rect pokes out over the top strip: only take taps inside
+## the panel that holds it (otherwise it swallows taps meant for NEXT and the date).
+func _has_point(point: Vector2) -> bool:
+	if not Rect2(Vector2.ZERO, size).has_point(point):
+		return false
+	var holder := get_parent_control()
+	return holder == null or holder.get_global_rect().has_point(get_global_transform() * point)
+
+
 func _gui_input(event: InputEvent) -> void:
 	if not interactive or hide_robot:
 		return

@@ -36,7 +36,8 @@ const SCENES := {
 		["GUS", "{RENT_INTRO}"],
 		["ECHO", "[ PAIRING SIGNAL ... HANDLER LINK FOUND ]"],
 		["GUS", "Then we start in the gutter. No league will have us yet. Pickup fights at the Rusty Bolt, a few bucks a night."],
-		["GUS", "The Open Trials are on Saturday. Thirty-two nobodies, two rounds. Win both and we're in the Scrap League this year."],
+		["GUS", "The Open Trials start on Saturday. Sixteen nobodies, three Saturdays. Win once and we're in the Scrap League this year."],
+		["GUS", "Lose all three and it's a whole year down here. That's the one fight that matters, kid."],
 	]},
 
 	"first_fight": {"place": "THE RUSTY BOLT", "lines": [
@@ -183,7 +184,7 @@ const SCENES := {
 	]},
 	# ---- career moments (shown after the fight that decides them)
 	"up_scrap": {"place": "THE SCRAP HEAP RING", "lines": [
-		["ANNOUNCER", "...and that's the Open Trials done! Eight nobodies just became somebodies!"],
+		["ANNOUNCER", "...and that's the Open Trials done! Fourteen nobodies just became somebodies!"],
 		["GUS", "We're in the Scrap League, kid. A real table, a fight every other Saturday."],
 		["GUS", "Don't celebrate too hard. Down there they eat rookies for breakfast."],
 	]},

@@ -282,7 +282,7 @@ func _ready() -> void:
 ## Two random robots, one fight, nothing saved.
 func _on_quick() -> void:
 	GameData.start_quick_fight()
-	get_tree().change_scene_to_file("res://fight.tscn")
+	Loading.go("res://fight.tscn")
 
 
 func _on_new() -> void:

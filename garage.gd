@@ -142,6 +142,8 @@ class BodyMap extends Control:
 var scout_button: Button
 var send_button: Button
 var overlay: Control
+var popup_scroll: ScrollContainer   # the open pop-up's contents (scrolls when they don't fit)
+var popup_footer: VBoxContainer     # the open pop-up's pinned buttons
 var last_view := ""
 
 
@@ -661,6 +663,7 @@ const Story = preload("res://story_data.gd")
 const TALK_CPS := 55.0
 var heads := {}              # who -> where their head is on screen (filled in by the backdrop)
 var talk_lines: Array = []   # [who, text, extra] still to show; the first one is on screen
+var repair_tapped := false     # the tour's first stop is done once you've tried Repair all
 var dad_talk := false        # Gus is pointing at your dad's trophies (office, first visit)
 var talk_story := false      # a story scene is playing (lines stay up longer, Skip shows)
 var talk_after := Callable() # what happens when the scene is over (pre-fight talk: start the fight)
@@ -881,13 +884,10 @@ func refresh() -> void:
 	next_button.disabled = GameData.phase == 2 and not GameData.can_pass_day()
 	next_button.tooltip_text = tr("Your fight is tonight.") if next_button.disabled else tr("Let time pass: the bay works on the job board.")
 	var total := GameData.repair_all_cost()
-	repair_button.text = (tr("Repair all (free)") if GameData.tour == 0 else tr("Repair all $%d") % total) if total > 0 else (tr("On the bench") if GameData.has_work("m") else tr("All repaired"))
+	repair_button.text = tr("Repair all $%d") % total if total > 0 else (tr("On the bench") if GameData.has_work("m") else tr("All repaired"))
 	repair_button.disabled = total <= 0   # (short on cash? pressing it has Gus explain)
 	repair_button.add_theme_color_override("font_color", GUI.AMBER)
-	var mode := GameData.fight_mode()
-	if mode == "open":
-		GameData.start_pickup()   # a quiet week: there's always a pickup fight down at the scrapyard
-		mode = GameData.fight_mode()
+	var mode := GameData.fight_mode()   # "open": nothing booked tonight, pickups are your choice (the Rusty Bolt)
 	title_label.text = ""   # the top strip is kept free (space for ads); the date lives in the Season calendar
 	var o := GameData.current_opponent()
 	var core := GameData.equipped_inst("torso")
@@ -900,7 +900,10 @@ func refresh() -> void:
 		GameData.sending = -1
 	send_button.visible = not backups.is_empty() and not GameData.is_team_fight()
 	send_button.text = tr("Send: %s") % (tr("main robot") if GameData.sending < 0 else GameData.WINGMAN_NAMES[GameData.sending])
-	if not GameData.can_send():
+	if mode == "open":
+		fight_button.text = tr("FIND A FIGHT")
+		fight_button.disabled = talk_after.is_valid()
+	elif not GameData.can_send():
 		fight_button.text = "Need a head and a torso"
 		fight_button.disabled = true
 	else:
@@ -1370,6 +1373,17 @@ func build_next_fight_card() -> void:
 	t.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	detail_box.add_child(t)
 	detail_box.add_child(GUI.HazardStrip.new())
+	if o.is_empty():
+		# nothing booked tonight
+		var none := GUI.text(tr("No fight booked tonight. Pickups are up to you: whoever's at the Rusty Bolt will take you on."), 15, GUI.TEXT)
+		none.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		none.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		detail_box.add_child(none)
+		var fb := UI.button(tr("Find a fight ›"), go_to.bind("Pub", "bar"), 14, Vector2(0, 46))
+		fb.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		fb.add_theme_color_override("font_color", GUI.YELLOW)
+		detail_footer.add_child(fb)
+		return
 	var title := GUI.text(GameData.fight_title(), 14, GUI.TEXT, "headb")
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -1435,7 +1449,7 @@ func _on_test_drive(junker_id: String, try_id: String, slot: String, from: Strin
 	GameData.start_test_drive(junker_id, try_id, slot)
 	GameData.test_drive["from"] = from
 	Sfx.play("click")
-	get_tree().change_scene_to_file("res://fight.tscn")
+	Loading.go("res://fight.tscn")
 
 
 func _on_detail_fit(uid: int, slot: String) -> void:
@@ -1748,21 +1762,21 @@ func job_etas() -> Array:
 
 func tour_steps() -> Array:
 	return [
-		{"target": "repair", "text": tr("First thing: the robot's dented. Tap Repair all, this one's on the house. It goes on the job board, and the bay fixes it while time passes.")},
+		{"target": "repair", "text": tr("First thing: the robot's dented. Repair all puts every dent on the job board, and the bay fixes it while time passes. It costs money, so check the price. Tap it.")},
 		{"target": "next", "text": tr("Time only moves when you say so. Tap NEXT. The bay works a shift and the clock moves on. Fights are in the evening.")},
-		{"target": "rail:Parts", "text": tr("Get Parts, then the Scrapyard. One free dig a week, and you never know what's in the pile.")},
+		{"target": "rail:Parts", "text": tr("Get Parts, then the Scrapyard. One free dig a day, and you never know what's in the pile.")},
 		{"target": "dig", "text": tr("Go on, tap Dig anywhere. Mostly junk, but junk is free.")},
 		{"target": "rail:Pub", "text": tr("The Rusty Bolt, down the road. Whoever's at the bar will fight you for a few bucks.")},
 		{"target": "rail:Season", "text": tr("Season is my office. The calendar, the tables, the odds. Come and have a look.")},
 		{"target": "rail:Feed", "text": tr("Missed something I said? Everything anybody tells you ends up on BotMedia, with the town's news.")},
-		{"target": "fight", "text": tr("That's the tour. Saturday is the Open Trials: win two fights and we're in the Scrap League. Practice with pickups till then. FIGHT when you're ready.")},
+		{"target": "fight", "text": tr("That's the tour. Saturday is the Open Trials, and it's everything: one win and we're in the Scrap League, and we get three Saturdays to get it. Miss all three and it's a year in the gutter. Practice with pickups at the Rusty Bolt till then.")},
 	]
 
 
 func tour_done(i: int) -> bool:
 	match i:
 		0:
-			return GameData.repair_all_cost() == 0
+			return GameData.repair_all_cost() == 0 or GameData.has_work("m") or repair_tapped
 		1:
 			return tour_clock != "" and tour_clock != clock_key()
 		2:
@@ -2110,18 +2124,41 @@ func open_popup(title: String) -> VBoxContainer:
 	sb.set_border_width_all(2)
 	panel.add_theme_stylebox_override("panel", sb)
 	center.add_child(panel)
-	var col := VBoxContainer.new()
-	col.add_theme_constant_override("separation", 8)
-	col.custom_minimum_size = Vector2(560, 0)
-	panel.add_child(col)
+	# title and Close on top, the contents in a scroll box, and a footer pinned at the bottom for
+	# the buttons that matter (FIGHT): a long window never pushes them off the screen
+	var outer := VBoxContainer.new()
+	outer.add_theme_constant_override("separation", 8)
+	panel.add_child(outer)
 	var head := HBoxContainer.new()
-	col.add_child(head)
+	outer.add_child(head)
 	var t := GUI.text(tr(title), 22, GUI.YELLOW, "headb")
 	t.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	head.add_child(t)
 	head.add_child(UI.button("Close", close_popup, 16, Vector2(90, 44)))
-	col.add_child(GUI.HazardStrip.new())
+	outer.add_child(GUI.HazardStrip.new())
+	popup_scroll = ScrollContainer.new()
+	popup_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	outer.add_child(popup_scroll)
+	var col := VBoxContainer.new()
+	col.add_theme_constant_override("separation", 8)
+	col.custom_minimum_size = Vector2(560, 0)
+	col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	popup_scroll.add_child(col)
+	popup_footer = VBoxContainer.new()
+	popup_footer.add_theme_constant_override("separation", 6)
+	outer.add_child(popup_footer)
+	_fit_popup.call_deferred()
 	return col
+
+
+## Sizes the pop-up's scroll box to its contents, but never taller than the screen allows.
+func _fit_popup() -> void:
+	if popup_scroll == null or not is_instance_valid(popup_scroll) or popup_scroll.get_child_count() == 0:
+		return
+	var col: Control = popup_scroll.get_child(0)
+	popup_scroll.custom_minimum_size.x = col.get_combined_minimum_size().x
+	var room := get_viewport_rect().size.y - 150.0 - popup_footer.get_combined_minimum_size().y
+	popup_scroll.custom_minimum_size.y = minf(col.get_combined_minimum_size().y, maxf(120.0, room))
 
 
 ## A dark see-through panel around a control, so the garage scene shows behind the menus.
@@ -2554,12 +2591,19 @@ func build_controllers() -> void:
 ## The scrapyard: a mountain of dead robots. Dig for free (beaten-up) parts, a few digs per fight.
 func build_scrapyard_tab() -> void:
 	var bar := action_bar()
-	var info := GUI.text(tr("A mountain of dead robots. One dig a week (fresh junk comes in every Sunday), one part per dig, always beaten up (15-50% health). Dig anywhere for the best odds of something good, or dig for the part you need and take what the pile gives (mostly junk).") + "\n" + tr("Digging anywhere can also turn up a training chip, once in a long while. You can't dig for one."), 12, GUI.MUTED)
+	var info := GUI.text(tr("A mountain of dead robots. One dig a day, one part per dig, always beaten up (15-50% health). Dig anywhere for the best odds of something good, or dig for the part you need and take what the pile gives (mostly junk). Every day you leave the pile alone, the odds of a rare find go up (5% a day, up to 50%). Digging uses them up.") + "\n" + tr("Digging anywhere can also turn up a training chip, once in a long while. You can't dig for one."), 12, GUI.MUTED)
 	info.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	info.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	bar.add_child(info)
+	var luck := VBoxContainer.new()
+	luck.add_child(GUI.text(tr("RARE FIND"), 12, GUI.MUTED, "headb"))
+	luck.add_child(GUI.readout("%d%%" % roundi(GameData.dig_luck * 100.0), 26, GUI.GREEN if GameData.dig_luck > 0.0 else GUI.MUTED))
+	var lb := GUI.BlockBar.new()   # 1 block = one day left alone (5%)
+	lb.setup(GameData.dig_luck * 100.0, 5.0, GameData.DIG_LUCK_MAX * 100.0, GUI.GREEN)
+	luck.add_child(lb)
+	bar.add_child(luck)
 	if GameData.digs_left <= 0:
-		row_button(bar, tr("No digging until Sunday"), _on_dig.bind(""), false, 270)
+		row_button(bar, tr("Dug today. Back tomorrow"), _on_dig.bind(""), false, 270)
 	else:
 		row_button(bar, tr("Dig anywhere"), _on_dig.bind(""), true, 150)
 		var kinds := action_bar()
@@ -3454,7 +3498,7 @@ func _on_bet_on(on: String, pick: int, vs: int) -> void:
 func _on_watch(a: int, b: int, on: String = "") -> void:
 	GameData.start_watch(a, b, on)
 	Sfx.play("click")
-	get_tree().change_scene_to_file("res://fight.tscn")
+	Loading.go("res://fight.tscn")
 
 
 ## Every pilot in Port Ferrum: who's on top, who's broke, who's moved up, who retired - and the news.
@@ -3704,7 +3748,7 @@ func build_league_view() -> void:
 	var rule := ""
 	match stage:
 		"open":
-			rule = tr("The gutter: pilots with no league live on pickups and cups. On the open dates at the start of the year the best 32 fight the Open Trials: two rounds, and the 8 who win both are in the Scrap League.")
+			rule = tr("The gutter: pilots with no league live on pickups and cups. On the open dates at the start of the year the best 16 fight the Open Trials: three Saturdays, and one win is all it takes to get into the Scrap League. Lose and you fight again next Saturday.")
 		"title":
 			rule = tr("The Titanium Championship: the top 8 of last year's Steel League, a knockout on the open dates at the start of the year. Win the final and you're the champion of Port Ferrum.")
 		"steel":
@@ -3729,7 +3773,7 @@ func show_finals(ev: Dictionary) -> void:
 			continue
 		var head := tr("RELEGATION PLAYOFF (3 go down)")
 		if side == "up":
-			head = tr("OPEN TRIALS (8 go up)") if ev.get("trials", false) else (tr("TITLE PLAYOFF (3 more into the Championship)") if ev["stage"] == "steel" else tr("PROMOTION PLAYOFF (3 go up)"))
+			head = tr("OPEN TRIALS (every winner goes up)") if ev.get("trials", false) else (tr("TITLE PLAYOFF (3 more into the Championship)") if ev["stage"] == "steel" else tr("PROMOTION PLAYOFF (3 go up)"))
 		section(head)
 		var rounds: Array = ev["finals"][side]["rounds"]
 		for r in rounds.size():
@@ -3909,7 +3953,7 @@ func time_end() -> bool:
 		lines.append([(tr("Rent and food: -$%d.") if GameData.rank_index() < 2 else tr("Rent, crew and travel: -$%d.")) % (GameData.bills_note - int(tp["bills"])), GUI.RED])
 		GameData.bills_note = 0
 	if GameData.week != int(tp["week"]):
-		lines.append([tr("Sunday: the dealer restocked and fresh junk came into the scrapyard."), GUI.AMBER])
+		lines.append([tr("Sunday: the dealer restocked."), GUI.AMBER])
 	# mail and the town
 	var mail: int = GameData.pending_talk.size() - int(tp["pending"])
 	if mail > 0:
@@ -4335,6 +4379,8 @@ func _on_pick_style(id: String) -> void:
 
 
 func _on_open_scout() -> void:
+	if GameData.scout_key() == "":
+		return   # nothing booked tonight: nobody to scout
 	if gus_explains("scout", true):
 		return
 	var msg := ""
@@ -4349,6 +4395,8 @@ func _on_open_scout() -> void:
 		refresh()
 	# the report shows what the scout saw - if they spotted him, one part will be different on the night
 	var o := GameData.current_opponent(false)
+	if o.is_empty():
+		return   # nothing booked tonight: nobody to scout
 	var spec := GameData.opponent_spec_from(o, 1.0)
 	var col := open_popup(tr("SCOUTING REPORT: ") + str(o["name"]))
 	if msg == "":
@@ -4479,6 +4527,7 @@ func _on_repair(uid: int) -> void:
 
 
 func _on_repair_all() -> void:
+	repair_tapped = true
 	spark_at = Time.get_ticks_msec() / 1000.0
 	var before := GameData.money
 	var text := GameData.repair_all()
@@ -4618,7 +4667,8 @@ func _on_forge() -> void:
 func _on_enter_cup(k: int) -> void:
 	GameData.enter_circuit(k)
 	GameData.save_game()
-	say(tr("Entered the %s! First opponent: %s.") % [GameData.circuit["name"], GameData.current_opponent()["name"]], "fight")
+	var first: Dictionary = Career.robot_of(GameData.circuit, Career.player_opponent(GameData.circuit)) if Career.player_opponent(GameData.circuit) != -1 else {}
+	say(tr("Entered the %s! First opponent: %s.") % [GameData.circuit["name"], str(first.get("name", "?"))], "fight")
 	refresh()
 
 
@@ -4689,6 +4739,11 @@ func damage_report() -> Array:
 
 ## Fight! Always a last look first: who it is, a chance to scout them, and what's wrong with your robot.
 func _on_fight() -> void:
+	if GameData.fight_mode() == "open":
+		# nothing booked: pickups are always optional, pick someone at the bar (or don't)
+		go_to("Pub", "bar")
+		say(tr("Nobody's booked us tonight. Pick someone at the bar if you want a fight, or let the day go by. Your call."))
+		return
 	open_fight_popup()
 
 
@@ -4697,6 +4752,15 @@ func open_fight_popup() -> void:
 	var col := open_popup(tonight_name() + (" · " + tr("CUP") if GameData.fight_mode() == "circuit" else ""))
 	col.custom_minimum_size = Vector2(640, 0)
 	fight_popup_open = true
+	if GameData.fight_mode() == "story" and GameData.event.get("trials", false):
+		# the Open Trials: the whole year hangs on this
+		var left: int = GameData.event.get("slots", []).size() - int(GameData.event.get("po_round", 0))
+		var mb := GUI.text(tr("MAKE OR BREAK"), 22, GUI.RED, "stencil")
+		col.add_child(mb)
+		var ml := GUI.text(tr("Win once and we're in the Scrap League. Lose all three chances and it's a whole year in the gutter: pickups and cups, no league, no league money.") + " " +
+				(tr("This is the last chance.") if left <= 1 else tr("Chances left: %d.") % left), 15, GUI.AMBER)
+		ml.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		col.add_child(ml)
 	var who := str(o.get("pilot", ""))
 	var head := UI.label(GameData.fight_title() + "\n" + (tr("%s, piloted by %s") % [o.get("name", "?"), who] if who != "" else str(o.get("name", "?"))) + "   " + tr("Purse: $%d") % GameData.current_reward(), 18, Color(1.0, 0.85, 0.4))
 	head.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -4742,7 +4806,7 @@ func open_fight_popup() -> void:
 	prefight_bet(col)
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 10)
-	col.add_child(row)
+	popup_footer.add_child(row)
 	var cost := GameData.repair_all_cost()
 	if cost > 0 and GameData.can_repair(cost):
 		var rb := UI.button(tr("Repair all $%d") % cost, _on_repair_then_fight_popup, 17, Vector2(0, 50))
@@ -4862,4 +4926,4 @@ func _start_fight() -> void:
 
 func _go_fight() -> void:
 	GameData.flush_save()
-	get_tree().change_scene_to_file("res://fight.tscn")
+	Loading.go("res://fight.tscn")
