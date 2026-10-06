@@ -283,6 +283,10 @@ static func draw_person(ci: CanvasItem, feet: Vector2, s: float, raw: Dictionary
 	var hip := feet + Vector2(0, (-26 if sitting else -24) * s + bob)
 	var neck := hip + Vector2(0, -30 * s)
 	ci.draw_rect(Rect2(neck + Vector2(-12 * s, 0), Vector2(24 * s, 30 * s)), shirt)
+	if look.get("female", false):
+		# a woman: two soft curves on the chest, just enough to read at a glance
+		for side in [-1.0, 1.0]:
+			ci.draw_arc(neck + Vector2(side * 5.5 * s, 9 * s), 4.2 * s, PI * 0.15, PI * 0.85, 8, shirt.darkened(0.4), maxf(1.0, 1.3 * s))
 	if gus:
 		ci.draw_rect(Rect2(hip + Vector2(-9 * s, -20 * s), Vector2(18 * s, 20 * s)), outfit)
 		ci.draw_line(hip + Vector2(-7 * s, -20 * s), neck + Vector2(-7 * s, 0), outfit, 2.5 * s)

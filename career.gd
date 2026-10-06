@@ -1,35 +1,45 @@
 extends RefCounted
-## The career: a calendar year of leagues, playoffs and cups.
+## The career: a year-round league table in four divisions, plus cups on the side.
 ##
-##   Scrap Heap League   weeks 1-5    6 pilots, 5 fights. Top 3 get medals; a medal = into the Regional.
-##   Port Ferrum Regional weeks 8-17  9 pilots, 8 league fights, then semifinal / final / bronze match.
-##                                    Reaching the semifinals = into the Championship.
-##   Kane Championship    weeks 22-41 18 pilots, 17 league fights, then top 7 + OVERLORD (the defending
-##                                    champion) play quarterfinal / semifinal / final. Once a year.
-##   Cups                 open weeks  8-pilot knockout brackets with medals, once you've won a medal.
+##   Scrapyard Qualifiers  the bottom: where nobodies start. Top 4 go up to the Scrap Heap League.
+##   Scrap Heap League     3rd division.  Top 4 up to the Regional, bottom 4 down to the Qualifiers.
+##   Port Ferrum Regional  2nd division.  Top 4 up to the Championship, bottom 4 down.
+##   Kane Championship     the top. OVERLORD defends its title here every year. Bottom 4 down.
+##
+## Every division has 48 pilots and fights a round every other Saturday (weeks 1, 3 ... 47): 24
+## fights a year each. A win is 1 point; level on points, the one who destroyed more parts is
+## ahead. Top 3 get medals. Weeks 48-52 are the off-season (cups and pickups still run).
+## Cups: 8-pilot knockout brackets on Wednesday nights, on the side.
 ##
 ## An event is a plain dictionary (saved as JSON):
 ##   {stage, name, year, weeks: [week of each round], round, phase: league/playoffs/done,
-##    pilots: [{id, pilot, rival | bot, str}], schedule: [opponent id per league round],
-##    table: {id: [wins, losses, points, parts]}, bracket: {...}, medals: {id: 1/2/3}}
-## Pilot id 0 is always you.
+##    pilots: [{id, pilot, rival | wid | bot, str}], fixtures: [[[a, b], ...] per round],
+##    schedule: [your opponent per round], table: {id: [wins, losses, points, parts]},
+##    bracket: {...} (cups), medals: {id: 1/2/3}}
+## Pilot id 0 is always you (only in your own division).
 
 const I18n = preload("res://i18n.gd")
 const World = preload("res://world.gd")
 const WEEKS_PER_YEAR := 52
+const DIVISION_SIZE := 48
+const ROUNDS := 24
+const UP_DOWN := 4   # promoted and relegated each year
 
 const STAGES := {
-	"scrap": {"name": "Scrap Heap League", "short": "SCRAP LEAGUE", "start": 1, "size": 6, "playoff": 0,
-		"rivals": [0, 1, 2], "rival_rounds": [0, 2, 4], "reward": [120, 220], "budget": [250, 650], "level": [0.0, 0.9],
-		"prizes": [600, 350, 200], "arenas": ["fish_market", "docks", "cannery"], "crowds": ["fishmongers", "dockers", "punks"]},
-	"regional": {"name": "Port Ferrum Regional", "short": "REGIONAL", "start": 8, "size": 9, "playoff": 4,
-		"rivals": [3, 4, 5], "rival_rounds": [1, 3, 6], "reward": [380, 700], "budget": [900, 2100], "level": [1.0, 2.0],
-		"prizes": [3000, 1800, 1000], "arenas": ["test_track", "harbor", "substation"], "crowds": ["suits", "families", "ravers"]},
-	"championship": {"name": "Kane Championship", "short": "CHAMPIONSHIP", "start": 22, "size": 18, "playoff": 8,
-		"rivals": [6, 7, 8], "rival_rounds": [1, 8, 15], "boss": 9, "reward": [800, 1500], "budget": [2200, 4800], "level": [2.0, 3.4],
-		"prizes": [12000, 6000, 3500], "arenas": ["steelworks", "rooftop", "dry_dock"], "crowds": ["bikers", "robots", "packed"]},
+	"qualifiers": {"name": "Scrapyard Qualifiers", "short": "QUALIFIERS", "start": 1, "size": 48, "playoff": 0,
+		"rivals": [], "rival_rounds": [], "reward": [340, 540], "budget": [0, 400], "level": [0.0, 0.5],
+		"prizes": [400, 250, 150], "arenas": ["scrap_ring"], "crowds": ["scrappers"]},
+	"scrap": {"name": "Scrap Heap League", "short": "SCRAP LEAGUE", "start": 1, "size": 48, "playoff": 0,
+		"rivals": [0, 1, 2], "rival_rounds": [1, 9, 17], "reward": [420, 700], "budget": [250, 650], "level": [0.0, 0.9],
+		"prizes": [1500, 900, 500], "arenas": ["fish_market", "docks", "cannery"], "crowds": ["fishmongers", "dockers", "punks"]},
+	"regional": {"name": "Port Ferrum Regional", "short": "REGIONAL", "start": 1, "size": 48, "playoff": 0,
+		"rivals": [3, 4, 5], "rival_rounds": [1, 9, 17], "reward": [900, 1500], "budget": [900, 2100], "level": [1.0, 2.0],
+		"prizes": [6000, 3500, 2000], "arenas": ["test_track", "harbor", "substation"], "crowds": ["suits", "families", "ravers"]},
+	"championship": {"name": "Kane Championship", "short": "CHAMPIONSHIP", "start": 1, "size": 48, "playoff": 0,
+		"rivals": [6, 7, 8], "rival_rounds": [2, 10, 18], "boss": 9, "boss_round": 23, "reward": [2000, 3400], "budget": [2200, 4800], "level": [2.0, 3.4],
+		"prizes": [25000, 12000, 7000], "arenas": ["steelworks", "rooftop", "dry_dock"], "crowds": ["bikers", "robots", "packed"]},
 }
-const ORDER := ["scrap", "regional", "championship"]
+const ORDER := ["qualifiers", "scrap", "regional", "championship"]
 const MEDALS := ["", "GOLD", "SILVER", "BRONZE"]
 
 const PILOT_NAMES := ["DEX", "LUPE", "KOVAC", "BRIGGS", "NELL", "OKAFOR", "TAM", "VASQUEZ", "IVO", "PETRA", "RUSTY JOE",
@@ -39,28 +49,79 @@ const PILOT_NAMES := ["DEX", "LUPE", "KOVAC", "BRIGGS", "NELL", "OKAFOR", "TAM",
 
 # ---------------------------------------------------------------- building events
 
-## A new league for this stage. Rivals from the story fill some places, generated pilots the rest.
-static func new_event(stage: String, year: int, seed_value: int) -> Dictionary:
+## League weeks: a round every other Saturday, weeks 1, 3 ... 47.
+static func league_weeks() -> Array:
+	var out: Array = []
+	for k in ROUNDS:
+		out.append(1 + k * 2)
+	return out
+
+
+## A division's year: 48 pilots (you, if `with_player`; story rivals in your division; OVERLORD at
+## the top; world pilots of this tier for the rest) and a fixture list where everyone meets 24
+## different opponents. Story rivals are slotted so you meet them on their story rounds.
+static func new_event(stage: String, year: int, seed_value: int, with_player: bool = true, wids: Array = []) -> Dictionary:
 	var info: Dictionary = STAGES[stage]
 	var rng := RandomNumberGenerator.new()
 	rng.seed = seed_value
-	var pilots: Array = [{"id": 0, "pilot": "YOU", "player": true, "str": 1.0}]
-	var n: int = info["size"]
-	# the rest of the league comes from the pilots of this tier, weakest first: they fill the
-	# rounds in order, so the season gets harder as it goes on
-	var picks: Array = World.pick_for_league(rng, stage, n - 1 - info["rivals"].size())
-	for i in range(1, n):
-		var e := {"id": i}
-		var r := i - 1
-		if r < info["rivals"].size():
-			var idx: int = info["rivals"][r]
+	var n := DIVISION_SIZE
+	# fixtures on slots 0..n-1 (circle method: every round everyone fights, nobody twice)
+	var slots: Array = range(n)
+	var fixtures: Array = []
+	var rot: Array = range(1, n)
+	for r in ROUNDS:
+		var line: Array = [0] + rot
+		var pairs: Array = []
+		for k in n / 2:
+			pairs.append([line[k], line[n - 1 - k]])
+		fixtures.append(pairs)
+		rot.push_front(rot.pop_back())
+	# who sits in each slot: slot 0 is you (or a world pilot)
+	var occupant := {}
+	var fixed: Array = []   # [rival index, round]
+	if with_player:
+		for k in info["rivals"].size():
+			fixed.append([int(info["rivals"][k]), int(info["rival_rounds"][k])])
+	if info.has("boss"):
+		fixed.append([int(info["boss"]), int(info["boss_round"]) if with_player else -1])
+	for f in fixed:
+		var slot := -1
+		if int(f[1]) >= 0:
+			for pr in fixtures[int(f[1])]:
+				if int(pr[0]) == 0:
+					slot = int(pr[1])
+				elif int(pr[1]) == 0:
+					slot = int(pr[0])
+		if slot == -1 or occupant.has(slot):
+			var free: Array = slots.filter(func(x): return x != 0 and not occupant.has(x))
+			slot = free[rng.randi() % free.size()]
+		occupant[slot] = {"rival": int(f[0])}
+	var pool: Array = wids.duplicate()
+	for slot in slots:
+		if occupant.has(slot) or (slot == 0 and with_player):
+			continue
+		if not pool.is_empty():
+			occupant[slot] = {"wid": int(pool.pop_front())}
+	# ids: you are 0, everyone else 1..n-1 in slot order
+	var pilots: Array = []
+	var id_of := {}
+	var next_id := 1
+	for slot in slots:
+		var id := 0 if (slot == 0 and with_player) else next_id
+		if id != 0:
+			next_id += 1
+		id_of[slot] = id
+		var e := {"id": id}
+		if id == 0:
+			e.merge({"pilot": "YOU", "player": true, "str": 1.0})
+		elif occupant.has(slot) and occupant[slot].has("rival"):
+			var idx: int = occupant[slot]["rival"]
 			e["rival"] = idx
 			e["pilot"] = str(GameData.OPPONENTS[idx].get("pilot", "")) if str(GameData.OPPONENTS[idx].get("pilot", "")) != "" else "KANE DYNAMICS"
 			e["str"] = 0.6 + idx * 0.22
-		elif r - info["rivals"].size() < picks.size():
-			var p: Dictionary = picks[r - info["rivals"].size()]
-			e["wid"] = int(p["wid"])
-			e["pilot"] = p["name"]
+		elif occupant.has(slot):
+			e["wid"] = int(occupant[slot]["wid"])
+			e["pilot"] = str(World.pilot(int(e["wid"])).get("name", "?"))
 		else:
 			var lv: float = lerpf(info["level"][0], info["level"][1], rng.randf())
 			var budget: float = lerpf(info["budget"][0], info["budget"][1], rng.randf())
@@ -68,27 +129,30 @@ static func new_event(stage: String, year: int, seed_value: int) -> Dictionary:
 			e["pilot"] = PILOT_NAMES[rng.randi() % PILOT_NAMES.size()]
 			e["str"] = 0.5 + lv * 0.45
 		pilots.append(e)
-	# your league schedule: you fight everyone once; story rivals on their story rounds
-	var others: Array = []
-	for e in pilots:
-		if e["id"] != 0 and not e.has("rival"):
-			others.append(e["id"])
+	var fx: Array = []
+	for r in fixtures:
+		var pairs: Array = []
+		for pr in r:
+			pairs.append([int(id_of[pr[0]]), int(id_of[pr[1]])])
+		fx.append(pairs)
 	var schedule: Array = []
-	schedule.resize(n - 1)
-	for k in info["rivals"].size():
-		schedule[info["rival_rounds"][k]] = k + 1   # rival pilots have ids 1..3
-	for k in schedule.size():
-		if schedule[k] == null:
-			schedule[k] = others.pop_front()
+	if with_player:
+		for r in fx:
+			for pr in r:
+				if int(pr[0]) == 0:
+					schedule.append(int(pr[1]))
+				elif int(pr[1]) == 0:
+					schedule.append(int(pr[0]))
 	var table := {}
 	for e in pilots:
 		table[str(e["id"])] = [0, 0, 0, 0]
-	var weeks: Array = []
-	var rounds := n - 1 + playoff_rounds(info["playoff"])
-	for k in rounds:
-		weeks.append(int(info["start"]) + k)
-	return {"stage": stage, "name": info["name"], "year": year, "seed": seed_value, "weeks": weeks, "round": 0,
-			"phase": "league", "pilots": pilots, "schedule": schedule, "table": table, "bracket": {}, "medals": {}, "news": []}
+	return {"stage": stage, "name": info["name"], "year": year, "seed": seed_value, "weeks": league_weeks(), "round": 0,
+			"phase": "league", "pilots": pilots, "fixtures": fx, "schedule": schedule, "table": table, "bracket": {},
+			"medals": {}, "news": [], "mine": with_player}
+
+
+static func has_player(ev: Dictionary) -> bool:
+	return bool(ev.get("mine", true)) and not pilot(ev, 0).is_empty()
 
 
 ## Cups: 8 pilots, straight into a knockout bracket.
@@ -156,10 +220,18 @@ static func robot_of(ev: Dictionary, id: int) -> Dictionary:
 	return o
 
 
-## The other league pairings this round (everyone except you and your opponent), fixed when the
-## round begins so you can bet on them.
+## The other league pairings this round (everyone except you and your opponent), from the
+## fixture list (older events without one draw them when the round begins).
 static func round_pairs(ev: Dictionary) -> Array:
 	var r: int = ev["round"]
+	if ev.has("fixtures"):
+		if r >= ev["fixtures"].size():
+			return []
+		var out: Array = []
+		for pr in ev["fixtures"][r]:
+			if int(pr[0]) != 0 and int(pr[1]) != 0:
+				out.append([int(pr[0]), int(pr[1])])
+		return out
 	var cached: Dictionary = ev.get("pairs", {})
 	if not cached.is_empty() and int(cached["round"]) == r:
 		return cached["list"]
@@ -167,7 +239,7 @@ static func round_pairs(ev: Dictionary) -> Array:
 	var free: Array = []
 	for e in ev["pilots"]:
 		var id: int = e["id"]
-		if id != 0 and id != opp and not (e.get("rival", -1) == 9 and ev["stage"] == "championship" and ev["phase"] == "league"):
+		if id != 0 and id != opp:
 			free.append(id)
 	var rng := RandomNumberGenerator.new()
 	rng.seed = int(ev["seed"]) * 17 + r * 389 + 1
@@ -230,7 +302,7 @@ static func player_opponent(ev: Dictionary) -> int:
 	match ev.get("phase", ""):
 		"league":
 			var r: int = ev["round"]
-			if r < ev["schedule"].size():
+			if r < ev["schedule"].size() and has_player(ev):
 				return int(ev["schedule"][r])
 		"playoffs":
 			var m := player_match(ev)
@@ -256,7 +328,7 @@ static func week_of_round(ev: Dictionary) -> int:
 
 static func round_name(ev: Dictionary) -> String:
 	if ev["phase"] == "league":
-		return I18n.t("League round %d/%d") % [int(ev["round"]) + 1, ev["schedule"].size()]
+		return I18n.t("League round %d/%d") % [mini(int(ev["round"]) + 1, ev["weeks"].size()), ev["weeks"].size()]
 	var br: Dictionary = ev["bracket"]
 	if br.is_empty():
 		return ""
@@ -320,10 +392,10 @@ static func simulate(ev: Dictionary, a: int, b: int, rng: RandomNumberGenerator)
 		if int(f["round"]) == int(ev["round"]) and ((int(f["a"]) == a and int(f["b"]) == b) or (int(f["a"]) == b and int(f["b"]) == a)):
 			return int(f["w"])   # watched: the world side was already updated by the fight
 	var w := -1
-	if pa.get("rival", -1) == 9:
-		w = a   # OVERLORD doesn't lose to computer pilots
-	elif pb.get("rival", -1) == 9:
-		w = b
+	if pa.get("rival", -1) == 9 or pb.get("rival", -1) == 9:
+		# OVERLORD hardly ever loses to computer pilots (about one night in eight)
+		var boss_side := a if pa.get("rival", -1) == 9 else b
+		w = boss_side if rng.randf() < 0.87 else (b if boss_side == a else a)
 	elif retired(ev, a) != retired(ev, b):
 		w = b if retired(ev, a) else a   # a retired pilot doesn't turn up: walkover
 	else:
@@ -341,7 +413,7 @@ static func add_result(ev: Dictionary, winner: int, loser: int, parts: int) -> v
 	if not t.has(str(winner)):
 		return
 	t[str(winner)][0] += 1
-	t[str(winner)][2] += 3
+	t[str(winner)][2] += 1   # a win is a point
 	t[str(winner)][3] += parts
 	t[str(loser)][1] += 1
 
@@ -365,7 +437,7 @@ static func after_player_fight(ev: Dictionary, won: bool, parts: int) -> Diction
 			results.append({"a": a, "b": b, "w": w})
 		ev["results"] = {"round": int(ev["round"]), "list": results}
 		ev["round"] = int(ev["round"]) + 1
-		if ev["round"] >= ev["schedule"].size():
+		if ev["round"] >= ev["weeks"].size():
 			out["phase_changed"] = true
 			finish_league(ev)
 			if ev["phase"] == "done":
@@ -396,11 +468,49 @@ static func after_player_fight(ev: Dictionary, won: bool, parts: int) -> Diction
 	return out
 
 
+## A round of a division you're not fighting in (or that you watched from the pub): every
+## fixture is decided by the robots and the pilots.
+static func play_npc_round(ev: Dictionary) -> void:
+	if ev.get("phase", "") != "league":
+		return
+	var rng := RandomNumberGenerator.new()
+	rng.seed = int(ev["seed"]) * 31 + int(ev["round"]) * 977 + 11
+	var results: Array = []
+	for pr in round_pairs(ev):
+		var a: int = pr[0]
+		var b: int = pr[1]
+		var w := simulate(ev, a, b, rng)
+		add_result(ev, w, b if w == a else a, rng.randi_range(0, 4))
+		results.append({"a": a, "b": b, "w": w})
+	ev["results"] = {"round": int(ev["round"]), "list": results}
+	ev["round"] = int(ev["round"]) + 1
+	if ev["round"] >= ev["weeks"].size():
+		finish_league(ev)
+
+
+## Has this division's current round been due (its Saturday has gone by)?
+static func round_due(ev: Dictionary, week: int, day_index: int) -> bool:
+	if ev.get("phase", "") != "league" or int(ev["round"]) >= ev["weeks"].size():
+		return false
+	var wk := int(ev["weeks"][int(ev["round"])])
+	return wk < week or (wk == week and day_index > 5)
+
+
+## The table's zones: "up" (top 4, promoted), "down" (bottom 4, relegated) or "".
+static func zone(ev: Dictionary, pos: int) -> String:
+	var n: int = ev["pilots"].size()
+	if pos < UP_DOWN and ev["stage"] != "championship":
+		return "up"
+	if pos >= n - UP_DOWN and ev["stage"] != "qualifiers":
+		return "down"
+	return ""
+
+
 ## League over: medals (scrap league) or a playoff bracket.
 static func finish_league(ev: Dictionary) -> void:
 	var info: Dictionary = STAGES[ev["stage"]]
 	var order := standings(ev)
-	if info["playoff"] == 0:
+	if int(info.get("playoff", 0)) == 0:
 		for k in mini(3, order.size()):
 			ev["medals"][str(order[k])] = k + 1
 		ev["phase"] = "done"

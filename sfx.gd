@@ -65,7 +65,8 @@ const VOICE_DB := -10.0   # blips sit well under the music
 
 ## One talking blip for `who` (call it every ~0.07s while their line types out).
 func voice(who: String) -> void:
-	var v: Array = VOICE_OF.get(who, ["talk", 1.0])
+	# pilots from around Port Ferrum: one of the voices, pitched by their name
+	var v: Array = VOICE_OF.get(who, [["talk", "voice_high", "voice_gravel", "voice_nasal"][absi(hash(who)) % 4], 0.85 + float(absi(hash(who + "p")) % 35) / 100.0])
 	play(v[0], 0.06, VOICE_DB, float(v[1]))
 
 

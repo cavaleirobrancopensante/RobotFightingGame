@@ -39,6 +39,7 @@ class TrophyPic extends Control:
 class Portrait extends Control:
 	## Simple drawn faces for the humans; ECHO is drawn as the player's robot.
 	var who := ""
+	var face_look := {}      # a world pilot's face (emergent talk), when they aren't in Story.SPEAKERS
 	var place := ""          # where the scene is: the announcer dresses for the venue
 	var robot_look := {}
 	var t := 0.0
@@ -92,6 +93,8 @@ class Portrait extends Control:
 				draw_line(c + Vector2(r * 0.5, -r * 0.15), c + Vector2(r * 0.15, -r * 0.05), Color.BLACK, 3.0)
 				draw_rect(Rect2(c.x - r * 0.25, c.y + r * 0.35, r * 0.5, mouth * 0.7), Color(0.75, 0.1, 0.2))
 				draw_rect(Rect2(c.x - r * 1.2, c.y + r * 0.95, r * 2.4, r), Color(0.15, 0.15, 0.2))  # suit
+				for side in [-1.0, 1.0]:
+					draw_arc(c + Vector2(side * r * 0.45, r * 1.25), r * 0.32, PI * 0.15, PI * 0.85, 10, Color(0.06, 0.06, 0.09), maxf(1.5, r * 0.06))
 			"YOU":
 				draw_face(GameData.pilot_look, c, r, mouth)
 				PilotArt.draw_controller(self, c + Vector2(0, r * 1.45), r / 14.0, str(GameData.pilot_look.get("controller", "gamepad")), talking, t)
@@ -138,7 +141,7 @@ class Portrait extends Control:
 				draw_circle(c + Vector2(r * 0.68, r * 0.35), r * 0.2, Color(0.5, 0.5, 0.55))
 				draw_rect(Rect2(c.x - r * 1.1, c.y + r * 0.95, r * 2.2, r), Color(0.6, 0.1, 0.15))
 			_:
-				var face: Dictionary = Story.SPEAKERS.get(who, {}).get("face", {})
+				var face: Dictionary = Story.SPEAKERS.get(who, {}).get("face", face_look)
 				if face.is_empty():
 					draw_string(ThemeDB.fallback_font, Vector2(0, c.y + 20), "...", HORIZONTAL_ALIGNMENT_CENTER, size.x, 60, Color(0.5, 0.5, 0.55))
 				else:
@@ -152,6 +155,9 @@ class Portrait extends Control:
 		var rr := r if not twin else r * 0.62
 		for cc in centers:
 			draw_rect(Rect2(cc.x - rr * 1.1, cc.y + rr * 0.95, rr * 2.2, rr), outfit)
+			if f.get("female", false):
+				for side in [-1.0, 1.0]:
+					draw_arc(cc + Vector2(side * rr * 0.45, rr * 1.25), rr * 0.32, PI * 0.15, PI * 0.85, 10, outfit.darkened(0.45), maxf(1.5, rr * 0.06))
 			PilotArt.draw_head(self, cc, rr, f, 0.0, mouth * (0.7 if not twin else 0.45))
 
 

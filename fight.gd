@@ -1673,14 +1673,17 @@ func leave_after_results() -> void:
 		get_tree().change_scene_to_file("res://main.tscn")
 		return
 	var keys: Array = []
-	if won and mode == "story" and fight_idx >= 0:
-		keys.append("post_%d" % fight_idx)
-	keys += GameData.pending_stories   # league results: medals, qualifying, going out
+	if won and mode == "story" and fight_idx >= 0 and fight_idx != 9:
+		keys.append("post_%d" % fight_idx)   # (OVERLORD's scene is the title: it comes with the table)
+	keys += GameData.pending_stories   # emergent talk, then the year's results: medals, promotion
 	GameData.pending_stories = []
 	# the finale gets the big story screen; everything else plays in the garage when you get back
-	if keys.has("post_9") and GameData.queue_stories(keys, "res://garage.tscn"):
-		get_tree().change_scene_to_file("res://story.tscn")
-		return
+	if keys.has("post_9"):
+		var named: Array = keys.filter(func(k): return typeof(k) == TYPE_STRING)
+		if GameData.queue_stories(named, "res://garage.tscn"):
+			GameData.bay_stories = keys.filter(func(k): return typeof(k) != TYPE_STRING)
+			get_tree().change_scene_to_file("res://story.tscn")
+			return
 	GameData.bay_stories = keys
 	get_tree().change_scene_to_file("res://garage.tscn")
 

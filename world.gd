@@ -12,26 +12,31 @@ extends RefCounted
 
 const I18n = preload("res://i18n.gd")
 
-const TIERS := ["scrap", "regional", "championship"]
-const TIER_SIZE := {"scrap": 14, "regional": 16, "championship": 24}
+const TIERS := ["qualifiers", "scrap", "regional", "championship"]
+## Each division table has 48 places; a few spare pilots hang around the scrapyard for pickups.
+const TIER_SIZE := {"qualifiers": 56, "scrap": 48, "regional": 48, "championship": 48}
 ## Robot value (sum of part prices) when the world is made: [low, high, skew]. Skew > 1 = most
 ## pilots near the low end, a few rich ones near the top.
-const TIER_VALUE := {"scrap": [0.0, 2600.0, 2.2], "regional": [1500.0, 7500.0, 1.5], "championship": [5000.0, 16000.0, 1.4]}
-const TIER_SKILL := {"scrap": [0.0, 0.3], "regional": [0.28, 0.58], "championship": [0.55, 0.95]}
+const TIER_VALUE := {"qualifiers": [0.0, 900.0, 2.4], "scrap": [300.0, 2600.0, 2.0], "regional": [1500.0, 7500.0, 1.5], "championship": [5000.0, 16000.0, 1.4]}
+const TIER_SKILL := {"qualifiers": [0.0, 0.16], "scrap": [0.1, 0.32], "regional": [0.28, 0.58], "championship": [0.55, 0.95]}
 ## Per month: what living costs, and what the day job / sponsors pay.
-const LIVING := {"scrap": 280, "regional": 750, "championship": 1900}
-const INCOME := {"scrap": [240, 460], "regional": [600, 1100], "championship": [1100, 2300]}
+const LIVING := {"qualifiers": 200, "scrap": 280, "regional": 750, "championship": 1900}
+const INCOME := {"qualifiers": [190, 380], "scrap": [240, 460], "regional": [600, 1100], "championship": [1100, 2300]}
 ## Signing-on money from a sponsor when a pilot moves up a tier.
-const SPONSOR := {"regional": 3500, "championship": 9000}
+const SPONSOR := {"scrap": 600, "regional": 3500, "championship": 9000}
 ## Cash at which a pilot might cash out and retire.
-const RICH := {"scrap": 6000, "regional": 18000, "championship": 60000}
+const RICH := {"qualifiers": 3000, "scrap": 6000, "regional": 18000, "championship": 60000}
 ## What a league fight pays the winner.
-const FIGHT_PAY := {"scrap": 170, "regional": 540, "championship": 1150, "cup": 400}
+const FIGHT_PAY := {"qualifiers": 90, "scrap": 170, "regional": 540, "championship": 1150, "cup": 400}
 const HABITS := ["saver", "spender", "gambler"]
 const SPEND_CHANCE := {"saver": 0.3, "spender": 0.75, "gambler": 0.5}
 const UPGRADE_SLOTS := ["head", "torso", "arm_front", "arm_back", "leg_front", "leg_back", "reactor", "back"]
 const RETIRED_KEEP := 30   # retired pilots kept on the books (oldest are forgotten)
 
+## Names that belong to women (a "JR" / "II" after a name keeps it).
+const FEMALE := ["LUPE", "NELL", "PETRA", "MAMA KAY", "NADIA", "WREN", "SAOIRSE", "JUNO", "MILA", "GRETA", "YARA",
+		"LOLA", "SVETA", "ROXY", "IMOGEN", "PAZ", "NOOR", "BEA", "ODETTE", "KIT", "PIA", "TOVA", "INES", "SUKI", "MAEVE",
+		"DORA", "ZORA", "RINA", "FIFI", "ANYA", "OONA", "TESS", "IRIS", "VERA", "LIV", "KIKI"]
 const NAMES := ["DEX", "LUPE", "KOVAC", "BRIGGS", "NELL", "OKAFOR", "TAM", "VASQUEZ", "IVO", "PETRA", "RUSTY JOE",
 		"MAMA KAY", "SPROCKET", "TEO", "NADIA", "BIG HUGO", "WREN", "COBALT KID", "FENWICK", "SAOIRSE", "MARCO", "JUNO",
 		"OLD PIKE", "BRYN", "HARLOW", "ZEKE", "MILA", "DUNCAN", "AKO", "RAFA", "GRETA", "OTIS", "FINN", "YARA",
@@ -73,6 +78,7 @@ static func new_pilot(rng: RandomNumberGenerator, tier: String, value: float, sk
 			"retired": false, "bot": {}, "wear": {}}
 	p["bot"] = build_bot(rng, value, skill)
 	wd["pilots"][str(wid)] = p
+	p["look"] = make_look(wid, str(p["name"]))
 	return p
 
 
@@ -435,31 +441,27 @@ static func week_passed(y: int, wk: int, busy: Dictionary) -> void:
 		return
 	var rng := RandomNumberGenerator.new()
 	rng.seed = y * 1000 + wk * 7 + 13
+	# league fights happen in the division tables (GameData.leagues); pilots without a league
+	# night this week (and the spares) take pickup fights at the scrapyard now and then
 	for tier in TIERS:
-		var info: Dictionary = GameData.Career.STAGES[tier]
-		var rounds: int = int(info["size"]) - 1 + GameData.Career.playoff_rounds(int(info["playoff"]))
-		var start: int = info["start"]
 		var pool: Array = active(tier).filter(func(p): return not busy.has(int(p["wid"])))
-		if wk == start:
-			for p in active(tier):
-				p["sw"] = 0
-				p["sl"] = 0
-		if wk >= start and wk < start + rounds:
-			pool.shuffle()
-			while pool.size() >= 2:
-				var a: Dictionary = pool.pop_back()
-				var b: Dictionary = pool.pop_back()
-				fight_pair(rng, a, b, tier)
-			if wk == start + rounds - 1:
-				season_over(rng, tier)
-		else:
-			for p in pool:
-				if rng.randf() < 0.3:
-					var foes: Array = pool.filter(func(q): return q != p)
-					if not foes.is_empty():
-						fight_pair(rng, p, foes[rng.randi() % foes.size()], "pickup")
+		if wk % 2 == 1:
+			pool = pool.filter(func(p): return not in_division(int(p["wid"])))
+		for p in pool:
+			if rng.randf() < 0.3:
+				var foes: Array = pool.filter(func(q): return q != p)
+				if not foes.is_empty():
+					fight_pair(rng, p, foes[rng.randi() % foes.size()], "pickup")
 	if wk % GameData.MONTH_WEEKS == 0:
 		month_passed(rng, busy)
+
+
+static func in_division(wid: int) -> bool:
+	for ev in GameData.leagues.values():
+		for e in ev.get("pilots", []):
+			if int(e.get("wid", -1)) == wid:
+				return true
+	return false
 
 
 static func fight_pair(rng: RandomNumberGenerator, a: Dictionary, b: Dictionary, stage: String) -> void:
@@ -470,23 +472,34 @@ static func fight_pair(rng: RandomNumberGenerator, a: Dictionary, b: Dictionary,
 		after_fight(rng, b, a, stage)
 
 
-## A tier's season is over: the top three get prize money, the best move up a tier and the
-## worst of the tiers above drop down.
-static func season_over(rng: RandomNumberGenerator, tier: String) -> void:
-	var pool := active(tier)
-	pool.sort_custom(func(a, b): return int(a["sw"]) * 3 - int(a["sl"]) > int(b["sw"]) * 3 - int(b["sl"]))
-	var prizes: Array = GameData.Career.STAGES[tier]["prizes"]
-	for k in mini(3, pool.size()):
-		pool[k]["cash"] = int(pool[k]["cash"]) + int(prizes[k] * 0.6)
-	var idx := TIERS.find(tier)
-	if idx < TIERS.size() - 1:
-		for k in mini(2, pool.size()):
-			move_tier(pool[k], TIERS[idx + 1])
-	if idx > 0:
-		var n := pool.size()
-		for k in mini(2, n):
-			move_tier(pool[n - 1 - k], TIERS[idx - 1])
-	refill(rng)
+## The year is over: the division tables decide who moves. Top 4 of each division go up, bottom
+## 4 come down (the player is moved by GameData). Then every tier is topped back up to its size.
+static func year_end(rng: RandomNumberGenerator, leagues: Dictionary) -> void:
+	var moves: Array = []   # [pilot, tier]
+	for stage in leagues:
+		var ev: Dictionary = leagues[stage]
+		var idx := TIERS.find(stage)
+		if idx == -1 or ev.get("pilots", []).is_empty():
+			continue
+		var order: Array = GameData.Career.standings(ev)
+		for pos in order.size():
+			var e: Dictionary = GameData.Career.pilot(ev, int(order[pos]))
+			if not e.has("wid"):
+				continue
+			var p := pilot(int(e["wid"]))
+			if p.is_empty() or p["retired"]:
+				continue
+			var z: String = GameData.Career.zone(ev, pos)
+			if z == "up" and idx < TIERS.size() - 1:
+				moves.append([p, TIERS[idx + 1]])
+			elif z == "down" and idx > 0:
+				moves.append([p, TIERS[idx - 1]])
+	for m in moves:
+		move_tier(m[0], m[1])
+	for p in active():
+		p["sw"] = 0
+		p["sl"] = 0
+	refill(rng, true)
 
 
 static func move_tier(p: Dictionary, tier: String) -> void:
@@ -518,7 +531,7 @@ static func month_passed(rng: RandomNumberGenerator, busy: Dictionary) -> void:
 			p["cash"] = int(p["cash"]) - cost
 			p["wear"].erase(slot)
 		# scrap pilots dig the scrapyard like you do: now and then a usable part turns up
-		if tier == "scrap" and rng.randf() < 0.45:
+		if (tier == "scrap" or tier == "qualifiers") and rng.randf() < 0.45:
 			var slot: String = UPGRADE_SLOTS[rng.randi() % 6]
 			var cur := part_cost(p["bot"]["parts"].get(slot, ""))
 			var found := best_under(GameData.SLOT_KIND[slot], rng.randf_range(80.0, 420.0), slot)
@@ -594,26 +607,35 @@ static func retire(p: Dictionary, why: String) -> void:
 	news(text, [p["name"]])
 
 
-## Keep every tier full: rookies turn up at the scrapyard (now and then a rich kid buys their way
-## straight into the Regional), and empty places higher up go to the best pilots below.
-static func refill(rng: RandomNumberGenerator) -> void:
-	for k in range(TIERS.size() - 1, -1, -1):
-		var tier: String = TIERS[k]
-		var guard := 0
-		while active(tier).size() < TIER_SIZE[tier] and guard < 30:
-			guard += 1
-			if tier == "scrap" or (tier == "regional" and rng.randf() < 0.15):
-				var s: Array = TIER_SKILL[tier]
-				var val := rng.randf_range(0.0, 700.0) if tier == "scrap" else rng.randf_range(3000.0, 7000.0)
-				var p := new_pilot(rng, tier, val, rng.randf_range(s[0], lerpf(s[0], s[1], 0.6)))
-				p["cash"] = rng.randi_range(0, 400) if tier == "scrap" else rng.randi_range(2000, 8000)
-				news("New pilot at the %s: %s, with %s.", ["stage:" + tier, p["name"], p["bot"]["name"]])
-			else:
+## Keep every tier full: rookies turn up at the scrapyard qualifiers (now and then a rich kid
+## buys their way straight into the Scrap Heap League). Between seasons (`rebalance`), empty
+## places higher up go to the best pilots below and overfull tiers send their weakest down.
+static func refill(rng: RandomNumberGenerator, rebalance: bool = false) -> void:
+	if rebalance:
+		for k in range(TIERS.size() - 1, 0, -1):
+			var tier: String = TIERS[k]
+			var here := active(tier)
+			if here.size() > TIER_SIZE[tier]:
+				here.sort_custom(func(a, b): return rating(robot(int(a["wid"])), a["skill"]) < rating(robot(int(b["wid"])), b["skill"]))
+				for i in here.size() - TIER_SIZE[tier]:
+					move_tier(here[i], TIERS[k - 1])
+			var guard := 0
+			while active(tier).size() < TIER_SIZE[tier] and guard < 60:
+				guard += 1
 				var below := active(TIERS[k - 1])
 				if below.is_empty():
 					break
 				below.sort_custom(func(a, b): return rating(robot(int(a["wid"])), a["skill"]) > rating(robot(int(b["wid"])), b["skill"]))
 				move_tier(below[0], tier)
+	var guard2 := 0
+	while active("qualifiers").size() < TIER_SIZE["qualifiers"] and guard2 < 80:
+		guard2 += 1
+		var tier := "scrap" if rng.randf() < 0.08 and rebalance else "qualifiers"
+		var s: Array = TIER_SKILL[tier]
+		var r: Array = TIER_VALUE[tier]
+		var p := new_pilot(rng, tier, rng.randf_range(r[0], lerpf(r[0], r[1], 0.6)), rng.randf_range(s[0], lerpf(s[0], s[1], 0.6)))
+		p["cash"] = rng.randi_range(0, 400) if tier == "qualifiers" else rng.randi_range(1500, 4000)
+		news("New pilot at the %s: %s, with %s.", ["stage:" + tier, p["name"], p["bot"]["name"]])
 
 
 # ---------------------------------------------------------------- picking pilots for events
@@ -642,7 +664,7 @@ static func pick_for_league(rng: RandomNumberGenerator, tier: String, n: int) ->
 
 ## Seven cup entrants for a cup tier (1-5): scrap pilots in the small cups, champions in the big ones.
 static func pick_for_cup(rng: RandomNumberGenerator, tier: int, exclude: Array) -> Array:
-	var tiers: Array = [["scrap"], ["scrap", "regional"], ["regional"], ["regional", "championship"], ["championship"]][clampi(tier - 1, 0, 4)]
+	var tiers: Array = [["qualifiers", "scrap"], ["scrap"], ["scrap", "regional"], ["regional", "championship"], ["championship"]][clampi(tier - 1, 0, 4)]
 	var pool: Array = []
 	for t in tiers:
 		pool += active(t).filter(func(p): return not exclude.has(int(p["wid"])))
@@ -667,7 +689,7 @@ static func pick_pickup(rng: RandomNumberGenerator, tier: String, exclude: Array
 ## don't fight in the background that week, and they can't retire mid-event.
 static func busy_ids() -> Dictionary:
 	var out := {}
-	for ev in [GameData.event, GameData.circuit]:
+	for ev in [GameData.circuit] + GameData.leagues.values():
 		if ev.is_empty() or ev.get("phase", "") == "done":
 			continue
 		for e in ev.get("pilots", []):
@@ -691,6 +713,40 @@ static func news_text(n: Dictionary) -> String:
 			args.append(s)
 	var t := I18n.t(str(n["text"]))
 	return t % args if args.size() == t.count("%s") + t.count("%d") else t
+
+
+static func is_female_name(name: String) -> bool:
+	return FEMALE.has(name.replace(" JR", "").replace(" III", "").replace(" II", ""))
+
+
+## What a world pilot looks like. Made once and saved with them, so a pilot always looks the same.
+static func look_of(wid: int) -> Dictionary:
+	var p := pilot(wid)
+	if p.is_empty():
+		return make_look(wid, "")
+	if not p.has("look"):
+		p["look"] = make_look(wid, str(p["name"]))
+	return p["look"]
+
+
+static func make_look(wid: int, name: String) -> Dictionary:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = wid * 7349 + 17
+	var PilotArt = load("res://pilot_art.gd")
+	var female := is_female_name(name)
+	var look := {"skin": PilotArt.SKINS[rng.randi() % PilotArt.SKINS.size()], "hair": PilotArt.COLORS[rng.randi() % PilotArt.COLORS.size()],
+			"hat": PilotArt.HATS[rng.randi() % PilotArt.HATS.size()], "outfit": PilotArt.COLORS[rng.randi() % PilotArt.COLORS.size()],
+			"eyes": PilotArt.EYES[rng.randi() % PilotArt.EYES.size()],
+			"beard": PilotArt.BEARDS[rng.randi() % PilotArt.BEARDS.size()] if rng.randf() < 0.45 else "none",
+			"glasses": PilotArt.GLASSES[rng.randi() % PilotArt.GLASSES.size()] if rng.randf() < 0.3 else "none"}
+	for x in PilotArt.EXTRAS[rng.randi() % PilotArt.EXTRAS.size()]:
+		look[x] = true
+	if female:
+		look["female"] = true
+		look["beard"] = "none"
+		if rng.randf() < 0.6:
+			look["long_hair"] = true
+	return look
 
 
 static func shown_name(wid: int, fallback: String) -> String:

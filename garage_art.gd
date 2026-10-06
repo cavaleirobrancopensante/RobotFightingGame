@@ -504,7 +504,19 @@ static func _pub_back(ci: CanvasItem, size: Vector2, floor_y: float, t: float, i
 		ci.draw_line(Vector2(bx + 3, ring_y - 10), Vector2(bx + 3, ring_y), c, 2.0)
 		var jab := maxf(0.0, sin(t * 5.0 + k * 1.7)) * 9.0
 		ci.draw_line(Vector2(bx, ring_y - 22), Vector2(bx - dirk * (8 + jab), ring_y - 22), c, 3.0)
-	ci.draw_string(ThemeDB.fallback_font, tv.position + Vector2(4, 11), "LIVE", HORIZONTAL_ALIGNMENT_LEFT, -1, 10, Color(1, 0.3, 0.3) if fmod(t, 1.0) < 0.6 else Color(0.5, 0.2, 0.2))
+	var tvi: Dictionary = info.get("tv", {})
+	if tvi.get("live", false) or tvi.is_empty():
+		ci.draw_string(ThemeDB.fallback_font, tv.position + Vector2(4, 11), "LIVE", HORIZONTAL_ALIGNMENT_LEFT, -1, 10, Color(1, 0.3, 0.3) if fmod(t, 1.0) < 0.6 else Color(0.5, 0.2, 0.2))
+	if not tvi.is_empty():
+		# the channel's banner along the bottom of the screen: which league, who's fighting
+		var band := Rect2(tv.position.x, tv.end.y - 2, tv.size.x, 26 * s)
+		ci.draw_rect(band, Color(0.05, 0.05, 0.08))
+		ci.draw_rect(Rect2(band.position, Vector2(4, band.size.y)), Color(1.0, 0.8, 0.2))
+		var f := ThemeDB.fallback_font
+		var fs := int(10 * s)
+		ci.draw_string(f, band.position + Vector2(8, 11 * s), str(tvi.get("title", "")), HORIZONTAL_ALIGNMENT_LEFT, band.size.x - 12, fs, Color(1.0, 0.8, 0.2))
+		var who := str(tvi.get("a", "")) + ("  vs  " + str(tvi["b"]) if str(tvi.get("b", "")) != "" else "")
+		ci.draw_string(f, band.position + Vector2(8, 22 * s), who, HORIZONTAL_ALIGNMENT_LEFT, band.size.x - 12, fs, Color(0.9, 0.9, 0.95))
 	# shelves of bottles behind the bar
 	var cx := _pub_counter_x(size)
 	for row in 2:
@@ -536,6 +548,15 @@ static func _pub_back(ci: CanvasItem, size: Vector2, floor_y: float, t: float, i
 ## The jukebox: knocked together from scrap - patchwork plates, pipe legs, a record spinning behind
 ## a scratched window, chasing bulbs round the arch, and a brass gramophone horn on top. When it's
 ## playing, the bulbs run, the record spins and notes drift out of the horn.
+	# the rest of tonight's crowd, standing around with their drinks (further back, a bit smaller)
+	var crowd: Array = info.get("patron", {}).get("crowd", [])
+	for k in crowd.size():
+		var cs := s * 0.82
+		var cx2 := _pub_counter_x(size) - (30 + 58 * k) * s
+		var cy := floor_y - 16 * s
+		PilotArt.draw_person(ci, Vector2(cx2, cy), cs, crowd[k]["look"], 1.0 if k % 2 == 0 else -1.0, "hold", t + 1.3 * k)
+		_head(info, str(crowd[k]["name"]), Vector2(cx2, cy), cs)
+
 static func _jukebox(ci: CanvasItem, base: Vector2, s: float, t: float, playing: bool) -> void:
 	var w := 50.0 * s
 	var h := 80.0 * s
@@ -625,17 +646,26 @@ static func _pub_front(ci: CanvasItem, size: Vector2, floor_y: float, s: float, 
 		var at := Vector2(lerpf(cx + 6, size.x * 0.74, f), top - 7 * s)
 		for k in 4:
 			ci.draw_circle(at + Vector2(k * 3, -k * 2.5 * s), 3.2 * s, Color(0.95, 0.78, 0.25, 1.0 - maxf(0.0, bet_age - 1.2) * 2.5))
-	# stools
-	var px := cx - 26 * s
-	for x in [px, px - 60 * s]:
+	# stools: today's pilot at the bar nearest the bartender, then you, then Gus
+	var patron: Dictionary = info.get("patron", {})
+	var qx := cx - 24 * s
+	var px := cx - (66 if not patron.is_empty() else 26) * s
+	for x in [px, px - 44 * s]:
 		ci.draw_rect(Rect2(x - 10 * s, floor_y - 27 * s, 20 * s, 4 * s), Color(0.55, 0.15, 0.12))
 		ci.draw_line(Vector2(x - 6 * s, floor_y - 23 * s), Vector2(x - 9 * s, floor_y), Color(0.45, 0.45, 0.5), 2.0)
 		ci.draw_line(Vector2(x + 6 * s, floor_y - 23 * s), Vector2(x + 9 * s, floor_y), Color(0.45, 0.45, 0.5), 2.0)
 	PilotArt.draw_person(ci, Vector2(px - 4 * s, floor_y), s, pilot, 1.0, "push" if bet_age < 1.2 else "drink", t)
 	_head(info, "YOU", Vector2(px - 4 * s, floor_y), s, true)
 	# Gus on the next stool, nursing a coffee
-	PilotArt.draw_person(ci, Vector2(px - 64 * s, floor_y), s, PilotArt.GUS_LOOK, 1.0, "drink", t + 2.2)
-	_head(info, "GUS", Vector2(px - 64 * s, floor_y), s, true)
+	PilotArt.draw_person(ci, Vector2(px - 48 * s, floor_y), s, PilotArt.GUS_LOOK, 1.0, "drink", t + 2.2)
+	_head(info, "GUS", Vector2(px - 48 * s, floor_y), s, true)
+	# today's pilot at the bar: a real pilot from the rankings (your pickup fight, if you want it)
+	if not patron.is_empty():
+		ci.draw_rect(Rect2(qx - 10 * s, floor_y - 27 * s, 20 * s, 4 * s), Color(0.55, 0.15, 0.12))
+		ci.draw_line(Vector2(qx - 6 * s, floor_y - 23 * s), Vector2(qx - 9 * s, floor_y), Color(0.45, 0.45, 0.5), 2.0)
+		ci.draw_line(Vector2(qx + 6 * s, floor_y - 23 * s), Vector2(qx + 9 * s, floor_y), Color(0.45, 0.45, 0.5), 2.0)
+		PilotArt.draw_person(ci, Vector2(qx, floor_y), s, patron["look"], 1.0, "drink", t + 4.1)
+		_head(info, str(patron["name"]), Vector2(qx, floor_y), s, true)
 
 
 ## Remember where a person's head is (stage coordinates), so the garage can point speech bubbles at it.

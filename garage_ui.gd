@@ -448,7 +448,7 @@ class TalkBar extends Control:
 ## One symbol per kind of fight night, so calendar days stay the same size:
 ## scrap = rusty gear, regional = blue shield, championship = gold crown, cup = purple trophy,
 ## pickup = a green coin, rent = red bill, stock = a crate.
-const EVENT_COLORS := {"scrap": Color(0.86, 0.48, 0.24), "regional": Color(0.35, 0.6, 1.0), "championship": YELLOW,
+const EVENT_COLORS := {"qualifiers": Color(0.7, 0.68, 0.62), "scrap": Color(0.86, 0.48, 0.24), "regional": Color(0.35, 0.6, 1.0), "championship": YELLOW,
 		"cup": Color(0.75, 0.5, 1.0), "pickup": Color(0.55, 0.78, 0.42), "exhibition": YELLOW,
 		"rent": Color(1.0, 0.42, 0.35), "stock": Color(0.62, 0.5, 0.36)}
 
@@ -456,6 +456,14 @@ static func draw_event_icon(ci: CanvasItem, kind: String, c: Vector2, r: float, 
 	var col: Color = EVENT_COLORS.get(kind, MUTED)
 	var dark := Color(0.08, 0.08, 0.1)
 	match kind:
+		"qualifiers":
+			# a hex nut: where everybody starts
+			var hexp := PackedVector2Array()
+			for k in 6:
+				var a := k * TAU / 6.0 + PI / 6.0
+				hexp.append(c + Vector2(cos(a), sin(a)) * r * 0.9)
+			ci.draw_colored_polygon(hexp, col)
+			ci.draw_circle(c, r * 0.38, dark)
 		"scrap":
 			for k in 8:
 				var a := k * TAU / 8.0

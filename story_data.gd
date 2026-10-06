@@ -1,9 +1,11 @@
 extends RefCounted
 ## All the story text. Each scene: {"place": where it happens, "lines": [[speaker, text], ...]}
-## Scenes: "intro", "pre_N" (before the fight with story rival N, 0-9), "post_N" (after beating them),
-## and career moments: "scrap_medal", "scrap_out", "regional_semis", "regional_out", "champ_out".
-## Rivals 0-2 fight in the Scrap Heap League, 3-5 in the Regional, 6-8 in the Championship,
-## and OVERLORD (9) waits in the Championship final.
+## Scenes: "intro", "pre_N" (before the fight with story rival N, 0-9), "post_N" (after beating them;
+## post_9 is the title, when you top the Championship table), and the year's results:
+## "up_<division>", "down", "stay_<division>".
+## Rivals 0-2 fight in the Scrap Heap League, 3-5 in the Regional, 6-8 in the Championship, and
+## OVERLORD (9) is your last fight of the Championship year. The rest of the story is emergent:
+## see talk_lines.gd (gloats, rivalries, revenge, the pilot at the bar).
 ## Speakers are defined in SPEAKERS below. Edit freely!
 ##
 ## The robots are machines, not minds: ECHO only shows system readouts. The people are the story:
@@ -17,11 +19,11 @@ const SPEAKERS := {
 	"KANE": {"color": "#ff5a7a"},
 	"ANNOUNCER": {"color": "#f2c230"},
 	# rival pilots
-	"MARGO": {"color": "#9fd8c8", "face": {"skin": "#d9a07a", "hair": "#e8d36a", "hat": "beanie", "outfit": "#f39c12"}},
+	"MARGO": {"color": "#9fd8c8", "face": {"skin": "#d9a07a", "hair": "#e8d36a", "hat": "beanie", "outfit": "#f39c12", "female": true}},
 	"BRUNO": {"color": "#e0a060", "face": {"skin": "#a8714f", "hair": "#2b2b2b", "hat": "cap", "outfit": "#2c3e50", "beard": true}},
 	"SKAR": {"color": "#e056fd", "face": {"skin": "#e8c0a0", "hair": "#e056fd", "hat": "mohawk", "outfit": "#222222", "scar": true}},
 	"DR. VOSS": {"color": "#c0c8d8", "face": {"skin": "#f0d6c0", "hair": "#888888", "hat": "bald", "outfit": "#ecf0f1", "glasses": true}},
-	"ROSA": {"color": "#ff7b54", "face": {"skin": "#b07850", "hair": "#3b1f14", "hat": "bun", "outfit": "#8e2c1c", "long_hair": true}},
+	"ROSA": {"color": "#ff7b54", "face": {"skin": "#b07850", "hair": "#3b1f14", "hat": "bun", "outfit": "#8e2c1c", "long_hair": true, "female": true}},
 	"NIK & NAT": {"color": "#7fd3ff", "face": {"skin": "#e2b48c", "hair": "#00b7ff", "hat": "", "outfit": "#1f2a44", "goggles": true, "twin": true}},
 	"BULL": {"color": "#c9a46b", "face": {"skin": "#c08a64", "hair": "#1a1a1a", "hat": "helmet", "outfit": "#3d2b1f", "beard": true}},
 	"IRONSIDE": {"color": "#d0d0d0", "face": {"skin": "#8d5a3b", "hair": "#d8d8d8", "hat": "bald", "outfit": "#4a4a52", "beard": true, "scar": true}},
@@ -33,8 +35,8 @@ const SCENES := {
 		["YOU", "My dad was one of those pilots. All he left me was his old robot, rusting under a tarp at the dry dock."],
 		["GUS", "{RENT_INTRO}"],
 		["ECHO", "[ PAIRING SIGNAL ... HANDLER LINK FOUND ]"],
-		["GUS", "Then it starts where everybody starts. The Scrap Heap League, out back of the junkyard. Five fights, pennies a bout."],
-		["GUS", "Do well in the scrap league. Finish in the top three and we qualify for the Regional. That's where the real money starts. First bout's tonight."],
+		["GUS", "Then we start at the bottom. The Scrapyard Qualifiers, out back of the junkyard. Pennies a bout."],
+		["GUS", "One table, all year. A point a win, a fight every other Saturday. Finish in the top four and next year we're in the Scrap Heap League. First bout's on Saturday."],
 	]},
 
 	"pre_0": {"place": "THE SCRAP HEAP RING", "lines": [
@@ -142,12 +144,12 @@ const SCENES := {
 	]},
 	"post_8": {"place": "KANE CHAMPIONSHIP ARENA", "lines": [
 		["IRONSIDE", "Ha. Best beating I've taken in years. Tomorrow I'll be in the front row with every pilot Kane ever fired."],
-		["GUS", "Finish the league in the top seven and we're in the playoffs. OVERLORD waits in the final. The whole city will be watching."],
+		["GUS", "OVERLORD is the last fight of the year. Top the table and the belt is ours. The whole city will be watching."],
 		["YOU", "Gus. Whatever you wrote back then, you also built the thing that's going to prove it wrong."],
 	]},
 
 	"pre_9": {"place": "THE KANE GRAND HALL: FINAL", "lines": [
-		["ANNOUNCER", "LADIES AND GENTLEMEN... THE FINAL OF THE KANE CHAMPIONSHIP!"],
+		["ANNOUNCER", "LADIES AND GENTLEMEN... THE LAST NIGHT OF THE KANE CHAMPIONSHIP!"],
 		["ANNOUNCER", "In the red corner, the defending champion, unpiloted, running version 12 of the Kane fight program... OVERLORD!"],
 		["ANNOUNCER", "And in the blue corner, the junkyard miracle... ECHO and its pilot!"],
 		["NARRATOR", "Dinner jackets and diamonds in the boxes. But the front rows are full of pilots. Margo, Bruno, Skar, Rosa, the twins, Bull, Ironside. They've all brought their old controllers."],
@@ -155,13 +157,13 @@ const SCENES := {
 		["YOU", "Tonight they learn what people can do with them."],
 	]},
 	"post_9": {"place": "THE KANE GRAND HALL: FINAL", "lines": [
-		["ANNOUNCER", "OVERLORD IS DOWN! OVERLORD IS DOWN! THE SCRAP-HEAP UNDERDOG IS YOUR NEW CHAMPION!"],
+		["ANNOUNCER", "THE TABLE IS FINAL! THE SCRAP-HEAP UNDERDOG IS YOUR NEW CHAMPION!"],
 		["KANE", "...Impossible. It had every advantage. Every program. Every simulation."],
 		["GUS", "It had no pilot."],
 		["GUS", "Kid. Your father would have been proud. I'm... I'm proud too. For what that's worth."],
 		["NARRATOR", "For a second the arena is silent. Then the front rows stand up, every pilot Kane ever fired, and the whole place explodes."],
 		["NARRATOR", "Kane Dynamics' stock fell forty percent by morning. By the end of the month, the league brought back pilot licenses."],
-		["NARRATOR", "THE END... of your first championship. Next year OVERLORD wants its belt back. Till then, cups and rematches from your garage."],
+		["NARRATOR", "THE END... of your first championship. Next year OVERLORD wants its belt back, and the whole table wants you."],
 	]},
 
 	# ---- the first time in the bay
@@ -169,33 +171,44 @@ const SCENES := {
 		["GUS", "Welcome to the bay. Don't touch the coffee."],
 		["GUS", "{RENT_GARAGE}"],
 		["GUS", "Keep winning and the prize money starts coming in. Climb out of the hole, then we talk to the dealer about real parts."],
-		["GUS", "And remember: finish the scrap league in the top three and we qualify for the Regional. That's our way out of this pile."],
+		["GUS", "And remember: top four of the qualifiers and we're in the Scrap Heap League next year. Then the Regional. Then the Championship. Three years, if we're good."],
+		["GUS", "No league fight tonight? Go down to the Rusty Bolt. Whoever's at the bar will fight you for a few bucks."],
 	]},
 	# ---- career moments (shown after the fight that decides them)
-	"scrap_medal": {"place": "THE SCRAP HEAP RING", "lines": [
-		["ANNOUNCER", "...and that's the Scrap Heap League done! Step up for your medal, and mind the rust!"],
-		["GUS", "Look at that trophy. Welded out of dead robots. Ugliest thing I ever saw. It's going on the bay wall.", {"trophy": "scrap"}],
-		["GUS", "And it gets us into the Port Ferrum Regional. A real ring, real seats, real money. It starts week eight."],
-		["GUS", "Quiet weeks, there's always a pickup fight down here for a few bucks. And now people know your name, the cups will let you in."],
+	"up_scrap": {"place": "THE SCRAP HEAP RING", "lines": [
+		["ANNOUNCER", "...and that's the qualifiers done! Four of you are going up to the Scrap Heap League!"],
+		["GUS", "Top four, kid. Next year we're in the Scrap Heap League. A real table, real rivals."],
+		["GUS", "Don't celebrate too hard. Up there they eat rookies for breakfast."],
 	]},
-	"scrap_out": {"place": "THE SCRAP HEAP RING", "lines": [
-		["GUS", "No medal this time. Doesn't matter. Everybody's first season looks like this."],
-		["GUS", "The scrap league runs again next year. Till then, pickup fights in the quiet weeks, and we keep building."],
+	"up_regional": {"place": "THE SCRAP HEAP RING", "lines": [
+		["ANNOUNCER", "...and that's the Scrap Heap League done! The top four are moving up, mind the rust on your way out!"],
+		["GUS", "The Port Ferrum Regional. A real ring, real seats, real money. Next year, kid."],
+		["GUS", "And now people know your name, the cups will let you in."],
 	]},
-	"regional_semis": {"place": "PORT FERRUM SPORTS HALL", "lines": [
-		["ANNOUNCER", "...and that puts them in the SEMIFINALS!"],
-		["GUS", "Kid. You know what the semis mean? You're IN. The Kane Championship. Week twenty-two."],
-		["GUS", "Seventeen league fights, then the playoffs. OVERLORD sits out the league and waits in the bracket. Of course it does."],
-		["GUS", "But first, finish this Regional. A medal's a medal."],
+	"up_championship": {"place": "PORT FERRUM SPORTS HALL", "lines": [
+		["ANNOUNCER", "...and they're going UP! Next year, the Kane Championship!"],
+		["GUS", "Kid. You know what that means? The top table. OVERLORD's table. The whole city watches every other Saturday."],
+		["GUS", "Not long ago you were fighting for pennies behind the junkyard. Don't forget that."],
 	]},
-	"regional_out": {"place": "PORT FERRUM SPORTS HALL", "lines": [
-		["GUS", "Not the top four. The Regional comes round again next year, and we'll be better."],
+	"down": {"place": "GUS'S BAY", "lines": [
+		["GUS", "Bottom four. We're going down a league next year."],
+		["GUS", "It happens. Ironside went down twice before anyone knew his name. We fix the robot and we climb back."],
+	]},
+	"stay_qualifiers": {"place": "THE SCRAP HEAP RING", "lines": [
+		["GUS", "Not the top four this year. Doesn't matter. Everybody's first season looks like this."],
+		["GUS", "The qualifiers run again next year. Till then, pickup fights at the Rusty Bolt, and we keep building."],
+	]},
+	"stay_scrap": {"place": "THE SCRAP HEAP RING", "lines": [
+		["GUS", "Another year in the Scrap Heap League. Not up, not down. Next year we push."],
+	]},
+	"stay_regional": {"place": "PORT FERRUM SPORTS HALL", "lines": [
+		["GUS", "Another year in the Regional. Kane's people will keep watching. Let them."],
 		["GUS", "Till then, cups, pickup fights, and every dollar into that robot."],
 	]},
-	"champ_out": {"place": "KANE CHAMPIONSHIP ARENA", "lines": [
-		["GUS", "We didn't make the playoffs. OVERLORD keeps its belt another year."],
+	"stay_championship": {"place": "KANE CHAMPIONSHIP ARENA", "lines": [
+		["GUS", "OVERLORD keeps its belt another year."],
 		["YOU", "Next year."],
-		["GUS", "Next year. Same week, same arena. We'll be ready."],
+		["GUS", "Next year. Same table, same city. We'll be ready."],
 	]},
 	# ---- Gus explains each part of the garage the first time it opens (one per win)
 	"unlock_scrapyard": {"place": "THE SCRAPYARD", "lines": [
@@ -218,7 +231,7 @@ const SCENES := {
 		["GUS", "He restocks every Sunday. Mini parts sip power. Heavy parts hit like a truck but drink the battery dry. He's under Get Parts now."],
 	]},
 	"unlock_season": {"place": "GUS'S BAY", "lines": [
-		["GUS", "Pinned a calendar on the wall. Fight nights are Saturdays, cup nights are Wednesdays. Rent's the last Sunday of the month. I circled those in red."],
+		["GUS", "Pinned a calendar on the wall. League nights are every other Saturday, cup nights are Wednesdays. Rent's the last Sunday of the month. I circled those in red."],
 		["YOU", "You circled all of them."],
 		["GUS", "Because I have to pay all of them. Flip it over. The league table, the other pilots, and the bookies' odds. It's all under Season."],
 		["GUS", "Half this town bets on fight night. If you want to see what you're betting on, you can go and watch the other fights too."],

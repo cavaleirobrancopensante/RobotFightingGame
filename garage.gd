@@ -363,8 +363,10 @@ func _ready() -> void:
 	# story moments play right here: what happened at the fight, and Gus's first welcome to the bay
 	var keys: Array = GameData.bay_stories
 	GameData.bay_stories = []
-	if GameData.wins + GameData.losses > 0:
-		keys.append("first_garage")
+	keys.append("first_garage")
+	if GameData.converted_note:
+		GameData.converted_note = false
+		keys.append({"lines": [["GUS", tr("Big news, kid. The leagues changed. Now it's one table a year, every other Saturday, a point a win. Top four go up, bottom four go down. We start this year in the %s.") % tr(Career.STAGES[GameData.rank]["name"]), {}]]})
 	play_story(keys)
 	# back from Gus explaining something (older saves): open it for you
 	var act := GameData.open_action
@@ -619,7 +621,9 @@ var talk_beep := 0.0
 func play_story(keys: Array, after: Callable = Callable()) -> bool:
 	var lines: Array = []
 	for k in keys:
-		if Story.SCENES.has(k) and not GameData.story_seen.has(k):
+		if typeof(k) == TYPE_DICTIONARY:
+			lines += talk_screens(k.get("lines", []))   # emergent talk: rivals, the pub, streaks
+		elif Story.SCENES.has(k) and (not GameData.story_seen.has(k) or str(k).begins_with("stay_") or str(k) == "down" or str(k).begins_with("up_")):
 			lines += story_screens(k)
 			GameData.mark_story_seen(k)
 	if lines.is_empty():
@@ -631,6 +635,16 @@ func play_story(keys: Array, after: Callable = Callable()) -> bool:
 	_talk_show()
 	GameData.request_save()
 	return true
+
+
+## Ready-made lines ([who, text, extra]) from GameData's emergent talk: already translated.
+func talk_screens(raw: Array) -> Array:
+	var out: Array = []
+	for l in raw:
+		var extra: Dictionary = (l[2] as Dictionary).duplicate() if l.size() > 2 else {}
+		extra["place"] = "*"
+		out.append([str(l[0]), str(l[1]).replace("ECHO", GameData.robot_name), extra])
+	return out
 
 
 ## A scene's lines, translated, with the lines that depend on your game filled in.
@@ -652,8 +666,8 @@ func story_screens(key: String) -> Array:
 
 
 func talk_mode(who: String) -> String:
-	if who in ["GUS", "YOU"]:
-		return "bubble"
+	if who in ["GUS", "YOU"] or (heads.has(who) and not Story.SPEAKERS.has(who)):
+		return "bubble"   # (a pilot standing in the scene, like the one at the bar, talks in a bubble)
 	if who in ["NARRATOR", "ECHO"]:
 		return "caption"
 	return "call"
@@ -682,6 +696,7 @@ func _talk_show() -> void:
 	if mode == "call":
 		var face = StoryScript.Portrait.new()
 		face.who = who
+		face.face_look = talk_lines[0][2].get("look", {})
 		face.place = str(talk_lines[0][2].get("place", ""))
 		face.robot_look = GameData.player_look()
 		face.talking = true
@@ -795,6 +810,10 @@ func _process(delta: float) -> void:
 # ---------------------------------------------------------------- refresh
 
 func refresh() -> void:
+	if not GameData.pending_talk.is_empty() and not talk_story and bubble != null:
+		var mail: Array = GameData.pending_talk
+		GameData.pending_talk = []
+		(func(): play_story(mail)).call_deferred()
 	money_label.text = GameData.money_text(GameData.money)
 	money_label.add_theme_color_override("font_color", GUI.RED if GameData.money < 0 else GUI.AMBER)
 	date_button.text = tr("%s · WK %d") % [tr(DAY_NAMES[GameData.day_index()]), GameData.week]
@@ -1768,7 +1787,34 @@ func scene_info() -> Dictionary:
 	return {"pilot": GameData.pilot_look, "paint": Color(GameData.PAINTS[GameData.paint]["color"]),
 			"spark": now - spark_at, "dig": now - dig_at, "found": dig_found, "bet": now - bet_at, "juke": Sfx.jukebox_index() >= 0,
 			"medals": GameData.trophies, "backup": backup, "stats": GameData.career_stats,
-			"wins": GameData.wins, "losses": GameData.losses, "champion": GameData.champion}
+			"wins": GameData.wins, "losses": GameData.losses, "champion": GameData.champion,
+			"patron": patron_info() if scene == "pub" else {}, "tv": tv_info() if scene == "pub" else {}}
+
+
+## The pilots in the pub today: the first sits at the bar, the rest stand around.
+func patron_info() -> Dictionary:
+	var all := GameData.patrons_today()
+	if all.is_empty():
+		return {}
+	var crowd: Array = []
+	for p in all.slice(1):
+		crowd.append({"look": GameData.World.look_of(int(p["wid"])), "name": str(p["name"])})
+	return {"look": GameData.World.look_of(int(all[0]["wid"])), "name": str(all[0]["name"]), "crowd": crowd}
+
+
+## What's on the pub TV: tonight's headline league fight, or the table on quiet nights.
+func tv_info() -> Dictionary:
+	var hm := GameData.headline_match()
+	if not hm.is_empty():
+		var ev: Dictionary = hm["ev"]
+		return {"live": true, "title": tr(Career.STAGES[ev["stage"]]["short"]) + " · R%d" % (int(ev["round"]) + 1),
+				"a": str(Career.pilot(ev, int(hm["a"])).get("pilot", "?")), "b": str(Career.pilot(ev, int(hm["b"])).get("pilot", "?"))}
+	var champ: Dictionary = GameData.leagues.get("championship", {})
+	if champ.is_empty():
+		return {}
+	var order := Career.standings(champ)
+	var lead := Career.pilot(champ, int(order[0]))
+	return {"live": false, "title": tr("CHAMPIONSHIP TABLE"), "a": "1. %s  %d" % [str(lead.get("pilot", "?")), int(champ["table"][str(order[0])][2])], "b": ""}
 
 
 var fight_popup_open := false
@@ -1848,6 +1894,7 @@ func build_pilot_view() -> void:
 			extras.append(e.replace("_", " "))
 	var eye_i := maxi(0, PilotArt.EYES.find(look.get("eyes", PilotArt.EYES[0])))
 	var lines := [
+		["Body", "female", tr("Woman") if look.get("female", false) else tr("Man"), ""],
 		["Skin", "skin", tr("%d / %d") % [PilotArt.SKINS.find(look["skin"]) + 1, PilotArt.SKINS.size()], ""],
 		["Eyes", "eyes", tr(PilotArt.EYE_NAMES[eye_i]), look.get("eyes", "")],
 		["Hair & hat", "hair", "", look["hair"]],
@@ -1889,6 +1936,10 @@ func build_pilot_view() -> void:
 func _on_pilot_change(what: String, step: int) -> void:
 	var look: Dictionary = GameData.pilot_look
 	match what:
+		"female":
+			look["female"] = not look.get("female", false)
+			if look["female"]:
+				look["beard"] = "none"
 		"skin":
 			look["skin"] = cycle(PilotArt.SKINS, look["skin"], step)
 		"eyes":
@@ -1979,6 +2030,11 @@ func set_scene_for_tab() -> void:
 	preview.front = scene == "build"   # in the bay the robot hangs on Gus's gantry, facing you
 	preview.hide_robot = scene in ["pub", "office"]  # the robot stays in the bay when you're at the pub or in the office
 	preview.queue_redraw()
+	if scene == "pub" and not talk_story:
+		var hello := GameData.pub_greeting()
+		if not hello.is_empty():
+			# wait a frame: the bar draws first, so the patron's head is known for the bubble
+			(func(): play_story([{"lines": hello}])).call_deferred()
 
 
 func _on_open_paint() -> void:
@@ -2378,7 +2434,7 @@ func build_calendar() -> void:
 	var key := HFlowContainer.new()
 	key.add_theme_constant_override("h_separation", 12)
 	list_box.add_child(key)
-	for k in [["scrap", "Scrap league"], ["regional", "Regional"], ["championship", "Championship"], ["cup", "Cup"],
+	for k in [["qualifiers", "Qualifiers"], ["scrap", "Scrap league"], ["regional", "Regional"], ["championship", "Championship"], ["cup", "Cup"],
 			["pickup", "Pickup fight"], ["rent", "Rent"], ["stock", "New stock"]]:
 		var it := HBoxContainer.new()
 		it.add_theme_constant_override("separation", 4)
@@ -2400,8 +2456,6 @@ func build_calendar() -> void:
 			row_button(bar, "Skip to fight night", _on_skip_fight_night, true, 200)
 		elif not league_sat:
 			row_button(bar, "Rest till Monday", _on_rest, true, 180)
-		if str(nxt[0]) != "" and int(nxt[2]) > 1 and GameData.circuit.is_empty():
-			row_button(bar, tr("Skip to the %s") % tr(Career.STAGES[nxt[0]]["short"]).capitalize(), _on_skip, true, 0)
 
 
 ## One calendar day, all the same size: the date, a symbol for each thing on, W / L after your fight.
@@ -2467,7 +2521,7 @@ func cal_cell(w: int, row: int, day: int) -> Button:
 	c.past = w < GameData.week or (c.this_week and day < GameData.day_index())
 	c.fight_night = "sat" if day == 5 else ("wed" if day == 2 else "")
 	for e in day_events(w, day):
-		if str(e.get("icon", "")) != "":
+		if str(e.get("icon", "")) != "" and e.get("cell", true):
 			c.icons.append([e["icon"], bool(e.get("playoff", false))])
 		if e.has("won"):
 			c.result = "W" if e["won"] else "L"
@@ -2499,7 +2553,7 @@ func day_events(w: int, day: int) -> Array:
 						"text": tr(Career.round_name(GameData.circuit)) if tonight else tr("Cup night"), "matches": []}
 				if tonight and mode == "circuit":
 					for pr in Career.round_matches(GameData.circuit):
-						e["matches"].append({"ev": GameData.circuit, "a": int(pr[0]), "b": int(pr[1]), "bet": true})
+						e["matches"].append({"ev": GameData.circuit, "a": int(pr[0]), "b": int(pr[1]), "bet": true, "on": "cup"})
 				out.append(e)
 			"league", "playoff":
 				var e := {"icon": stage, "playoff": kind == "playoff", "tonight": tonight, "matches": [],
@@ -2507,8 +2561,13 @@ func day_events(w: int, day: int) -> Array:
 						"text": tr(str(plan["text"])).replace("\n", "  ")}
 				if tonight and mode == "story":
 					e["text"] = GameData.fight_title()
-					for pr in Career.round_matches(GameData.event):
-						e["matches"].append({"ev": GameData.event, "a": int(pr[0]), "b": int(pr[1]), "bet": true})
+					var ev0: Dictionary = GameData.event
+					var card := Career.round_matches(ev0)
+					var mine0: Array = card.slice(0, 1)
+					var rest: Array = card.slice(1)
+					rest.sort_custom(func(p1, p2): return int(ev0["table"][str(p1[0])][2]) + int(ev0["table"][str(p1[1])][2]) > int(ev0["table"][str(p2[0])][2]) + int(ev0["table"][str(p2[1])][2]))
+					for pr in mine0 + rest.slice(0, 4):
+						e["matches"].append({"ev": ev0, "a": int(pr[0]), "b": int(pr[1]), "bet": true, "on": "event"})
 				elif plan.has("round") and not GameData.event.is_empty():
 					var opp := int(GameData.event["schedule"][int(plan["round"])])
 					e["matches"].append({"ev": GameData.event, "a": 0, "b": opp, "bet": false})
@@ -2522,6 +2581,24 @@ func day_events(w: int, day: int) -> Array:
 					elif tonight:
 						e["matches"].append({"pickup": true, "a": 0, "b": -1, "bet": false})
 					out.append(e)
+		if day == 5 and y == GameData.year:
+			# the other divisions fight the same Saturdays: the top of their card
+			for dstage in Career.ORDER:
+				var ev: Dictionary = GameData.leagues.get(dstage, {})
+				if ev.is_empty() or Career.has_player(ev) or not ev["weeks"].has(w):
+					continue
+				var r: int = ev["weeks"].find(w)
+				var ent := {"icon": dstage, "cell": dstage == "championship", "title": tr(str(ev["name"])).to_upper(), "matches": [],
+						"text": tr("League round %d/%d") % [r + 1, ev["weeks"].size()]}
+				if r < int(ev["round"]):
+					ent["text"] += "  ·  " + tr("played")
+				elif this_week and GameData.day_index() <= 5 and r == int(ev["round"]):
+					ent["tonight"] = this_week and GameData.day == "sat"
+					var pairs := Career.round_pairs(ev)
+					pairs.sort_custom(func(p1, p2): return int(ev["table"][str(p1[0])][2]) + int(ev["table"][str(p1[1])][2]) > int(ev["table"][str(p2[0])][2]) + int(ev["table"][str(p2[1])][2]))
+					for pr in pairs.slice(0, 3):
+						ent["matches"].append({"ev": ev, "a": int(pr[0]), "b": int(pr[1]), "bet": ent["tonight"], "on": "div:" + dstage})
+				out.append(ent)
 		if day == 5 and w < GameData.week:
 			var lines: Array = []
 			for n in GameData.world.get("news", []):
@@ -2547,6 +2624,20 @@ func _on_cal_day(w: int, day: int) -> void:
 	var events := day_events(w, day)
 	if events.is_empty():
 		col.add_child(GUI.text(tr("Nothing on. A quiet day in the bay."), 16, GUI.MUTED))
+	# league nights have a lot on: the list scrolls
+	var n_rows := 0
+	for e0 in events:
+		n_rows += 1 + e0.get("matches", []).size()
+	if n_rows > 6:
+		var sc := ScrollContainer.new()
+		sc.custom_minimum_size = Vector2(0, minf(460.0, get_viewport_rect().size.y - 200.0))
+		sc.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+		col.add_child(sc)
+		var inner := VBoxContainer.new()
+		inner.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		inner.add_theme_constant_override("separation", 8)
+		sc.add_child(inner)
+		col = inner
 	for i in events.size():
 		var e: Dictionary = events[i]
 		var row := HBoxContainer.new()
@@ -2669,7 +2760,7 @@ func _on_cal_match(w: int, day: int, i: int, k: int) -> void:
 	col.add_child(foot)
 	foot.add_child(UI.button(tr("< Back"), _on_cal_day.bind(w, day), 15, Vector2(110, 40)))
 	if bet and not pickup and a != 0 and GameData.can_watch(ev, a, b):
-		foot.add_child(UI.button(tr("Watch"), _on_watch.bind(a, b), 15, Vector2(110, 40)))
+		foot.add_child(UI.button(tr("Watch"), _on_watch.bind(a, b, str(m.get("on", ""))), 15, Vector2(110, 40)))
 
 
 func _on_cal_stake(st: int, w: int, day: int, i: int, k: int) -> void:
@@ -2678,7 +2769,11 @@ func _on_cal_stake(st: int, w: int, day: int, i: int, k: int) -> void:
 
 
 func _on_cal_bet(pick: int, vs: int, w: int, day: int, i: int, k: int) -> void:
-	_on_bet(pick, vs)
+	var events := day_events(w, day)
+	var on := ""
+	if i < events.size() and k < events[i].get("matches", []).size():
+		on = str(events[i]["matches"][k].get("on", ""))
+	_on_bet_on(on, pick, vs)
 	_on_cal_match(w, day, i, k)
 
 
@@ -2709,13 +2804,97 @@ var bet_stake := 50
 var bet_at := -100.0   # when you last placed a bet (the pilot pushes coins over the bar)
 
 
-## Bets: put money on yourself, or on anyone else's fight this round. Odds come from the table.
+var bet_div := "event"   # which division's card the Bets screen shows on a league night
+
+
+## The Rusty Bolt: who's at the bar (today's pickup fight), what's on the TV (tonight's top league
+## fight, watch it), and the bookies: bets on any division fighting tonight, the cup, or yourself.
 func build_bets() -> void:
+	build_pub_cards()
+	var night := GameData.league_night()
+	var keys: Array = night.map(func(x): return str(x[0]))
+	if not night.is_empty():
+		if not keys.has(bet_div):
+			bet_div = keys[0]
+		var tabs := action_bar()
+		for x in night:
+			var k := str(x[0])
+			var label := (tr("Your division") if k == "event" else tr(Career.STAGES[x[1]["stage"]]["short"]).capitalize())
+			var b := row_button(tabs, label, _on_bet_div.bind(k), true, 0)
+			b.toggle_mode = true
+			b.button_pressed = k == bet_div
+		bet_card(bet_div, GameData.ev_for(bet_div))
+		return
+	if GameData.bet_target() == "cup":
+		bet_card("cup", GameData.circuit)
+		return
 	if GameData.bet_target() == "self":
 		build_self_bets()
 		return
-	var ev := GameData.bet_event()
-	section("This round's fights. Odds come from records and robots, so a pilot nobody rates pays big. Bets need real cash. Watch a fight and its result is the real one.")
+	section("No fights to bet on tonight. League nights are every other Saturday, cups on Wednesdays.")
+
+
+func _on_bet_div(k: String) -> void:
+	bet_div = k
+	refresh()
+
+
+## How you two feel about each other: "(rival)" (you resent them), "(hates you)" (they resent
+## you), "(bad blood)" (both), or "".
+func grudge_tag(wid: int) -> String:
+	var mine := GameData.is_rival(wid)
+	var theirs := GameData.hates_me(wid)
+	if mine and theirs:
+		return tr("(bad blood)")
+	if mine:
+		return tr("(rival)")
+	if theirs:
+		return tr("(hates you)")
+	return ""
+
+
+## Today's pilots in the pub and the TV.
+func build_pub_cards() -> void:
+	section(tr("IN THE RUSTY BOLT TONIGHT. Anyone here will take a pickup fight."))
+	var can := GameData.can_pass_day()
+	for pat in GameData.patrons_today():
+		var wid := int(pat["wid"])
+		var o := GameData.World.robot(wid)
+		var rec: Array = GameData.h2h.get(str(wid), [0, 0])
+		var sub := GameData.pilot_standing(wid) + "   " + tr("Record %d-%d") % [int(pat["w"]), int(pat["l"])]
+		if int(rec[0]) + int(rec[1]) > 0:
+			sub += "   " + tr("You vs them: %d-%d") % [int(rec[0]), int(rec[1])]
+		var tag := grudge_tag(wid)
+		if tag != "":
+			sub += "   " + tag
+		var row := make_row(bot_preview(o), tr("%s · %s") % [str(pat["name"]), str(o.get("name", "?"))], sub)
+		var purse: int = int(GameData.PICKUP_PURSE.get(str(pat["tier"]), 120))
+		row_button(row, tr("Challenge ($%d)") % purse if can else tr("Not tonight"), _on_challenge.bind(wid), can, 150)
+	var tv := tv_info()
+	if not tv.is_empty():
+		var hm := GameData.headline_match()
+		var bar := action_bar()
+		var l := GUI.text(tr("ON THE TV: %s") % str(tv["title"]) + "   " + str(tv["a"]) + ("  vs  " + str(tv["b"]) if str(tv["b"]) != "" else ""), 14, GUI.AMBER, "bold")
+		l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		l.clip_text = true
+		bar.add_child(l)
+		if not hm.is_empty():
+			row_button(bar, "Watch", _on_watch.bind(int(hm["a"]), int(hm["b"]), str(hm["on"])), GameData.can_watch(hm["ev"], int(hm["a"]), int(hm["b"])), 100)
+
+
+## Challenge the pilot at the bar: tonight's pickup fight is against them.
+func _on_challenge(wid: int = -1) -> void:
+	GameData.start_pickup(wid)
+	GameData.save_game()
+	refresh()
+	open_fight_popup()
+
+
+## One division's (or the cup's) card tonight: every match with odds, Bet and Watch.
+func bet_card(on: String, ev: Dictionary) -> void:
+	if ev.is_empty():
+		return
+	section(tr("%s · %s. Odds come from the table and the robots, so a pilot nobody rates pays big. Watch a fight and its result is the real one.") % [tr(str(ev["name"])), tr(Career.round_name(ev))])
 	var bar := action_bar()
 	bar.add_child(UI.label("Stake:", 16))
 	for st in [10, 50, 100, 250, 500]:
@@ -2728,15 +2907,15 @@ func build_bets() -> void:
 		var row := HBoxContainer.new()
 		row.add_theme_constant_override("separation", 6)
 		list_box.add_child(row)
-		bet_side(row, ev, a, b)
+		bet_side(row, ev, a, b, on)
 		var vs := UI.label("vs", 15, Color(0.6, 0.6, 0.65))
 		vs.custom_minimum_size = Vector2(28, 0)
 		vs.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		row.add_child(vs)
-		bet_side(row, ev, b, a)
+		bet_side(row, ev, b, a, on)
 		if a != 0:
-			row_button(row, "Watch", _on_watch.bind(a, b), GameData.can_watch(ev, a, b), 80)
-	var mine: Array = GameData.bets.filter(func(x): return x["on"] == GameData.bet_target() and int(x["round"]) == int(ev["round"]))
+			row_button(row, "Watch", _on_watch.bind(a, b, on), GameData.can_watch(ev, a, b), 80)
+	var mine: Array = GameData.bets.filter(func(x): return x["on"] == on and int(x["round"]) == int(ev["round"]))
 	if not mine.is_empty():
 		section("Your bets this round:")
 		for x in mine:
@@ -2747,7 +2926,7 @@ func build_bets() -> void:
 ## No league round this week: the bookies still take money on your own fight.
 func build_self_bets() -> void:
 	var o := GameData.current_opponent()
-	section("No league round this week, but the bookies at the scrapyard will still take money on you. Bets need real cash.")
+	section("No league round tonight, but the bookies will still take money on your pickup fight. Bets need real cash.")
 	var bar := action_bar()
 	bar.add_child(UI.label("Stake:", 16))
 	for st in [10, 50, 100, 250, 500]:
@@ -2766,7 +2945,7 @@ func build_self_bets() -> void:
 
 
 ## One side of a match: pilot, robot, record, odds and a Bet button.
-func bet_side(row: HBoxContainer, ev: Dictionary, id: int, other: int) -> void:
+func bet_side(row: HBoxContainer, ev: Dictionary, id: int, other: int, on: String = "") -> void:
 	var box := HBoxContainer.new()
 	box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	box.add_theme_constant_override("separation", 4)
@@ -2778,11 +2957,23 @@ func bet_side(row: HBoxContainer, ev: Dictionary, id: int, other: int) -> void:
 	l.clip_text = true
 	box.add_child(l)
 	if other != 0:
-		row_button(box, "Bet", _on_bet.bind(id, other), GameData.money >= bet_stake, 64)
+		row_button(box, "Bet", _on_bet_on.bind(on, id, other), GameData.money >= bet_stake, 64)
 
 
-func _on_watch(a: int, b: int) -> void:
-	GameData.start_watch(a, b)
+func _on_bet_on(on: String, pick: int, vs: int) -> void:
+	if on == "":
+		_on_bet(pick, vs)
+		return
+	var before := GameData.money
+	say(GameData.place_bet_on(on, pick, vs, bet_stake), "buy")
+	if GameData.money < before:
+		bet_at = Time.get_ticks_msec() / 1000.0
+	GameData.save_game()
+	refresh()
+
+
+func _on_watch(a: int, b: int, on: String = "") -> void:
+	GameData.start_watch(a, b, on)
 	Sfx.play("click")
 	get_tree().change_scene_to_file("res://fight.tscn")
 
@@ -2982,52 +3173,73 @@ func _on_cal_month(step: int) -> void:
 
 
 ## Secondary view: the league you're in - table and bracket.
+var table_div := ""   # which division's table the Standings screen shows ("" = yours)
+
+
+## Standings: the year's table for any of the four divisions. 1 point a win, ties go to the
+## pilot who destroyed more parts. Top 4 go up, bottom 4 go down.
 func build_league_view() -> void:
-	var ev: Dictionary = GameData.event
+	var stage := table_div if table_div != "" else GameData.rank
+	var tabs := action_bar()
+	for st in Career.ORDER:
+		var label := tr(Career.STAGES[st]["short"]).capitalize() + (" ●" if st == GameData.rank else "")
+		var b := row_button(tabs, label, _on_table_div.bind(st), true, 0)
+		b.toggle_mode = true
+		b.button_pressed = st == stage
+	var ev: Dictionary = GameData.leagues.get(stage, {})
 	if ev.is_empty():
-		section("You're not in a league right now.")
+		section("No table yet.")
 		return
-	var info: Dictionary = Career.STAGES[ev["stage"]]
-	var status := tr("%s, year %d: ") % [ev["name"], int(ev["year"])]
-	match ev["phase"]:
-		"league":
-			status += tr(Career.round_name(ev))
-		"playoffs":
-			status += tr("PLAYOFFS: ") + tr(Career.round_name(ev))
-		_:
-			status += tr("FINAL RESULT: you ") + Career.finish_text(ev)
+	var status := tr("%s, year %d: ") % [tr(str(ev["name"])), int(ev["year"])]
+	if ev["phase"] == "league":
+		status += tr(Career.round_name(ev))
+	else:
+		status += tr("FINAL TABLE")
 	section(status)
-	var rule := "Top 3 win medals. A medal gets you into the Regional." if int(info["playoff"]) == 0 else \
-			("Top 4 go to the playoffs. Reaching the semifinals gets you into the Championship." if ev["stage"] == "regional" else
-			"Top 7 join the defending champion in the playoffs. Win the final to be champion.")
+	var rule := ""
+	match stage:
+		"qualifiers":
+			rule = "1 point a win. Level on points? More parts destroyed is ahead. Top 4 go up to the Scrap Heap League."
+		"championship":
+			rule = "1 point a win. Level on points? More parts destroyed is ahead. Top of the table is the champion of Port Ferrum. Bottom 4 go down."
+		_:
+			rule = "1 point a win. Level on points? More parts destroyed is ahead. Top 4 go up, bottom 4 go down."
 	section(rule)
-	if not ev.get("bracket", {}).is_empty():
-		show_bracket(ev)
 	show_table(ev)
 
 
+func _on_table_div(st: String) -> void:
+	table_div = st
+	refresh()
+
+
 func show_table(ev: Dictionary) -> void:
-	var info: Dictionary = Career.STAGES[ev["stage"]]
-	var zone: int = 3 if int(info["playoff"]) == 0 else int(info["playoff"]) - (1 if info.has("boss") else 0)
-	var widths := [34, 0, 70, 46, 46]
+	var widths := [34, 0, 70, 46, 56]
 	table_row(["#", "PILOT · ROBOT", "W-L", "PTS", "PARTS"], widths, Color(0.7, 0.7, 0.75), Color(0, 0, 0, 0))
-	var pos := 0
-	for id in Career.standings(ev):
+	var order := Career.standings(ev)
+	for pos in order.size():
+		var id: int = order[pos]
 		var e := Career.pilot(ev, id)
-		if e.get("rival", -1) == 9 and ev["table"].get(str(id), [0, 0, 0, 0])[0] == 0 and ev["table"].get(str(id), [0, 0, 0, 0])[1] == 0:
-			continue   # the defending champion doesn't play the league
-		pos += 1
 		var t: Array = ev["table"].get(str(id), [0, 0, 0, 0])
+		var z := Career.zone(ev, pos)
 		var col := Color(1, 1, 1)
 		var bg := Color(0, 0, 0, 0)
+		if z == "up":
+			bg = Color(0.3, 0.9, 0.4, 0.12)
+			col = Color(0.75, 1.0, 0.8)
+		elif z == "down":
+			bg = Color(1.0, 0.35, 0.3, 0.12)
+			col = Color(1.0, 0.75, 0.72)
 		if id == 0:
-			col = Color(1.0, 0.85, 0.3)
-			bg = Color(1.0, 0.7, 0.2, 0.15)
-		elif pos <= zone:
-			col = Color(0.65, 1.0, 0.7)
+			col = GUI.YELLOW
+			bg = Color(1.0, 0.7, 0.2, 0.2)
 		var medal := Career.medal_of(ev, id)
 		var mark: String = tr(["", " (GOLD)", " (SILVER)", " (BRONZE)"][medal])
-		table_row([str(pos) + ("*" if pos <= zone else ""), who(ev, id) + mark, "%d-%d" % [t[0], t[1]], str(t[2]), str(t[3])], widths, col, bg)
+		if e.has("wid"):
+			var tg := grudge_tag(int(e["wid"]))
+			if tg != "":
+				mark += "  " + tg
+		table_row([str(pos + 1), who(ev, id) + mark, "%d-%d" % [t[0], t[1]], str(t[2]), str(t[3])], widths, col, bg)
 
 
 func show_bracket(ev: Dictionary) -> void:
@@ -3918,6 +4130,10 @@ func _start_fight() -> void:
 	var idx := GameData.current_opponent_index()
 	# the rival calls in to talk trash first, then it's fight time
 	if idx >= 0 and play_story(["pre_%d" % idx], _go_fight):
+		fight_button.disabled = true
+		return
+	var taunt := GameData.rival_taunt()
+	if not taunt.is_empty() and play_story([{"lines": taunt}], _go_fight):
 		fight_button.disabled = true
 		return
 	_go_fight()
