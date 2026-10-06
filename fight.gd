@@ -43,7 +43,9 @@ const ARM_SLOTS := ["arm_front", "arm_back", "arm_front2", "arm_back2"]
 const PART_LABELS := {"head": "HEAD", "head2": "2ND HEAD", "torso": "TORSO", "arm_front": "FRONT ARM", "arm_back": "BACK ARM",
 		"arm_front2": "LOWER FRONT ARM", "arm_back2": "LOWER BACK ARM", "leg_front": "FRONT LEG", "leg_back": "BACK LEG"}
 const WEAK_BONUS := 0.15      # extra damage on the part the scanner marks as weakest
-const GADGET_KEYS := [KEY_U, KEY_I, KEY_O]
+const GADGET_KEYS := [KEY_1, KEY_2, KEY_3]
+## Keyboard attacks: U / I punch with the left / right arm, J / K kick with the left / right leg.
+const KB_ATTACKS := {"kb_u": [KEY_U, "punch", "L"], "kb_i": [KEY_I, "punch", "R"], "kb_j": [KEY_J, "kick", "L"], "kb_k": [KEY_K, "kick", "R"]}
 
 const ATTACKS := {
 	"punch":    {"startup": 0.07, "active": 0.10, "recovery": 0.16, "reach": 82.0,  "damage": 7.0,  "height": "high", "stun": 0.22, "limb": "arm", "zone": "punch", "family": "punch"},
@@ -279,6 +281,9 @@ var moves_rect := Rect2()
 var touch_device := false
 var control_pads := 1      # movement pads on screen (multibot split controls use more)
 var paused := false
+var quit_ask := false      # the pause screen is asking "quit this fight?"
+var quit_rect_p := Rect2()   # pause screen buttons
+var resume_rect_p := Rect2()
 
 var ai_timer := 0.0
 var ai_plan := {}
@@ -369,7 +374,7 @@ func _ready() -> void:
 	player = team_p[0]
 	cpu = team_c[0]
 	var split: bool = GameData.settings.get("team_controls", "split") == "split"
-	control_pads = team_p.size() if team_p.size() > 1 and split else 1
+	control_pads = team_p.size() if team_p.size() > 1 and split and touch_device else 1   # keyboard: every robot follows WASD
 	if team_p.size() > 1:
 		for k in team_p.size():
 			team_p[k].tag = str(k + 1) if control_pads > 1 else "▲"
@@ -536,14 +541,29 @@ func _input(event: InputEvent) -> void:
 	elif event is InputEventKey and event.pressed and not event.echo:
 		match event.physical_keycode:
 			KEY_ENTER, KEY_SPACE:
+				if paused:
+					quit_ask = false
+					toggle_pause()
+					return
 				tap_pending = true
 				if Time.get_ticks_msec() - tut_pause_at > TUT_GRACE_MS:
 					tut_pause = false
-			KEY_ESCAPE:
-				if phase == "intro" or phase == "fight":
-					quit_fight()
-			KEY_M:
-				toggle_pause()
+			KEY_ESCAPE, KEY_M:
+				if paused:
+					quit_ask = false
+					toggle_pause()
+				elif phase == "intro" or phase == "fight":
+					if mode == "watch":
+						quit_fight()
+					else:
+						toggle_pause()
+			KEY_Q:
+				if paused:
+					if quit_ask:
+						quit_fight()
+					else:
+						quit_ask = true
+						Sfx.play("click")
 
 
 ## Quit, moves list and aiming. Returns true if the tap was used.
@@ -554,12 +574,25 @@ func handle_tap(p: Vector2) -> bool:
 			tut_pause = false   # read it: back to the fight
 		return true
 	if paused:
+		if quit_rect_p.has_point(p):
+			if quit_ask:
+				quit_fight()
+			else:
+				quit_ask = true
+				Sfx.play("click")
+			return true
+		quit_ask = false
 		toggle_pause()
 		return true
 	if phase != "intro" and phase != "fight":
 		return false
 	if quit_rect.has_point(p):
-		quit_fight()
+		if mode == "watch":
+			quit_fight()
+		else:
+			# quitting walks away with no pay: ask first, on the pause screen
+			toggle_pause()
+			quit_ask = true
 		return true
 	if moves_rect.has_point(p):
 		if mode != "watch":
@@ -668,9 +701,9 @@ func read_player_input() -> Array:
 		"up": held_buttons.get("up", false) or key(KEY_W) or key(KEY_UP),
 		"down": held_buttons.get("down", false) or key(KEY_S) or key(KEY_DOWN),
 		"block": held_buttons.get("block", false) or key(KEY_L),
-		"punch": held_buttons.get("punch", false) or key(KEY_J),
-		"kick": held_buttons.get("kick", false) or key(KEY_K),
-		"grab": held_buttons.get("grab", false) or key(KEY_H),
+		"punch": held_buttons.get("punch", false),
+		"kick": held_buttons.get("kick", false),
+		"grab": held_buttons.get("grab", false) or key(KEY_O),
 	}
 	for pad in range(1, control_pads):
 		for d in Controls.MOVE_NAMES:
@@ -681,6 +714,13 @@ func read_player_input() -> Array:
 	shared["block"] = now["block"]
 	shared["punch"] = now["punch"] and not prev_held.get("punch", false)
 	shared["kick"] = now["kick"] and not prev_held.get("kick", false)
+	# keyboard: U / I punch, J / K kick, each with its own side
+	for kn in KB_ATTACKS:
+		var ka: Array = KB_ATTACKS[kn]
+		now[kn] = key(ka[0])
+		if now[kn] and not prev_held.get(kn, false):
+			shared[ka[1]] = true
+			shared["pside" if ka[1] == "punch" else "kside"] = ka[2]
 	# split buttons: a fresh tap on either half is a new punch/kick with that side's limb
 	for nm in SPLIT_BUTTONS:
 		for sd in ["L", "R"]:
@@ -2543,6 +2583,8 @@ func _draw() -> void:
 	draw_coach()
 	if (phase == "intro" or phase == "fight") and mode != "watch":
 		draw_buttons()
+		if not touch_device:
+			draw_key_strip()
 	if paused:
 		draw_moves_list()
 	if tut_pause:
@@ -3085,7 +3127,7 @@ func draw_result_cards(y: float) -> float:
 
 
 func draw_buttons() -> void:
-	for b in buttons:
+	for b in (buttons if touch_device else []):
 		if SPLIT_BUTTONS.has(b["name"]):
 			draw_split_button(b)
 			continue
@@ -3110,7 +3152,8 @@ func draw_buttons() -> void:
 		if cd > 0.0 and id != "overcharge":
 			var frac := cd / float(Specials.GADGETS[id]["cd"])
 			draw_arc(b["pos"], b["r"] - 5.0, -PI / 2.0, -PI / 2.0 + TAU * frac, 32, Color(1, 1, 1, 0.5), 6.0)
-		draw_string(font, b["pos"] + Vector2(-b["r"] - 10, 7.0), tr(b["label"]), HORIZONTAL_ALIGNMENT_CENTER, b["r"] * 2.0 + 20, fs(15), col)
+		var glabel: String = tr(b["label"]) if touch_device else "%d  %s" % [gadget_buttons.find(b) + 1, tr(b["label"])]
+		draw_string(font, b["pos"] + Vector2(-b["r"] - 10, 7.0), glabel, HORIZONTAL_ALIGNMENT_CENTER, b["r"] * 2.0 + 20, fs(15), col)
 
 
 ## PUNCH / KICK: one circle cut in half - the left half uses the robot's left arm (leg), the right half its right one.
@@ -3135,17 +3178,53 @@ func draw_split_button(b: Dictionary) -> void:
 	draw_string(font, c + Vector2(-r, -r * 0.3), btxt, HORIZONTAL_ALIGNMENT_CENTER, r * 2.0, size, Color(1, 1, 1, 0.85))
 
 
+## On a computer the touch buttons are hidden: one line of keys along the bottom instead.
+func draw_key_strip() -> void:
+	var t := tr("WASD move · U / I punch · J / K kick · L block · O grab · 1 2 3 gadgets · Esc pause")
+	var size := fs(15)
+	var w := font.get_string_size(t, HORIZONTAL_ALIGNMENT_LEFT, -1, size).x + 28.0
+	var r := Rect2(screen.x * 0.5 - w * 0.5, screen.y - size - 22.0, w, size + 14.0)
+	draw_rect(r, Color(0, 0, 0, 0.55))
+	draw_string(font, Vector2(r.position.x, r.end.y - 9.0), t, HORIZONTAL_ALIGNMENT_CENTER, r.size.x, size, Color(1, 1, 1, 0.8))
+
+
+const PC_KEYS := "ON A COMPUTER: W A S D (or the arrows) move, jump and crouch · U / I punch with the left / right arm · J / K kick with the left / right leg · L block · O grab · 1 2 3 gadgets · click an enemy part to aim · Esc or M pause · Space or Enter to continue."
+
+
 func draw_moves_list() -> void:
-	draw_rect(Rect2(Vector2.ZERO, screen), Color(0, 0, 0, 0.82))
+	draw_rect(Rect2(Vector2.ZERO, screen), Color(0, 0, 0, 0.86))
 	var x := screen.x * 0.08
 	var y := screen.y * 0.1
-	draw_string(font, Vector2(0, y), tr("PAUSED - MOVE LIST"), HORIZONTAL_ALIGNMENT_CENTER, screen.x, fs(30), Color(1.0, 0.45, 0.2))
+	draw_string(font, Vector2(0, y), tr("QUIT THIS FIGHT?") if quit_ask else tr("PAUSED - MOVE LIST"), HORIZONTAL_ALIGNMENT_CENTER, screen.x, fs(30), Color(1.0, 0.45, 0.2))
 	y += 50.0
+	# the two buttons along the bottom: resume, and quit (asks first: quitting pays nothing)
+	var bw := minf(300.0, screen.x * 0.3)
+	var bh := 56.0
+	resume_rect_p = Rect2(screen.x * 0.5 - bw - 12.0, screen.y - bh - 18.0, bw, bh)
+	quit_rect_p = Rect2(screen.x * 0.5 + 12.0, screen.y - bh - 18.0, bw, bh)
+	if quit_ask:
+		var q := tr("You walk away with no pay, and the damage comes home with you. In a quick fight nothing is lost.")
+		draw_multiline_string(font, Vector2(screen.x * 0.15, y + 20.0), q, HORIZONTAL_ALIGNMENT_CENTER, screen.x * 0.7, fs(20), -1, Color(0.9, 0.9, 0.95))
+	else:
+		_draw_pause_lines(x, y, resume_rect_p.position.y - 10.0)
+	for bt in [[resume_rect_p, tr("KEEP FIGHTING") if quit_ask else tr("RESUME"), Color(0.3, 0.3, 0.38)],
+			[quit_rect_p, tr("YES, QUIT") if quit_ask else tr("QUIT FIGHT"), Color(0.55, 0.2, 0.15) if quit_ask else Color(0.3, 0.3, 0.38)]]:
+		var rr: Rect2 = bt[0]
+		draw_rect(rr, bt[2])
+		draw_rect(rr, Color(1, 1, 1, 0.4), false, 2.0)
+		draw_string(font, Vector2(rr.position.x, rr.position.y + rr.size.y * 0.5 + fs(18) * 0.35), bt[1], HORIZONTAL_ALIGNMENT_CENTER, rr.size.x, fs(18), Color.WHITE)
+	if not touch_device:
+		var hint := tr("Esc / Space: resume      Q: quit") if not quit_ask else tr("Esc: keep fighting      Q: quit")
+		draw_string(font, Vector2(0, screen.y - 4.0), hint, HORIZONTAL_ALIGNMENT_CENTER, screen.x, fs(13), Color(0.75, 0.75, 0.8))
+
+
+func _draw_pause_lines(x: float, y: float, bottom: float) -> void:
 	var lines: Array = [
-		["P punch   K kick   B block   G grab (beats block)   v+P uppercut   v+K sweep   (→ = toward the enemy)", Color(0.8, 0.8, 0.85)],
-		["PUNCH and KICK are split in two: tap the left half for the left arm (leg), the right half for the right one.", Color(0.8, 0.8, 0.85)],
-		["Combos: hit again while the enemy is still reeling. Landed attacks can chain into the next.", Color(0.8, 0.8, 0.85)],
-		["COUNTERS: punch beats grab - grab beats block - block stops punch (and the puncher recoils) - kick powers through punches, but a block only partly stops it.", Color(1.0, 0.85, 0.4)],
+		[tr(PC_KEYS) if not touch_device else "", Color(0.55, 1.0, 0.7)],
+		[tr("PUNCH · KICK · BLOCK · GRAB (beats block) · down + PUNCH = uppercut · down + KICK = sweep · in combos, → means toward the enemy (P = punch, K = kick)"), Color(0.8, 0.8, 0.85)],
+		[(tr("PUNCH and KICK are split in two: tap the left half for the left arm (leg), the right half for the right one.") if touch_device else ""), Color(0.8, 0.8, 0.85)],
+		[tr("Combos: hit again while the enemy is still reeling. Landed attacks can chain into the next."), Color(0.8, 0.8, 0.85)],
+		[tr("COUNTERS: punch beats grab - grab beats block - block stops punch (and the puncher recoils) - kick powers through punches, but a block only partly stops it."), Color(1.0, 0.85, 0.4)],
 		[tr("POWER (blue bar): punch %.1f  kick %.1f  grab %.1f  special %.1f of %.0f. Refills when you stop attacking. Empty = BURNOUT.") % [attack_cost(player, "punch", "arm_front"), attack_cost(player, "kick", "leg_front"), attack_cost(player, "grab", "arm_front"), special_cost(player), player.power_max], POWER_COLOR],
 	]
 	if team_p.size() > 1:
@@ -3159,11 +3238,20 @@ func draw_moves_list() -> void:
 	for g in player.gadgets:
 		var info: Dictionary = Specials.GADGETS[g["id"]]
 		lines.append([tr("%s%s - %s") % ["[" + info["short"] + "]  " if info["active"] else "", info["name"], tr(info["desc"])], Color(1.0, 0.85, 0.4)])
+	lines = lines.filter(func(l): return str(l[0]) != "")
 	var width := screen.x * 0.84
+	# shrink the text until the whole list fits above the buttons
+	var size := fs(16)
+	while size > 9:
+		var hgt := 0.0
+		for l in lines:
+			hgt += font.get_multiline_string_size(l[0], HORIZONTAL_ALIGNMENT_LEFT, width, size).y + 5.0
+		if y + hgt <= bottom:
+			break
+		size -= 1
 	for l in lines:
-		draw_multiline_string(font, Vector2(x, y), l[0], HORIZONTAL_ALIGNMENT_LEFT, width, fs(16), -1, l[1])
-		y += font.get_multiline_string_size(l[0], HORIZONTAL_ALIGNMENT_LEFT, width, fs(16)).y + 6.0
-	draw_string(font, Vector2(0, screen.y - 30), tr("Tap anywhere to resume"), HORIZONTAL_ALIGNMENT_CENTER, screen.x, fs(20), Color(0.8, 0.8, 0.8))
+		draw_multiline_string(font, Vector2(x, y), l[0], HORIZONTAL_ALIGNMENT_LEFT, width, size, -1, l[1])
+		y += font.get_multiline_string_size(l[0], HORIZONTAL_ALIGNMENT_LEFT, width, size).y + 5.0
 
 
 # ---------------------------------------------------------------- pilots in the corners
@@ -3404,7 +3492,7 @@ func update_coach(delta: float) -> void:
 		cpu_habit["block"] += delta
 	if phase == "fight":
 		if phase_timer > 0.5:
-			coach("aim", tr("Tap a part of %s to aim at it - %s hits where you point.") % [cpu.label, player.label])
+			coach("aim", (tr("Tap a part of %s to aim at it - %s hits where you point.") if touch_device else tr("Click a part of %s to aim at it - %s hits where you point.")) % [cpu.label, player.label])
 		if phase_timer > 10.0 and weak_point(cpu) != "":
 			coach("weak", tr("See the yellow diamond? That's its weakest part - hits there do extra damage."))
 		if player.power < player.power_max * 0.5:
@@ -3412,7 +3500,7 @@ func update_coach(delta: float) -> void:
 		if phase_timer > 16.0:
 			coach("counters", tr("Punch beats a grab, a grab beats a block, a block stops punches - and kicks power through punches."))
 		if phase_timer > 22.0 and not player.specials.is_empty():
-			coach("moves", tr("Tap MOVES to see your special moves and how to do them."))
+			coach("moves", tr("Tap MOVES to see your special moves and how to do them.") if touch_device else tr("Press Esc to pause: your special moves and every key are listed there."))
 		if player.ratio("torso") < 0.35:
 			coach("low_core", tr("Core's hurting! Lose the torso - or the head - and it's lights out. BLOCK!"))
 		live_coach(delta)

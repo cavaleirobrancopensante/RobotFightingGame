@@ -2,7 +2,7 @@ extends Node
 
 # helper scripts, loaded by path so the game also runs without an editor scan
 ## The game's version, shown on the main menu. Bump it with every change (1.1, 1.2, ...).
-const VERSION := "1.0a"
+const VERSION := "1.1"
 const Arena = preload("res://arena.gd")
 const I18n = preload("res://i18n.gd")
 const Catalog = preload("res://catalog.gd")
@@ -1781,6 +1781,11 @@ func story_dynamic(key: String) -> String:
 					t = tr("And kid - you still owe me $%d in back rent.") % -money + " "
 			t += (tr("Rent and food are $%d every month.") % living) if living > 0 else tr("Rent's on the house for now - don't get used to it.")
 			return t + " " + tr("No repairs on credit: when we're in the hole, we fight with the dents.")
+		"PC_KEYS":
+			# only on a computer (no touchscreen): point them at the pause screen, where every key is listed
+			if DisplayServer.is_touchscreen_available():
+				return ""
+			return tr("On a computer, kid? Press Esc to pause the fight any time - the pause screen lists every key. Much easier than guessing.")
 	return ""
 
 

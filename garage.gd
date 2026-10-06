@@ -805,7 +805,30 @@ func scene_info() -> Dictionary:
 			"wins": GameData.wins, "losses": GameData.losses, "champion": GameData.champion}
 
 
+var fight_popup_open := false
+
+
+## Keyboard (computers): Esc closes a window, F gets you to the pre-fight window, Enter there starts the fight.
+func _unhandled_key_input(event: InputEvent) -> void:
+	if not (event is InputEventKey and event.pressed and not event.echo):
+		return
+	match event.physical_keycode:
+		KEY_ESCAPE:
+			if overlay:
+				close_popup()
+				get_viewport().set_input_as_handled()
+		KEY_F:
+			if overlay == null and not fight_button.disabled:
+				_on_fight()
+				get_viewport().set_input_as_handled()
+		KEY_ENTER, KEY_KP_ENTER:
+			if fight_popup_open and overlay:
+				get_viewport().set_input_as_handled()
+				_start_fight()
+
+
 func close_popup() -> void:
+	fight_popup_open = false
 	if paint_open:
 		paint_open = false
 		set_scene_for_tab()
@@ -2372,6 +2395,7 @@ func open_fight_popup() -> void:
 	var o := GameData.current_opponent()
 	var col := open_popup((tr("WEDNESDAY NIGHT - CUP") if GameData.fight_mode() == "circuit" else tr("WEDNESDAY NIGHT")) if GameData.day == "wed" else tr("SATURDAY NIGHT"))
 	col.custom_minimum_size = Vector2(640, 0)
+	fight_popup_open = true
 	var who := str(o.get("pilot", ""))
 	var head := UI.label(GameData.fight_title() + "\n" + (tr("%s, piloted by %s") % [o.get("name", "?"), who] if who != "" else str(o.get("name", "?"))) + "   " + tr("Purse: $%d") % GameData.current_reward(), 18, Color(1.0, 0.85, 0.4))
 	head.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART

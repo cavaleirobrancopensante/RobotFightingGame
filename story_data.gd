@@ -39,6 +39,7 @@ const SCENES := {
 
 	"pre_0": {"place": "THE SCRAP HEAP RING", "lines": [
 		["MARGO", "Margo, TIN CAN's pilot. Cute antique, rookie. Don't cry when I knock the bolts out of it."],
+		["GUS", "{PC_KEYS}"],
 	]},
 	"post_0": {"place": "THE SCRAP HEAP RING", "lines": [
 		["MARGO", "Ha! You actually pilot that thing. My uncle said you can tell a real pilot by the hands. You've got the hands."],
