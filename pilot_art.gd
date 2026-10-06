@@ -312,6 +312,8 @@ static func draw_person(ci: CanvasItem, feet: Vector2, s: float, raw: Dictionary
 			hb = sh_b + Vector2(20 * s * dir, (10 + 16 * d) * s)
 		"point":
 			hf = sh_f + Vector2(24 * s * dir, -10 * s + sin(t * 5.0) * 2 * s)
+		"point_up":
+			hf = sh_f + Vector2(18 * s * dir, -24 * s + sin(t * 5.0) * 2 * s)
 		"clipboard", "hold":
 			hf = sh_f + Vector2(12 * s * dir, 12 * s)
 			hb = sh_b + Vector2(18 * s * dir, 13 * s)
@@ -402,7 +404,7 @@ static func draw_person(ci: CanvasItem, feet: Vector2, s: float, raw: Dictionary
 			draw_controller(ci, (hf + hb) * 0.5, s * 0.8, str(look.get("controller", "gamepad")), int(t * 3.0) % 2 == 0, t)
 	# head
 	var hc := neck + Vector2(dir * 1 * s, -11 * s)
-	var talk := 2.0 * s * (1.0 + absf(sin(t * 3.1))) if pose in ["point", "cheer"] else 1.4 * s
+	var talk := 2.0 * s * (1.0 + absf(sin(t * 3.1))) if pose in ["point", "point_up", "cheer"] else 1.4 * s
 	draw_head(ci, hc, 10 * s, look, dir, talk if not pose.begins_with("announce") else 2.0 * s * (1.0 + absf(sin(t * 9.0))))
 	match pose:
 		"walk_mic":

@@ -661,6 +661,7 @@ const Story = preload("res://story_data.gd")
 const TALK_CPS := 55.0
 var heads := {}              # who -> where their head is on screen (filled in by the backdrop)
 var talk_lines: Array = []   # [who, text, extra] still to show; the first one is on screen
+var dad_talk := false        # Gus is pointing at your dad's trophies (office, first visit)
 var talk_story := false      # a story scene is playing (lines stay up longer, Skip shows)
 var talk_after := Callable() # what happens when the scene is over (pre-fight talk: start the fight)
 var talk_shown := 0.0
@@ -805,6 +806,9 @@ func _talk_end() -> void:
 
 func _talk_end_story() -> void:
 	talk_story = false
+	if dad_talk:
+		dad_talk = false
+		refresh()
 	if talk_after.is_valid():
 		var after := talk_after
 		talk_after = Callable()
@@ -1357,7 +1361,7 @@ func build_detail() -> void:
 
 ## The calendar's left pane: your next fight on a little fight-night poster, with Scout, Bets and Fight.
 func build_next_fight_card() -> void:
-	detail_panel.visible = true
+	detail_panel.visible = not (dad_talk and talk_story)
 	for c in detail_box.get_children() + detail_footer.get_children():
 		c.queue_free()
 	var o := GameData.current_opponent()
@@ -1749,6 +1753,7 @@ func tour_steps() -> Array:
 		{"target": "rail:Parts", "text": tr("Get Parts, then the Scrapyard. One free dig a week, and you never know what's in the pile.")},
 		{"target": "dig", "text": tr("Go on, tap Dig anywhere. Mostly junk, but junk is free.")},
 		{"target": "rail:Pub", "text": tr("The Rusty Bolt, down the road. Whoever's at the bar will fight you for a few bucks.")},
+		{"target": "rail:Season", "text": tr("Season is my office. The calendar, the tables, the odds. Come and have a look.")},
 		{"target": "rail:Feed", "text": tr("Missed something I said? Everything anybody tells you ends up on BotMedia, with the town's news.")},
 		{"target": "fight", "text": tr("That's the tour. Saturday is the Open Trials: win two fights and we're in the Scrap League. Practice with pickups till then. FIGHT when you're ready.")},
 	]
@@ -1767,8 +1772,10 @@ func tour_done(i: int) -> bool:
 		4:
 			return tab == "Pub"
 		5:
-			return tab == "Feed"
+			return tab == "Season"
 		6:
+			return tab == "Feed"
+		7:
 			return GameData.wins + GameData.losses > 1
 	return true
 
@@ -2138,7 +2145,7 @@ func scene_info() -> Dictionary:
 			break
 	return {"pilot": GameData.pilot_look, "paint": Color(GameData.PAINTS[GameData.paint]["color"]),
 			"spark": now - spark_at, "dig": now - dig_at, "found": dig_found, "bet": now - bet_at, "juke": Sfx.jukebox_index() >= 0,
-			"medals": GameData.trophies, "backup": backup, "stats": GameData.career_stats,
+			"medals": GameData.trophies, "wall": GameData.wall_trophies(), "gus_point": dad_talk and talk_story, "backup": backup, "stats": GameData.career_stats,
 			"wins": GameData.wins, "losses": GameData.losses, "champion": GameData.champion,
 			"patron": patron_info() if scene == "pub" else {}, "tv": tv_info() if scene == "pub" else {},
 			"controllers": GameData.owned_controllers, "using": str(GameData.pilot_look.get("controller", "gamepad"))}
@@ -2445,6 +2452,14 @@ func set_scene_for_tab() -> void:
 		if not hello.is_empty():
 			# wait a frame: the bar draws first, so the patron's head is known for the bubble
 			(func(): play_story([{"lines": hello}])).call_deferred()
+	# the first time in the office, Gus shows you your dad's trophies
+	dad_talk = dad_talk and scene == "office"
+	if scene == "office" and GameData.story_seen.has("first_garage") and not GameData.story_seen.has("dad_trophies"):
+		dad_talk = true
+		# the left pane steps aside so the shelves are in view while he talks
+		(func():
+			play_story(["dad_trophies"])
+			detail_panel.visible = false).call_deferred()
 
 
 func _on_open_paint() -> void:
@@ -4101,7 +4116,7 @@ func _on_backdrop_tapped(pos: Vector2) -> void:
 		return
 	if scene != "office":
 		return
-	for s in GarageArt.trophy_spots(preview.size, GameData.trophies.size()):
+	for s in GarageArt.trophy_spots(preview.size, GameData.wall_trophies().size()):
 		var base: Vector2 = s[1]
 		if Rect2(base + Vector2(-18, -50), Vector2(36, 52)).has_point(pos):
 			Sfx.play("click")
@@ -4130,8 +4145,9 @@ class TrophyView extends Control:
 			draw_line(Vector2(x, size.y * 0.2), Vector2(x - 12, size.y * 0.8), Color(1, 1, 1, 0.25), 4.0)
 
 
+## i indexes the office wall (GameData.wall_trophies): your dad's three first, then yours.
 func open_trophy(i: int) -> void:
-	var tr_: Dictionary = GameData.trophies[i]
+	var tr_: Dictionary = GameData.wall_trophies()[i]
 	var medal := int(tr_.get("medal", 1))
 	var col := open_popup(tr("%s · %s") % [tr(Career.MEDALS[medal]), tr(str(tr_.get("name", "")))])
 	var row := HBoxContainer.new()
@@ -4145,6 +4161,12 @@ func open_trophy(i: int) -> void:
 	var info := VBoxContainer.new()
 	info.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	row.add_child(info)
+	if tr_.get("dad", false):
+		info.add_child(UI.label(tr("Your dad's. Won before you were born."), 17, Color(1.0, 0.85, 0.4)))
+		var gus := UI.label(tr("Gus: He'd want you to put yours up next to it. Then beat it."), 14, Color(0.75, 0.75, 0.8))
+		gus.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		info.add_child(gus)
+		return
 	var when := tr("Won in year %d") % int(tr_.get("year", 1))
 	if tr_.has("week"):
 		when = tr("Won in year %d, week %d") % [int(tr_.get("year", 1)), int(tr_["week"])]

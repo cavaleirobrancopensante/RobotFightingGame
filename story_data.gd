@@ -262,6 +262,12 @@ const SCENES := {
 		["GUS", "Because I have to pay all of them. Flip it over. The league table, the other pilots, and the bookies' odds. It's all under Season."],
 		["GUS", "Half this town bets on fight night. If you want to see what you're betting on, you can go and watch the other fights too."],
 	]},
+	"dad_trophies": {"place": "GUS'S OFFICE", "lines": [
+		["GUS", "See those three up there? Your dad's. Scrap, Rust, and the Iron one he swore the judges stole from him."],
+		["GUS", "Shelf's long for a reason. I want your trophies up there with your dad's."],
+		["YOU", "Next to his."],
+		["GUS", "Next to his. Then past them."],
+	]},
 	"unlock_scout": {"place": "GUS'S BAY", "lines": [
 		["GUS", "There's a kid at the docks who can sneak into any garage in Port Ferrum with a camera. Sixty bucks, and you see the next robot before you fight it."],
 		["GUS", "Thing is, crews talk. If they catch him snooping, they'll change their setup just to spite us. Scout's there when you want it."],

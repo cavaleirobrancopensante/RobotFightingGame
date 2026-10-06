@@ -33,7 +33,7 @@ static func draw_back(ci: CanvasItem, screen: Vector2, stage: Rect2, scene: Stri
 ## Walls, sky and floor across the whole screen.
 ## Places outside Gus's building have their own colour, so you know where you are at a glance.
 ## Rooms inside his building share the bay's bare steel and are told apart by what's in them
-## (crates in the storeroom, the workbench, the chalkboard, the cork board, gantries...).
+## (crates in the storeroom, the workbench, the chalkboard, the fight-net screen, gantries...).
 ## [wall, wall stripes, floor]
 const BAY_COLORS := [Color(0.19, 0.19, 0.18), Color(0.23, 0.23, 0.22), Color(0.28, 0.27, 0.27)]
 const SCENE_COLORS := {
@@ -367,8 +367,13 @@ static func _front(ci: CanvasItem, size: Vector2, scene: String, t: float, info:
 			ci.draw_colored_polygon(PackedVector2Array([Vector2(dx + 28 * s, floor_y - 66 * s), Vector2(dx + 50 * s, floor_y - 76 * s), Vector2(dx + 48 * s, floor_y - 64 * s)]), Color(0.75, 0.7, 0.2))
 			ci.draw_colored_polygon(PackedVector2Array([Vector2(dx + 36 * s, floor_y - 66 * s), Vector2(dx + 22 * s, floor_y - 41 * s), Vector2(dx + 60 * s, floor_y - 41 * s), Vector2(dx + 48 * s, floor_y - 66 * s)]), Color(1.0, 0.9, 0.5, 0.12))
 			ci.draw_rect(Rect2(dx - 40 * s, floor_y - 48 * s, 8 * s, 8 * s), Color(0.9, 0.9, 0.85))
-			PilotArt.draw_person(ci, Vector2(dx + 8 * s, floor_y), s, PilotArt.GUS_LOOK, -1.0, "sit_type", t)
-			_head(info, "GUS", Vector2(dx + 8 * s, floor_y), s, true)
+			if info.get("gus_point", false):
+				# up from the desk, pointing at your dad's trophies
+				PilotArt.draw_person(ci, Vector2(size.x * 0.14, floor_y), s, PilotArt.GUS_LOOK, -1.0, "point_up", t)
+				_head(info, "GUS", Vector2(size.x * 0.14, floor_y), s)
+			else:
+				PilotArt.draw_person(ci, Vector2(dx + 8 * s, floor_y), s, PilotArt.GUS_LOOK, -1.0, "sit_type", t)
+				_head(info, "GUS", Vector2(dx + 8 * s, floor_y), s, true)
 			PilotArt.draw_person(ci, Vector2(size.x * 0.3, floor_y), s, info.get("pilot", {}), -1.0, "point", t + 0.4)
 			_head(info, "YOU", Vector2(size.x * 0.3, floor_y), s)
 		"storage":
@@ -461,25 +466,10 @@ static func _gantry(ci: CanvasItem, g: Dictionary, floor_y: float) -> void:
 
 # ---------------------------------------------------------------- Gus's office (the Season screens)
 
-## A cork board full of fixtures, results and pilot photos, with red string between them.
+## The trophy shelves, the fight-net screen under them, the wall clock and the sign.
 static func _office_back(ci: CanvasItem, size: Vector2, floor_y: float, t: float, info: Dictionary) -> void:
 	_trophy_wall(ci, size, info)
-	var board := Rect2(size.x * 0.05, size.y * 0.4, size.x * 0.5, size.y * 0.3)
-	ci.draw_rect(board.grow(5), Color(0.38, 0.25, 0.13))
-	ci.draw_rect(board, Color(0.62, 0.45, 0.28))
-	var pins: Array = []
-	for k in 7:
-		var r := Rect2(board.position + Vector2(10 + (k % 4) * board.size.x / 4.2, 10 + int(k / 4.0) * board.size.y / 2.1),
-				Vector2(board.size.x / 5.5, board.size.y / 2.8))
-		var paper := Color(0.95, 0.94, 0.88) if k % 3 else Color(0.98, 0.9, 0.55)
-		ci.draw_rect(r, paper)
-		for ln in 4:
-			ci.draw_line(r.position + Vector2(4, 8 + ln * 7), r.position + Vector2(r.size.x - 4 - (ln % 2) * 8, 8 + ln * 7), Color(0.4, 0.4, 0.45), 1.0)
-		var pin := r.position + Vector2(r.size.x * 0.5, 2)
-		ci.draw_circle(pin, 3.0, Color(0.85, 0.15, 0.15))
-		pins.append(pin)
-	ci.draw_line(pins[0], pins[5], Color(0.85, 0.1, 0.1), 1.5)
-	ci.draw_line(pins[2], pins[6], Color(0.85, 0.1, 0.1), 1.5)
+	_office_terminal(ci, size, floor_y, t, info)
 	# a wall clock
 	var cc := Vector2(size.x * 0.68, size.y * 0.24)
 	ci.draw_circle(cc, 18, Color(0.92, 0.92, 0.88))
@@ -487,6 +477,62 @@ static func _office_back(ci: CanvasItem, size: Vector2, floor_y: float, t: float
 	ci.draw_line(cc, cc + Vector2(cos(t * 0.1 - PI / 2), sin(t * 0.1 - PI / 2)) * 13, Color(0.15, 0.15, 0.15), 2.0)
 	ci.draw_line(cc, cc + Vector2(cos(t * 1.2 - PI / 2), sin(t * 1.2 - PI / 2)) * 15, Color(0.8, 0.1, 0.1), 1.0)
 	_sign(ci, Vector2(size.x * 0.8, 30), I18n.t("GUS'S OFFICE"), Color(0.85, 0.9, 0.45))
+
+
+## The big screen under the trophies: Gus's fight-net terminal, a green CRT on the wall with the
+## tables scrolling, your record and a blinking prompt. A cable runs down to the keyboard on his desk.
+static func _office_terminal(ci: CanvasItem, size: Vector2, floor_y: float, t: float, info: Dictionary) -> void:
+	var scr := Rect2(size.x * 0.05, size.y * 0.4, size.x * 0.5, size.y * 0.3)
+	var font := ThemeDB.fallback_font
+	var green := Color(0.35, 1.0, 0.5)
+	# bezel, wall mount and the screen glow
+	ci.draw_rect(Rect2(scr.get_center().x - 10, scr.position.y - 14, 20, 14), Color(0.2, 0.2, 0.22))
+	ci.draw_rect(scr.grow(9), Color(0.13, 0.13, 0.15))
+	ci.draw_rect(scr.grow(9), Color(0.3, 0.3, 0.33), false, 2.0)
+	ci.draw_rect(scr.grow(16), Color(0.3, 1.0, 0.45, 0.04))
+	ci.draw_rect(scr, Color(0.02, 0.07, 0.04))
+	# a power light on the bezel
+	ci.draw_circle(Vector2(scr.end.x + 4, scr.end.y + 5), 2.0, Color(0.3, 1.0, 0.4) if fmod(t, 2.0) < 1.6 else Color(0.1, 0.3, 0.12))
+	var fs := int(clampf(scr.size.y / 9.0, 9, 15))
+	var lh := fs + 3.0
+	var x := scr.position.x + 8
+	var y := scr.position.y + lh
+	ci.draw_string(font, Vector2(x, y), "PORT FERRUM FIGHT NET", HORIZONTAL_ALIGNMENT_LEFT, scr.size.x - 16, fs, green)
+	ci.draw_line(Vector2(x, y + 4), Vector2(scr.end.x - 8, y + 4), Color(green, 0.5), 1.0)
+	y += lh + 4
+	ci.draw_string(font, Vector2(x, y), "> %s %d-%d" % [I18n.t("RECORD"), int(info.get("wins", 0)), int(info.get("losses", 0))], HORIZONTAL_ALIGNMENT_LEFT, scr.size.x - 16, fs, green)
+	y += lh
+	# the table scrolling past: rank, a name-length bar, points
+	var rows := int((scr.end.y - y - lh) / lh)
+	var off := int(t * 0.8)
+	for k in rows:
+		var n := k + off
+		var ry := y + k * lh
+		ci.draw_string(font, Vector2(x, ry), "%2d" % (n % 32 + 1), HORIZONTAL_ALIGNMENT_LEFT, 30, fs, Color(green, 0.8))
+		var w := scr.size.x * (0.25 + 0.3 * fmod(n * 0.618, 1.0))
+		ci.draw_rect(Rect2(x + 30, ry - fs * 0.6, w, fs * 0.55), Color(green, 0.35))
+		ci.draw_string(font, Vector2(scr.end.x - 36, ry), "%2d" % int(24 - fmod(n * 2.7, 20.0)), HORIZONTAL_ALIGNMENT_LEFT, 30, fs, Color(green, 0.8))
+	# the prompt and its cursor
+	var py := scr.end.y - 6
+	ci.draw_string(font, Vector2(x, py), "GUS@BAY:~$", HORIZONTAL_ALIGNMENT_LEFT, scr.size.x, fs, green)
+	if fmod(t, 1.0) < 0.55:
+		ci.draw_rect(Rect2(x + fs * 6.2, py - fs * 0.75, fs * 0.55, fs * 0.85), green)
+	# scanlines and a soft sheen
+	var sl := scr.position.y
+	while sl < scr.end.y:
+		ci.draw_line(Vector2(scr.position.x, sl), Vector2(scr.end.x, sl), Color(0, 0, 0, 0.22), 1.0)
+		sl += 3.0
+	var band := scr.position.y + fmod(t * 30.0, scr.size.y)
+	ci.draw_rect(Rect2(scr.position.x, band, scr.size.x, 6), Color(0.4, 1.0, 0.5, 0.05))
+	# the cable down the wall to the keyboard on Gus's desk
+	var s := clampf(size.y / 300.0, 0.6, 1.3)
+	var desk_x := size.x * 0.62
+	var kb := Vector2(desk_x - 30 * s, floor_y - 40 * s)
+	ci.draw_polyline(PackedVector2Array([Vector2(scr.end.x + 9, scr.end.y - 10), Vector2(scr.end.x + 18, scr.end.y - 10),
+			Vector2(scr.end.x + 18, kb.y - 2), kb + Vector2(-20 * s, -2)]), Color(0.1, 0.1, 0.1), 2.0)
+	ci.draw_rect(Rect2(kb + Vector2(-20 * s, -5 * s), Vector2(34 * s, 5 * s)), Color(0.22, 0.22, 0.24))
+	for k in 6:
+		ci.draw_line(kb + Vector2(-18 * s + k * 5.5 * s, -3 * s), kb + Vector2(-15 * s + k * 5.5 * s, -3 * s), Color(0.5, 0.5, 0.52), 1.0)
 
 
 # ---------------------------------------------------------------- The Rusty Bolt (the Bets screen)
@@ -847,7 +893,7 @@ const MEDAL_COLORS := [Color(0.5, 0.5, 0.5), Color(0.95, 0.78, 0.25), Color(0.8,
 ## playoff or a cup. Gold, silver or bronze; the shape tells you which event it's from.
 ## Where each trophy stands on the bay's shelves: [index into the trophy list, base point] (newest ones
 ## shown). Used for drawing them and for tapping them.
-## The trophy wall in Gus's office (Season): two long shelves above the cork board, the newest
+## The trophy wall in Gus's office (Season): two long shelves above the fight-net screen, the newest
 ## trophies at the end. [index into the trophies list, base point]
 const TROPHY_SCALE := 1.35
 static func trophy_spots(size: Vector2, count: int) -> Array:
@@ -856,14 +902,17 @@ static func trophy_spots(size: Vector2, count: int) -> Array:
 	var step := 26.0 * TROPHY_SCALE
 	var per_shelf := maxi(1, int((w - 12.0) / step))
 	var shown := mini(count, per_shelf * 2)
+	# your dad's three always stay at the start of the top shelf; then the newest of yours
+	var keep := mini(3, shown)
+	var idx: Array = range(keep) + range(count - (shown - keep), count)
 	var out: Array = []
 	for k in shown:
-		out.append([count - shown + k, Vector2(x0 + 8.0 + step * 0.5 + (k % per_shelf) * step, size.y * 0.17 + (k / per_shelf) * (size.y * 0.15))])
+		out.append([idx[k], Vector2(x0 + 8.0 + step * 0.5 + (k % per_shelf) * step, size.y * 0.17 + (k / per_shelf) * (size.y * 0.15))])
 	return out
 
 
 static func _trophy_wall(ci: CanvasItem, size: Vector2, info: Dictionary) -> void:
-	var list: Array = info.get("medals", [])
+	var list: Array = info.get("wall", info.get("medals", []))
 	var x0 := size.x * 0.05
 	var w := size.x * 0.56
 	# two long shelves on brackets, whether there's anything on them yet or not
@@ -878,6 +927,20 @@ static func _trophy_wall(ci: CanvasItem, size: Vector2, info: Dictionary) -> voi
 	for s in trophy_spots(size, list.size()):
 		var tr: Dictionary = list[s[0]]
 		draw_trophy(ci, s[1], str(tr.get("kind", "cup")), int(tr.get("medal", 1)), TROPHY_SCALE)
+		if tr.get("dad", false):
+			# older, a little dull
+			ci.draw_rect(Rect2(Vector2(s[1]) + Vector2(-16, -46), Vector2(32, 46)), Color(0.25, 0.2, 0.15, 0.18))
+	# a brass plate on the shelf edge under your dad's three
+	var dads := 0
+	for tr in list:
+		if tr.get("dad", false):
+			dads += 1
+	if dads > 0:
+		var step := 26.0 * TROPHY_SCALE
+		var pr := Rect2(x0 + 8.0, size.y * 0.17 + 1, step * dads, 9)
+		ci.draw_rect(pr, Color(0.62, 0.5, 0.25))
+		ci.draw_rect(pr, Color(0.35, 0.27, 0.12), false, 1.0)
+		ci.draw_string(ThemeDB.fallback_font, Vector2(pr.position.x, pr.end.y - 1), I18n.t("DAD"), HORIZONTAL_ALIGNMENT_CENTER, pr.size.x, 9, Color(0.2, 0.14, 0.06))
 	# the championship belt hangs on the wall beside the shelves
 	if info.get("champion", false):
 		var gold: Color = MEDAL_COLORS[1]

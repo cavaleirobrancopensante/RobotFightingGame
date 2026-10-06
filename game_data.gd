@@ -2,7 +2,7 @@ extends Node
 
 # helper scripts, loaded by path so the game also runs without an editor scan
 ## The game's version, shown on the main menu. Bump it with every change (1.1, 1.2, ...).
-const VERSION := "1.30"
+const VERSION := "1.31"
 const Arena = preload("res://arena.gd")
 const I18n = preload("res://i18n.gd")
 const Catalog = preload("res://catalog.gd")
@@ -284,6 +284,12 @@ var day := "mon"            # today: "mon".."sun" (cup rounds on "wed", leagues 
 const DAYS := ["mon", "tue", "wed", "thu", "fri", "sat", "sun"]
 var rank := "open"          # your level: open (the gutter, no league) / scrap / rust / iron / steel
 var event := {}             # the league or playoffs you're in (see career.gd)
+## Your dad's trophies: on the office wall from day one, yours go up beside them.
+const DAD_TROPHIES := [
+	{"kind": "scrap", "medal": 1, "name": "Scrap League", "dad": true},
+	{"kind": "rust", "medal": 1, "name": "Rust League", "dad": true},
+	{"kind": "iron", "medal": 2, "name": "Iron League", "dad": true},
+]
 var trophies: Array = []    # [{kind: scrap/regional/championship/cup, medal: 1-3, name, year}]
 var career_stats := {"heads": 0, "arms": 0, "legs": 0, "cores": 0, "parts": 0}
 var story_queue: Array = [] # more story scenes to show after the current one
@@ -3469,6 +3475,11 @@ func dismantle_pay(id: String) -> int:
 
 
 ## A trophy for the bay wall, with when you won it and the fights that got you there.
+## The office wall: your dad's three, then yours.
+func wall_trophies() -> Array:
+	return DAD_TROPHIES + trophies
+
+
 func trophy_record(ev: Dictionary, kind: String, medal: int) -> Dictionary:
 	var fights: Array = []
 	var wk: Array = ev.get("weeks", [])
