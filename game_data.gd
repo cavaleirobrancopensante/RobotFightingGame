@@ -2,7 +2,7 @@ extends Node
 
 # helper scripts, loaded by path so the game also runs without an editor scan
 ## The game's version, shown on the main menu. Bump it with every change (1.1, 1.2, ...).
-const VERSION := "1.16"
+const VERSION := "1.17"
 const Arena = preload("res://arena.gd")
 const I18n = preload("res://i18n.gd")
 const Catalog = preload("res://catalog.gd")
@@ -693,7 +693,7 @@ func buy(id: String) -> String:
 		if SLOT_KIND[slot] == d["kind"] and equipped[slot] == -1 and slot_available(slot):
 			equipped[slot] = uid
 			return tr("Bought %s and fitted it to the %s.") % [d["name"], tr(SLOT_NAMES[slot])]
-	return tr("Bought %s. It's in your Spares - equip it from there.") % d["name"]
+	return tr("Bought %s. It's in your Spares, equip it from there.") % d["name"]
 
 
 func equip(uid: int, slot: String) -> String:
@@ -745,7 +745,7 @@ func repair(uid: int) -> String:
 	if c == 0:
 		return "Already in perfect shape."
 	if not can_repair(c):
-		return "Not enough cash - no repairs on credit. Fight with the dents and win some money."
+		return "Not enough cash. No repairs on credit. Fight with the dents and win some money."
 	money -= c
 	p["hp"] = float(part_def(p["id"])["hp"])
 	return tr("Repaired %s for $%d.") % [part_def(p["id"])["name"], c]
@@ -765,7 +765,7 @@ func repair_all() -> String:
 	if c == 0:
 		return "Your robot is in perfect shape."
 	if not can_repair(c):
-		return tr("Repairing everything costs $%d. You don't have the cash - fix the worst parts one at a time, or fight with the dents.") % c
+		return tr("Repairing everything costs $%d. You don't have the cash. Fix the worst parts one at a time, or fight with the dents.") % c
 	for slot in BODY_SLOTS:
 		var p := equipped_inst(slot)
 		if not p.is_empty():
@@ -887,7 +887,7 @@ func buy_chip(id: String, ordered: bool = false) -> String:
 	if chips.size() < chip_slots():
 		chips.append(id)
 		return tr("Downloaded %s into %s. Input: %s") % [tr(m["name"]), robot_name, Specials.seq_text(m["seq"])]
-	return tr("Bought %s. Your chip slots are full - uninstall a chip to make room.") % tr(m["name"])
+	return tr("Bought %s. Your chip slots are full. Uninstall a chip to make room.") % tr(m["name"])
 
 
 func install_chip(id: String) -> String:
@@ -1142,8 +1142,8 @@ func do_scout() -> String:
 		if not opts.is_empty():
 			scout["spied_back"] = true
 			scout["change"] = {"type": "part", "slot": slot, "id": opts[randi() % opts.size()]}
-			return "Their crew spotted your scout! They'll swap something before the bell - one thing in this report won't be what shows up."
-	return "Clean scouting run - they never saw you."
+			return "Their crew spotted your scout! They'll swap something before the bell. One thing in this report won't be what shows up."
+	return "Clean scouting run. They never saw you."
 
 
 
@@ -1199,15 +1199,15 @@ func fight_title() -> String:
 			return tr("QUICK FIGHT")
 		"watch":
 			var wev := watch_event()
-			return tr("%s VS %s") % [str(watch_robot(0)["pilot"]), str(watch_robot(1)["pilot"])] + " - " + (tr(str(wev["name"])).to_upper() if wev["stage"] == "cup" else tr(Career.STAGES[wev["stage"]]["short"]))
+			return tr("%s VS %s") % [str(watch_robot(0)["pilot"]), str(watch_robot(1)["pilot"])] + " · " + (tr(str(wev["name"])).to_upper() if wev["stage"] == "cup" else tr(Career.STAGES[wev["stage"]]["short"]))
 		"circuit":
-			return tr("%s - %s") % [str(circuit["name"]).to_upper(), tr(Career.round_name(circuit))]
+			return tr("%s · %s") % [str(circuit["name"]).to_upper(), tr(Career.round_name(circuit))]
 		"exhibition":
 			return tr("EXHIBITION")
 		"pickup":
 			return tr("SCRAPYARD PICKUP FIGHT")
 		"story":
-			return tr("%s - %s") % [tr(Career.STAGES[event["stage"]]["short"]), tr(Career.round_name(event)).to_upper()]
+			return tr("%s · %s") % [tr(Career.STAGES[event["stage"]]["short"]), tr(Career.round_name(event)).to_upper()]
 	return tr("YEAR %d, WEEK %d") % [year, week]
 
 
@@ -1365,7 +1365,7 @@ func skip_to_next_event() -> String:
 	if nxt[0] == "":
 		return "Nothing on the calendar."
 	if not circuit.is_empty() and circuit.get("phase", "") != "done":
-		return "You're in a cup - no skipping ahead. Its next round is on Wednesday."
+		return "You're in a cup, no skipping ahead. Its next round is on Wednesday."
 	refund_self_bets()
 	pickup = {}
 	advance_week(int(nxt[2]))
@@ -1484,7 +1484,7 @@ func place_bet(pick: int, vs: int, stake: int) -> String:
 		var so := self_odds()
 		money -= stake
 		bets.append({"on": "self", "round": 0, "pick": 0, "vs": -1, "stake": stake, "odds": so})
-		return tr("$%d on %s at %.2fx - pays $%d if they win.") % [stake, pilot_name, so, int(stake * so)]
+		return tr("$%d on %s at %.2fx, pays $%d if they win.") % [stake, pilot_name, so, int(stake * so)]
 	var ev := bet_event()
 	if ev.is_empty():
 		return "Nothing to bet on this week."
@@ -1496,7 +1496,7 @@ func place_bet(pick: int, vs: int, stake: int) -> String:
 	money -= stake
 	bets.append({"on": bet_target(), "round": int(ev["round"]), "pick": pick, "vs": vs, "stake": stake, "odds": o})
 	var who: String = pilot_name if pick == 0 else str(Career.pilot(ev, pick).get("pilot", "?"))
-	return tr("$%d on %s at %.2fx - pays $%d if they win.") % [stake, who, o, int(stake * o)]
+	return tr("$%d on %s at %.2fx, pays $%d if they win.") % [stake, who, o, int(stake * o)]
 
 
 ## After the round: pay out winning bets. Returns {won, lost, net, lines}.
@@ -1806,7 +1806,7 @@ func story_dynamic(key: String) -> String:
 					return (tr("%d months behind on rent, kid.") % months) + " " + heap
 				return (tr("You owe me $%d in back rent, kid.") % owed) + " " + heap
 			if money == 0:
-				return tr("Rent's paid up, kid - and that's every cent you've got.") + " " + heap
+				return tr("Rent's paid up, kid, and that's every cent you've got.") + " " + heap
 			if living > 0 and money < living:
 				return (tr("$%d to your name, kid. That won't even cover next month.") % money) + " " + heap
 			return (tr("$%d in the bank, kid. Nice cushion. In this business it won't last.") % money) + " " + heap
@@ -1814,16 +1814,16 @@ func story_dynamic(key: String) -> String:
 			var t := ""
 			if money < 0:
 				if wins + losses > 0:
-					t = tr("And kid - even after tonight's purse, you still owe me $%d in back rent.") % -money + " "
+					t = tr("And kid, even after tonight's purse, you still owe me $%d in back rent.") % -money + " "
 				else:
-					t = tr("And kid - you still owe me $%d in back rent.") % -money + " "
-			t += (tr("Rent and food are $%d every month.") % living) if living > 0 else tr("Rent's on the house for now - don't get used to it.")
-			return t + " " + tr("No repairs on credit: when we're in the hole, we fight with the dents.")
+					t = tr("And kid, you still owe me $%d in back rent.") % -money + " "
+			t += (tr("Rent and food are $%d every month.") % living) if living > 0 else tr("Rent's on the house for now. Don't get used to it.")
+			return t + " " + tr("No repairs on credit. When we're in the hole, we fight with the dents.")
 		"PC_KEYS":
 			# only on a computer (no touchscreen): point them at the pause screen, where every key is listed
 			if DisplayServer.is_touchscreen_available():
 				return ""
-			return tr("On a computer, kid? Press Esc to pause the fight any time - the pause screen lists every key. Much easier than guessing.")
+			return tr("On a computer, kid? Press Esc to pause the fight any time. The pause screen lists every key. Much easier than guessing.")
 	return ""
 
 
@@ -1833,17 +1833,17 @@ func garage_tip() -> String:
 	if losses >= 1 and tip_once("difficulty"):
 		return tr("GUS: ") + tr("Lost one? Happens to the best of them. If the fights feel too hard, go to Menu > Settings > Difficulty and turn it down. No shame in it, kid.")
 	if repair_all_cost() > 0 and unlocked("shop") and tip_once("repair"):
-		return tr("GUS: ") + tr("Damage carries over between fights. Hit Repair all before the next one - or fix parts one by one.")
+		return tr("GUS: ") + tr("Damage carries over between fights. Hit Repair all before the next one, or fix parts one by one.")
 	return ""
 
 
 const TAB_TIPS := {
-	"Scrapyard": "GUS: Free junk is always lying around. Digging deeper finds better stuff - but it's beaten up, so budget for repairs.",
+	"Scrapyard": "GUS: Free junk is always lying around. Digging deeper finds better stuff, but it's beaten up, so budget for repairs.",
 	"Shop": "GUS: The dealer restocks every Sunday. Mini parts sip power, Heavy parts hit hard but drink it.",
 	"Workshop": "GUS: Design your own part here. Costs more than the dealer, but it's exactly what you want.",
 	"Moves": "GUS: Training chips teach special moves. Better heads hold more chips.",
-	"Cups": "GUS: Cups are three-week knockouts on Wednesday nights, alongside your league. Eight pilots, medals for the top three. Some come in tag teams and swarms - your backups fight beside you then.",
-	"Season": "GUS: The calendar. League nights are Saturdays, cup nights are Wednesdays, rent's due the last Sunday of the month. The league table's the other button - a win is 3 points.",
+	"Cups": "GUS: Cups are three-week knockouts on Wednesday nights, alongside your league. Eight pilots, medals for the top three. Some come in tag teams and swarms, and your backups fight beside you then.",
+	"Season": "GUS: The calendar. League nights are Saturdays, cup nights are Wednesdays, rent's due the last Sunday of the month. The league table's the other button. A win is 3 points.",
 	"Team": "GUS: Teams share one heavyweight's power, so team robots run small. Mini parts are your friend here.",
 }
 
@@ -1873,7 +1873,7 @@ func dig_scrap(kind: String = "") -> Dictionary:
 		var cid: String = unowned[randi() % unowned.size()]
 		owned_chips.append(cid)
 		var cm: Dictionary = Specials.MOVES[cid]
-		return {"text": tr("Buried in the junk: a training chip - %s! It's yours (see Chips).") % tr(cm["name"]), "part": "", "chip": cid, "grade": "chip"}
+		return {"text": tr("Buried in the junk was a training chip, %s! It's yours (see Chips).") % tr(cm["name"]), "part": "", "chip": cid, "grade": "chip"}
 	var r := randf()
 	var good_odds := 0.12 if kind == "" else 0.04
 	var decent_odds := 0.5 if kind == "" else 0.22
@@ -2038,7 +2038,7 @@ func apply_wingman_damage(k: int, part_hp: Dictionary, lost: Array, wrecked: Arr
 ## junk = how they behave in the ring (see fight.gd junk_input).
 const JUNKERS := {
 	"fridge": {"name": "THE FRIDGE", "junk": "fridge", "body": "#e8ecef", "style": "tank",
-		"desc": "Only ever blocks. Practise grabs - they beat a block - and breaking a guard.",
+		"desc": "Only ever blocks. Practise grabs (they beat a block) and breaking a guard.",
 		"parts": {"head": "junk_head_box", "torso": "junk_torso_box", "arm_front": "junk_arm", "arm_back": "junk_arm", "leg_front": "junk_leg_thick", "leg_back": "junk_leg_thick"}},
 	"toaster": {"name": "TOASTER TIM", "junk": "toaster", "body": "#c0c4c8", "style": "striker",
 		"desc": "Throws one slow punch every couple of seconds. Practise blocking, then hitting back.",
@@ -2374,7 +2374,7 @@ func finish_event(ev: Dictionary) -> String:
 		var prize: int = info["prizes"][m - 1]
 		money += prize
 		trophies.append(trophy_record(ev, ev["stage"], m))
-		text += tr(" - prize $%d and a trophy for the bay!") % prize
+		text += tr(". Prize $%d and a trophy for the bay!") % prize
 	match ev["stage"]:
 		"scrap":
 			if m > 0 and rank_index() < 1:
@@ -2402,7 +2402,7 @@ func finish_cup() -> String:
 		var prize: int = int(int(circuit["prize"]) * [0, 1.0, 0.5, 0.3][m])
 		money += prize
 		trophies.append(trophy_record(circuit, "cup", m))
-		text += tr(" - $%d") % prize
+		text += tr(", $%d") % prize
 		if m == 1:
 			circuits_won += 1
 			var rng := RandomNumberGenerator.new()
@@ -2602,7 +2602,7 @@ func custom_price(cfg: Dictionary) -> int:
 func forge_custom(cfg: Dictionary) -> String:
 	var d := custom_def(cfg)
 	if money < d["cost"]:
-		return tr("Not enough money - this design costs $%d.") % d["cost"]
+		return tr("Not enough money. This design costs $%d.") % d["cost"]
 	money -= d["cost"]
 	d["id"] = "custom_%d_%d" % [Time.get_unix_time_from_system(), randi() % 100000]
 	custom_parts.append(d)
@@ -2612,7 +2612,7 @@ func forge_custom(cfg: Dictionary) -> String:
 		if SLOT_KIND[slot] == d["kind"] and equipped[slot] == -1:
 			equipped[slot] = uid
 			return tr("Forged %s and fitted it to the %s!") % [d["name"], tr(SLOT_NAMES[slot])]
-	return tr("Forged %s! It's in your Storage - fit it from there.") % d["name"]
+	return tr("Forged %s! It's in your Storage, fit it from there.") % d["name"]
 
 
 # ---------------------------------------------------------------- randomize & saved setups
@@ -2656,7 +2656,7 @@ func randomize_robot() -> String:
 		equipped = old
 		return "Not enough parts to build a robot."
 	equipped = best
-	return "Random build assembled!" + ("" if best_over <= 0 else " (It's overloaded - you need a bigger reactor for this one.)")
+	return "Random build assembled!" + ("" if best_over <= 0 else " (It's overloaded. You need a bigger reactor for this one.)")
 
 
 func save_setup(k: int) -> String:
@@ -2747,7 +2747,7 @@ func slot_info(slot: int) -> Dictionary:
 		return {"broken": true}
 	var progress := "Champion" if data.get("champion", false) else tr("Year %d, week %d") % [int(data.get("year", 1)), int(data.get("week", 1))]
 	if data.has("event") and typeof(data["event"]) == TYPE_DICTIONARY and not data["event"].is_empty() and not data.get("champion", false):
-		progress += " - " + str(Career.STAGES.get(str(data["event"].get("stage", "")), {}).get("short", "")).capitalize()
+		progress += " · " + str(Career.STAGES.get(str(data["event"].get("stage", "")), {}).get("short", "")).capitalize()
 	return {"pilot": data.get("pilot_name", "Rook"), "robot": data.get("robot_name", DEFAULT_ROBOT), "progress": progress,
 			"money": int(data.get("money", 0)), "saved": data.get("saved_at", ""),
 			"cups": int(data.get("circuits_won", 0))}

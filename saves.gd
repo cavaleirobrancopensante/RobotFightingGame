@@ -47,7 +47,7 @@ func title(text: String) -> void:
 
 func show_slots() -> void:
 	clear()
-	title("NEW GAME - pick a save slot" if mode == "new" else "LOAD GAME")
+	title("NEW GAME: pick a save slot" if mode == "new" else "LOAD GAME")
 	for slot in range(1, GameData.SAVE_SLOTS + 1):
 		var info := GameData.slot_info(slot)
 		var panel := PanelContainer.new()
@@ -59,13 +59,13 @@ func show_slots() -> void:
 		text.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		row.add_child(text)
 		if info.is_empty():
-			text.add_child(UI.label(tr("Slot %d - empty") % slot, 20))
+			text.add_child(UI.label(tr("Slot %d: empty") % slot, 20))
 		elif info.get("broken", false):
-			text.add_child(UI.label(tr("Slot %d - damaged file") % slot, 20, Color(1.0, 0.5, 0.4)))
+			text.add_child(UI.label(tr("Slot %d: damaged file") % slot, 20, Color(1.0, 0.5, 0.4)))
 		else:
-			text.add_child(UI.label(tr("Slot %d - %s & %s") % [slot, info["pilot"], info["robot"]], 20))
+			text.add_child(UI.label(tr("Slot %d: %s & %s") % [slot, info["pilot"], info["robot"]], 20))
 			var cups := tr(", %d cups") % info["cups"] if info["cups"] > 0 else ""
-			text.add_child(UI.label(tr("%s%s  -  %s  -  saved %s") % [info["progress"], cups, GameData.money_text(info["money"]), info["saved"]], 14, Color(0.72, 0.72, 0.78)))
+			text.add_child(UI.label(tr("%s%s  ·  %s  ·  saved %s") % [info["progress"], cups, GameData.money_text(info["money"]), info["saved"]], 14, Color(0.72, 0.72, 0.78)))
 		var waiting: String = confirm.get(slot, "")
 		if mode == "new":
 			if info.is_empty():
@@ -87,7 +87,7 @@ func show_slots() -> void:
 func show_names() -> void:
 	clear()
 	GameData.new_game()   # a fresh draft: the default pilot and ECHO in its usual junk
-	title(tr("NEW GAME - slot %d") % chosen_slot)
+	title(tr("NEW GAME: slot %d") % chosen_slot)
 	var names := HBoxContainer.new()
 	names.add_theme_constant_override("separation", 16)
 	col.add_child(names)
@@ -279,7 +279,7 @@ func build_robot_editor() -> void:
 		var kind: String = r[1]
 		choice_row(rows, r[0], GameData.part_def(GameData.starter_id(kind))["name"], _on_robot_step.bind(kind, -1), _on_robot_step.bind(kind, 1))
 	choice_row(rows, "Paint", tr(GameData.PAINTS[GameData.paint]["name"]), _on_paint_step.bind(-1), _on_paint_step.bind(1), "")
-	var note := UI.label("All junk to start with - every choice is just as weak. Better parts come from the scrapyard and the shop.", 12, Color(0.65, 0.65, 0.72))
+	var note := UI.label("All junk to start with. Every choice is just as weak. Better parts come from the scrapyard and the shop.", 12, Color(0.65, 0.65, 0.72))
 	note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	rows.add_child(note)
 	robot_box.add_child(UI.button("Random robot", _on_random_build, 16, Vector2(0, 40)))

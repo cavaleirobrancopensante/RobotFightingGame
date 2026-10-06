@@ -722,7 +722,7 @@ func handle_tap(p: Vector2) -> bool:
 			f.target = slot
 		Sfx.play("target")
 		if slot.begins_with("head"):
-			coach("head", tr("Heads are small and tough - aimed head shots miss a lot. Try the limbs!"))
+			coach("head", tr("Heads are small and tough, so aimed head shots miss a lot. Try the limbs!"))
 	assign_foes()
 	return true
 
@@ -2304,7 +2304,7 @@ func start_clinch(att: Fighter, d: Fighter, hit: Dictionary) -> void:
 	popup(tr("GRABBED!"), d.pos + Vector2(0, -230.0 * d.scale), Color(1.0, 0.8, 0.4))
 	Sfx.play("equip", 0.1)
 	if d == player:
-		shout("grabbed", tr("He's got you - hang on!"), tr("He grabbed you! Grabs go through a block - next time hit him before he gets close."), 2, 1, 8.0)
+		shout("grabbed", tr("He's got you! Hang on!"), tr("He grabbed you! Grabs go through a block. Next time, hit him before he gets close."), 2, 1, 8.0)
 
 
 func update_clinch(f: Fighter, delta: float) -> void:
@@ -2611,7 +2611,7 @@ func rip_off(f: Fighter, slot: String) -> void:
 		if aimed:
 			coach("aimed_rip", tr("Clean rip! Parts you AIM at and rip off usually come home with us after a win."))
 		else:
-			coach("rip_any", tr("Ripped off! Aim at a part first and it comes off clean - free spare parts."))
+			coach("rip_any", tr("Ripped off! Aim at a part first and it comes off clean. Free spare parts."))
 	else:
 		coach("own_lost", tr("We lost a part! Ripped-off parts must be bought again. Dented ones can be repaired."))
 	f.fist_out.erase(slot)
@@ -3141,7 +3141,7 @@ func draw_team_bars(team: Array, x: float, y: float, w: float, bh: float, right:
 			pc = POWER_COLOR.lerp(Color.WHITE, 0.5 + 0.5 * sin(clock * 14.0))
 		GUI.draw_blocks(self, pr, pn, clampf(f.power, 0.0, f.power_max), pc, Color(0.02, 0.06, 0.1, 0.85), right)
 		if n > 1:
-			var t := (tr("%s  ") % f.tag if f.tag != "" else "") + f.label + (tr("  - DOWN") if f.state == "ko" else "")
+			var t := (tr("%s  ") % f.tag if f.tag != "" else "") + f.label + (tr("  · DOWN") if f.state == "ko" else "")
 			draw_string(font, Vector2(x + 6, by + h - 1), t, HORIZONTAL_ALIGNMENT_RIGHT if right else HORIZONTAL_ALIGNMENT_LEFT, w - 12, int(h * 0.95), Color(0.08, 0.08, 0.1))
 
 
@@ -3216,7 +3216,7 @@ func draw_hud() -> void:
 				var n := clampi(3 - int(count_t / COUNT_STEP), 1, 3)
 				var k := fmod(count_t, COUNT_STEP) / COUNT_STEP
 				draw_string(font, Vector2(0, screen.y * 0.36), str(n), HORIZONTAL_ALIGNMENT_CENTER, screen.x, fs(110 - 30 * k), Color(1.0, 0.85, 0.2, 1.0 - k * 0.6))
-				draw_string(font, Vector2(0, floor_y + 44), tr("You can move - no hitting before the bell!"), HORIZONTAL_ALIGNMENT_CENTER, screen.x, fs(18), Color(0.9, 0.9, 0.95, 0.85))
+				draw_string(font, Vector2(0, floor_y + 44), tr("You can move, but no hitting before the bell!"), HORIZONTAL_ALIGNMENT_CENTER, screen.x, fs(18), Color(0.9, 0.9, 0.95, 0.85))
 		"fight":
 			if fight_flash > 0.0:
 				draw_string(font, Vector2(0, screen.y * 0.36), tr("FIGHT!"), HORIZONTAL_ALIGNMENT_CENTER, screen.x, fs(96), Color(1.0, 0.3, 0.2, minf(1.0, fight_flash * 2.0)))
@@ -3256,11 +3256,11 @@ func draw_results() -> void:
 	y += 60.0
 	var lines: Array = []
 	if mode == "watch":
-		lines.append([tr("That's the result on the books - bets on it pay when the round is over."), Color(0.8, 0.8, 0.85)])
+		lines.append([tr("That's the result on the books. Bets on it pay when the round is over."), Color(0.8, 0.8, 0.85)])
 	elif mode == "quick":
-		lines.append([tr("Quick fight - nothing saved. Tap to go back to the menu."), Color(0.8, 0.8, 0.85)])
+		lines.append([tr("Quick fight, nothing saved. Tap to go back to the menu."), Color(0.8, 0.8, 0.85)])
 	elif mode == "test":
-		lines.append([tr("Test drive - no damage, no prize, nothing saved."), Color(0.8, 0.8, 0.85)])
+		lines.append([tr("Test drive. No damage, no prize, nothing saved."), Color(0.8, 0.8, 0.85)])
 	else:
 		var pay: int = result.get("reward", 0)
 		if pay > 0:
@@ -3277,9 +3277,9 @@ func draw_results() -> void:
 	if result.get("champion", false):
 		lines.append([tr("YOU ARE THE CHAMPION!"), Color(1.0, 0.5, 0.2)])
 	if result.get("cup_done", "") != "":
-		lines.append([tr("CUP OVER - %s") % result["cup_done"], Color(1.0, 0.5, 0.2)])
+		lines.append([tr("CUP OVER: %s") % result["cup_done"], Color(1.0, 0.5, 0.2)])
 	if result.get("event_done", "") != "":
-		lines.append([tr("SEASON OVER - %s") % result["event_done"], Color(1.0, 0.5, 0.2)])
+		lines.append([tr("SEASON OVER: %s") % result["event_done"], Color(1.0, 0.5, 0.2)])
 	for l in lines:
 		draw_string(font, Vector2(0, y), l[0], HORIZONTAL_ALIGNMENT_CENTER, screen.x, fs(24), l[1])
 		y += 38.0
@@ -3392,7 +3392,7 @@ func draw_moves_list() -> void:
 	draw_rect(Rect2(Vector2.ZERO, screen), Color(0, 0, 0, 0.86))
 	var x := screen.x * 0.08
 	var y := screen.y * 0.1
-	draw_string(font, Vector2(0, y), tr("QUIT THIS FIGHT?") if quit_ask else tr("PAUSED - MOVE LIST"), HORIZONTAL_ALIGNMENT_CENTER, screen.x, fs(30), Color(1.0, 0.45, 0.2))
+	draw_string(font, Vector2(0, y), tr("QUIT THIS FIGHT?") if quit_ask else tr("PAUSED · MOVE LIST"), HORIZONTAL_ALIGNMENT_CENTER, screen.x, fs(30), Color(1.0, 0.45, 0.2))
 	y += 50.0
 	# the two buttons along the bottom: resume, and quit (asks first: quitting pays nothing)
 	var bw := minf(300.0, screen.x * 0.3)
@@ -3421,7 +3421,7 @@ func _draw_pause_lines(x: float, y: float, bottom: float) -> void:
 		[tr("PUNCH · KICK · BLOCK · GRAB (beats block) · down + PUNCH = uppercut · down + KICK = sweep · in combos, → means toward the enemy (P = punch, K = kick)"), Color(0.8, 0.8, 0.85)],
 		[(tr("PUNCH and KICK are split in two: tap the left half for the left arm (leg), the right half for the right one.") if touch_device else ""), Color(0.8, 0.8, 0.85)],
 		[tr("Combos: hit again while the enemy is still reeling. Landed attacks can chain into the next."), Color(0.8, 0.8, 0.85)],
-		[tr("COUNTERS: punch beats grab - grab beats block - block stops punch (and the puncher recoils) - kick powers through punches, but a block only partly stops it."), Color(1.0, 0.85, 0.4)],
+		[tr("COUNTERS: punch beats grab, grab beats block, block stops punch (and the puncher recoils). Kick powers through punches, but a block only partly stops it."), Color(1.0, 0.85, 0.4)],
 		[tr("POWER (blue bar): punch %.1f  kick %.1f  grab %.1f  special %.1f of %.0f. Refills when you stop attacking. Empty = BURNOUT.") % [attack_cost(player, "punch", "arm_front"), attack_cost(player, "kick", "leg_front"), attack_cost(player, "grab", "arm_front"), special_cost(player), player.power_max], POWER_COLOR],
 	]
 	if team_p.size() > 1:
@@ -3431,10 +3431,10 @@ func _draw_pause_lines(x: float, y: float, bottom: float) -> void:
 	for id in player.specials:
 		var m: Dictionary = Specials.MOVES[id]
 		var cd: float = player.cooldowns.get(id, 0.0)
-		lines.append([tr("%s   %s%s   - %s") % [Specials.seq_text(m["seq"]), tr(m["name"]), tr("  (%.0fs)") % ceilf(cd) if cd > 0.0 else "", tr(m["desc"])], Color(0.5, 0.9, 1.0)])
+		lines.append([tr("%s   %s%s   · %s") % [Specials.seq_text(m["seq"]), tr(m["name"]), tr("  (%.0fs)") % ceilf(cd) if cd > 0.0 else "", tr(m["desc"])], Color(0.5, 0.9, 1.0)])
 	for g in player.gadgets:
 		var info: Dictionary = Specials.GADGETS[g["id"]]
-		lines.append([tr("%s%s - %s") % ["[" + info["short"] + "]  " if info["active"] else "", info["name"], tr(info["desc"])], Color(1.0, 0.85, 0.4)])
+		lines.append([tr("%s%s: %s") % ["[" + info["short"] + "]  " if info["active"] else "", info["name"], tr(info["desc"])], Color(1.0, 0.85, 0.4)])
 	lines = lines.filter(func(l): return str(l[0]) != "")
 	var width := screen.x * 0.84
 	# shrink the text until the whole list fits above the buttons
@@ -3691,17 +3691,17 @@ func update_coach(delta: float) -> void:
 		cpu_habit["block"] += delta
 	if phase == "fight":
 		if phase_timer > 0.5:
-			coach("aim", (tr("Tap a part of %s to aim at it - %s hits where you point.") if touch_device else tr("Click a part of %s to aim at it - %s hits where you point.")) % [cpu.label, player.label])
+			coach("aim", (tr("Tap a part of %s to aim at it. %s hits where you point.") if touch_device else tr("Click a part of %s to aim at it. %s hits where you point.")) % [cpu.label, player.label])
 		if phase_timer > 10.0 and weak_point(cpu) != "":
-			coach("weak", tr("See the yellow diamond? That's its weakest part - hits there do extra damage."))
+			coach("weak", tr("See the yellow diamond? That's its weakest part. Hits there do extra damage."))
 		if player.power < player.power_max * 0.5:
-			coach("power", tr("That blue bar under your health is POWER. Every move costs some - kicks cost the most. Run it dry and you burn out!"))
+			coach("power", tr("That blue bar under your health is POWER. Every move costs some, and kicks cost the most. Run it dry and you burn out!"))
 		if phase_timer > 16.0:
-			coach("counters", tr("Punch beats a grab, a grab beats a block, a block stops punches - and kicks power through punches."))
+			coach("counters", tr("Punch beats a grab, a grab beats a block, a block stops punches, and kicks power through punches."))
 		if phase_timer > 22.0 and not player.specials.is_empty():
-			coach("moves", tr("Tap MOVES to see your special moves and how to do them.") if touch_device else tr("Press Esc to pause: your special moves and every key are listed there."))
+			coach("moves", tr("Tap MOVES to see your special moves and how to do them.") if touch_device else tr("Press Esc to pause. Your special moves and every key are listed there."))
 		if player.ratio("torso") < 0.35:
-			coach("low_core", tr("Core's hurting! Lose the torso - or the head - and it's lights out. BLOCK!"))
+			coach("low_core", tr("Core's hurting! Lose the torso or the head and it's lights out. BLOCK!"))
 		live_coach(delta)
 	elif phase != "intro":
 		coach_queue.clear()   # the fight is over: no more tips
@@ -3775,79 +3775,79 @@ func live_coach(delta: float) -> void:
 	var close := dist < 170.0 * maxf(player.scale, cpu.scale)
 	# --- power
 	if cpu.burn_t > 0.0:
-		shout("cpu_burn", tr("He's burned out - HIT HIM!"), tr("He ran out of power - he can't block or move. HIT HIM!"), 3, 1, 4.0)
+		shout("cpu_burn", tr("He's burned out! HIT HIM!"), tr("He ran out of power. He can't block or move. HIT HIM!"), 3, 1, 4.0)
 	if player.burn_t > 0.0:
-		shout("my_burn", tr("Burned out! Hang on..."), tr("You ran out of power! Every move costs some - kicks cost the most. Pace yourself."), 2, 1, 6.0)
+		shout("my_burn", tr("Burned out! Hang on..."), tr("You ran out of power! Every move costs some, and kicks cost the most. Pace yourself."), 2, 1, 6.0)
 	elif player.power < player.power_max * 0.25 and player.idle_t < 0.5:
-		shout("low_power", tr("Watch your power! Back off!"), tr("Your power's nearly gone - back off a second and let it refill, or you'll burn out."), 2, 1, 6.0)
+		shout("low_power", tr("Watch your power! Back off!"), tr("Your power's nearly gone. Back off a second and let it refill, or you'll burn out."), 2, 1, 6.0)
 	# --- reading his habits
 	if close and cpu_habit["punch"] > 2.5 and player.legs() > 0:
-		shout("read_punch", tr("He's mashing punches - KICK!"), tr("He keeps punching - a kick powers right through punches!"), 2, 2, 9.0)
+		shout("read_punch", tr("He's mashing punches. KICK!"), tr("He keeps punching. A kick powers right through punches!"), 2, 2, 9.0)
 	if close and cpu_habit["kick"] > 1.8 and player.arms() > 0:
-		shout("read_kick", tr("Block his kicks - he'll run dry!"), tr("He's kicking a lot - block them. Kicks drink power, he'll burn out soon."), 2, 2, 9.0)
+		shout("read_kick", tr("Block his kicks, he'll run dry!"), tr("He's kicking a lot, so block them. Kicks drink power, he'll burn out soon."), 2, 2, 9.0)
 	if close and cpu_habit["hold"] > 1.0 and player.arms() > 0:
-		shout("read_hold", tr("He's reaching for you - PUNCH!"), tr("He keeps going for grabs - a quick punch stops a grab cold."), 2, 2, 9.0)
+		shout("read_hold", tr("He's reaching for you. PUNCH!"), tr("He keeps going for grabs. A quick punch stops a grab cold."), 2, 2, 9.0)
 	# --- danger first
 	if cpu.combo >= 2 and player.state == "hit" and not player.blocking:
-		shout("combo", tr("BLOCK!"), tr("He's chaining a combo - hold BLOCK till it stops!"), 3, 1, 3.0)
+		shout("combo", tr("BLOCK!"), tr("He's chaining a combo. Hold BLOCK till it stops!"), 3, 1, 3.0)
 	if ATTACKS.has(cpu.state) and cpu.timer < float(ATTACKS[cpu.state]["startup"]) and close and not player.blocking:
 		if cpu.state == "grab":
-			shout("grab_in", tr("He's grabbing - hit him first!"), tr("He's going for a grab - a block won't stop it. Punch him first!"), 3, 3, 4.0)
+			shout("grab_in", tr("He's grabbing! Hit him first!"), tr("He's going for a grab, and a block won't stop it. Punch him first!"), 3, 3, 4.0)
 		elif cpu.state == "sweep":
-			shout("sweep_in", tr("JUMP!"), tr("He's sweeping low - JUMP over it!"), 3, 3, 4.0)
+			shout("sweep_in", tr("JUMP!"), tr("He's sweeping low. JUMP over it!"), 3, 3, 4.0)
 		else:
-			shout("incoming", tr("BLOCK!"), tr("Here it comes - BLOCK!"), 3, 3, 3.0)
+			shout("incoming", tr("BLOCK!"), tr("Here it comes. BLOCK!"), 3, 3, 3.0)
 	if cpu.state == "special" and dist < 260.0 and not player.blocking:
-		shout("special_in", tr("Big one coming - BLOCK!"), tr("He's winding up a special move - BLOCK!"), 3, 2, 5.0)
+		shout("special_in", tr("Big one coming. BLOCK!"), tr("He's winding up a special move. BLOCK!"), 3, 2, 5.0)
 	if not cpu.on_ground and cpu.vel.y > 0.0 and dist < 200.0 and player.on_ground and player.arms() > 0:
-		shout("anti_air", tr("Uppercut! ↓+P"), tr("He's dropping in on you - uppercut him: hold down and PUNCH!"), 2, 2, 6.0)
+		shout("anti_air", tr("Uppercut! ↓+P"), tr("He's dropping in on you. Uppercut him, hold down and PUNCH!"), 2, 2, 6.0)
 	# --- openings
 	cpu_turtle_t = cpu_turtle_t + delta if cpu.blocking else maxf(0.0, cpu_turtle_t - delta * 2.0)
 	if cpu_turtle_t > 0.9 and dist < 220.0 and player.arms() > 0:
-		shout("turtle", tr("GRAB HIM!"), tr("He's hiding behind his guard - GRAB goes straight through a block!"), 2, 1, 6.0)
+		shout("turtle", tr("GRAB HIM!"), tr("He's hiding behind his guard. GRAB goes straight through a block!"), 2, 1, 6.0)
 	if ATTACKS.has(cpu.state) and not cpu.landed and cpu.timer > float(ATTACKS[cpu.state]["startup"]) + float(ATTACKS[cpu.state]["active"]) and close:
-		shout("punish", tr("NOW! Hit him!"), tr("He missed - he's wide open. Hit him NOW!"), 2, 2, 5.0)
+		shout("punish", tr("NOW! Hit him!"), tr("He missed, he's wide open. Hit him NOW!"), 2, 2, 5.0)
 	if (cpu.stun_t > 0.25 or (cpu.state == "hit" and not cpu.on_ground)) and close:
 		var move := ready_special()
 		if move != "":
 			var m: Dictionary = Specials.MOVES[move]
-			shout("finisher", tr("%s! %s") % [tr(m["name"]), Specials.seq_text(m["seq"])], tr("He's dazed - hit him with your %s: %s") % [tr(m["name"]), Specials.seq_text(m["seq"])], 2, 1, 7.0)
+			shout("finisher", tr("%s! %s") % [tr(m["name"]), Specials.seq_text(m["seq"])], tr("He's dazed! Hit him with your %s. %s") % [tr(m["name"]), Specials.seq_text(m["seq"])], 2, 1, 7.0)
 		else:
-			shout("dazed", tr("He's dazed - P, P, K!"), tr("He's dazed! Punch, punch, kick - chain it!"), 2, 1, 6.0)
+			shout("dazed", tr("He's dazed! P, P, K!"), tr("He's dazed! Punch, punch, kick, chain it!"), 2, 1, 6.0)
 	# --- they caught our scout and swapped a part: Gus spots it
 	if mode != "quick" and GameData.scouted() and GameData.scout.get("spied_back", false) and phase_timer > 1.2:
 		var ch: Dictionary = GameData.scout["change"]
 		if ch.get("type", "") == "part" and cpu == team_c[0]:
 			var nm: String = GameData.part_def(str(ch["id"]))["name"]
-			shout("scout_swap", tr("New %s - that's not what the scout saw!") % nm,
-					tr("They swapped in a %s - that's not what the scout saw! Watch it.") % nm, 3, 1, 999.0)
+			shout("scout_swap", tr("New %s! That's not what the scout saw!") % nm,
+					tr("They swapped in a %s. That's not what the scout saw! Watch it.") % nm, 3, 1, 999.0)
 	# --- a part that's much better than the rest of his robot
 	var so: String = cpu.spec.get("standout", "")
 	if so != "" and cpu.alive(so) and phase_timer > 1.5:
 		var pname: String = GameData.part_def(str(cpu.parts[so]["id"]))["name"]
 		shout("standout", tr("Watch it for that %s! It's a powerful piece.") % pname,
-				tr("Watch it for that %s! It's a powerful piece - way better than the rest of his robot. Block it, or aim at it and tear it off!") % pname, 2, 1, 30.0)
+				tr("Watch out for that %s! It's a powerful piece, way better than the rest of his robot. Block it, or aim at it and tear it off!") % pname, 2, 1, 30.0)
 	# --- aiming and parts
 	for slot in ["head", "arm_front", "arm_back", "leg_front", "leg_back"]:
 		var r := cpu.ratio(slot)
 		if r > 0.0 and r < 0.25 and player.target != slot:
-			shout("finish_" + slot, tr("His %s is hanging off - aim there!") % part_word(slot), tr("His %s is hanging by a wire - tap it to aim, and finish it!") % part_word(slot), 1, 1, 14.0)
+			shout("finish_" + slot, tr("His %s is hanging off. Aim there!") % part_word(slot), tr("His %s is hanging by a wire. Tap it to aim, and finish it!") % part_word(slot), 1, 1, 14.0)
 			break
 	for slot in ["arm_front", "arm_back", "leg_front", "leg_back", "head"]:
 		var r := player.ratio(slot)
 		if r > 0.0 and r < 0.2:
-			shout("own_" + slot, tr("Your %s's nearly gone - careful!") % part_word(slot), tr("Your %s is nearly gone. Keep it out of trouble and BLOCK more.") % part_word(slot), 1, 2, 15.0)
+			shout("own_" + slot, tr("Your %s's nearly gone. Careful!") % part_word(slot), tr("Your %s is nearly gone. Keep it out of trouble and BLOCK more.") % part_word(slot), 1, 2, 15.0)
 			break
 	# --- range and gadgets
 	if dist > 300.0:
 		for g in player.gadgets:
 			var id: String = g["id"]
 			if id in ["rocket_fist", "laser", "cannon", "grapple"] and player.gadget_working(g) and player.cooldowns.get(id, 0.0) <= 0.0:
-				shout("gadget_" + id, tr("Fire the %s!") % tr(Specials.GADGETS[id]["name"]), tr("He's out of reach - fire your %s!") % tr(Specials.GADGETS[id]["name"]), 1, 2, 9.0)
+				shout("gadget_" + id, tr("Fire the %s!") % tr(Specials.GADGETS[id]["name"]), tr("He's out of reach. Fire your %s!") % tr(Specials.GADGETS[id]["name"]), 1, 2, 9.0)
 				break
 		for g in cpu.gadgets:
 			if g["id"] in ["rocket_fist", "laser", "cannon", "grapple", "bolt"] and cpu.gadget_working(g):
-				shout("close_in", tr("Get in close!"), tr("He wants to shoot from range - close the distance!"), 1, 2, 12.0)
+				shout("close_in", tr("Get in close!"), tr("He wants to shoot from range. Close the distance!"), 1, 2, 12.0)
 				break
 	# --- the clock
 	if time_left < 12.0 and not late_call:
@@ -3855,9 +3855,9 @@ func live_coach(delta: float) -> void:
 		var mine := player.ratio("torso")
 		var theirs := cpu.ratio("torso")
 		if mine < theirs:
-			shout("late_behind", tr("Time's running out - GO!"), tr("Ten seconds and you're behind - throw everything!"), 2, 1, 99.0)
+			shout("late_behind", tr("Time's running out. GO!"), tr("Ten seconds and you're behind. Throw everything!"), 2, 1, 99.0)
 		else:
-			shout("late_ahead", tr("Ten seconds - play it safe!"), tr("Ten seconds and you're ahead - block and run the clock!"), 2, 1, 99.0)
+			shout("late_ahead", tr("Ten seconds. Play it safe!"), tr("Ten seconds and you're ahead. Block and run the clock!"), 2, 1, 99.0)
 
 
 ## A special move of yours that's ready to use right now ("" if none).
@@ -4351,7 +4351,7 @@ func announcer_line() -> String:
 	match b:
 		"b_call":
 			if who == "" or who == "KANE DYNAMICS":
-				return opener + " " + tr("In the right corner - no pilot, just Kane Dynamics' fight program...")
+				return opener + " " + tr("In the right corner, no pilot, just Kane Dynamics' fight program...")
 			return opener + " " + tr("In the right corner, piloted by %s...") % who
 		"b_zoom":
 			return tr("...%s!") % name
@@ -4378,8 +4378,8 @@ func draw_intro_overlay(ci: CanvasItem) -> void:
 	ci.draw_rect(pause_rect, Color(1, 1, 1, 0.22 if show_paused else 0.12))
 	ci.draw_rect(pause_rect, Color(1, 1, 1, 0.6), false, 2.0)
 	ci.draw_string(font, pause_rect.position + Vector2(0, pause_rect.size.y * 0.68), tr("PLAY") if show_paused else tr("PAUSE"), HORIZONTAL_ALIGNMENT_CENTER, pause_rect.size.x, fs(18), Color.WHITE)
-	ci.draw_string(font, Vector2(24, h * 0.965), tr("PAUSED - ") if show_paused else "", HORIZONTAL_ALIGNMENT_LEFT, -1, fs(15), Color(1.0, 0.85, 0.3))
-	ci.draw_string(font, Vector2(24 + (font.get_string_size(tr("PAUSED - "), HORIZONTAL_ALIGNMENT_LEFT, -1, fs(15)).x if show_paused else 0.0), h * 0.965),
+	ci.draw_string(font, Vector2(24, h * 0.965), tr("PAUSED · ") if show_paused else "", HORIZONTAL_ALIGNMENT_LEFT, -1, fs(15), Color(1.0, 0.85, 0.3))
+	ci.draw_string(font, Vector2(24 + (font.get_string_size(tr("PAUSED · "), HORIZONTAL_ALIGNMENT_LEFT, -1, fs(15)).x if show_paused else 0.0), h * 0.965),
 			tr("Tap a robot to see its specs"), HORIZONTAL_ALIGNMENT_LEFT, -1, fs(15), Color(0.8, 0.8, 0.85))
 	ci.draw_rect(skip_rect, Color(1, 1, 1, 0.12))
 	ci.draw_rect(skip_rect, Color(1, 1, 1, 0.6), false, 2.0)
@@ -4420,13 +4420,13 @@ func draw_intro_overlay(ci: CanvasItem) -> void:
 			for slot in sp.slice(0, 3):
 				var d := GameData.part_def(str(f.parts[slot]["id"]))
 				var what := Catalog.trait_text(d).split(":")[0] if str(d.get("trait", "")) != "" else tr(Specials.GADGETS[d["gimmick"]]["name"]) if Specials.GADGETS.has(str(d.get("gimmick", ""))) else ""
-				ci.draw_string(font, Vector2(card.position.x + 16, y), "%s  -  %s" % [str(d["name"]), what], HORIZONTAL_ALIGNMENT_LEFT, card.size.x - 32, fs(15), Color(1, 1, 1, a))
+				ci.draw_string(font, Vector2(card.position.x + 16, y), "%s  ·  %s" % [str(d["name"]), what], HORIZONTAL_ALIGNMENT_LEFT, card.size.x - 32, fs(15), Color(1, 1, 1, a))
 				y += 22
 			y += 6
 		ci.draw_string(font, Vector2(card.position.x + 16, y), tr("SPECIAL MOVES"), HORIZONTAL_ALIGNMENT_LEFT, -1, fs(13), Color(1.0, 0.85, 0.2, a))
 		y += 22
 		if f.specials.is_empty():
-			ci.draw_string(font, Vector2(card.position.x + 16, y), tr("None - just fists and nerve"), HORIZONTAL_ALIGNMENT_LEFT, card.size.x - 32, fs(15), Color(0.7, 0.7, 0.75, a))
+			ci.draw_string(font, Vector2(card.position.x + 16, y), tr("None, just fists and nerve"), HORIZONTAL_ALIGNMENT_LEFT, card.size.x - 32, fs(15), Color(0.7, 0.7, 0.75, a))
 		for id in f.specials.slice(0, 4):
 			if Specials.MOVES.has(id):
 				var m: Dictionary = Specials.MOVES[id]

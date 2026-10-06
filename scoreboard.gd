@@ -54,9 +54,11 @@ const GLYPHS := {
 }
 
 
-## "REGIONAL - LEAGUE ROUND 1/8" -> ["REGIONAL", "LEAGUE ROUND 1/8"]
+## "REGIONAL · LEAGUE ROUND 1/8" -> ["REGIONAL", "LEAGUE ROUND 1/8"] (also splits on ": ")
 static func split_title(title: String) -> Array:
-	var parts := title.split(" - ", false, 1)
+	var parts := title.split(" · ", false, 1)
+	if parts.size() < 2:
+		parts = title.split(": ", false, 1)
 	return [parts[0] if parts.size() > 0 else "", parts[1] if parts.size() > 1 else ""]
 
 

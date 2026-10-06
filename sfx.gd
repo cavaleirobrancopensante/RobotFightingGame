@@ -37,7 +37,7 @@ func _ready() -> void:
 
 ## pitch_jitter: random pitch variation (0.1 = +/-10%) so repeated sounds don't get boring.
 var quiet := 0   # > 0 while a move showcase plays in the garage: only menu sounds get through
-const MENU_SOUNDS := ["click", "buy", "equip", "error", "sell", "repair"]
+const MENU_SOUNDS := ["click", "buy", "equip", "error", "sell", "repair", "talk", "talk_robot"]
 
 
 func play(sound: String, pitch_jitter: float = 0.0, volume_db: float = 0.0) -> void:

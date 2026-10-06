@@ -16,11 +16,11 @@ const ARENAS := {
 	"steelworks": {"name": "Steelworks Dome", "sky": ["#1a0a05", "#4a1e0a"], "floor": "#262222", "rope": "#e67e22", "post": "#555555", "light": "#ffb060"},
 	"rooftop": {"name": "Kane Tower Rooftop", "sky": ["#020309", "#14183a"], "floor": "#3a3d44", "rope": "#e0b84a", "post": "#1a1a2e", "light": "#e8f0ff"},
 	"dry_dock": {"name": "The Old Dry Dock", "sky": ["#1b2024", "#3d464c"], "floor": "#4a443c", "rope": "#a04020", "post": "#6d5c4a", "light": "#f0e0c0"},
-	"main_event": {"name": "Kane Arena - Main Event", "sky": ["#07040f", "#1a0c2e"], "floor": "#1c1c26", "rope": "#ff2e63", "post": "#e0b84a", "light": "#ffffff"},
+	"main_event": {"name": "Kane Arena: Main Event", "sky": ["#07040f", "#1a0c2e"], "floor": "#1c1c26", "rope": "#ff2e63", "post": "#e0b84a", "light": "#ffffff"},
 	# career venues: the further you get, the richer the place
 	"scrap_ring": {"name": "The Scrap Heap Ring", "sky": ["#2a1a12", "#6b4a2e"], "floor": "#4a3d30", "rope": "#8c8c8c", "post": "#6b3a1e", "light": "#ffcf7a", "ring": "junk"},
 	"regional_hall": {"name": "Port Ferrum Sports Hall", "sky": ["#1d2430", "#34404f"], "floor": "#6a5a44", "rope": "#d63a3a", "post": "#2c3e50", "light": "#fff4d6"},
-	"regional_final": {"name": "Port Ferrum Regional - Final", "sky": ["#141a2a", "#2d3550"], "floor": "#5a4a38", "rope": "#e0b84a", "post": "#1f2a44", "light": "#ffffff"},
+	"regional_final": {"name": "Port Ferrum Regional: Final", "sky": ["#141a2a", "#2d3550"], "floor": "#5a4a38", "rope": "#e0b84a", "post": "#1f2a44", "light": "#ffffff"},
 	"champ_arena": {"name": "Kane Championship Arena", "sky": ["#0a0d1a", "#1c2340"], "floor": "#20242e", "rope": "#3a7bd5", "post": "#c0c6d0", "light": "#e8f0ff"},
 	"champ_gala": {"name": "The Kane Grand Hall", "sky": ["#1a0608", "#3d0f18"], "floor": "#2a1a14", "rope": "#b0182e", "post": "#e0c070", "light": "#fff0c8", "ring": "gold"},
 }
