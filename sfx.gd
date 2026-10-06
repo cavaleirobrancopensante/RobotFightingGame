@@ -26,6 +26,11 @@ func _ready() -> void:
 		var path := "res://sfx/%s.wav" % n
 		if ResourceLoader.exists(path):
 			streams[n] = load(path)
+		elif FileAccess.file_exists(path):
+			# not imported (a fresh copy of the project in an editor): read the .wav itself
+			var w := AudioStreamWAV.load_from_file(path)
+			if w:
+				streams[n] = w
 	for k in VOICES:
 		var p := AudioStreamPlayer.new()
 		add_child(p)
@@ -170,9 +175,13 @@ func music(name: String) -> void:
 
 func _play_current() -> void:
 	var path := "res://music/%s.ogg" % playlist[playlist_pos]
-	if not ResourceLoader.exists(path):
+	var s = null
+	if ResourceLoader.exists(path):
+		s = load(path)
+	elif FileAccess.file_exists(path):
+		s = AudioStreamOggVorbis.load_from_file(path)
+	if s == null:
 		return
-	var s = load(path)
 	if s is AudioStreamOggVorbis:
 		s.loop = playlist.size() == 1
 	music_player.stream = s

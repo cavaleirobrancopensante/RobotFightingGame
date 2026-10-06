@@ -28,7 +28,12 @@ static var _fonts := {}
 
 
 static func _file(path: String) -> Font:
-	var f = load(path)
+	var f = load(path) if ResourceLoader.exists(path) else null
+	if f == null and FileAccess.file_exists(path):
+		# not imported (a fresh copy of the project opened in an editor): read the .ttf itself
+		var raw := FontFile.new()
+		if raw.load_dynamic_font(path) == OK:
+			f = raw
 	if f is FontFile:
 		(f as FontFile).fallbacks = [ThemeDB.fallback_font]   # ★ ▾ → and other symbols come from the default font
 	return f
