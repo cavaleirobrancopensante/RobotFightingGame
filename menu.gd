@@ -81,11 +81,17 @@ class TitleArt extends Control:
 		queue_redraw()
 
 	func _draw() -> void:
-		var w := size.x
-		# ROBOT - the Championship's red LED board
-		var p := 9.0
+		# One line: ROBOT on the Championship's red LED board, FIGHTING on the Regional's flip
+		# tiles beside it, same height. Wider than the button column, so it draws past its edges.
+		var p := 8.0
+		var h := 7 * p + 22
 		var text_w := (5 * 6 - 1) * p
-		var board := Rect2((w - text_w) * 0.5 - 16, 6, text_w + 32, 7 * p + 22)
+		var board_w := text_w + 32
+		var tiles_w := 400.0
+		var gap := 18.0
+		var x0 := (size.x - (board_w + gap + tiles_w)) * 0.5
+		var y0 := (size.y - h) * 0.5
+		var board := Rect2(x0, y0, board_w, h)
 		draw_rect(board.grow(4), Color(0.1, 0.1, 0.11))
 		draw_rect(board.grow(1), Color(0.02, 0.02, 0.02))
 		draw_rect(board, Color(0.05, 0.01, 0.01))
@@ -94,11 +100,7 @@ class TitleArt extends Control:
 		var pulse := 0.85 + 0.15 * sin(t * 3.0)
 		Scoreboard.dot_text(self, "ROBOT", board.position.x + 16, inner.position.y, p, inner.position.x - p, inner.end.x + p,
 				Color(1.0, 0.24 * pulse, 0.14 * pulse))
-		# FIGHTING - the Regional's flip tiles, hanging on two steel rods
-		var tiles := Rect2(w * 0.5 - 220, board.end.y + 22, 440, 64)
-		for side in [0.12, 0.88]:
-			var x: float = tiles.position.x + tiles.size.x * side
-			draw_rect(Rect2(x - 2, board.end.y + 4, 4, 20), Color(0.45, 0.47, 0.5))
+		var tiles := Rect2(board.end.x + gap, y0, tiles_w, h)
 		draw_rect(tiles.grow(4), Color(0.38, 0.39, 0.41))
 		draw_rect(tiles.grow(2), Color(0.04, 0.04, 0.05))
 		Scoreboard.flap_row(self, tiles.grow(-2), "FIGHTING", GUI.headb(), Color(1, 1, 1))
@@ -233,11 +235,11 @@ func _ready() -> void:
 	row.add_child(col)
 
 	var title := TitleArt.new()
-	title.custom_minimum_size = Vector2(460, 186)
+	title.custom_minimum_size = Vector2(460, 96)
 	title.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	col.add_child(title)
 	var gap := Control.new()
-	gap.custom_minimum_size = Vector2(0, 6)
+	gap.custom_minimum_size = Vector2(0, 12)
 	col.add_child(gap)
 
 	col.add_child(themed("Quick Fight", "flip", _on_quick))
