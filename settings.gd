@@ -80,16 +80,7 @@ func _ready() -> void:
 	var title := UI.label("SETTINGS", 30, Color(1.0, 0.45, 0.2))
 	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	head.add_child(title)
-	# language flags
-	for lang in ["en", "pt", "es"]:
-		var f := Flag.new()
-		f.lang = lang
-		f.selected = GameData.settings.get("lang", "en") == lang
-		f.custom_minimum_size = Vector2(66, 46)
-		f.flat = true
-		f.focus_mode = Control.FOCUS_NONE
-		f.pressed.connect(_on_lang.bind(lang))
-		head.add_child(f)
+	# (the language flags live on the main menu, where everyone sees them first)
 
 	# two columns so everything fits on a phone screen
 	var grid := GridContainer.new()

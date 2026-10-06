@@ -273,10 +273,38 @@ func _ready() -> void:
 	add_child(ver)
 	add_child(msg)
 
+	# the language flags, top right, the first thing anyone who needs them sees
+	var flags := HBoxContainer.new()
+	flags.add_theme_constant_override("separation", 4)
+	flags.set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT)
+	flags.offset_left = -230
+	flags.offset_right = -12
+	flags.offset_top = 10
+	flags.offset_bottom = 62
+	flags.alignment = BoxContainer.ALIGNMENT_END
+	add_child(flags)
+	for lang in ["en", "pt", "es"]:
+		var f = load("res://settings.gd").Flag.new()
+		f.lang = lang
+		f.selected = GameData.settings.get("lang", "en") == lang
+		f.custom_minimum_size = Vector2(70, 50)
+		f.flat = true
+		f.focus_mode = Control.FOCUS_NONE
+		f.tooltip_text = {"en": "English", "pt": "Português", "es": "Español"}[lang]
+		f.pressed.connect(_on_lang.bind(lang))
+		flags.add_child(f)
+
 	var r := Control.new()
 	r.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	r.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	row.add_child(r)
+
+
+func _on_lang(lang: String) -> void:
+	GameData.set_language(lang)
+	GameData.save_settings()
+	Sfx.play("click")
+	get_tree().reload_current_scene()   # rebuild everything in the new language
 
 
 ## Two random robots, one fight, nothing saved.
