@@ -290,6 +290,32 @@ func _ready() -> void:
 	bubble.tapped.connect(_on_talk_tap)
 	bubble.checked.connect(_talk_next)
 	add_child(bubble)
+	# the detail pane: covers the scene on the left with whatever you tapped in a list
+	detail_panel = PanelContainer.new()
+	var dps := GUI.box(Color(0.055, 0.055, 0.075, 0.95), 12, 12)
+	dps.border_color = Color(0.227, 0.227, 0.282)
+	dps.set_border_width_all(2)
+	detail_panel.add_theme_stylebox_override("panel", dps)
+	detail_panel.visible = false
+	add_child(detail_panel)
+	move_child(detail_panel, bubble.get_index())
+	var dcol := VBoxContainer.new()
+	dcol.add_theme_constant_override("separation", 8)
+	detail_panel.add_child(dcol)
+	var dscroll := ScrollContainer.new()
+	dscroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	dscroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	dcol.add_child(dscroll)
+	detail_box = VBoxContainer.new()
+	detail_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	detail_box.add_theme_constant_override("separation", 6)
+	dscroll.add_child(detail_box)
+	# the buttons stay put at the bottom, never scrolled away
+	detail_footer = GridContainer.new()
+	detail_footer.columns = 2
+	detail_footer.add_theme_constant_override("h_separation", 6)
+	detail_footer.add_theme_constant_override("v_separation", 6)
+	dcol.add_child(detail_footer)
 	msg_label = bubble.text_label
 
 	# bottom: repair, which robot goes in, the damage map and the FIGHT button
@@ -738,6 +764,9 @@ func _place_talk() -> void:
 
 
 func _process(delta: float) -> void:
+	if detail_panel and detail_panel.visible and left_col:
+		detail_panel.position = left_col.global_position
+		detail_panel.size = left_col.size
 	if bubble == null or not bubble.visible:
 		return
 	_place_talk()
@@ -846,6 +875,7 @@ func refresh() -> void:
 				build_pilot_view()
 			else:
 				build_team_tab()
+	build_detail()
 	GameData.request_save()
 	scroll.set_deferred("scroll_vertical", keep)
 
@@ -943,7 +973,19 @@ func row_text(title: String, subtitle: String, tag: String, wrap: bool) -> VBoxC
 	t.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	line.add_child(t)
 	info.add_child(line)
-	if subtitle != "":
+	if subtitle.contains("[color="):
+		var rl := RichTextLabel.new()
+		rl.bbcode_enabled = true
+		rl.fit_content = true
+		rl.scroll_active = false
+		rl.autowrap_mode = TextServer.AUTOWRAP_OFF
+		rl.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		rl.add_theme_font_override("normal_font", GUI.body())
+		rl.add_theme_font_size_override("normal_font_size", 11)
+		rl.add_theme_color_override("default_color", Color(0.68, 0.68, 0.75))
+		rl.text = subtitle
+		info.add_child(rl)
+	elif subtitle != "":
 		var sl := GUI.text(subtitle, 11, Color(0.68, 0.68, 0.75))
 		if wrap:
 			sl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -954,13 +996,16 @@ func row_text(title: String, subtitle: String, tag: String, wrap: bool) -> VBoxC
 
 
 ## A whole-row button (tap anywhere on it), with an icon, two lines of text and extra widgets.
-func make_tap_row(icon: Control, title: String, subtitle: String, cb: Callable, tag: String = "") -> HBoxContainer:
+func make_tap_row(icon: Control, title: String, subtitle: String, cb: Callable, tag: String = "", sel: bool = false) -> HBoxContainer:
 	var b := Button.new()
 	b.custom_minimum_size = Vector2(0, 62)
 	b.focus_mode = Control.FOCUS_NONE
 	b.pressed.connect(func(): Sfx.play("click", 0.05))
 	b.pressed.connect(cb)
 	var n := GUI.box(GUI.ROW, 10, 4)
+	if sel:
+		n.border_color = GUI.YELLOW
+		n.set_border_width_all(2)
 	var h := GUI.box(GUI.ROW.lightened(0.05), 10, 4)
 	var pr := GUI.box(GUI.ROW, 10, 4)
 	pr.border_color = GUI.YELLOW
@@ -999,6 +1044,242 @@ func part_callouts(slot: String) -> Array:
 	return out
 
 
+# ---------------------------------------------------------------- detail pane
+
+var detail := {}          # what's open in the detail pane: {"src": "inv", "uid": n} or {"src": "shop", "id": id}
+var detail_ctx := ""      # where you were when you opened it (moving elsewhere closes it)
+var detail_panel: PanelContainer
+var detail_box: VBoxContainer
+var detail_footer: GridContainer
+
+const SHORT_SLOT := {"arm_front": "Left", "arm_back": "Right", "arm_front2": "Low L", "arm_back2": "Low R",
+		"leg_front": "Left", "leg_back": "Right"}
+# [key, label, unit, lower is better]
+const COMPARE_STATS := {
+	"head": [["hp", "HP", "", false], ["armor", "Armor", "%", false], ["aim", "Aim", "%", false], ["chips", "Chips", "", false], ["draw", "Power use", "", true]],
+	"torso": [["hp", "HP", "", false], ["armor", "Armor", "%", false], ["speed", "Speed", "%", false], ["draw", "Power use", "", true]],
+	"arm": [["hp", "HP", "", false], ["armor", "Armor", "%", false], ["damage", "Damage", "%", false], ["speed", "Speed", "%", false], ["draw", "Power use", "", true]],
+	"leg": [["hp", "HP", "", false], ["armor", "Armor", "%", false], ["damage", "Damage", "%", false], ["speed", "Speed", "%", false], ["draw", "Power use", "", true]],
+	"back": [["output", "Power out", "", false], ["draw", "Power use", "", true]],
+	"reactor": [["output", "Power out", "", false]],
+}
+
+
+func _ctx() -> String:
+	return "%s/%s/%s" % [tab, seg(), selected]
+
+
+func is_detail(src: String, key) -> bool:
+	if detail.get("src", "") != src:
+		return false
+	return str(detail.get("uid" if src == "inv" else "id", "")) == str(key)
+
+
+func _on_detail(d: Dictionary) -> void:
+	detail = {} if detail == d else d   # tapping the open one again closes it
+	detail_ctx = _ctx()
+	refresh()
+
+
+func _on_detail_close() -> void:
+	detail = {}
+	refresh()
+
+
+## The slots a part of this kind can go in right now.
+func slots_for(kind: String) -> Array:
+	return GameData.SLOTS.filter(func(sl): return GameData.SLOT_KIND[sl] == kind and GameData.slot_available(sl))
+
+
+## Where a new part of this kind should go: an empty slot first, else the one with the cheapest part on it.
+func best_slot(kind: String) -> String:
+	var best := ""
+	var best_v := INF
+	for sl in slots_for(kind):
+		var cur := GameData.equipped_inst(sl)
+		var v: float = -1.0 if cur.is_empty() else float(GameData.part_def(cur["id"])["cost"]) + GameData.hp_ratio(cur)
+		if v < best_v:
+			best_v = v
+			best = sl
+	return best
+
+
+func _stat_val(d: Dictionary, key: String) -> float:
+	return float(d.get(key, 0)) if not d.is_empty() else 0.0
+
+
+## "HP +12 · DMG -5%" against what's in the slot now, green when it's better, red when it's worse.
+func delta_text(d: Dictionary, slot: String) -> String:
+	var cur := GameData.equipped_inst(slot)
+	var cd: Dictionary = {} if cur.is_empty() else GameData.part_def(cur["id"])
+	var bits: Array = []
+	for st in COMPARE_STATS.get(str(d["kind"]), []):
+		var diff := _stat_val(d, st[0]) - _stat_val(cd, st[0])
+		if absf(diff) < 0.5:
+			continue
+		var good: bool = (diff < 0.0) if st[3] else (diff > 0.0)
+		bits.append("[color=%s]%s %+d%s[/color]" % ["#8dffa6" if good else "#ff7a5a", tr(st[1]), int(diff), st[2]])
+	if bits.is_empty():
+		return tr("Same as what's on now")
+	return tr("vs fitted: ") + " · ".join(bits)
+
+
+## Fills the detail pane (or hides it): the part big, its notes, how it compares with every slot it
+## could go in (green better, red worse), and big buttons for everything you can do with it.
+func build_detail() -> void:
+	if not detail.is_empty() and detail_ctx != _ctx():
+		detail = {}
+	var p := {}
+	var d := {}
+	if detail.get("src", "") == "inv":
+		p = GameData.inst(int(detail["uid"]))
+		if not p.is_empty():
+			d = GameData.part_def(p["id"])
+	elif detail.get("src", "") == "shop" and GameData.shop_stock.has(detail["id"]):
+		d = GameData.part_def(detail["id"])
+	if d.is_empty():
+		detail = {}
+		detail_panel.visible = false
+		return
+	detail_panel.visible = true
+	for c in detail_box.get_children() + detail_footer.get_children():
+		c.queue_free()
+	var kind := str(d["kind"])
+	var inv := not p.is_empty()
+	var health := GameData.hp_ratio(p) if inv else 1.0
+	# header: icon, name, kind, close
+	var head := HBoxContainer.new()
+	head.add_theme_constant_override("separation", 10)
+	detail_box.add_child(head)
+	var icon := part_icon(d, health)
+	icon.custom_minimum_size = Vector2(72, 72)
+	head.add_child(icon)
+	var names := VBoxContainer.new()
+	names.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	names.add_theme_constant_override("separation", 0)
+	head.add_child(names)
+	names.add_child(GUI.text(tr(kind.to_upper()) + ("" if d["shop"] else "  ·  " + tr("RARE")), 11, GUI.MUTED, "headb"))
+	var nl := GUI.text(str(d["name"]), 18, GUI.TEXT, "headb")
+	nl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	names.add_child(nl)
+	if inv and not GameData.UNDAMAGEABLE.has(kind):
+		names.add_child(hp_widget(p))
+	elif not inv:
+		names.add_child(GUI.readout("$%d" % int(d["cost"]), 22, GUI.AMBER))
+	var x := UI.button("×", _on_detail_close, 16, Vector2(40, 40))
+	x.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
+	head.add_child(x)
+	# notes and extras (traits, gadgets)
+	for n in PartNotes.notes(d, kind, health, str(p.get("uid", d["id"]))):
+		var warn := str(n).begins_with("!")
+		detail_box.add_child(GUI.text(tr(str(n).trim_prefix("!")), 12, GUI.RED if warn else GUI.MUTED))
+	var extra: Array = GameData.part_stat_text(d).split("  |  ")
+	for k in range(1, extra.size()):
+		var el := GUI.text(str(extra[k]), 12, GUI.CYAN)
+		el.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		detail_box.add_child(el)
+	# compare with each slot it could go in
+	var slots := slots_for(kind)
+	var stats: Array = COMPARE_STATS.get(kind, [])
+	if not slots.is_empty() and not stats.is_empty():
+		var grid := GridContainer.new()
+		grid.columns = 2 + slots.size()
+		grid.add_theme_constant_override("h_separation", 14)
+		grid.add_theme_constant_override("v_separation", 2)
+		detail_box.add_child(grid)
+		grid.add_child(GUI.text("", 11, GUI.MUTED))
+		grid.add_child(GUI.text(tr("This"), 11, GUI.MUTED, "headb"))
+		for sl in slots:
+			var cur := GameData.equipped_inst(sl)
+			var mark: bool = inv and cur.get("uid", -2) == p["uid"]
+			grid.add_child(GUI.text((tr("vs %s") % tr(SHORT_SLOT.get(sl, "fitted"))) + (" ●" if mark else ""), 11, GUI.MUTED, "headb"))
+		for st in stats:
+			grid.add_child(GUI.text(tr(st[1]), 12, GUI.MUTED))
+			var v := _stat_val(d, st[0])
+			grid.add_child(GUI.readout("%d%s" % [int(v), st[2]], 17, GUI.TEXT))
+			for sl in slots:
+				var cur := GameData.equipped_inst(sl)
+				var cd: Dictionary = {} if cur.is_empty() else GameData.part_def(cur["id"])
+				var diff := v - _stat_val(cd, st[0])
+				var good: bool = (diff < 0.0) if st[3] else (diff > 0.0)
+				var txt := "=" if absf(diff) < 0.5 else "%+d" % int(diff)
+				grid.add_child(GUI.readout(txt, 17, GUI.MUTED if absf(diff) < 0.5 else (GUI.GREEN if good else GUI.RED)))
+	# what's in each slot now, so the columns mean something
+	for sl in slots:
+		var cur := GameData.equipped_inst(sl)
+		var what := tr("empty") if cur.is_empty() else str(GameData.part_def(cur["id"])["name"])
+		detail_box.add_child(GUI.text(tr("%s now: %s") % [tr(GameData.SLOT_NAMES[sl]), what], 11, GUI.MUTED))
+	# big buttons
+	var fitted_slot := ""
+	if inv:
+		for sl in GameData.SLOTS:
+			if GameData.equipped.get(sl, -1) == p["uid"]:
+				fitted_slot = sl
+	var btns := detail_footer
+	var add_btn := func(text: String, cb: Callable, enabled: bool, col: Color = GUI.TEXT) -> void:
+		var b := UI.button(text, cb, 14, Vector2(0, 46))
+		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		b.disabled = not enabled
+		b.add_theme_color_override("font_color", col)
+		btns.add_child(b)
+	if inv:
+		var wreck := GameData.is_wreck(p)
+		if fitted_slot != "":
+			detail_box.add_child(GUI.text(tr("Fitted to the %s.") % tr(GameData.SLOT_NAMES[fitted_slot]), 12, GUI.GREEN))
+		for sl in slots:
+			if sl != fitted_slot:
+				add_btn.call(tr("Fit: %s") % tr(GameData.SLOT_NAMES[sl]), _on_detail_fit.bind(int(p["uid"]), sl), not wreck, GUI.YELLOW)
+		var c := GameData.repair_cost(p)
+		if c > 0:
+			add_btn.call((tr("Rebuild $%d") if wreck else tr("Fix $%d")) % c, _on_repair.bind(int(p["uid"])), GameData.can_repair(c), GUI.AMBER)
+		if fitted_slot == "":
+			add_btn.call(tr("Sell $%d") % GameData.sell_value(p), _on_sell.bind(int(p["uid"])), true)
+	else:
+		var cost := int(d["cost"])
+		for sl in slots:
+			add_btn.call(tr("Buy & fit: %s") % tr(GameData.SLOT_NAMES[sl]), _on_buy_fit.bind(str(d["id"]), sl), GameData.money >= cost, GUI.YELLOW)
+		add_btn.call(tr("Buy to storage $%d") % cost, _on_buy_keep.bind(str(d["id"])), GameData.money >= cost)
+
+
+func _on_detail_fit(uid: int, slot: String) -> void:
+	say(GameData.equip(uid, slot), "equip")
+	detail = {}
+	refresh()
+
+
+## Buy a part and bolt it straight on.
+func _on_buy_fit(id: String, slot: String) -> void:
+	var before := GameData.money
+	var text := GameData.buy(id)
+	if GameData.money >= before and GameData.part_def(id)["cost"] > 0:
+		say(text, "error")
+		return
+	var uid: int = GameData.next_uid - 1
+	if GameData.equipped.get(slot, -1) != uid:
+		GameData.equip(uid, slot)
+	say(tr("Bought %s and fitted it to the %s.") % [GameData.part_def(id)["name"], tr(GameData.SLOT_NAMES[slot])], "buy")
+	Sfx.play("equip", 0.1)
+	spark_at = Time.get_ticks_msec() / 1000.0
+	detail = {}
+	refresh()
+
+
+## Buy a part as a spare: it goes to Storage even if a slot is empty.
+func _on_buy_keep(id: String) -> void:
+	var before := GameData.money
+	var text := GameData.buy(id)
+	if GameData.money >= before and GameData.part_def(id)["cost"] > 0:
+		say(text, "error")
+		return
+	var uid: int = GameData.next_uid - 1
+	for sl in GameData.SLOTS:
+		if GameData.equipped.get(sl, -1) == uid:
+			GameData.unequip(sl)
+	say(tr("Bought %s. It's in Storage.") % GameData.part_def(id)["name"], "buy")
+	detail = {}
+	refresh()
+
+
 func hp_widget(p: Dictionary) -> HBoxContainer:
 	var d := GameData.part_def(p["id"])
 	var h := GameData.hp_ratio(p)
@@ -1021,7 +1302,7 @@ func hp_widget(p: Dictionary) -> HBoxContainer:
 
 ## A part's details without its health (the block bar shows that).
 func part_info(d: Dictionary) -> String:
-	var t := GameData.part_stat_text(d)
+	var t := GameData.part_stat_text(d).replace("  |  ", "  ")
 	var hp := tr("HP %d") % d["hp"]
 	if t.begins_with(hp):
 		t = t.substr(hp.length()).strip_edges()
@@ -1251,18 +1532,17 @@ func build_slot(slot: String) -> void:
 	section("Swap in from storage:" if not options.is_empty() else tr("No spare %s in storage.") % str(GameData.KIND_NAMES[kind]).to_lower())
 	for sp in options:
 		var d := GameData.part_def(sp["id"])
-		var row := make_row(part_icon(d, GameData.hp_ratio(sp)), d["name"] + ("" if d["shop"] else tr("  (rare)")), part_info(d))
+		var row := make_tap_row(part_icon(d, GameData.hp_ratio(sp)), d["name"] + ("" if d["shop"] else tr("  (rare)")), delta_text(d, slot),
+				_on_detail.bind({"src": "inv", "uid": sp["uid"]}), "", is_detail("inv", sp["uid"]))
 		if not GameData.UNDAMAGEABLE.has(d["kind"]):
 			row.add_child(hp_widget(sp))
-		row_button(row, "Fit", _on_equip.bind(sp["uid"], slot), true, 80)
-		var v := GameData.sell_value(sp)
-		row_button(row, tr("Sell $%d") % v, _on_sell.bind(sp["uid"]), true, 95)
+		row_button(row, "Fit", _on_equip.bind(sp["uid"], slot), true, 90)
 	for sp in wrecks:
 		var d := GameData.part_def(sp["id"])
 		var c := GameData.repair_cost(sp)
-		var row := make_row(part_icon(d, 0.0), d["name"] + tr("  (WRECKED)"), "Rebuild it to use it again.")
-		row_button(row, tr("Rebuild $%d") % c, _on_repair.bind(sp["uid"]), GameData.can_repair(c), 130)
-		row_button(row, tr("Sell $%d") % GameData.sell_value(sp), _on_sell.bind(sp["uid"]), true, 95)
+		var row := make_tap_row(part_icon(d, 0.0), d["name"] + tr("  (WRECKED)"), tr("Rebuild it to use it again."),
+				_on_detail.bind({"src": "inv", "uid": sp["uid"]}), "", is_detail("inv", sp["uid"]))
+		row_button(row, tr("Rebuild $%d") % c, _on_repair.bind(sp["uid"]), GameData.can_repair(c), 130).add_theme_color_override("font_color", GUI.AMBER)
 	# never stuck: if this slot is empty and there's nothing to fit, Gus has some junk lying around
 	if p.is_empty() and options.is_empty() and slot in ["head", "torso"]:
 		section("Gus's emergency junk:")
@@ -1276,8 +1556,8 @@ func build_slot(slot: String) -> void:
 		section("In the dealer's stock right now:")
 		for id in for_sale:
 			var d := GameData.part_def(id)
-			var row := make_row(part_icon(d), d["name"], GameData.part_stat_text(d))
-			row_button(row, tr("Buy $%d") % d["cost"], _on_buy.bind(id), GameData.money >= d["cost"], 115)
+			var row := make_tap_row(part_icon(d), d["name"], delta_text(d, slot), _on_detail.bind({"src": "shop", "id": id}), "", is_detail("shop", id))
+			row_button(row, tr("Buy & fit $%d") % d["cost"], _on_buy_fit.bind(id, slot), GameData.money >= d["cost"], 150)
 	var more := action_bar()
 	if GameData.unlocked("shop"):
 		row_button(more, "Dealer's stock", _on_go_shop.bind(kind), true, 200)
@@ -1316,26 +1596,19 @@ func build_storage() -> void:
 			continue
 		var wreck := GameData.is_wreck(p)
 		var tag := tr("  (WRECKED)") if wreck else ("" if d["shop"] else tr("  (rare)"))
-		var row := make_row(part_icon(d, GameData.hp_ratio(p)), str(d["name"]) + tag, part_info(d), null, tr(str(d["kind"]).to_upper()))
+		var picked: bool = sell_picks.has(p["uid"])
+		var cb_tap: Callable = _on_pick_sell.bind(not picked, p["uid"]) if selling else _on_detail.bind({"src": "inv", "uid": p["uid"]})
+		var row := make_tap_row(part_icon(d, GameData.hp_ratio(p)), str(d["name"]) + tag, part_info(d), cb_tap, tr(str(d["kind"]).to_upper()),
+				is_detail("inv", p["uid"]) or (selling and picked))
 		if not GameData.UNDAMAGEABLE.has(d["kind"]):
 			row.add_child(hp_widget(p))
 		if selling:
 			var cb := CheckBox.new()
-			cb.button_pressed = sell_picks.has(p["uid"])
+			cb.button_pressed = picked
 			cb.focus_mode = Control.FOCUS_NONE
+			cb.mouse_filter = Control.MOUSE_FILTER_IGNORE
 			cb.text = tr("$%d") % GameData.sell_value(p)
-			cb.toggled.connect(_on_pick_sell.bind(p["uid"]))
 			row.add_child(cb)
-			continue
-		var fits: Array = GameData.SLOTS.filter(func(sl): return GameData.SLOT_KIND[sl] == d["kind"] and GameData.slot_available(sl))
-		if not fits.is_empty():
-			row_button(row, "Fit", _on_fit_choose.bind(p["uid"], fits), not wreck, 70)
-		var c := GameData.repair_cost(p)
-		if c > 0:
-			var fx := row_button(row, (tr("Rebuild $%d") if wreck else tr("Fix $%d")) % c, _on_repair.bind(p["uid"]), GameData.can_repair(c), 110)
-			fx.add_theme_color_override("font_color", GUI.AMBER)
-		var v := GameData.sell_value(p)
-		row_button(row, tr("Sell $%d") % v, _on_sell.bind(p["uid"]), true, 90)
 
 
 # ---------------------------------------------------------------- popups (setups, paint)
@@ -1661,13 +1934,18 @@ func build_dealer() -> void:
 		var d := GameData.part_def(id)
 		if f != "all" and d["kind"] != f:
 			continue
-		var row := make_row(part_icon(d), d["name"], part_info(d), null, tr(str(d["kind"]).to_upper()))
+		var row := make_tap_row(part_icon(d), d["name"], part_info(d), _on_detail.bind({"src": "shop", "id": id}), tr(str(d["kind"]).to_upper()), is_detail("shop", id))
 		var hb := GUI.SegBar.new()
 		if not GameData.UNDAMAGEABLE.has(d["kind"]):
 			hb.setup(float(d["hp"]), float(d["hp"]), GUI.GREEN)
 			hb.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+			hb.mouse_filter = Control.MOUSE_FILTER_IGNORE
 			row.add_child(hb)
-		row_button(row, tr("Buy $%d") % d["cost"], _on_buy.bind(id), GameData.money >= d["cost"], 110)
+		var target := best_slot(str(d["kind"]))
+		if target != "":
+			row_button(row, tr("Buy & fit $%d") % d["cost"], _on_buy_fit.bind(id, target), GameData.money >= d["cost"], 150)
+		else:
+			row_button(row, tr("Buy $%d") % d["cost"], _on_buy.bind(id), GameData.money >= d["cost"], 150)
 	if (f == "all" or f == "chip") and not chips.is_empty():
 		section("TRAINING CHIPS - each one teaches your robot a special move:")
 		for id in chips.duplicate():
@@ -1694,7 +1972,7 @@ func build_controllers() -> void:
 ## The scrapyard: a mountain of dead robots. Dig for free (beaten-up) parts, a few digs per fight.
 func build_scrapyard_tab() -> void:
 	var bar := action_bar()
-	var info := UI.label(tr("A mountain of dead robots: one dig a week - fresh junk comes in every Sunday - one part per dig, always beaten up (15-50% health). Dig anywhere for the best odds of something good - or dig for the part you need, and take what the pile gives (mostly junk).") + "\n" + tr("Digging anywhere can also turn up a training chip, once in a long while - you can't dig for one."), 15, Color(1.0, 0.8, 0.4))
+	var info := GUI.text(tr("A mountain of dead robots: one dig a week - fresh junk comes in every Sunday - one part per dig, always beaten up (15-50% health). Dig anywhere for the best odds of something good - or dig for the part you need, and take what the pile gives (mostly junk).") + "\n" + tr("Digging anywhere can also turn up a training chip, once in a long while - you can't dig for one."), 12, GUI.MUTED)
 	info.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	info.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	bar.add_child(info)
@@ -1713,9 +1991,10 @@ func build_scrapyard_tab() -> void:
 		section("Fresh from the pile - keep it in Storage, or sell it (damaged parts sell cheaper):")
 		for p in finds:
 			var d := GameData.part_def(p["id"])
-			var row := make_row(part_icon(d, GameData.hp_ratio(p)), tr("%s  [%s]") % [d["name"], tr(str(d["kind"]).to_upper())], health_text(p))
+			var row := make_tap_row(part_icon(d, GameData.hp_ratio(p)), d["name"], part_info(d), _on_detail.bind({"src": "inv", "uid": p["uid"]}),
+					tr(str(d["kind"]).to_upper()), is_detail("inv", p["uid"]))
+			row.add_child(hp_widget(p))
 			row_button(row, "To Storage", _on_keep_find.bind(p["uid"]), true, 120)
-			row_button(row, tr("Sell $%d") % GameData.sell_value(p), _on_sell.bind(p["uid"]), true, 110)
 
 
 ## Keep a scrapyard find: it leaves the pile list and waits in Storage like any other part.
@@ -3008,13 +3287,15 @@ func open_fight_popup() -> void:
 		var hint := UI.label(tr("GUS: Fight like this and it's going to hurt. Your call, kid."), 14, Color(0.95, 0.75, 0.45))
 		hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		col.add_child(hint)
+	prefight_bet(col)
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 10)
 	col.add_child(row)
 	var cost := GameData.repair_all_cost()
-	if not issues.is_empty() and cost > 0 and GameData.can_repair(cost):
-		var rb := UI.button(tr("Repair all $%d") % cost, _on_repair_then_fight_popup, 17, Vector2(0, 50))
+	if cost > 0 and GameData.can_repair(cost):
+		var rb := UI.button(tr("Repair all & fight $%d") % cost, _on_repair_and_fight, 17, Vector2(0, 50))
 		rb.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		rb.add_theme_color_override("font_color", GUI.AMBER)
 		row.add_child(rb)
 	var back := UI.button("Back to the bay", close_popup, 17, Vector2(0, 50))
 	back.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -3022,6 +3303,79 @@ func open_fight_popup() -> void:
 	var go := UI.button(tr("FIGHT!") if issues.is_empty() else tr("Fight anyway"), _start_fight, 19, Vector2(0, 50))
 	go.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	row.add_child(go)
+
+
+## Bet on yourself right in the pre-fight window: pick a stake, tap Bet.
+func prefight_bet(col: VBoxContainer) -> void:
+	var mb := my_fight_bet()
+	if mb.is_empty():
+		return
+	col.add_child(GUI.HazardStrip.new())
+	var head := HBoxContainer.new()
+	head.add_theme_constant_override("separation", 10)
+	col.add_child(head)
+	var t := GUI.text(tr("BET ON YOURSELF"), 15, GUI.YELLOW, "headb")
+	t.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	head.add_child(t)
+	head.add_child(GUI.readout(tr("odds %.2fx") % float(mb["odds"]), 20, GUI.GREEN))
+	var bar := HBoxContainer.new()
+	bar.add_theme_constant_override("separation", 6)
+	col.add_child(bar)
+	for st in [10, 50, 100, 250, 500]:
+		var b := UI.button("$%d" % st, _on_prefight_stake.bind(st), 14, Vector2(64, 42))
+		b.toggle_mode = true
+		b.button_pressed = st == bet_stake
+		bar.add_child(b)
+	var gap := Control.new()
+	gap.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	bar.add_child(gap)
+	var bet := UI.button(tr("Bet $%d · pays $%d") % [bet_stake, int(bet_stake * float(mb["odds"]))], _on_prefight_bet, 15, Vector2(200, 42))
+	bet.disabled = GameData.money < bet_stake
+	bar.add_child(bet)
+	var placed := 0
+	for x in GameData.bets:
+		if x["on"] == GameData.bet_target() and int(x["pick"]) == 0:
+			placed += int(x["stake"])
+	if placed > 0:
+		col.add_child(GUI.text(tr("Already on yourself: $%d") % placed, 13, GUI.MUTED))
+
+
+## Your own fight in this week's betting: who you're up against and the price on you. {} = no bets this time.
+func my_fight_bet() -> Dictionary:
+	var target := GameData.bet_target()
+	if target == "":
+		return {}
+	if target == "self":
+		return {"vs": -1, "odds": GameData.self_odds()}
+	var ev := GameData.bet_event()
+	if ev.is_empty():
+		return {}
+	for pr in Career.round_matches(ev):
+		if int(pr[0]) == 0 or int(pr[1]) == 0:
+			var vs: int = int(pr[1]) if int(pr[0]) == 0 else int(pr[0])
+			return {"vs": vs, "odds": Career.odds(ev, 0, vs)}
+	return {}
+
+
+func _on_prefight_stake(st: int) -> void:
+	bet_stake = st
+	open_fight_popup()
+
+
+func _on_prefight_bet() -> void:
+	var mb := my_fight_bet()
+	if mb.is_empty():
+		return
+	say(GameData.place_bet(0, int(mb["vs"]), bet_stake), "buy")
+	GameData.save_game()
+	refresh()
+	open_fight_popup()
+
+
+func _on_repair_and_fight() -> void:
+	close_popup()
+	_on_repair_all()
+	_start_fight()
 
 
 func _on_repair_then_fight_popup() -> void:
