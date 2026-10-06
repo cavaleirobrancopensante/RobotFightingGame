@@ -2,7 +2,7 @@ extends Node
 
 # helper scripts, loaded by path so the game also runs without an editor scan
 ## The game's version, shown on the main menu. Bump it with every change (1.1, 1.2, ...).
-const VERSION := "1.1"
+const VERSION := "1.2"
 const Arena = preload("res://arena.gd")
 const I18n = preload("res://i18n.gd")
 const Catalog = preload("res://catalog.gd")
@@ -370,6 +370,9 @@ func start_error_log() -> void:
 
 
 func _process(delta: float) -> void:
+	if _save_due >= 0.0 and Time.get_ticks_msec() / 1000.0 >= _save_due:
+		_save_due = -1.0
+		save_game()
 	_error_flush_t -= delta
 	if error_catcher.dirty and _error_flush_t <= 0.0:
 		_error_flush_t = 1.0
@@ -1706,6 +1709,30 @@ func team_unlocked() -> bool:
 
 
 ## True the first time a tip is asked for (then it's marked as seen).
+## Saving: the garage asks for a save after every change; it's written a moment later (one write
+## for a burst of taps), and right away when the app is closed or sent to the background.
+var _save_due := -1.0
+
+
+func request_save() -> void:
+	if save_slot < 0 or not quick.is_empty() or not watching.is_empty():
+		return
+	if _save_due < 0.0:
+		_save_due = Time.get_ticks_msec() / 1000.0 + 0.6
+
+
+func flush_save() -> void:
+	if _save_due >= 0.0:
+		_save_due = -1.0
+		save_game()
+
+
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_WM_CLOSE_REQUEST or what == NOTIFICATION_APPLICATION_PAUSED \
+			or what == NOTIFICATION_APPLICATION_FOCUS_OUT or what == NOTIFICATION_WM_GO_BACK_REQUEST:
+		flush_save()
+
+
 func tip_once(id: String) -> bool:
 	if tips_seen.has(id):
 		return false
@@ -2516,7 +2543,7 @@ func forge_custom(cfg: Dictionary) -> String:
 		if SLOT_KIND[slot] == d["kind"] and equipped[slot] == -1:
 			equipped[slot] = uid
 			return tr("Forged %s and fitted it to the %s!") % [d["name"], tr(SLOT_NAMES[slot])]
-	return tr("Forged %s! It's in your storage - fit it from the Build tab.") % d["name"]
+	return tr("Forged %s! It's in your Storage - fit it from there.") % d["name"]
 
 
 # ---------------------------------------------------------------- randomize & saved setups

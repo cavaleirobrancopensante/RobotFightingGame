@@ -210,12 +210,12 @@ const SCENES := {
 		["GUS", "I watched you out there tonight. You fight like your dad did - all fists, no plan."],
 		["YOU", "Is that bad?"],
 		["GUS", "It's a style. Every pilot's got one. Tanks soak it up, Strikers hit first, Mechanics keep the thing running, Specialists play dirty tricks."],
-		["GUS", "Pick yours with the Style button. Each one comes with a signature move - I'll wire it into ECHO for free."],
+		["GUS", "Pick yours in the Bay, under Style. Each one comes with a signature move - I'll wire it into ECHO for free."],
 	]},
 	"unlock_shop": {"place": "GUS'S BAY", "lines": [
 		["GUS", "Two wins. That's enough prize money to walk into the dealer's without getting laughed out."],
 		["GUS", "Parts-R-Us, down by the docks. Kane's leftovers, salvage off the cargo ships, the odd arm that fell off a truck. I don't ask."],
-		["GUS", "He restocks every Sunday. Mini parts sip power. Heavy parts hit like a truck but drink the battery dry. The Shop's open."],
+		["GUS", "He restocks every Sunday. Mini parts sip power. Heavy parts hit like a truck but drink the battery dry. He's under Get Parts now."],
 	]},
 	"unlock_season": {"place": "GUS'S BAY", "lines": [
 		["GUS", "Pinned a calendar on the wall. Fight nights are Saturdays, cup nights are Wednesdays. Rent's the last Sunday of the month - I circled those in red."],
@@ -236,21 +236,21 @@ const SCENES := {
 	"unlock_cups": {"place": "GUS'S BAY", "lines": [
 		["GUS", "Phone's been ringing. People want to know who's piloting the dead man's robot."],
 		["GUS", "That means the cup promoters will take our entry fee. Cups are fought on Wednesday nights, so Saturdays stay free for the league - eight pilots, three weeks, straight knockout."],
-		["GUS", "Pilots from the bigger leagues show up to those. Good money, good beatings. Have a look under Cups."],
+		["GUS", "Pilots from the bigger leagues show up to those. Good money, good beatings. Have a look under Season, Cups."],
 	]},
 	"unlock_team": {"place": "GUS'S BAY", "lines": [
 		["GUS", "Look at that spares shelf. That's half a robot sitting there doing nothing."],
 		["GUS", "Back when I worked for... a big outfit, I built backup robots. When the main one's too beat up to fight, the backup goes in the ring."],
-		["GUS", "Build one from your spares on the Team tab, then hit Send to put it in. Some cups even let you fight as a team."],
+		["GUS", "Build one from your spares under Crew, then hit Send to put it in. Some cups even let you fight as a team."],
 	]},
 	"unlock_workshop": {"place": "GUS'S BAY", "lines": [
 		["GUS", "The dealer sells what the dealer's got. Sometimes you want a part nobody sells."],
 		["GUS", "So I cleared the workbench. Tell me the shape, the size, what it should do, and I'll build it from scratch. Costs more than buying - but it's exactly what you want."],
-		["GUS", "You'll find it in the Shop: Order your own part. And don't touch the welder without gloves."],
+		["GUS", "You'll find it under Get Parts: Made to order. And don't touch the welder without gloves."],
 	]},
 	"unlock_pilot": {"place": "GUS'S BAY", "lines": [
 		["GUS", "People recognise you in the street now, kid. Time you looked like a pilot and not like my nephew."],
-		["GUS", "Use the Pilot button - get a jacket, a haircut, whatever. And the dealer's started carrying controllers. The fancy ones change how the robot handles."],
+		["GUS", "Look under Crew, Pilot - get a jacket, a haircut, whatever. And the dealer's started carrying controllers. The fancy ones change how the robot handles."],
 	]},
 	"unlock_paint": {"place": "GUS'S BAY", "lines": [
 		["GUS", "We're still running ECHO in your dad's old primer. The crowd cheers for robots they can pick out from the cheap seats."],
