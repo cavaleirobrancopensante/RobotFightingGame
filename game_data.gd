@@ -2,7 +2,7 @@ extends Node
 
 # helper scripts, loaded by path so the game also runs without an editor scan
 ## The game's version, shown on the main menu. Bump it with every change (1.1, 1.2, ...).
-const VERSION := "1.26"
+const VERSION := "1.27"
 const Arena = preload("res://arena.gd")
 const I18n = preload("res://i18n.gd")
 const Catalog = preload("res://catalog.gd")
@@ -541,6 +541,11 @@ func new_game() -> void:
 	wingmen = [{}, {}]
 	gantries = 0
 	sending = -1
+	phase = 0
+	jobs = []
+	bolted = {}
+	mechanics = 0
+	overtime = false
 	next_uid = 1
 	for slot in SLOTS:
 		equipped[slot] = add_part(STARTER[slot]) if STARTER.has(slot) else -1
@@ -585,6 +590,7 @@ func new_game() -> void:
 		setups.append({})
 	last_result = {}
 	roll_stock()
+	bolt_everything()
 
 
 ## New-game screen: swap one starter slot group (head / torso / arm / leg) to another junk part.
@@ -782,6 +788,10 @@ func equip(uid: int, slot: String) -> String:
 	equipped[slot] = uid
 	if slot == "torso":
 		drop_unmounted()
+	sync_swaps()
+	var sj := swap_job("m", slot)
+	if not sj.is_empty():
+		return tr("%s goes on the %s: about %s to bolt it on (Bay > Job board).") % [d["name"], tr(SLOT_NAMES[slot]), hours_text(float(sj["total"]))]
 	return tr("Fitted %s to the %s.") % [d["name"], tr(SLOT_NAMES[slot])]
 
 
@@ -798,7 +808,7 @@ func unequip(slot: String) -> void:
 func repair_cost(p: Dictionary) -> int:
 	var d := part_def(p["id"])
 	var missing := 1.0 - hp_ratio(p)
-	if missing <= 0.0:
+	if missing <= 0.0 or not repair_job(int(p["uid"])).is_empty():
 		return 0
 	var discount := 0.6 if style == "mechanic" else 1.0   # mechanics fix things cheaper
 	if is_wreck(p):
@@ -806,16 +816,17 @@ func repair_cost(p: Dictionary) -> int:
 	return maxi(1, ceili(missing * maxf(20.0, d["cost"] * 0.2) * discount))
 
 
+## Fixing a part is paid up front and goes on Gus's job board: the bay works on it as time passes.
 func repair(uid: int) -> String:
 	var p := inst(uid)
 	var c := repair_cost(p)
 	if c == 0:
-		return "Already in perfect shape."
+		return "Already in perfect shape." if repair_job(uid).is_empty() else "It's already on the bench."
 	if not can_repair(c):
 		return "Not enough cash. No repairs on credit. Fight with the dents and win some money."
 	money -= c
-	p["hp"] = float(part_def(p["id"])["hp"])
-	return tr("Repaired %s for $%d.") % [part_def(p["id"])["name"], c]
+	var h := queue_repair(p)
+	return tr("%s is on the bench: $%d, about %s of work.") % [part_def(p["id"])["name"], c, hours_text(h)]
 
 
 func repair_all_cost() -> int:
@@ -830,15 +841,343 @@ func repair_all_cost() -> int:
 func repair_all() -> String:
 	var c := repair_all_cost()
 	if c == 0:
-		return "Your robot is in perfect shape."
+		return "Your robot is in perfect shape." if not has_work("m") else "Everything's already on the job board."
 	if not can_repair(c):
 		return tr("Repairing everything costs $%d. You don't have the cash. Fix the worst parts one at a time, or fight with the dents.") % c
+	var h := 0.0
 	for slot in BODY_SLOTS:
 		var p := equipped_inst(slot)
-		if not p.is_empty():
-			p["hp"] = float(part_def(p["id"])["hp"])
+		if not p.is_empty() and repair_cost(p) > 0:
+			h += queue_repair(p)
 	money -= c
-	return tr("Fully repaired for $%d.") % c
+	return tr("Everything's on the job board: $%d, about %s of work.") % [c, hours_text(h)]
+
+
+# ---------------------------------------------------------------- time in the bay
+# Every repair and every part you bolt on takes hours of work. The bay works 4 hours in the
+# morning and 4 in the afternoon (overtime: 8 more at night). Gus is one pair of hands; each
+# mechanic you hire works one more job at the same time. Fights are in the evening: whatever
+# isn't finished by the bell goes in as it is.
+
+const PHASE_NAMES := ["MORNING", "AFTERNOON", "EVENING"]
+const SHIFT_HOURS := 4.0           # morning shift, afternoon shift
+const NIGHT_HOURS := 8.0           # overtime
+const REPAIR_HOURS := {"head": 3.0, "arm": 3.0, "leg": 3.0, "torso": 6.0, "reactor": 2.0, "back": 2.0}   # 0 to full
+const SWAP_HOURS := {"head": 1.0, "arm": 1.0, "leg": 1.0, "torso": 4.0, "reactor": 2.0, "back": 2.0}
+const GRADE_TIME := 0.25           # each grade up takes a quarter longer
+const WRECK_TIME := 1.5            # rebuilding a wreck
+const MECHANIC_WAGE := 0.3         # a mechanic's monthly wage: this share of your running costs
+const OVERTIME_PRICE := 80         # per pair of hands per night, x3 a grade
+var phase := 0                     # 0 morning, 1 afternoon, 2 evening (fights are in the evening)
+var jobs: Array = []               # the job board, in order: {kind: "repair"/"swap", uid, robot, slot, total, done, rush, start}
+var bolted := {}                   # robot ("m", "w0", "w1") -> {slot: uid} fully bolted on
+var mechanics := 0
+var overtime := false              # work through tonight
+
+
+func hands() -> int:
+	return 1 + mechanics
+
+
+func max_mechanics() -> int:
+	return 2 + gantries   # the bay only fits so many people
+
+
+func mechanic_wage() -> int:
+	return int(int(settings.get("living_cost", LIVING_COST)) * float(RUNNING.get(rank, 1.0)) * MECHANIC_WAGE / 10.0) * 10
+
+
+func hire_mechanic() -> String:
+	if mechanics >= max_mechanics():
+		return "No room for another mechanic. More gantries make a bigger bay."
+	mechanics += 1
+	return tr("A new mechanic picks up a wrench. $%d a month on the running costs.") % mechanic_wage()
+
+
+func fire_mechanic() -> String:
+	if mechanics <= 0:
+		return ""
+	mechanics -= 1
+	return "You let a mechanic go. Fewer hands, smaller bills."
+
+
+func overtime_cost() -> int:
+	return int(OVERTIME_PRICE * hands() * pow(GRADE_PRICE, my_grade() - 1))
+
+
+func time_factor(d: Dictionary) -> float:
+	return 1.0 + GRADE_TIME * maxi(0, int(d.get("grade", 1)) - 1)
+
+
+func hours_text(h: float) -> String:
+	if h < 1.0:
+		return tr("%d min") % maxi(10, int(round(h * 6.0)) * 10)
+	return tr("%.1f h") % h if h < 10.0 else tr("%d h") % int(round(h))
+
+
+func repair_job(uid: int) -> Dictionary:
+	for j in jobs:
+		if j["kind"] == "repair" and int(j["uid"]) == uid:
+			return j
+	return {}
+
+
+func swap_job(robot: String, slot: String) -> Dictionary:
+	for j in jobs:
+		if j["kind"] == "swap" and j["robot"] == robot and j["slot"] == slot:
+			return j
+	return {}
+
+
+func has_work(robot: String) -> bool:
+	sync_swaps()
+	for j in jobs:
+		if j["kind"] == "swap" and j["robot"] == robot:
+			return true
+		if j["kind"] == "repair" and robot_uids(robot).has(int(j["uid"])):
+			return true
+	return false
+
+
+func robot_eq(robot: String) -> Dictionary:
+	if robot == "m":
+		return equipped
+	var k := int(robot.substr(1))
+	return wingmen[k] if k < wingmen.size() else {}
+
+
+func robot_uids(robot: String) -> Array:
+	var out: Array = []
+	var eq := robot_eq(robot)
+	for slot in eq:
+		if int(eq[slot]) >= 0:
+			out.append(int(eq[slot]))
+	return out
+
+
+## Put a repair on the board (or top it up). Returns the hours it adds.
+func queue_repair(p: Dictionary) -> float:
+	var d := part_def(p["id"])
+	var mx := float(d["hp"])
+	var missing := 1.0 - hp_ratio(p)
+	if missing <= 0.0:
+		return 0.0
+	var h: float = missing * float(REPAIR_HOURS.get(d["kind"], 3.0)) * time_factor(d) * (WRECK_TIME if is_wreck(p) else 1.0)
+	jobs.append({"kind": "repair", "uid": int(p["uid"]), "robot": "", "slot": "", "total": h, "done": 0.0, "rush": false,
+			"start": float(p["hp"]), "to": mx})
+	return h
+
+
+## Anything fitted that isn't bolted on yet gets a swap job; jobs for parts that came off are dropped.
+## (Taking a part off is quick: only bolting one on takes time.)
+func sync_swaps() -> void:
+	var robots := ["m"]
+	for k in wingmen.size():
+		robots.append("w%d" % k)
+	for r in robots:
+		if not bolted.has(r):
+			bolted[r] = {}
+		var eq := robot_eq(r)
+		var bt: Dictionary = bolted[r]
+		for slot in SLOTS:
+			var uid := int(eq.get(slot, -1))
+			if uid < 0 or inst(uid).is_empty():
+				bt.erase(slot)
+				_drop_swap(r, slot)
+				continue
+			if int(bt.get(slot, -1)) == uid:
+				_drop_swap(r, slot)
+				continue
+			var j := swap_job(r, slot)
+			if not j.is_empty() and int(j["uid"]) == uid:
+				continue
+			_drop_swap(r, slot)
+			bt.erase(slot)
+			var d := part_def(inst(uid)["id"])
+			jobs.append({"kind": "swap", "uid": uid, "robot": r, "slot": slot, "total": float(SWAP_HOURS.get(d["kind"], 1.0)) * time_factor(d),
+					"done": 0.0, "rush": false, "start": 0.0, "to": 0.0})
+	# repairs of parts that were sold or lost
+	jobs = jobs.filter(func(j): return j["kind"] != "repair" or not inst(int(j["uid"])).is_empty())
+
+
+func _drop_swap(r: String, slot: String) -> void:
+	jobs = jobs.filter(func(j): return not (j["kind"] == "swap" and j["robot"] == r and j["slot"] == slot))
+
+
+## Everything as it stands is bolted on and fixed (new games, old saves).
+func bolt_everything() -> void:
+	bolted = {}
+	jobs = []
+	sync_swaps()
+	for j in jobs:
+		bolted[j["robot"]][j["slot"]] = int(j["uid"])
+	jobs = []
+
+
+## How far a part being bolted on is (1.0 = done, or no job).
+func fit_progress(robot: String, slot: String) -> float:
+	var j := swap_job(robot, slot)
+	if j.is_empty():
+		return 1.0
+	return clampf(float(j["done"]) / maxf(0.01, float(j["total"])), 0.0, 1.0)
+
+
+## Work `hours` on the board: the top unfinished jobs get a pair of hands each (one hand per job,
+## so more mechanics means more jobs at once, not a faster single job).
+## With apply = false nothing changes and the result is each job's progress afterwards.
+func work(hours: float, apply: bool = true, board: Array = []) -> Array:
+	sync_swaps()
+	var list: Array = board if not board.is_empty() else (jobs if apply else jobs.duplicate(true))
+	# in quarter hours: the top jobs on the board get a pair of hands each (rush jobs go twice as fast)
+	var steps := int(round(hours / 0.25))
+	for st in steps:
+		var n := 0
+		for j in list:
+			if n >= hands():
+				break
+			if float(j["done"]) >= float(j["total"]) - 0.001:
+				continue
+			j["done"] = minf(float(j["total"]), float(j["done"]) + 0.25 * (2.0 if j["rush"] else 1.0))
+			n += 1
+	if apply:
+		_apply_jobs()
+	return list
+
+
+func _apply_jobs() -> void:
+	var keep: Array = []
+	for j in jobs:
+		var done := float(j["done"]) >= float(j["total"]) - 0.001
+		if j["kind"] == "repair":
+			var p := inst(int(j["uid"]))
+			if p.is_empty():
+				continue
+			# the HP paid for arrives as the hours go by (dents taken in the meantime stay)
+			var per_h := (float(j["to"]) - float(j["start"])) / maxf(0.01, float(j["total"]))
+			var add := (float(j["done"]) - float(j.get("applied", 0.0))) * per_h
+			j["applied"] = float(j["done"])
+			p["hp"] = minf(float(part_def(p["id"])["hp"]), float(p["hp"]) + add)
+		elif done:
+			if not bolted.has(j["robot"]):
+				bolted[j["robot"]] = {}
+			bolted[j["robot"]][j["slot"]] = int(j["uid"])
+		if not done:
+			keep.append(j)
+	jobs = keep
+
+
+## What the board looks like when the bell rings tonight: [{job, progress}] for unfinished work.
+func at_the_bell() -> Array:
+	var h := 0.0
+	if phase == 0:
+		h = SHIFT_HOURS * 2.0
+	elif phase == 1:
+		h = SHIFT_HOURS
+	var list := work(h, false)
+	var out: Array = []
+	for j in list:
+		if float(j["done"]) < float(j["total"]) - 0.001:
+			out.append({"job": j, "progress": clampf(float(j["done"]) / maxf(0.01, float(j["total"])), 0.0, 1.0)})
+	return out
+
+
+## A part's health when the bell rings tonight (its repair job worked up to then).
+func bell_hp_ratio(p: Dictionary) -> float:
+	var j := repair_job(int(p["uid"]))
+	if j.is_empty():
+		return hp_ratio(p)
+	var h := 0.0
+	if phase == 0:
+		h = SHIFT_HOURS * 2.0
+	elif phase == 1:
+		h = SHIFT_HOURS
+	for x in work(h, false):
+		if x["kind"] == "repair" and int(x["uid"]) == int(p["uid"]):
+			var per_h := (float(x["to"]) - float(x["start"])) / maxf(0.01, float(x["total"]))
+			var hp := minf(float(part_def(p["id"])["hp"]), float(p["hp"]) + (float(x["done"]) - float(x.get("applied", 0.0))) * per_h)
+			return clampf(hp / maxf(1.0, float(part_def(p["id"])["hp"])), 0.0, 1.0)
+	return 1.0   # finished before the bell
+
+
+## Move the clock on one step (morning -> afternoon -> evening -> next morning), working the bay.
+func advance_phase() -> void:
+	if phase < 2:
+		work(SHIFT_HOURS)
+		phase += 1
+		return
+	if overtime:
+		work(NIGHT_HOURS)
+		overtime = false
+	next_day()
+
+
+## Up to the evening (fights): the day's remaining shifts get worked.
+func to_evening() -> void:
+	while phase < 2:
+		advance_phase()
+
+
+func buy_overtime() -> String:
+	if overtime:
+		return "The crew's already staying tonight."
+	var c := overtime_cost()
+	if money < c:
+		return tr("Overtime tonight costs $%d.") % c
+	money -= c
+	overtime = true
+	return tr("The crew works through the night: $%d, 8 more hours on the board.") % c
+
+
+## Pay to double the speed of one job (repairs: twice the repair price again; bolting on: a fee).
+func rush_cost(j: Dictionary) -> int:
+	var p := inst(int(j["uid"]))
+	if p.is_empty():
+		return 0
+	var d := part_def(p["id"])
+	if j["kind"] == "repair":
+		var left := 1.0 - float(j["done"]) / maxf(0.01, float(j["total"]))
+		var mx := float(d["hp"])
+		var c := maxf(20.0, float(d["cost"]) * (0.5 if is_wreck(p) else 0.2)) * ((float(j["to"]) - float(j["start"])) / maxf(1.0, mx)) * left
+		return maxi(10, int(c * 2.0 * (0.6 if style == "mechanic" else 1.0)))
+	return maxi(20, int(float(d["cost"]) * 0.1))
+
+
+func rush_job(idx: int) -> String:
+	if idx < 0 or idx >= jobs.size() or jobs[idx]["rush"]:
+		return ""
+	var c := rush_cost(jobs[idx])
+	if money < c:
+		return tr("A rush job costs $%d.") % c
+	money -= c
+	jobs[idx]["rush"] = true
+	return tr("Rush job: twice as fast, $%d.") % c
+
+
+func job_up(idx: int) -> void:
+	if idx > 0 and idx < jobs.size():
+		var j = jobs[idx]
+		jobs[idx] = jobs[idx - 1]
+		jobs[idx - 1] = j
+
+
+## A fight is starting: work up to the bell, then the robot goes in as it is. Parts not even half
+## bolted on stay off; parts more than half bolted on are on but loose (half their HP in the fight).
+func bench_spec(spec: Dictionary, robot: String) -> Dictionary:
+	sync_swaps()
+	for slot in spec["parts"]:
+		var pr := fit_progress(robot, slot)
+		if pr >= 1.0 or (spec["parts"][slot] as Dictionary).is_empty():
+			continue
+		if pr < 0.5 and not (slot == "torso" or slot.begins_with("head")):
+			spec["parts"][slot] = {}   # not on yet: fight without it (a torso or head goes in loose)
+		else:
+			var pp: Dictionary = spec["parts"][slot]
+			var before := float(pp["hp"])
+			pp["max_hp"] = float(pp["max_hp"]) * 0.5
+			pp["hp"] = minf(before, float(pp["max_hp"]))
+			pp["loose"] = true
+			pp["loose_cut"] = before - float(pp["hp"])
+	return spec
 
 
 ## Damaged parts sell for less; even junk and wrecks are worth something as scrap metal.
@@ -1599,6 +1938,7 @@ func day_index() -> int:
 ## The clock moves on a day (after a fight, or when you let a free day go). After Sunday a new
 ## week starts on Monday.
 func next_day() -> void:
+	phase = 0
 	if day == "sun":
 		advance_week(1)
 	else:
@@ -1620,18 +1960,33 @@ func can_pass_day() -> bool:
 	return not ["story", "circuit"].has(fight_mode())
 
 
+## The rest of today goes by (the bay works its shifts, and the night if you paid overtime).
+func pass_rest_of_day() -> void:
+	to_evening()
+	advance_phase()
+
+
+## One step of the clock: morning -> afternoon -> evening, then (if tonight's free) tomorrow.
+func next_phase() -> String:
+	if phase < 2:
+		advance_phase()
+		save_game()
+		return tr("%s. The bay put in %d hours.") % [tr(PHASE_NAMES[phase]).capitalize(), int(SHIFT_HOURS)]
+	return pass_day()
+
+
 ## Nothing for you tonight (or you skip the pickup): on to tomorrow.
 func pass_day() -> String:
 	if not can_pass_day():
 		return "Your fight is tonight. No skipping it."
 	refund_self_bets()
 	pickup = {}
-	next_day()
+	pass_rest_of_day()
 	save_game()
 	return tr("On to %s.") % tr(DAY_FULL[day_index()])
 
 
-## Straight to the next night with a fight of yours on it (this week), passing the free days.
+## Straight to the next day with a fight of yours on it (this week), passing the free days.
 func skip_to_fight_night() -> String:
 	if not my_fight_ahead():
 		return "No fight of yours left this week."
@@ -1639,7 +1994,7 @@ func skip_to_fight_night() -> String:
 	pickup = {}
 	var guard := 0
 	while can_pass_day() and guard < 7:
-		next_day()
+		pass_rest_of_day()
 		guard += 1
 	save_game()
 	return tr("Fight night: %s.") % tr(DAY_FULL[day_index()])
@@ -1651,7 +2006,7 @@ func skip_to_day(idx: int) -> String:
 	refund_self_bets()
 	pickup = {}
 	while day_index() < idx and day != "sun" and can_pass_day():
-		next_day()
+		pass_rest_of_day()
 	save_game()
 	return tr("It's %s.") % tr(DAY_FULL[day_index()])
 
@@ -1716,7 +2071,8 @@ func new_year() -> void:
 
 
 func living_cost() -> int:
-	return int(int(settings.get("living_cost", LIVING_COST)) * float(RUNNING.get(rank, 1.0)) * (1.0 + GANTRY_RENT * gantries) / 10.0) * 10
+	return int(int(settings.get("living_cost", LIVING_COST)) * float(RUNNING.get(rank, 1.0)) * (1.0 + GANTRY_RENT * gantries) / 10.0) * 10 \
+			+ mechanics * mechanic_wage()
 
 
 ## What one more gantry adds to the monthly bill.
@@ -1910,7 +2266,11 @@ func rest_week() -> String:
 		return "Your fight's still to come this week. No resting yet."
 	refund_self_bets()
 	pickup = {}
-	advance_week(1)
+	var w := week
+	var guard := 0
+	while week == w and guard < 8:
+		pass_rest_of_day()
+		guard += 1
 	save_game()
 	return tr("A quiet week. Year %d, week %d.") % [year, week]
 
@@ -2332,14 +2692,14 @@ func fight_player_team() -> Array:
 		return out
 	# a 1-on-1 can be fought by a backup robot while your main robot sits out
 	if not is_team_fight() and sending >= 0 and wingman_ready(sending):
-		var solo := player_spec(wingmen[sending], wingman_name(sending))
+		var solo := bench_spec(player_spec(wingmen[sending], wingman_name(sending)), "w%d" % sending)
 		solo["wingman"] = sending
 		return [solo]
-	var team: Array = [player_spec()]
+	var team: Array = [bench_spec(player_spec(), "m")]
 	if is_team_fight():
 		for k in wingmen.size():
 			if wingman_ready(k):
-				var spec := player_spec(wingmen[k], wingman_name(k))
+				var spec := bench_spec(player_spec(wingmen[k], wingman_name(k)), "w%d" % k)
 				spec["wingman"] = k
 				team.append(spec)
 	# weight classes: a team shares one heavyweight's power. Big parts on a team robot overload it.
@@ -3585,7 +3945,7 @@ func save_game() -> bool:
 	var data := {
 		"version": SAVE_VERSION, "pilot_name": pilot_name, "robot_name": robot_name,
 		"saved_at": Time.get_datetime_string_from_system(false, true), "money": money, "inventory": inventory, "equipped": equipped,
-		"next_uid": next_uid, "gantries": gantries, "paint": paint, "fight_index": fight_index, "wins": wins,
+		"next_uid": next_uid, "gantries": gantries, "phase": phase, "jobs": jobs, "bolted": bolted, "mechanics": mechanics, "overtime": overtime, "paint": paint, "fight_index": fight_index, "wins": wins,
 		"losses": losses, "champion": champion, "story_seen": story_seen,
 		"owned_chips": owned_chips, "chips": chips, "circuit": circuit, "circuit_offers": circuit_offers,
 		"circuits_won": circuits_won, "pickup": pickup, "setups": setups, "custom_parts": custom_parts,
@@ -3713,6 +4073,24 @@ func load_game(slot: int = -1) -> String:
 		for k in wingmen.size():
 			if not wingmen[k].is_empty():
 				gantries = k + 1
+	phase = clampi(int(data.get("phase", 0)), 0, 2)
+	mechanics = int(data.get("mechanics", 0))
+	overtime = bool(data.get("overtime", false))
+	if typeof(data.get("bolted")) == TYPE_DICTIONARY:
+		bolted = {}
+		for r in data["bolted"]:
+			bolted[str(r)] = {}
+			for sl in data["bolted"][r]:
+				bolted[str(r)][str(sl)] = int(data["bolted"][r][sl])
+		jobs = []
+		for j in data.get("jobs", []):
+			if typeof(j) == TYPE_DICTIONARY:
+				jobs.append({"kind": str(j["kind"]), "uid": int(j["uid"]), "robot": str(j.get("robot", "")), "slot": str(j.get("slot", "")),
+						"total": float(j["total"]), "done": float(j["done"]), "rush": bool(j.get("rush", false)),
+						"start": float(j.get("start", 0.0)), "to": float(j.get("to", 0.0)), "applied": float(j.get("applied", 0.0))})
+		sync_swaps()
+	else:
+		bolt_everything()   # a save from before time in the bay: everything's on and fixed as it was
 	if not Catalog.STYLES.has(style):
 		style = "striker"
 	shop_stock = data.get("shop_stock", []).filter(func(id): return PARTS.has(id))

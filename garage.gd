@@ -103,6 +103,7 @@ var fight_button: Button
 var body_map: BodyMap
 var rail_box: VBoxContainer
 var date_button: Button
+var next_button: Button
 var repair_button: Button
 var left_col: VBoxContainer
 var bubble
@@ -225,6 +226,23 @@ func _ready() -> void:
 		date_button.add_theme_color_override(c, GUI.GREEN)
 	date_button.pressed.connect(func(): _on_tab("Season"); season_view = "calendar"; refresh())
 	top.add_child(date_button)
+	# the clock: morning -> afternoon -> evening -> tomorrow. The bay works while it runs.
+	next_button = Button.new()
+	next_button.focus_mode = Control.FOCUS_NONE
+	next_button.add_theme_font_override("font", GUI.num())
+	next_button.add_theme_font_size_override("font_size", 22)
+	var ns := GUI.box(Color(0.1, 0.08, 0.03), 18, 4)
+	ns.content_margin_left = 14
+	ns.content_margin_right = 14
+	ns.border_color = Color(0.45, 0.35, 0.12)
+	ns.set_border_width_all(1)
+	for st in ["normal", "hover", "pressed", "hover_pressed", "disabled"]:
+		next_button.add_theme_stylebox_override(st, ns)
+	for c in ["font_color", "font_hover_color", "font_pressed_color", "font_hover_pressed_color"]:
+		next_button.add_theme_color_override(c, GUI.AMBER)
+	next_button.add_theme_color_override("font_disabled_color", Color(0.4, 0.36, 0.3))
+	next_button.pressed.connect(_on_next_phase)
+	top.add_child(next_button)
 	title_label = UI.label("", 22)   # kept empty: the middle of the top strip is space for ads
 	title_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	top.add_child(title_label)
@@ -407,6 +425,7 @@ func segs_of(t: String) -> Array:
 	match t:
 		"Bay":
 			out.append(["robot", tr("Robot"), ""])
+			out.append(["jobs", tr("Job board %d") % GameData.jobs.size() if not GameData.jobs.is_empty() else tr("Job board"), ""])
 			if GameData.unlocked("moves"):
 				out.append(["chips", tr("Chips %d/%d") % [GameData.active_chips().size(), GameData.chip_slots()], "moves"])
 			if GameData.unlocked("style"):
@@ -818,9 +837,12 @@ func refresh() -> void:
 		(func(): play_story(mail)).call_deferred()
 	money_label.text = GameData.money_text(GameData.money)
 	money_label.add_theme_color_override("font_color", GUI.RED if GameData.money < 0 else GUI.AMBER)
-	date_button.text = tr("%s · WK %d") % [tr(DAY_NAMES[GameData.day_index()]), GameData.week]
+	date_button.text = tr("%s %s · WK %d") % [tr(DAY_NAMES[GameData.day_index()]), tr(PHASE_SHORT[GameData.phase]), GameData.week]
+	next_button.text = tr("NEXT > %s") % tr(["AFTERNOON", "EVENING", "TOMORROW"][GameData.phase])
+	next_button.disabled = GameData.phase == 2 and not GameData.can_pass_day()
+	next_button.tooltip_text = tr("Your fight is tonight.") if next_button.disabled else tr("Let time pass: the bay works on the job board.")
 	var total := GameData.repair_all_cost()
-	repair_button.text = tr("Repair all $%d") % total if total > 0 else tr("All repaired")
+	repair_button.text = tr("Repair all $%d") % total if total > 0 else (tr("On the bench") if GameData.has_work("m") else tr("All repaired"))
 	repair_button.disabled = total <= 0   # (short on cash? pressing it has Gus explain)
 	repair_button.add_theme_color_override("font_color", GUI.AMBER)
 	var mode := GameData.fight_mode()
@@ -882,6 +904,8 @@ func refresh() -> void:
 					build_moves_tab()
 				"style":
 					build_style_view()
+				"jobs":
+					build_jobs_view()
 				_:
 					if selected == "":
 						build_overview()
@@ -1604,7 +1628,7 @@ func build_overview() -> void:
 			make_tap_row(part_icon({}), tr("Empty"), tr("Tap to fit or buy one") + (tr(" (optional)") if opt else ""), _on_slot.bind(slot), slot_name)
 			continue
 		var d := GameData.part_def(p["id"])
-		var row := make_tap_row(part_icon(d, GameData.hp_ratio(p)), d["name"], part_info(d), _on_slot.bind(slot), slot_name)
+		var row := make_tap_row(part_icon(d, GameData.hp_ratio(p)), d["name"], job_line("m", slot, p) + part_info(d), _on_slot.bind(slot), slot_name)
 		if not GameData.UNDAMAGEABLE.has(d["kind"]):
 			row.add_child(hp_widget(p))
 			var c := GameData.repair_cost(p)
@@ -1624,6 +1648,133 @@ func build_overview() -> void:
 			gap2.custom_minimum_size = Vector2(80 * UI.SCALE, 0)
 			gap2.mouse_filter = Control.MOUSE_FILTER_IGNORE
 			row.add_child(gap2)
+
+
+## What the bay is doing to a fitted part right now ("" if nothing).
+func job_line(robot: String, slot: String, p: Dictionary) -> String:
+	GameData.sync_swaps()
+	var out := ""
+	var sj := GameData.swap_job(robot, slot)
+	if not sj.is_empty():
+		out += tr("BOLTING ON %d%%, %s left. ") % [int(GameData.fit_progress(robot, slot) * 100), GameData.hours_text((float(sj["total"]) - float(sj["done"])) / (2.0 if sj["rush"] else 1.0))]
+	var rj := GameData.repair_job(int(p["uid"]))
+	if not rj.is_empty():
+		out += tr("ON THE BENCH, %s left. ") % GameData.hours_text((float(rj["total"]) - float(rj["done"])) / (2.0 if rj["rush"] else 1.0))
+	return out
+
+
+## When each job on the board will be done, if nothing changes: "today, afternoon", "Tue morning"...
+func job_etas() -> Array:
+	var board: Array = GameData.jobs.duplicate(true)
+	var out: Array = []
+	for j in board:
+		out.append("")
+	var ph := GameData.phase
+	var di := GameData.day_index()
+	var night_ot := GameData.overtime
+	for step in 40:
+		var hrs := 0.0
+		if ph < 2:
+			hrs = GameData.SHIFT_HOURS
+		elif night_ot:
+			hrs = GameData.NIGHT_HOURS
+		night_ot = night_ot and ph < 2
+		if hrs > 0.0:
+			# only unfinished jobs take hands
+			var open: Array = board.filter(func(x): return float(x["done"]) < float(x["total"]) - 0.001)
+			if open.is_empty():
+				break
+			GameData.work(hrs, false, open)
+		ph += 1
+		if ph > 2:
+			ph = 0
+			di = (di + 1) % 7
+		for k in board.size():
+			if out[k] == "" and float(board[k]["done"]) >= float(board[k]["total"]) - 0.001:
+				var when := tr(["MORNING", "AFTERNOON", "EVENING"][ph]).to_lower()
+				out[k] = (tr("today") if di == GameData.day_index() and step < 3 else tr(DAY_NAMES[di]).capitalize()) + " " + when
+	return out
+
+
+## Bay > Job board: everything being fixed or bolted on, in order, with the hands that work it.
+func build_jobs_view() -> void:
+	GameData.sync_swaps()
+	var hands := GameData.hands()
+	section(tr("THE JOB BOARD. Every repair and every part you bolt on takes hours. The bay works 4 hours in the morning and 4 in the afternoon, and the bell rings in the evening: whatever isn't finished goes in as it is. Gus works one job at a time; each mechanic works one more at once."))
+	var bar := action_bar()
+	var hl := GUI.text(tr("HANDS: %d (Gus + %d mechanic%s)") % [hands, GameData.mechanics, "" if GameData.mechanics == 1 else "s"], 15, GUI.YELLOW, "headb")
+	hl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	bar.add_child(hl)
+	row_button(bar, tr("Hire $%d/mo") % GameData.mechanic_wage(), _on_hire_mechanic, GameData.mechanics < GameData.max_mechanics(), 150)
+	row_button(bar, tr("Let one go"), _on_fire_mechanic, GameData.mechanics > 0, 130)
+	var bar2 := action_bar()
+	var ot := GUI.text(tr("Tonight the crew stays on: 8 more hours.") if GameData.overtime else tr("Overtime: work through tonight, 8 more hours for every pair of hands."), 13, GUI.MUTED)
+	ot.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	ot.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	bar2.add_child(ot)
+	row_button(bar2, tr("Overtime $%d") % GameData.overtime_cost() if not GameData.overtime else tr("Booked"), _on_overtime, not GameData.overtime and GameData.money >= GameData.overtime_cost(), 150)
+	if GameData.jobs.is_empty():
+		section(tr("Nothing on the board. Everything's fixed and bolted on."))
+		return
+	var etas := job_etas()
+	for i in GameData.jobs.size():
+		var j: Dictionary = GameData.jobs[i]
+		var p := GameData.inst(int(j["uid"]))
+		if p.is_empty():
+			continue
+		var d := GameData.part_def(p["id"])
+		var title := ""
+		if j["kind"] == "repair":
+			title = tr("Fix: %s") % d["name"]
+		else:
+			var who: String = GameData.robot_name if j["robot"] == "m" else GameData.wingman_name(int(str(j["robot"]).substr(1)))
+			title = tr("Bolt on: %s (%s, %s)") % [d["name"], tr(GameData.SLOT_NAMES[j["slot"]]), who]
+		var left := (float(j["total"]) - float(j["done"])) / (2.0 if j["rush"] else 1.0)
+		var sub := tr("%s left of %s") % [GameData.hours_text(left), GameData.hours_text(float(j["total"]))]
+		if etas[i] != "":
+			sub += "  ·  " + tr("done %s") % etas[i]
+		if i < hands:
+			sub += "  ·  " + tr("being worked on")
+		if j["rush"]:
+			sub += "  ·  " + tr("RUSH")
+		var row := make_row(part_icon(d, GameData.hp_ratio(p)), title, sub, null, tr("#%d") % (i + 1))
+		var bb := GUI.BlockBar.new()   # 1 block = 1 hour of work
+		bb.block_w = 14.0
+		bb.setup(float(j["done"]), 1.0, maxf(1.0, ceilf(float(j["total"]))), GUI.CYAN if j["kind"] == "swap" else GUI.GREEN)
+		bb.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		row.add_child(bb)
+		var rc := GameData.rush_cost(j)
+		row_button(row, tr("Rush $%d") % rc if not j["rush"] else tr("Rushed"), _on_rush.bind(i), not j["rush"] and GameData.money >= rc, 110)
+		row_button(row, tr("Up"), _on_job_up.bind(i), i > 0, 60)
+
+
+func _on_hire_mechanic() -> void:
+	say(GameData.hire_mechanic(), "buy")
+	GameData.save_game()
+	refresh()
+
+
+func _on_fire_mechanic() -> void:
+	say(GameData.fire_mechanic(), "click")
+	GameData.save_game()
+	refresh()
+
+
+func _on_overtime() -> void:
+	say(GameData.buy_overtime(), "buy")
+	GameData.save_game()
+	refresh()
+
+
+func _on_rush(i: int) -> void:
+	say(GameData.rush_job(i), "repair")
+	GameData.save_game()
+	refresh()
+
+
+func _on_job_up(i: int) -> void:
+	GameData.job_up(i)
+	refresh()
 
 
 func build_slot(slot: String) -> void:
@@ -2382,6 +2533,7 @@ var cal_month := -1              # month shown on the calendar (0-12); -1 = this
 const MONTH_NAMES := ["JANUARY", "FEBRUARY", "MARCH", "APRIL", "MAY", "JUNE", "JULY", "AUGUST", "SEPTEMBER",
 		"OCTOBER", "NOVEMBER", "DECEMBER", "YEAR'S END"]
 const DAY_NAMES := ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"]
+const DAY_FULL_UP := ["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY", "SUNDAY"]
 const PLAN_COLORS := {"league": Color(0.35, 0.6, 1.0), "playoff": Color(1.0, 0.75, 0.25), "cup": Color(0.75, 0.5, 1.0),
 		"open": Color(0.6, 0.55, 0.45), "past": Color(0.4, 0.4, 0.45)}
 
@@ -3177,6 +3329,20 @@ func _on_go_to_day(idx: int) -> void:
 func _on_skip_fight_night() -> void:
 	close_popup()
 	say(GameData.skip_to_fight_night(), "click")
+	refresh()
+
+
+const PHASE_SHORT := ["AM", "PM", "EVE"]
+
+
+func _on_next_phase() -> void:
+	close_popup()
+	var before := GameData.jobs.size()
+	var text := GameData.next_phase()
+	var done := before - GameData.jobs.size()
+	if done > 0:
+		text += " " + (tr("%d job done on the board.") % done if done == 1 else tr("%d jobs done on the board.") % done)
+	say(text + bills_text(), "click")
 	refresh()
 
 
@@ -4044,17 +4210,35 @@ func _on_send() -> void:
 ## What's wrong with the robot before a fight: missing limbs, a hurt core, parts hanging off.
 func damage_report() -> Array:
 	var out: Array = []
+	var robot := "m"
+	var eq: Dictionary = GameData.equipped
 	if GameData.sending >= 0 and not GameData.is_team_fight():
-		return out   # the backup robot fights this one
+		robot = "w%d" % GameData.sending   # the backup robot fights this one
+		eq = GameData.wingmen[GameData.sending]
+	# the job board as it will stand when the bell rings
+	var swaps := {}
+	var fixes := {}
+	for e in GameData.at_the_bell():
+		var j: Dictionary = e["job"]
+		if j["kind"] == "swap" and j["robot"] == robot:
+			swaps[j["slot"]] = float(e["progress"])
+		elif j["kind"] == "repair":
+			fixes[int(j["uid"])] = j
 	for slot in ["head", "torso", "arm_front", "arm_back", "leg_front", "leg_back"]:
-		var p := GameData.equipped_inst(slot)
+		var p := GameData.inst(int(eq.get(slot, -1)))
 		var name: String = tr(GameData.SLOT_NAMES[slot])
 		if p.is_empty():
 			out.append(tr("No %s fitted!") % name.to_lower())
 			continue
-		var h := GameData.hp_ratio(p)
+		if swaps.has(slot):
+			var pr: float = swaps[slot]
+			if pr < 0.5 and not (slot == "torso" or slot.begins_with("head")):
+				out.append(tr("%s: only %d%% bolted on by the bell. It fights WITHOUT it.") % [name, int(pr * 100)])
+			else:
+				out.append(tr("%s: %d%% bolted on by the bell. It goes in loose, at half its HP.") % [name, int(pr * 100)])
+		var h := GameData.bell_hp_ratio(p)
 		if (slot == "torso" and h < 0.75) or h < 0.5:
-			out.append(tr("%s at %d%% health") % [name, int(h * 100)])
+			out.append(tr("%s at %d%% health by the bell") % [name, int(h * 100)] + (tr(" (still on the bench)") if not GameData.repair_job(int(p["uid"])).is_empty() else ""))
 	return out
 
 
@@ -4072,6 +4256,10 @@ func open_fight_popup() -> void:
 	var head := UI.label(GameData.fight_title() + "\n" + (tr("%s, piloted by %s") % [o.get("name", "?"), who] if who != "" else str(o.get("name", "?"))) + "   " + tr("Purse: $%d") % GameData.current_reward(), 18, Color(1.0, 0.85, 0.4))
 	head.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	col.add_child(head)
+	var left_h: int = [8, 4, 0][GameData.phase]
+	var clock := UI.label((tr("%s %s. The bell rings this evening: %d more hours of work in the bay before it.") % [tr(DAY_FULL_UP[GameData.day_index()]), tr(GameData.PHASE_NAMES[GameData.phase]), left_h]) if left_h > 0 else tr("It's the evening. The bell's about to ring: no more work on the robot before it."), 14, GUI.CYAN)
+	clock.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	col.add_child(clock)
 	if GameData.day_index() < 5 and GameData.fight_mode() != "story" and ["league", "playoff"].has(str(GameData.week_plan(GameData.year, GameData.week, "sat")["kind"])):
 		var warn := UI.label(tr("Your league fight is this Saturday. Whatever breaks tonight has to be fixed (and paid for) by then."), 15, Color(0.75, 0.85, 1.0))
 		warn.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -4112,7 +4300,7 @@ func open_fight_popup() -> void:
 	col.add_child(row)
 	var cost := GameData.repair_all_cost()
 	if cost > 0 and GameData.can_repair(cost):
-		var rb := UI.button(tr("Repair all & fight $%d") % cost, _on_repair_and_fight, 17, Vector2(0, 50))
+		var rb := UI.button(tr("Repair all $%d") % cost, _on_repair_then_fight_popup, 17, Vector2(0, 50))
 		rb.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		rb.add_theme_color_override("font_color", GUI.AMBER)
 		row.add_child(rb)
@@ -4213,6 +4401,7 @@ func _on_repair_then_close() -> void:
 
 func _start_fight() -> void:
 	close_popup()
+	GameData.to_evening()   # the bay works the rest of the day; the bell rings in the evening
 	GameData.save_game()
 	var idx := GameData.current_opponent_index()
 	# the rival calls in to talk trash first, then it's fight time

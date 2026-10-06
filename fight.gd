@@ -1619,6 +1619,15 @@ func end_by(winner: Fighter, title: String) -> void:
 			loser.on_ground = false
 
 
+## A part that went in loose (half bolted on) only had half its HP in the fight; whatever it
+## didn't lose in the ring it still has afterwards.
+func bench_hp(p: Dictionary, scale: float) -> float:
+	var hp := float(p["hp"])
+	if hp > 0.0 and p.has("loose_cut"):
+		hp += float(p["loose_cut"]) * scale
+	return hp
+
+
 func finish_match() -> void:
 	if mode == "watch":
 		var hp := [{}, {}]
@@ -1645,14 +1654,14 @@ func finish_match() -> void:
 	var part_hp := {}
 	for slot in BODY_PARTS:
 		if main.wingman == -1 and not main.parts[slot].is_empty():
-			part_hp[slot] = main.parts[slot]["hp"] / main.hp_scale
+			part_hp[slot] = bench_hp(main.parts[slot], main.hp_scale) / main.hp_scale
 	var team_hp: Array = []
 	for f in team_p:
 		if f.wingman >= 0:
 			var hp := {}
 			for slot in BODY_PARTS:
 				if not f.parts[slot].is_empty():
-					hp[slot] = f.parts[slot]["hp"] / f.hp_scale
+					hp[slot] = bench_hp(f.parts[slot], f.hp_scale) / f.hp_scale
 			team_hp.append({"wingman": f.wingman, "part_hp": hp})
 	var ripped: Array = []
 	for f in team_c:
