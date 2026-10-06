@@ -1,51 +1,65 @@
 extends RefCounted
-## The career: a year-round league table in four divisions, plus cups on the side.
+## The career: a pyramid of four leagues, the open dates at the start of the year, and cups.
 ##
-##   Scrapyard Qualifiers  the bottom: where nobodies start. Top 4 go up to the Scrap Heap League.
-##   Scrap Heap League     3rd division.  Top 4 up to the Regional, bottom 4 down to the Qualifiers.
-##   Port Ferrum Regional  2nd division.  Top 4 up to the Championship, bottom 4 down.
-##   Kane Championship     the top. OVERLORD defends its title here every year. Bottom 4 down.
+##   the gutter ("open")  no league at all: pilots live on pickups and cups. At the start of the
+##                        year the best 32 fight the Open Trials (2 rounds): 8 go up to Scrap.
+##   Scrap League   64    the bottom league.
+##   Rust League    48
+##   Iron League    40
+##   Steel League   32    the top. OVERLORD is in it, your last fight of a Steel year.
+##   Kane Championship    the title: a knockout for the top 8 of last year's Steel League,
+##                        on the open dates at the start of the year (QF, SF, final + bronze).
 ##
-## Every division has 48 pilots and fights a round every other Saturday (weeks 1, 3 ... 47): 24
-## fights a year each. A win is 1 point; level on points, the one who destroyed more parts is
-## ahead. Top 3 get medals. Weeks 48-52 are the off-season (cups and pickups still run).
+## Each league fights a round every other Saturday, weeks 4, 6 ... 50 (24 fights a year). A win is
+## 1 point; level on points, the one who destroyed more parts is ahead. Top 3 get medals and money,
+## 4th money. Top 5 go up (in Steel: into the Championship), 6th-13th play a playoff for 3 more
+## (8 in all); bottom 5 go down, the 8 above them play a playoff where 3 more go down (8 in all).
+## The playoffs: week 51 Wednesday and Saturday, week 52 Saturday.
 ## Cups: 8-pilot knockout brackets on Wednesday nights, on the side.
 ##
 ## An event is a plain dictionary (saved as JSON):
-##   {stage, name, year, weeks: [week of each round], round, phase: league/playoffs/done,
+##   {stage, name, year, weeks: [week of each round], round, phase: league/finals/playoffs/done,
 ##    pilots: [{id, pilot, rival | wid | bot, str}], fixtures: [[[a, b], ...] per round],
 ##    schedule: [your opponent per round], table: {id: [wins, losses, points, parts]},
-##    bracket: {...} (cups), medals: {id: 1/2/3}}
-## Pilot id 0 is always you (only in your own division).
+##    finals: {up/down: {rounds}} + slots: [[week, day], ...] (playoffs, trials),
+##    bracket: {...} (cups, the Championship), medals: {id: 1/2/3}}
+## Pilot id 0 is always you (only in your own events).
 
 const I18n = preload("res://i18n.gd")
 const World = preload("res://world.gd")
 const WEEKS_PER_YEAR := 52
-const DIVISION_SIZE := 48
 const ROUNDS := 24
-const UP_DOWN := 4    # promoted / relegated straight from the table each year
-const PLAYOFF_WEEKS := [49, 50, 51]   # the promotion and relegation playoffs (Saturdays)
+const UP_DOWN := 5     # straight up / down from the table each year (plus 3 through a playoff)
+const PLAYOFF_SLOTS := [[51, 2], [51, 5], [52, 5]]   # [week, day]: Wednesday and Saturday of week 51, Saturday of week 52
+const PLAYOFF_WEEKS := [51, 52]
+const TRIALS_SLOTS := [[1, 5], [2, 5]]               # the Open Trials: Saturdays of weeks 1 and 2
+const TITLE_WEEKS := [1, 2, 3]                       # the Kane Championship: Saturdays of weeks 1-3
+const LEAGUE_START := 4
 
 const STAGES := {
-	"open": {"name": "Open Trials", "short": "OPEN TRIALS", "start": 49, "size": 16, "playoff": 0,
+	"open": {"name": "Open Trials", "short": "OPEN TRIALS", "size": 32,
 		"rivals": [], "rival_rounds": [], "reward": [180, 300], "budget": [0, 300], "level": [0.0, 0.4],
 		"prizes": [300, 200, 100], "arenas": ["scrap_ring"], "crowds": ["scrappers"]},
-	"qualifiers": {"name": "Scrapyard Qualifiers", "short": "QUALIFIERS", "start": 1, "size": 64, "playoff": 0,
-		"rivals": [], "rival_rounds": [], "reward": [340, 540], "budget": [0, 400], "level": [0.0, 0.5],
-		"prizes": [400, 250, 150], "arenas": ["scrap_ring"], "crowds": ["scrappers"]},
-	"scrap": {"name": "Scrap Heap League", "short": "SCRAP LEAGUE", "start": 1, "size": 48, "playoff": 0,
-		"rivals": [0, 1, 2], "rival_rounds": [1, 9, 17], "reward": [420, 700], "budget": [250, 650], "level": [0.0, 0.9],
-		"prizes": [1500, 900, 500], "arenas": ["fish_market", "docks", "cannery"], "crowds": ["fishmongers", "dockers", "punks"]},
-	"regional": {"name": "Port Ferrum Regional", "short": "REGIONAL", "start": 1, "size": 40, "playoff": 0,
-		"rivals": [3, 4, 5], "rival_rounds": [1, 9, 17], "reward": [900, 1500], "budget": [900, 2100], "level": [1.0, 2.0],
-		"prizes": [6000, 3500, 2000], "arenas": ["test_track", "harbor", "substation"], "crowds": ["suits", "families", "ravers"]},
-	"championship": {"name": "Kane Championship", "short": "CHAMPIONSHIP", "start": 1, "size": 32, "playoff": 0,
-		"rivals": [6, 7, 8], "rival_rounds": [2, 10, 18], "boss": 9, "boss_round": 23, "reward": [2000, 3400], "budget": [2200, 4800], "level": [2.0, 3.4],
-		"prizes": [25000, 12000, 7000], "arenas": ["steelworks", "rooftop", "dry_dock"], "crowds": ["bikers", "robots", "packed"]},
+	"scrap": {"name": "Scrap League", "short": "SCRAP LEAGUE", "size": 64,
+		"rivals": [0, 1, 2], "rival_rounds": [1, 9, 17], "reward": [340, 560], "budget": [0, 500], "level": [0.0, 0.6],
+		"prizes": [1200, 700, 400], "arenas": ["fish_market", "docks", "cannery"], "crowds": ["fishmongers", "dockers", "punks"]},
+	"rust": {"name": "Rust League", "short": "RUST LEAGUE", "size": 48,
+		"rivals": [3, 4, 5], "rival_rounds": [1, 9, 17], "reward": [600, 950], "budget": [400, 1200], "level": [0.4, 1.3],
+		"prizes": [3000, 1800, 1000], "arenas": ["test_track", "harbor", "substation"], "crowds": ["suits", "families", "ravers"]},
+	"iron": {"name": "Iron League", "short": "IRON LEAGUE", "size": 40,
+		"rivals": [6, 7, 8], "rival_rounds": [2, 10, 18], "reward": [1100, 1800], "budget": [1200, 2800], "level": [1.2, 2.4],
+		"prizes": [8000, 4500, 2500], "arenas": ["steelworks", "rooftop", "dry_dock"], "crowds": ["bikers", "robots", "packed"]},
+	"steel": {"name": "Steel League", "short": "STEEL LEAGUE", "size": 32,
+		"rivals": [], "rival_rounds": [], "boss": 9, "boss_round": 23, "reward": [2200, 3600], "budget": [2600, 5200], "level": [2.2, 3.4],
+		"prizes": [15000, 8000, 5000], "arenas": ["champ_arena"], "crowds": ["champ_fans"]},
+	"title": {"name": "Kane Championship", "short": "CHAMPIONSHIP", "size": 8,
+		"rivals": [], "rival_rounds": [], "reward": [4000, 8000], "budget": [3000, 6000], "level": [2.5, 3.5],
+		"prizes": [40000, 18000, 9000], "arenas": ["champ_gala"], "crowds": ["high_society"]},
 }
-## The pyramid, bottom to top: the unranked pool ("open": no league, pickups and cups, and the
-## Open Trials at the end of the year), then the four divisions.
-const ORDER := ["open", "qualifiers", "scrap", "regional", "championship"]
+## The pyramid, bottom to top (the gutter, then the four leagues). "title" is the Championship cup.
+const ORDER := ["open", "scrap", "rust", "iron", "steel"]
+## Everything with fight nights, in order of importance (the TV shows the last one fighting tonight).
+const EVENTS := ["open", "scrap", "rust", "iron", "steel", "title"]
 const MEDALS := ["", "GOLD", "SILVER", "BRONZE"]
 
 const PILOT_NAMES := ["DEX", "LUPE", "KOVAC", "BRIGGS", "NELL", "OKAFOR", "TAM", "VASQUEZ", "IVO", "PETRA", "RUSTY JOE",
@@ -55,11 +69,11 @@ const PILOT_NAMES := ["DEX", "LUPE", "KOVAC", "BRIGGS", "NELL", "OKAFOR", "TAM",
 
 # ---------------------------------------------------------------- building events
 
-## League weeks: a round every other Saturday, weeks 1, 3 ... 47.
+## League weeks: a round every other Saturday, weeks 4, 6 ... 50.
 static func league_weeks() -> Array:
 	var out: Array = []
 	for k in ROUNDS:
-		out.append(1 + k * 2)
+		out.append(LEAGUE_START + k * 2)
 	return out
 
 
@@ -337,9 +351,18 @@ static func player_match(ev: Dictionary) -> Dictionary:
 
 static func week_of_round(ev: Dictionary) -> int:
 	if ev.get("phase", "") == "finals":
-		return int(PLAYOFF_WEEKS[mini(int(ev["po_round"]), PLAYOFF_WEEKS.size() - 1)])
+		var slots: Array = ev.get("slots", PLAYOFF_SLOTS)
+		return int(slots[mini(int(ev["po_round"]), slots.size() - 1)][0])
 	var k: int = ev["round"]
 	return int(ev["weeks"][mini(k, ev["weeks"].size() - 1)])
+
+
+## Which day of the week this event's next round is fought (5 = Saturday).
+static func fight_day(ev: Dictionary) -> int:
+	if ev.get("phase", "") == "finals":
+		var slots: Array = ev.get("slots", PLAYOFF_SLOTS)
+		return int(slots[mini(int(ev["po_round"]), slots.size() - 1)][1])
+	return 5
 
 
 static func round_name(ev: Dictionary) -> String:
@@ -504,6 +527,18 @@ static func play_npc_round(ev: Dictionary) -> void:
 	if ev.get("phase", "") == "finals":
 		play_finals_round(ev, rng)
 		return
+	if ev.get("phase", "") == "playoffs":
+		# a knockout (the Championship): this round's fights, then the next round is drawn
+		var played: int = ev["round"]
+		play_round(ev, rng)
+		var res: Array = []
+		var br: Dictionary = ev["bracket"]
+		for x in br["rounds"][mini(br["r"], br["rounds"].size() - 1) if ev["phase"] == "done" else maxi(0, br["r"] - 1)]:
+			res.append({"a": int(x["a"]), "b": int(x["b"]), "w": int(x["w"])})
+		ev["results"] = {"round": played, "list": res}
+		if ev["phase"] == "done":
+			award_world(ev)
+		return
 	if ev.get("phase", "") != "league":
 		return
 	var results: Array = []
@@ -524,6 +559,10 @@ static func round_due(ev: Dictionary, week: int, day_index: int) -> bool:
 	var wk := 0
 	if ev.get("phase", "") == "finals":
 		wk = week_of_round(ev)
+		return wk < week or (wk == week and day_index > fight_day(ev))
+	if ev.get("phase", "") == "playoffs":
+		# a knockout bracket (the Championship)
+		wk = int(ev["weeks"][mini(int(ev["round"]), ev["weeks"].size() - 1)])
 		return wk < week or (wk == week and day_index > 5)
 	if ev.get("phase", "") != "league" or int(ev["round"]) >= ev["weeks"].size():
 		return false
@@ -531,12 +570,13 @@ static func round_due(ev: Dictionary, week: int, day_index: int) -> bool:
 	return wk < week or (wk == week and day_index > 5)
 
 
-## The table's zones: "up" (top 4: promoted), "up_po" (5th-12th: promotion playoff),
-## "down_po" (37th-44th: relegation playoff), "down" (bottom 4: relegated), or "".
+## The table's zones: "up" (top 5: promoted, or into the Championship from Steel), "up_po"
+## (6th-13th: the playoff for 3 more), "down_po" (the 8 above the bottom 5: relegation playoff),
+## "down" (bottom 5: relegated), or "".
 static func zone(ev: Dictionary, pos: int) -> String:
 	var n: int = ev["pilots"].size()
-	var top: bool = ev["stage"] != "championship"
-	var bottom: bool = ev["stage"] != "open"
+	var top: bool = ev.has("fixtures") and not ev.get("trials", false)
+	var bottom: bool = top
 	if top and pos < UP_DOWN:
 		return "up"
 	if top and pos < UP_DOWN + 8:
@@ -560,14 +600,15 @@ static func start_finals(ev: Dictionary) -> void:
 	var order := standings(ev)
 	var n := order.size()
 	var fin := {}
-	if ev["stage"] != "championship":
+	if true:
 		var seeds: Array = order.slice(UP_DOWN, UP_DOWN + 8)
 		fin["up"] = {"rounds": [_qf(seeds)]}
-	if ev["stage"] != "open":
+	if true:
 		var seeds2: Array = order.slice(n - UP_DOWN - 8, n - UP_DOWN)
 		fin["down"] = {"rounds": [_qf(seeds2)]}
 	ev["finals"] = fin
 	ev["po_round"] = 0
+	ev["slots"] = PLAYOFF_SLOTS.duplicate(true)
 	ev["phase"] = "finals"
 
 
@@ -645,6 +686,15 @@ static func play_finals_round(ev: Dictionary, rng: RandomNumberGenerator) -> Arr
 				m["w"] = simulate(ev, int(m["a"]), int(m["b"]), rng)
 			results.append({"a": int(m["a"]), "b": int(m["b"]), "w": int(m["w"])})
 		var cur: Array = rounds[r]
+		if r + 1 >= ev.get("slots", PLAYOFF_SLOTS).size():
+			continue   # that was the last round
+		if ev.get("trials", false):
+			# the Open Trials: round 1 winners fight again, and those winners are in
+			var nxt: Array = []
+			for m in cur:
+				nxt.append(int(m["w"]))
+			rounds.append(_pairs(nxt, true))
+			continue
 		if r == 0:
 			# semis: promotion = quarterfinal winners; relegation = quarterfinal losers
 			var go: Array = []
@@ -659,7 +709,7 @@ static func play_finals_round(ev: Dictionary, rng: RandomNumberGenerator) -> Arr
 			rounds.append(_pairs(go2, true))
 	ev["results"] = {"round": round_key(ev), "list": results}
 	ev["po_round"] = r + 1
-	if ev["po_round"] >= PLAYOFF_WEEKS.size():
+	if ev["po_round"] >= ev.get("slots", PLAYOFF_SLOTS).size():
 		end_finals(ev)
 	return results
 
@@ -671,12 +721,16 @@ static func end_finals(ev: Dictionary) -> void:
 	var up: Array = []
 	var down: Array = []
 	if ev["finals"].has("up"):
-		up = [] if ev.get("trials", false) else order.slice(0, UP_DOWN)
 		var rounds: Array = ev["finals"]["up"]["rounds"]
-		for m in rounds[1]:
-			up.append(int(m["w"]))
-		for m in rounds[2]:
-			up.append(int(m["w"]))
+		if ev.get("trials", false):
+			for m in rounds[rounds.size() - 1]:
+				up.append(int(m["w"]))
+		else:
+			up = order.slice(0, UP_DOWN)
+			for m in rounds[1]:
+				up.append(int(m["w"]))
+			for m in rounds[2]:
+				up.append(int(m["w"]))
 	if ev["finals"].has("down"):
 		down = order.slice(n - UP_DOWN, n)
 		var rounds2: Array = ev["finals"]["down"]["rounds"]
@@ -689,9 +743,9 @@ static func end_finals(ev: Dictionary) -> void:
 	ev["phase"] = "done"
 
 
-## The Open Trials: 16 pilots from the unranked pool, three Saturdays at the end of the year.
-## Round 1: 8 fights. Round 2: the winners fight, and those 4 winners go up to the Qualifiers;
-## the 4 losers get a last chance in round 3, and its 2 winners go up too.
+## The Open Trials: the best 32 of the gutter, on the open dates at the start of the year.
+## Round 1 (Saturday of week 1): 16 fights. Round 2 (week 2): the winners fight again, and those 8
+## winners are in the Scrap League this year.
 static func new_trials(year: int, seed_value: int, with_player: bool, wids: Array) -> Dictionary:
 	var pilots: Array = []
 	var ids: Array = []
@@ -700,29 +754,62 @@ static func new_trials(year: int, seed_value: int, with_player: bool, wids: Arra
 		pilots.append({"id": 0, "pilot": "YOU", "player": true, "str": 1.0})
 		ids.append(0)
 	for wid in wids:
-		if pilots.size() >= 16:
+		if pilots.size() >= int(STAGES["open"]["size"]):
 			break
 		pilots.append({"id": next_id, "wid": int(wid), "pilot": str(World.pilot(int(wid)).get("name", "?"))})
 		ids.append(next_id)
 		next_id += 1
-	while ids.size() % 2 == 1 or ids.size() < 2:
-		ids.append(ids[0])   # (never happens with a full pool)
+	if ids.size() % 2 == 1:
+		ids.pop_back()
 	var table := {}
 	for e in pilots:
 		table[str(e["id"])] = [0, 0, 0, 0]
 	var first: Array = []
 	for k in ids.size() / 2:
 		first.append({"a": int(ids[k]), "b": int(ids[ids.size() - 1 - k]), "w": -1})
-	return {"stage": "open", "name": STAGES["open"]["name"], "year": year, "seed": seed_value, "weeks": PLAYOFF_WEEKS.duplicate(),
+	return {"stage": "open", "name": STAGES["open"]["name"], "year": year, "seed": seed_value,
+			"weeks": TRIALS_SLOTS.map(func(x): return int(x[0])), "slots": TRIALS_SLOTS.duplicate(true),
 			"round": 0, "phase": "finals", "po_round": 0, "trials": true, "pilots": pilots, "fixtures": [], "schedule": [],
 			"table": table, "bracket": {}, "medals": {}, "news": [], "mine": with_player, "finals": {"up": {"rounds": [first]}}}
 
 
+## The Kane Championship: the 8 who qualified from last year's Steel League (`entries`: their
+## event entries, best first; id 0 = you), a knockout on the Saturdays of weeks 1-3.
+static func new_title(year: int, seed_value: int, entries: Array) -> Dictionary:
+	var pilots: Array = []
+	var seeds: Array = []
+	var next_id := 1
+	var with_player := false
+	for e0 in entries:
+		var e: Dictionary = (e0 as Dictionary).duplicate()
+		if e.get("player", false):
+			e["id"] = 0
+			with_player = true
+		else:
+			e["id"] = next_id
+			next_id += 1
+		pilots.append(e)
+		seeds.append(int(e["id"]))
+	var table := {}
+	for e in pilots:
+		table[str(e["id"])] = [0, 0, 0, 0]
+	var ev := {"stage": "title", "name": STAGES["title"]["name"], "year": year, "seed": seed_value, "weeks": TITLE_WEEKS.duplicate(),
+			"round": 0, "phase": "playoffs", "pilots": pilots, "schedule": [], "table": table, "bracket": {}, "medals": {},
+			"news": [], "mine": with_player}
+	if seeds.size() >= 2:
+		start_bracket(ev, seeds)
+	else:
+		ev["phase"] = "done"
+	return ev
+
+
 ## What a playoff match is called: "PROMOTION QUARTERFINAL", "LAST TICKET", "SURVIVAL SEMIFINAL"...
-static func finals_round_name(ev: Dictionary, side: String) -> String:
-	var r: int = ev.get("po_round", 0)
+static func finals_round_name(ev: Dictionary, side: String, at: int = -1) -> String:
+	var r: int = ev.get("po_round", 0) if at < 0 else at
 	if ev.get("trials", false):
-		return ["OPEN TRIALS ROUND 1", "OPEN TRIALS ROUND 2", "OPEN TRIALS LAST CHANCE"][mini(r, 2)]
+		return ["ROUND 1", "ROUND 2"][mini(r, 1)]
+	if ev.get("stage", "") == "steel" and side == "up":
+		return ["TITLE PLAYOFF QUARTERFINAL", "TITLE PLAYOFF SEMIFINAL", "LAST TITLE TICKET"][mini(r, 2)]
 	if side == "up":
 		return ["PROMOTION QUARTERFINAL", "PROMOTION SEMIFINAL", "LAST TICKET UP"][mini(r, 2)]
 	return ["RELEGATION QUARTERFINAL", "SURVIVAL SEMIFINAL", "LAST CHANCE"][mini(r, 2)]

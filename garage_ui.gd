@@ -293,6 +293,12 @@ class RailButton extends Button:
 			"parts":   # a wrench
 				draw_line(c + Vector2(-9, 9), c + Vector2(4, -4), col, w + 1.5)
 				draw_arc(c + Vector2(6, -6), 5.5, deg_to_rad(-200), deg_to_rad(70), 12, col, w)
+			"pub":   # a beer mug: The Rusty Bolt
+				draw_rect(Rect2(c + Vector2(-9, -7), Vector2(14, 18)), col, false, w)
+				draw_arc(c + Vector2(5, 2), 5.0, -PI * 0.5, PI * 0.5, 10, col, w)
+				draw_line(c + Vector2(-9, -3), c + Vector2(5, -3), col, w)
+				draw_arc(c + Vector2(-5, -9), 3.0, PI, TAU, 8, col, w)
+				draw_arc(c + Vector2(1, -9), 3.0, PI, TAU, 8, col, w)
 			"season":   # a calendar
 				draw_rect(Rect2(c + Vector2(-11, -8), Vector2(22, 19)), col, false, w)
 				draw_line(c + Vector2(-11, -2), c + Vector2(11, -2), col, w)
@@ -448,9 +454,9 @@ class TalkBar extends Control:
 ## One symbol per kind of fight night, so calendar days stay the same size:
 ## scrap = rusty gear, regional = blue shield, championship = gold crown, cup = purple trophy,
 ## pickup = a green coin, rent = red bill, stock = a crate.
-const EVENT_COLORS := {"open": Color(0.6, 0.75, 0.7), "qualifiers": Color(0.7, 0.68, 0.62), "scrap": Color(0.86, 0.48, 0.24), "regional": Color(0.35, 0.6, 1.0), "championship": YELLOW,
-		"cup": Color(0.75, 0.5, 1.0), "pickup": Color(0.55, 0.78, 0.42), "exhibition": YELLOW,
-		"rent": Color(1.0, 0.42, 0.35), "stock": Color(0.62, 0.5, 0.36)}
+const EVENT_COLORS := {"open": Color(0.6, 0.75, 0.7), "scrap": Color(0.62, 0.5, 0.36), "rust": Color(0.82, 0.42, 0.18),
+		"iron": Color(0.55, 0.62, 0.72), "steel": Color(0.8, 0.88, 1.0), "title": YELLOW, "exhibition": YELLOW,
+		"cup": Color(0.75, 0.5, 1.0), "pickup": Color(0.55, 0.78, 0.42), "rent": Color(1.0, 0.42, 0.35), "stock": Color(0.62, 0.5, 0.36)}
 
 static func draw_event_icon(ci: CanvasItem, kind: String, c: Vector2, r: float, ring: bool = false) -> void:
 	var col: Color = EVENT_COLORS.get(kind, MUTED)
@@ -463,8 +469,8 @@ static func draw_event_icon(ci: CanvasItem, kind: String, c: Vector2, r: float, 
 			ci.draw_circle(Vector2(tk.position.x, c.y), r * 0.22, dark)
 			ci.draw_circle(Vector2(tk.end.x, c.y), r * 0.22, dark)
 			ci.draw_line(Vector2(c.x + r * 0.3, tk.position.y + 2), Vector2(c.x + r * 0.3, tk.end.y - 2), dark, 1.5)
-		"qualifiers":
-			# a hex nut: where everybody starts
+		"rust":
+			# a rusty hex nut
 			var hexp := PackedVector2Array()
 			for k in 6:
 				var a := k * TAU / 6.0 + PI / 6.0
@@ -480,12 +486,19 @@ static func draw_event_icon(ci: CanvasItem, kind: String, c: Vector2, r: float, 
 						c + d * r * 0.95 - n * r * 0.14, c + d * r * 0.55 - n * r * 0.18]), col)
 			ci.draw_circle(c, r * 0.68, col)
 			ci.draw_circle(c, r * 0.28, dark)
-		"regional":
+		"iron":
 			var pts := PackedVector2Array([c + Vector2(-r * 0.8, -r * 0.85), c + Vector2(r * 0.8, -r * 0.85), c + Vector2(r * 0.8, r * 0.05),
 					c + Vector2(0, r * 0.95), c + Vector2(-r * 0.8, r * 0.05)])
 			ci.draw_colored_polygon(pts, col)
 			ci.draw_rect(Rect2(c + Vector2(-r * 0.8, -r * 0.3), Vector2(r * 1.6, r * 0.28)), Color(1, 1, 1, 0.85))
-		"championship", "exhibition":
+		"steel":
+			# a steel star
+			var star := PackedVector2Array()
+			for k in 10:
+				var a := -PI / 2.0 + k * PI / 5.0
+				star.append(c + Vector2(cos(a), sin(a)) * r * (0.95 if k % 2 == 0 else 0.42))
+			ci.draw_colored_polygon(star, col)
+		"title", "exhibition":
 			ci.draw_colored_polygon(PackedVector2Array([c + Vector2(-r * 0.9, r * 0.45), c + Vector2(-r * 0.9, -r * 0.6), c + Vector2(-r * 0.45, -r * 0.05),
 					c + Vector2(0, -r * 0.85), c + Vector2(r * 0.45, -r * 0.05), c + Vector2(r * 0.9, -r * 0.6), c + Vector2(r * 0.9, r * 0.45)]), col)
 			ci.draw_rect(Rect2(c + Vector2(-r * 0.9, r * 0.55), Vector2(r * 1.8, r * 0.3)), col)

@@ -384,7 +384,7 @@ func _ready() -> void:
 
 ## The rail's sections, as they unlock. "Parts" is shown as Get Parts.
 func tab_list() -> Array:
-	var t := ["Bay", "Storage", "Parts"]
+	var t := ["Bay", "Storage", "Parts", "Pub"]
 	if GameData.unlocked("season"):
 		t.append("Season")
 	if GameData.team_unlocked() or GameData.unlocked("pilot"):
@@ -392,8 +392,8 @@ func tab_list() -> Array:
 	return t
 
 
-const SECTION_LABELS := {"Bay": "Bay", "Storage": "Storage", "Parts": "Get Parts", "Season": "Season", "Crew": "Crew"}
-const SECTION_ICONS := {"Bay": "bay", "Storage": "storage", "Parts": "parts", "Season": "season", "Crew": "crew"}
+const SECTION_LABELS := {"Bay": "Bay", "Storage": "Storage", "Parts": "Get Parts", "Pub": "Rusty Bolt", "Season": "Season", "Crew": "Crew"}
+const SECTION_ICONS := {"Bay": "bay", "Storage": "storage", "Parts": "parts", "Pub": "pub", "Season": "season", "Crew": "crew"}
 ## Where each feature lives now: [section, toggle]. Gus's unlock scene returns you there.
 const FEATURE_PLACE := {"scrapyard": ["Parts", "scrap"], "storage": ["Storage", ""], "style": ["Bay", "style"],
 		"shop": ["Parts", "dealer"], "season": ["Season", "calendar"], "scout": ["", "scout"], "moves": ["Bay", "chips"],
@@ -422,9 +422,11 @@ func segs_of(t: String) -> Array:
 			out.append(["table", tr("Standings"), ""])
 			if GameData.cups_unlocked():
 				out.append(["cups", tr("Cups"), "cups"])
-			if GameData.bet_target() != "":
-				out.append(["bets", tr("Bets"), ""])
 			out.append(["pilots", tr("Pilots"), ""])
+		"Pub":
+			# The Rusty Bolt: the scene stays the same pub while you switch between these
+			out.append(["bar", tr("Bar"), ""])
+			out.append(["bets", tr("Bets"), ""])
 			out.append(["jukebox", tr("Jukebox"), ""])
 		"Crew":
 			if GameData.team_unlocked():
@@ -623,7 +625,7 @@ func play_story(keys: Array, after: Callable = Callable()) -> bool:
 	for k in keys:
 		if typeof(k) == TYPE_DICTIONARY:
 			lines += talk_screens(k.get("lines", []))   # emergent talk: rivals, the pub, streaks
-		elif Story.SCENES.has(k) and (not GameData.story_seen.has(k) or str(k).begins_with("stay_") or str(k).begins_with("down") or str(k).begins_with("up_")):
+		elif Story.SCENES.has(k) and (not GameData.story_seen.has(k) or str(k).begins_with("stay_") or str(k).begins_with("down") or str(k).begins_with("up_") or str(k).begins_with("title_")):
 			lines += story_screens(k)
 			GameData.mark_story_seen(k)
 	if lines.is_empty():
@@ -897,6 +899,14 @@ func refresh() -> void:
 					build_scrapyard_tab()
 		"Season":
 			build_season_tab()
+		"Pub":
+			match seg():
+				"bets":
+					build_bets()
+				"jukebox":
+					build_jukebox()
+				_:
+					build_pub_cards()
 		"Crew":
 			if seg() == "pilot":
 				build_pilot_view()
@@ -1345,7 +1355,7 @@ func build_next_fight_card() -> void:
 		btn.call(tr("Scouting report") if GameData.scouted() else tr("Scout $%d") % GameData.scout_cost(), _on_open_scout,
 				GameData.scouted() or GameData.money >= GameData.scout_cost())
 	if not mb.is_empty():
-		btn.call(tr("Bets ›"), go_to.bind("Season", "bets"), true)
+		btn.call(tr("Bets ›"), go_to.bind("Pub", "bets"), true)
 	btn.call(tr("Fight night ›"), open_fight_popup, GameData.can_send(), GUI.YELLOW)
 
 
@@ -1807,14 +1817,14 @@ func tv_info() -> Dictionary:
 	var hm := GameData.headline_match()
 	if not hm.is_empty():
 		var ev: Dictionary = hm["ev"]
-		return {"live": true, "title": tr(Career.STAGES[ev["stage"]]["short"]) + " · R%d" % (int(ev["round"]) + 1),
+		return {"live": true, "title": tr(Career.STAGES[ev["stage"]]["short"]) + " · " + tr(Career.round_name(ev)),
 				"a": str(Career.pilot(ev, int(hm["a"])).get("pilot", "?")), "b": str(Career.pilot(ev, int(hm["b"])).get("pilot", "?"))}
-	var champ: Dictionary = GameData.leagues.get("championship", {})
+	var champ: Dictionary = GameData.leagues.get("steel", {})
 	if champ.is_empty():
 		return {}
 	var order := Career.standings(champ)
 	var lead := Career.pilot(champ, int(order[0]))
-	return {"live": false, "title": tr("CHAMPIONSHIP TABLE"), "a": "1. %s  %d" % [str(lead.get("pilot", "?")), int(champ["table"][str(order[0])][2])], "b": ""}
+	return {"live": false, "title": tr("STEEL LEAGUE TABLE"), "a": "1. %s  %d" % [str(lead.get("pilot", "?")), int(champ["table"][str(order[0])][2])], "b": ""}
 
 
 var fight_popup_open := false
@@ -2020,7 +2030,9 @@ func set_scene_for_tab() -> void:
 		"Parts":
 			scene = {"dealer": "shop", "order": "workshop"}.get(seg(), "scrap")
 		"Season":
-			scene = {"cups": "cups", "bets": "pub", "jukebox": "pub"}.get(seg(), "office")
+			scene = {"cups": "cups"}.get(seg(), "office")
+		"Pub":
+			scene = "pub"
 		"Crew":
 			scene = "team"
 	stats_panel.visible = STATS_SCENES.has(scene)
@@ -2434,7 +2446,7 @@ func build_calendar() -> void:
 	var key := HFlowContainer.new()
 	key.add_theme_constant_override("h_separation", 12)
 	list_box.add_child(key)
-	for k in [["open", "Open Trials"], ["qualifiers", "Qualifiers"], ["scrap", "Scrap league"], ["regional", "Regional"], ["championship", "Championship"], ["cup", "Cup"],
+	for k in [["open", "Open Trials"], ["scrap", "Scrap League"], ["rust", "Rust League"], ["iron", "Iron League"], ["steel", "Steel League"], ["title", "Championship"], ["cup", "Cup"],
 			["pickup", "Pickup fight"], ["rent", "Rent"], ["stock", "New stock"]]:
 		var it := HBoxContainer.new()
 		it.add_theme_constant_override("separation", 4)
@@ -2568,9 +2580,10 @@ func day_events(w: int, day: int) -> Array:
 					rest.sort_custom(func(p1, p2): return int(ev0["table"][str(p1[0])][2]) + int(ev0["table"][str(p1[1])][2]) > int(ev0["table"][str(p2[0])][2]) + int(ev0["table"][str(p2[1])][2]))
 					for pr in mine0 + rest.slice(0, 4):
 						e["matches"].append({"ev": ev0, "a": int(pr[0]), "b": int(pr[1]), "bet": true, "on": "event"})
-				elif plan.has("round") and not GameData.event.is_empty():
-					var opp := int(GameData.event["schedule"][int(plan["round"])])
-					e["matches"].append({"ev": GameData.event, "a": 0, "b": opp, "bet": false})
+				elif plan.has("round") and not GameData.leagues.get(GameData.rank, {}).is_empty():
+					var my_ev: Dictionary = GameData.leagues[GameData.rank]
+					var opp := int(my_ev["schedule"][int(plan["round"])])
+					e["matches"].append({"ev": my_ev, "a": 0, "b": opp, "bet": false})
 				out.append(e)
 			"open":
 				if (this_week and GameData.day_index() <= day) or (w > GameData.week and day == 5):
@@ -2583,18 +2596,19 @@ func day_events(w: int, day: int) -> Array:
 					out.append(e)
 		if day == 5 and y == GameData.year:
 			# the other divisions fight the same Saturdays: the top of their card
-			for dstage in Career.ORDER:
+			for dstage in Career.EVENTS:
 				var ev: Dictionary = GameData.leagues.get(dstage, {})
-				if ev.is_empty() or Career.has_player(ev) or not ev["weeks"].has(w):
+				if ev.is_empty() or Career.has_player(ev) or not ev["weeks"].has(w) or ev.get("phase", "") == "done":
 					continue
 				var r: int = ev["weeks"].find(w)
-				var ent := {"icon": dstage, "cell": dstage == "championship", "title": tr(str(ev["name"])).to_upper(), "matches": [],
-						"text": tr("League round %d/%d") % [r + 1, ev["weeks"].size()]}
-				if r < int(ev["round"]):
+				var cur_r: int = int(ev["po_round"]) if ev.get("phase", "") == "finals" else int(ev["round"])
+				var label := tr("League round %d/%d") % [r + 1, ev["weeks"].size()] if ev.get("phase", "") == "league" else tr("Round %d") % (r + 1)
+				var ent := {"icon": dstage, "cell": dstage == "title" or dstage == "steel", "title": tr(str(ev["name"])).to_upper(), "matches": [], "text": label}
+				if r < cur_r:
 					ent["text"] += "  ·  " + tr("played")
-				elif this_week and GameData.day_index() <= 5 and r == int(ev["round"]):
+				elif this_week and GameData.day_index() <= 5 and r == cur_r:
 					ent["tonight"] = this_week and GameData.day == "sat"
-					var pairs := Career.round_pairs(ev)
+					var pairs := Career.round_matches(ev)
 					pairs.sort_custom(func(p1, p2): return int(ev["table"][str(p1[0])][2]) + int(ev["table"][str(p1[1])][2]) > int(ev["table"][str(p2[0])][2]) + int(ev["table"][str(p2[1])][2]))
 					for pr in pairs.slice(0, 3):
 						ent["matches"].append({"ev": ev, "a": int(pr[0]), "b": int(pr[1]), "bet": ent["tonight"], "on": "div:" + dstage})
@@ -2810,7 +2824,6 @@ var bet_div := "event"   # which division's card the Bets screen shows on a leag
 ## The Rusty Bolt: who's at the bar (today's pickup fight), what's on the TV (tonight's top league
 ## fight, watch it), and the bookies: bets on any division fighting tonight, the cup, or yourself.
 func build_bets() -> void:
-	build_pub_cards()
 	var night := GameData.league_night()
 	var keys: Array = night.map(func(x): return str(x[0]))
 	if not night.is_empty():
@@ -2832,6 +2845,9 @@ func build_bets() -> void:
 		build_self_bets()
 		return
 	section("No fights to bet on tonight. League nights are every other Saturday, cups on Wednesdays.")
+	var tv := tv_info()
+	if not tv.is_empty():
+		section(tr("ON THE TV: %s") % str(tv["title"]) + "   " + str(tv["a"]))
 
 
 func _on_bet_div(k: String) -> void:
@@ -3181,8 +3197,8 @@ var table_div := ""   # which division's table the Standings screen shows ("" = 
 func build_league_view() -> void:
 	var stage := table_div if table_div != "" else GameData.rank
 	var tabs := action_bar()
-	for st in Career.ORDER:
-		var label := tr(Career.STAGES[st]["short"]).capitalize() + (" ●" if st == GameData.rank else "")
+	for st in Career.EVENTS:
+		var label := tr(Career.STAGES[st]["short"]).capitalize() + (" ●" if st == GameData.rank or (st == "title" and Career.has_player(GameData.leagues.get("title", {}))) else "")
 		var b := row_button(tabs, label, _on_table_div.bind(st), true, 0)
 		b.toggle_mode = true
 		b.button_pressed = st == stage
@@ -3202,15 +3218,22 @@ func build_league_view() -> void:
 	var rule := ""
 	match stage:
 		"open":
-			rule = tr("No league here: pilots without a division live on pickups and cups. At the end of the year the best 16 fight the Open Trials. Win round 2 and you're in the Qualifiers; round 2 losers get a last chance for 2 more places.")
-		"championship":
-			rule = tr("1 point a win, ties go to more parts destroyed. Top of the table is the champion of Port Ferrum. Bottom 4 go down, and %s to %s play a playoff where 3 more go down.") % [GameData.ordinal(n - 11), GameData.ordinal(n - 4)]
+			rule = tr("The gutter: pilots with no league live on pickups and cups. On the open dates at the start of the year the best 32 fight the Open Trials: two rounds, and the 8 who win both are in the Scrap League.")
+		"title":
+			rule = tr("The Kane Championship: the top 8 of last year's Steel League, a knockout on the open dates at the start of the year. Win the final and you're the champion of Port Ferrum.")
+		"steel":
+			rule = tr("1 point a win, ties go to more parts destroyed. Top 5 go into the Kane Championship, 6th to 13th play off for 3 more places. Bottom 5 go down and %s to %s play off, 3 more go down.") % [GameData.ordinal(n - 12), GameData.ordinal(n - 5)]
 		_:
-			rule = tr("1 point a win, ties go to more parts destroyed. Top 3 win trophies and prize money, 4th gets money. Top 4 go up and 5th to 12th play off for 3 more places. Bottom 4 go down and %s to %s play off, 3 more go down.") % [GameData.ordinal(n - 11), GameData.ordinal(n - 4)]
+			rule = tr("1 point a win, ties go to more parts destroyed. Top 3 win trophies and prize money, 4th gets money. Top 5 go up and 6th to 13th play off for 3 more places. Bottom 5 go down and %s to %s play off, 3 more go down.") % [GameData.ordinal(n - 12), GameData.ordinal(n - 5)]
 	section(rule)
+	if stage == "title":
+		if not ev.get("bracket", {}).is_empty():
+			show_bracket(ev)
+		return
 	if ev.has("finals"):
 		show_finals(ev)
-	show_table(ev)
+	if not ev.get("trials", false):
+		show_table(ev)
 
 
 ## The promotion and relegation playoffs: every match so far, who went up, who went down.
@@ -3218,15 +3241,17 @@ func show_finals(ev: Dictionary) -> void:
 	for side in ["up", "down"]:
 		if not ev["finals"].has(side):
 			continue
-		section(tr("PROMOTION PLAYOFF (3 go up)") if side == "up" else tr("RELEGATION PLAYOFF (3 go down)"))
+		var head := tr("RELEGATION PLAYOFF (3 go down)")
+		if side == "up":
+			head = tr("OPEN TRIALS (8 go up)") if ev.get("trials", false) else (tr("TITLE PLAYOFF (3 more into the Championship)") if ev["stage"] == "steel" else tr("PROMOTION PLAYOFF (3 go up)"))
+		section(head)
 		var rounds: Array = ev["finals"][side]["rounds"]
 		for r in rounds.size():
-			var names: Array = ["PROMOTION QUARTERFINAL", "PROMOTION SEMIFINAL", "LAST TICKET UP"] if side == "up" else ["RELEGATION QUARTERFINAL", "SURVIVAL SEMIFINAL", "LAST CHANCE"]
 			for m in rounds[r]:
 				var a: int = m["a"]
 				var b: int = m["b"]
 				var w: int = m["w"]
-				var txt := tr(names[r]) + ":  " + tr("%s  vs  %s") % [who(ev, a), who(ev, b)]
+				var txt := tr(Career.finals_round_name(ev, side, r)) + ":  " + tr("%s  vs  %s") % [who(ev, a), who(ev, b)]
 				if w >= 0:
 					txt += "   ->  " + (GameData.pilot_name if w == 0 else str(Career.pilot(ev, w).get("pilot", "?")))
 				var mine := a == 0 or b == 0

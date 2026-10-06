@@ -795,7 +795,7 @@ static func draw_trophy(ci: CanvasItem, base: Vector2, kind: String, medal: int,
 	var dark := c.darkened(0.3)
 	var wood := Color(0.35, 0.25, 0.18)
 	match kind:
-		"scrap":
+		"scrap", "rust", "open":
 			# a little robot welded together from scrap, arms up: bolt base, leg strut, box body, round head
 			ci.draw_rect(Rect2(base + Vector2(-8, -5) * s, Vector2(16, 5) * s), Color(0.3, 0.3, 0.32))
 			ci.draw_circle(base + Vector2(-5, -2.5) * s, 1.3 * s, c)
@@ -809,14 +809,14 @@ static func draw_trophy(ci: CanvasItem, base: Vector2, kind: String, medal: int,
 			ci.draw_circle(base + Vector2(11, -28) * s, 2.0 * s, dark)
 			ci.draw_circle(base + Vector2(0, -26) * s, 5.0 * s, c)
 			ci.draw_rect(Rect2(base + Vector2(-3.5, -27) * s, Vector2(7, 2) * s), Color(0.15, 0.1, 0.08))
-		"regional":
+		"regional", "iron", "steel":
 			ci.draw_rect(Rect2(base + Vector2(-7, -6) * s, Vector2(14, 6) * s), wood)
 			ci.draw_rect(Rect2(base + Vector2(-2, -13) * s, Vector2(4, 7) * s), c)
 			ci.draw_arc(base + Vector2(0, -20) * s, 8 * s, 0, PI, 10, c, 6.0 * s)
 			ci.draw_rect(Rect2(base + Vector2(-8.5, -26) * s, Vector2(17, 3) * s), c)
 			ci.draw_arc(base + Vector2(-9, -21) * s, 3.5 * s, PI * 0.5, PI * 1.5, 6, c, 1.8 * s)
 			ci.draw_arc(base + Vector2(9, -21) * s, 3.5 * s, -PI * 0.5, PI * 0.5, 6, c, 1.8 * s)
-		"championship":
+		"championship", "title":
 			# the big one: two-step base, tall stem, wide cup and a little robot on the lid
 			ci.draw_rect(Rect2(base + Vector2(-10, -5) * s, Vector2(20, 5) * s), wood)
 			ci.draw_rect(Rect2(base + Vector2(-7, -9) * s, Vector2(14, 4) * s), wood.lightened(0.1))

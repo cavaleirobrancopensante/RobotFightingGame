@@ -1,10 +1,10 @@
 extends RefCounted
 ## All the story text. Each scene: {"place": where it happens, "lines": [[speaker, text], ...]}
 ## Scenes: "intro", "pre_N" (before the fight with story rival N, 0-9), "post_N" (after beating them;
-## post_9 is the title, when you top the Championship table), and the year's results:
+## post_9 is the title, when you win the Kane Championship), and the year's results:
 ## "up_<division>", "down", "stay_<division>".
-## Rivals 0-2 fight in the Scrap Heap League, 3-5 in the Regional, 6-8 in the Championship, and
-## OVERLORD (9) is your last fight of the Championship year. The rest of the story is emergent:
+## Rivals 0-2 fight in the Scrap League, 3-5 in the Rust League, 6-8 in the Iron League, and
+## OVERLORD (9) is your last fight of a Steel League year. The rest of the story is emergent:
 ## see talk_lines.gd (gloats, rivalries, revenge, the pilot at the bar).
 ## Speakers are defined in SPEAKERS below. Edit freely!
 ##
@@ -35,8 +35,8 @@ const SCENES := {
 		["YOU", "My dad was one of those pilots. All he left me was his old robot, rusting under a tarp at the dry dock."],
 		["GUS", "{RENT_INTRO}"],
 		["ECHO", "[ PAIRING SIGNAL ... HANDLER LINK FOUND ]"],
-		["GUS", "Then we start at the bottom. The Scrapyard Qualifiers, out back of the junkyard. Pennies a bout."],
-		["GUS", "One table, all year. A point a win, a fight every other Saturday. Finish in the top four and next year we're in the Scrap Heap League. First bout's on Saturday."],
+		["GUS", "Then we start in the gutter. No league will have us yet. Pickup fights at the Rusty Bolt, a few bucks a night."],
+		["GUS", "The Open Trials are on Saturday. Thirty-two nobodies, two rounds. Win both and we're in the Scrap League this year."],
 	]},
 
 	"pre_0": {"place": "THE SCRAP HEAP RING", "lines": [
@@ -71,7 +71,7 @@ const SCENES := {
 	]},
 
 	"pre_3": {"place": "PORT FERRUM SPORTS HALL", "lines": [
-		["NARRATOR", "The Regional. A real ring, real seats, people in their weekend clothes. Kane Dynamics has entered its own test unit, GEARBOX. No pilot, just a technician with a laptop."],
+		["NARRATOR", "The Rust League. A real ring, real seats, people in their weekend clothes. Kane Dynamics has entered its own test unit, GEARBOX. No pilot, just a technician with a laptop."],
 		["DR. VOSS", "Dr. Voss, Autonomous Combat Division. GEARBOX runs on version 9 of our fight program. You'll find it very... efficient."],
 		["KANE", "So this is the scrap-pile sensation. How quaint. A human, holding a robot's hand."],
 		["YOU", "Better than holding nobody's."],
@@ -121,7 +121,7 @@ const SCENES := {
 	]},
 
 	"pre_7": {"place": "KANE CHAMPIONSHIP ARENA", "lines": [
-		["NARRATOR", "Halfway through the Championship league. Kane watches from her private box, high above the ring."],
+		["NARRATOR", "Halfway through the Iron League. Kane watches from her private box, high above the ring."],
 		["KANE", "Let me save you the suspense. Unit 00 was our handler-link prototype. With a good pilot, it beat every machine we built."],
 		["KANE", "Do you know what a good pilot costs? A cut of every purse, forever. Programs don't ask for a cut. So we buried the project and built OVERLORD."],
 		["DR. VOSS", "BRIMSTONE runs version 11. It has studied every one of your fights. Every one."],
@@ -144,12 +144,12 @@ const SCENES := {
 	]},
 	"post_8": {"place": "KANE CHAMPIONSHIP ARENA", "lines": [
 		["IRONSIDE", "Ha. Best beating I've taken in years. Tomorrow I'll be in the front row with every pilot Kane ever fired."],
-		["GUS", "OVERLORD is the last fight of the year. Top the table and the belt is ours. The whole city will be watching."],
+		["GUS", "One more league, kid. The Steel League, OVERLORD's table. Finish high enough and we're in the Kane Championship."],
 		["YOU", "Gus. Whatever you wrote back then, you also built the thing that's going to prove it wrong."],
 	]},
 
 	"pre_9": {"place": "THE KANE GRAND HALL: FINAL", "lines": [
-		["ANNOUNCER", "LADIES AND GENTLEMEN... THE LAST NIGHT OF THE KANE CHAMPIONSHIP!"],
+		["ANNOUNCER", "LADIES AND GENTLEMEN... OVERLORD IS IN THE BUILDING!"],
 		["ANNOUNCER", "In the red corner, the defending champion, unpiloted, running version 12 of the Kane fight program... OVERLORD!"],
 		["ANNOUNCER", "And in the blue corner, the junkyard miracle... ECHO and its pilot!"],
 		["NARRATOR", "Dinner jackets and diamonds in the boxes. But the front rows are full of pilots. Margo, Bruno, Skar, Rosa, the twins, Bull, Ironside. They've all brought their old controllers."],
@@ -157,13 +157,13 @@ const SCENES := {
 		["YOU", "Tonight they learn what people can do with them."],
 	]},
 	"post_9": {"place": "THE KANE GRAND HALL: FINAL", "lines": [
-		["ANNOUNCER", "THE TABLE IS FINAL! THE SCRAP-HEAP UNDERDOG IS YOUR NEW CHAMPION!"],
+		["ANNOUNCER", "THE KANE CHAMPIONSHIP IS DECIDED! THE SCRAP-HEAP UNDERDOG IS YOUR NEW CHAMPION!"],
 		["KANE", "...Impossible. It had every advantage. Every program. Every simulation."],
 		["GUS", "It had no pilot."],
 		["GUS", "Kid. Your father would have been proud. I'm... I'm proud too. For what that's worth."],
 		["NARRATOR", "For a second the arena is silent. Then the front rows stand up, every pilot Kane ever fired, and the whole place explodes."],
 		["NARRATOR", "Kane Dynamics' stock fell forty percent by morning. By the end of the month, the league brought back pilot licenses."],
-		["NARRATOR", "THE END... of your first championship. Next year OVERLORD wants its belt back, and the whole table wants you."],
+		["NARRATOR", "THE END... of your first championship. Next year OVERLORD wants its belt back, and the whole Steel League wants you."],
 	]},
 
 	# ---- the first time in the bay
@@ -171,52 +171,61 @@ const SCENES := {
 		["GUS", "Welcome to the bay. Don't touch the coffee."],
 		["GUS", "{RENT_GARAGE}"],
 		["GUS", "Keep winning and the prize money starts coming in. Climb out of the hole, then we talk to the dealer about real parts."],
-		["GUS", "And remember: top four of the qualifiers and we're in the Scrap Heap League next year. Then the Regional. Then the Championship. Three years, if we're good."],
-		["GUS", "No league fight tonight? Go down to the Rusty Bolt. Whoever's at the bar will fight you for a few bucks."],
+		["GUS", "And remember: the Open Trials, then the Scrap League, Rust, Iron, Steel, and the Kane Championship at the top. One rung a year, if we're good."],
+		["GUS", "The Rusty Bolt's just down the road. Whoever's at the bar will fight you for a few bucks. Get some practice in before Saturday."],
 	]},
 	# ---- career moments (shown after the fight that decides them)
 	"up_scrap": {"place": "THE SCRAP HEAP RING", "lines": [
-		["ANNOUNCER", "...and that's the qualifiers done! Four of you are going up to the Scrap Heap League!"],
-		["GUS", "Top four, kid. Next year we're in the Scrap Heap League. A real table, real rivals."],
-		["GUS", "Don't celebrate too hard. Up there they eat rookies for breakfast."],
+		["ANNOUNCER", "...and that's the Open Trials done! Eight nobodies just became somebodies!"],
+		["GUS", "We're in the Scrap League, kid. A real table, a fight every other Saturday."],
+		["GUS", "Don't celebrate too hard. Down there they eat rookies for breakfast."],
 	]},
-	"up_regional": {"place": "THE SCRAP HEAP RING", "lines": [
-		["ANNOUNCER", "...and that's the Scrap Heap League done! The top four are moving up, mind the rust on your way out!"],
-		["GUS", "The Port Ferrum Regional. A real ring, real seats, real money. Next year, kid."],
+	"stay_open": {"place": "GUS'S BAY", "lines": [
+		["GUS", "We didn't make it through the Trials. A year of pickups and cups, and we try again next year."],
+		["GUS", "Every pilot in this town has had a year like this. Fix the robot. Keep swinging."],
+	]},
+	"up_rust": {"place": "THE SCRAP HEAP RING", "lines": [
+		["ANNOUNCER", "...and that's the Scrap League done! Eight of you are moving up, mind the rust on your way out!"],
+		["GUS", "The Rust League. Real seats, real money. Next year, kid."],
 		["GUS", "And now people know your name, the cups will let you in."],
 	]},
-	"up_championship": {"place": "PORT FERRUM SPORTS HALL", "lines": [
-		["ANNOUNCER", "...and they're going UP! Next year, the Kane Championship!"],
-		["GUS", "Kid. You know what that means? The top table. OVERLORD's table. The whole city watches every other Saturday."],
+	"up_iron": {"place": "PORT FERRUM SPORTS HALL", "lines": [
+		["ANNOUNCER", "...and they're going UP! Next year, the Iron League!"],
+		["GUS", "The Iron League, kid. Kane's people will be watching every fight. Let them."],
+	]},
+	"up_steel": {"place": "KANE CHAMPIONSHIP ARENA", "lines": [
+		["ANNOUNCER", "...and they're going UP! Into the STEEL LEAGUE!"],
+		["GUS", "The top table. OVERLORD's table. The whole city watches every other Saturday."],
 		["GUS", "Not long ago you were fighting for pennies behind the junkyard. Don't forget that."],
+	]},
+	"title_in": {"place": "KANE CHAMPIONSHIP ARENA", "lines": [
+		["ANNOUNCER", "...and there are your eight for the KANE CHAMPIONSHIP!"],
+		["GUS", "We're in, kid. Eight pilots, three nights, one belt. Next year, on the open dates."],
+	]},
+	"title_out": {"place": "THE KANE GRAND HALL", "lines": [
+		["GUS", "Not this time. The belt stays where it is another year."],
+		["YOU", "Next year."],
+		["GUS", "Next year. Same city. We'll be ready."],
 	]},
 	"down_open": {"place": "GUS'S BAY", "lines": [
 		["GUS", "We're out of the leagues, kid. No table, no Saturday nights."],
-		["GUS", "Pickups, cups, and the Open Trials at the end of the year. That's how we get back in."],
-	]},
-	"up_qualifiers": {"place": "THE SCRAP HEAP RING", "lines": [
-		["GUS", "Through the Open Trials! We're back in the qualifiers next year, kid. Back on the ladder."],
-	]},
-	"stay_open": {"place": "GUS'S BAY", "lines": [
-		["GUS", "No league again this year. Pickups, cups, and the Open Trials when the year ends. We keep swinging."],
+		["GUS", "Pickups, cups, and the Open Trials at the start of next year. That's how we get back in."],
 	]},
 	"down": {"place": "GUS'S BAY", "lines": [
-		["GUS", "Bottom four. We're going down a league next year."],
+		["GUS", "Bottom of the table. We're going down a league next year."],
 		["GUS", "It happens. Ironside went down twice before anyone knew his name. We fix the robot and we climb back."],
 	]},
-	"stay_qualifiers": {"place": "THE SCRAP HEAP RING", "lines": [
-		["GUS", "Not the top four this year. Doesn't matter. Everybody's first season looks like this."],
-		["GUS", "The qualifiers run again next year. Till then, pickup fights at the Rusty Bolt, and we keep building."],
-	]},
 	"stay_scrap": {"place": "THE SCRAP HEAP RING", "lines": [
-		["GUS", "Another year in the Scrap Heap League. Not up, not down. Next year we push."],
+		["GUS", "Another year in the Scrap League. Not up, not down. Next year we push."],
 	]},
-	"stay_regional": {"place": "PORT FERRUM SPORTS HALL", "lines": [
-		["GUS", "Another year in the Regional. Kane's people will keep watching. Let them."],
-		["GUS", "Till then, cups, pickup fights, and every dollar into that robot."],
+	"stay_rust": {"place": "PORT FERRUM SPORTS HALL", "lines": [
+		["GUS", "Another year in the Rust League. Till then, cups, pickup fights, and every dollar into that robot."],
 	]},
-	"stay_championship": {"place": "KANE CHAMPIONSHIP ARENA", "lines": [
-		["GUS", "OVERLORD keeps its belt another year."],
+	"stay_iron": {"place": "KANE CHAMPIONSHIP ARENA", "lines": [
+		["GUS", "Another year in the Iron League. Kane's people will keep watching. Let them."],
+	]},
+	"stay_steel": {"place": "KANE CHAMPIONSHIP ARENA", "lines": [
+		["GUS", "Not enough for the Championship this year. We stay in the Steel League."],
 		["YOU", "Next year."],
 		["GUS", "Next year. Same table, same city. We'll be ready."],
 	]},

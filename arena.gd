@@ -58,13 +58,23 @@ static func career_venue(stage: String, round_name: String) -> Array:
 	if round_name.begins_with("LAST") or round_name.ends_with("SEMIFINAL"):
 		# playoff nights get the big venue of the division
 		match stage:
-			"regional":
+			"rust", "iron":
 				return ["regional_final", "final_night"]
-			"championship":
+			"steel":
 				return ["champ_gala", "high_society"]
 	match stage:
-		"open", "qualifiers", "scrap":
+		"open", "scrap":
 			return ["scrap_ring", "scrappers"]
+		"rust":
+			return ["regional_hall", "locals"]
+		"iron":
+			return ["champ_arena", "champ_fans"]
+		"steel":
+			if round_name == "League round 24/24":
+				return ["champ_gala", "high_society"]
+			return ["champ_arena", "champ_fans"]
+		"title":
+			return ["champ_gala", "high_society"]
 		"regional":
 			if round_name == "FINAL" or round_name == "BRONZE MATCH":
 				return ["regional_final", "final_night"]

@@ -2,7 +2,7 @@ extends Node
 
 # helper scripts, loaded by path so the game also runs without an editor scan
 ## The game's version, shown on the main menu. Bump it with every change (1.1, 1.2, ...).
-const VERSION := "1.24"
+const VERSION := "1.25"
 const Arena = preload("res://arena.gd")
 const I18n = preload("res://i18n.gd")
 const Catalog = preload("res://catalog.gd")
@@ -18,7 +18,7 @@ const UI = preload("res://ui.gd")
 const OLD_SAVE_PATH := "user://savegame.json"   # single save from earlier versions -> becomes slot 1
 const SAVE_SLOTS := 3
 const SETTINGS_PATH := "user://settings.json"
-const SAVE_VERSION := 4   # 4: year-round division tables (older saves are converted on load)
+const SAVE_VERSION := 5   # 5: Scrap/Rust/Iron/Steel + the Championship cup (older saves are converted on load)
 const START_MONEY := -1000   # default: you start in debt (back rent to Gus) and climb out
 const MONTH_WEEKS := 4        # every 4 weeks...
 const LIVING_COST := 1000     # ...rent and food come out of your balance (default)
@@ -261,7 +261,7 @@ var year := 1
 var week := 1
 var day := "mon"            # today: "mon".."sun" (cup rounds on "wed", leagues on "sat", pickups any day)
 const DAYS := ["mon", "tue", "wed", "thu", "fri", "sat", "sun"]
-var rank := "scrap"         # the highest league you've qualified for: scrap / regional / championship
+var rank := "open"          # your level: open (the gutter, no league) / scrap / rust / iron / steel
 var event := {}             # the league or playoffs you're in (see career.gd)
 var trophies: Array = []    # [{kind: scrap/regional/championship/cup, medal: 1-3, name, year}]
 var career_stats := {"heads": 0, "arms": 0, "legs": 0, "cores": 0, "parts": 0}
@@ -269,6 +269,7 @@ var story_queue: Array = [] # more story scenes to show after the current one
 var bay_stories: Array = [] # story scenes the garage plays when you get back (post-fight talk, medals)
 var converted_note := false   # this save was converted to the year-round tables (Gus explains once)
 var leagues: Dictionary = {}
+var title_seeds: Array = []     # who's in next year's Kane Championship (event entries, best first; "player" = you)
 var h2h: Dictionary = {}        # world pilot wid -> [your wins, your losses] against them
 var rivals: Array = []          # wids of the pilots who've become your rivals
 var grudge: Dictionary = {}     # wid -> [how much you resent them, how much they resent you]
@@ -511,7 +512,8 @@ func new_game() -> void:
 	fight_index = 0
 	year = 1
 	week = 1
-	rank = "qualifiers"
+	rank = "open"   # the gutter: no league yet. A few pickups at the Rusty Bolt, then the Open Trials
+	title_seeds = []
 	trophies = []
 	career_stats = {"heads": 0, "arms": 0, "legs": 0, "cores": 0, "parts": 0}
 	watching = {}
@@ -1047,7 +1049,7 @@ func fight_mode() -> String:
 		return "watch"
 	if day == "wed" and cup_round_this_week():
 		return "circuit"
-	if day == "sat" and not event.is_empty() and event.get("phase", "") != "done" and Career.player_opponent(event) != -1 \
+	if not event.is_empty() and day_index() == Career.fight_day(event) and event.get("phase", "") != "done" and Career.player_opponent(event) != -1 \
 			and week >= Career.week_of_round(event):
 		return "story"
 	if exhibition:
@@ -1169,7 +1171,7 @@ func do_scout() -> String:
 ## What a defeat pays: in the scrapyard you pay the winner, in the Regional and cups you get nothing,
 ## in the Championship (and exhibitions) you still get a small purse.
 ## What a pickup against the pilot at the bar pays, by their division (stars pay more, and hit harder).
-const PICKUP_PURSE := {"open": 100, "qualifiers": 150, "scrap": 200, "regional": 450, "championship": 900}
+const PICKUP_PURSE := {"open": 100, "scrap": 150, "rust": 220, "iron": 450, "steel": 900}
 
 
 func loss_pay(base: int) -> int:
@@ -1180,7 +1182,7 @@ func loss_pay(base: int) -> int:
 			match str(event.get("stage", "")):
 				"scrap":
 					return -int(base * 0.25)
-				"championship":
+				"steel", "title":
 					return int(base * 0.3)
 			return 0
 		"exhibition":
@@ -1329,7 +1331,7 @@ func pilot_standing(wid: int) -> String:
 				var pos: int = Career.standings(ev).find(int(e["id"])) + 1
 				return tr("%s in the %s") % [ordinal(pos), tr(str(ev["name"]))]
 	var p := World.pilot(wid)
-	return tr("hanging around the %s") % tr(str(Career.STAGES.get(str(p.get("tier", "qualifiers")), {}).get("name", "")))
+	return tr("hanging around the %s") % tr(str(Career.STAGES.get(str(p.get("tier", "open")), {}).get("name", "")))
 
 
 func ordinal(n: int) -> String:
@@ -1372,9 +1374,9 @@ func fight_stakes(ev: Dictionary, id: int, mode: String, wid: int = -1) -> float
 			var pos := order.find(id)
 			var n := order.size()
 			var s := 1.0
-			if pos >= n - 8 and ev["stage"] != "qualifiers":
+			if pos >= n - 13:
 				s += 1.5
-			if pos >= 0 and pos < 8 and (ev["stage"] != "championship" or pos < 3):
+			if pos >= 0 and pos < 13:
 				s += 1.0
 			return s * (1.0 + maxf(0.0, float(ev["round"]) - 12.0) / 12.0)
 		"circuit":
@@ -1560,7 +1562,7 @@ func my_fight_ahead() -> bool:
 	if cup_round_this_week() and day_index() <= 2:
 		return true
 	return not event.is_empty() and event.get("phase", "") != "done" and Career.player_opponent(event) != -1 \
-			and Career.week_of_round(event) == week and day_index() <= 5
+			and Career.week_of_round(event) == week and day_index() <= Career.fight_day(event)
 
 
 ## Can you let today go? Not when your own cup or league fight is tonight.
@@ -1646,6 +1648,16 @@ func new_year() -> void:
 				Career.after_player_fight(ev, false, 0)   # (a playoff you never turned up for)
 				continue
 			Career.play_npc_round(ev)
+	# who's in next year's Kane Championship: the 8 who made it from the Steel League
+	title_seeds = []
+	var steel: Dictionary = leagues.get("steel", {})
+	for id in steel.get("promoted", []):
+		var e: Dictionary = Career.pilot(steel, int(id)).duplicate()
+		if int(id) == 0:
+			e = {"player": true, "pilot": "YOU", "str": 1.0}
+		elif e.has("wid") and World.pilot(int(e["wid"])).get("retired", false):
+			continue
+		title_seeds.append(e)
 	World.year_end(rng, leagues)
 	for key in grudge:
 		if not str(key).begins_with("_"):
@@ -1683,28 +1695,79 @@ func start_year() -> void:
 	rng.seed = year * 7919 + randi() % 1000
 	leagues = {}
 	for stage in Career.ORDER:
+		if stage == "scrap":
+			continue   # drawn up when the Open Trials are over (8 of its places come from there)
 		var mine: bool = stage == rank
-		var info: Dictionary = Career.STAGES[stage]
-		var need: int = int(info["size"]) - (1 if mine else 0) - (info["rivals"].size() if mine else 0) - (1 if info.has("boss") else 0)
-		var pool: Array = World.active(stage)
-		pool.sort_custom(func(a, b): return World.rating(World.robot(int(a["wid"])), a["skill"]) > World.rating(World.robot(int(b["wid"])), b["skill"]))
-		var wids: Array = []
-		for p in pool.slice(0, need):
-			wids.append(int(p["wid"]))
-		wids.shuffle()
+		var wids := tier_pick(stage, mine)
 		if stage == "open":
-			# the unranked pool: no table, just the Open Trials at the end of the year
+			# the gutter: no table, just the Open Trials on the open dates (weeks 1-2)
 			leagues[stage] = Career.new_trials(year, rng.randi(), mine, wids)
 			continue
 		leagues[stage] = Career.new_event(stage, year, rng.randi(), mine, wids)
-	event = leagues.get(rank, {})
+	# the Kane Championship: last year's top of the Steel League (a brand-new world: its best 8)
+	var entries: Array = title_seeds.duplicate(true)
+	if entries.is_empty():
+		entries.append({"rival": 9, "pilot": "KANE DYNAMICS", "str": 9.0})
+		var pool: Array = World.active("steel")
+		pool.sort_custom(func(a, b): return World.rating(World.robot(int(a["wid"])), a["skill"]) > World.rating(World.robot(int(b["wid"])), b["skill"]))
+		for p in pool.slice(0, 7):
+			entries.append({"wid": int(p["wid"]), "pilot": str(p["name"])})
+	leagues["title"] = Career.new_title(year, rng.randi(), entries)
+	title_seeds = []
+	if trials_over():
+		build_scrap()
+	sync_event()
+
+
+## The best world pilots of a tier for its table (minus places for you, story rivals, OVERLORD).
+func tier_pick(stage: String, mine: bool) -> Array:
+	var info: Dictionary = Career.STAGES[stage]
+	var need: int = int(info["size"]) - (1 if mine else 0) - (info["rivals"].size() if mine else 0) - (1 if info.has("boss") else 0)
+	var pool: Array = World.active(stage)
+	pool.sort_custom(func(a, b): return World.rating(World.robot(int(a["wid"])), a["skill"]) > World.rating(World.robot(int(b["wid"])), b["skill"]))
+	var wids: Array = []
+	for p in pool.slice(0, need):
+		wids.append(int(p["wid"]))
+	wids.shuffle()
+	return wids
+
+
+func trials_over() -> bool:
+	var tr_ev: Dictionary = leagues.get("open", {})
+	return tr_ev.is_empty() or tr_ev.get("phase", "") == "done"
+
+
+## The Open Trials are over: the 8 winners join the Scrap League, and its table is drawn up.
+func build_scrap() -> void:
+	if leagues.has("scrap"):
+		return
+	var tr_ev: Dictionary = leagues.get("open", {})
+	for id in tr_ev.get("promoted", []):
+		var e := Career.pilot(tr_ev, int(id))
+		var p := World.pilot(int(e.get("wid", -1)))
+		if not p.is_empty() and not p["retired"]:
+			World.move_tier(p, "scrap")
+	World.fit_tier("scrap")
+	var rng := RandomNumberGenerator.new()
+	rng.seed = year * 4111 + 7
+	leagues["scrap"] = Career.new_event("scrap", year, rng.randi(), rank == "scrap", tier_pick("scrap", rank == "scrap"))
+
+
+## Which event is "yours" right now: the Kane Championship while you're still in it, otherwise
+## your league (or the Open Trials, in the gutter).
+func sync_event() -> void:
+	var t: Dictionary = leagues.get("title", {})
+	if not t.is_empty() and Career.has_player(t) and t.get("phase", "") != "done":
+		event = t
+	else:
+		event = leagues.get(rank, {})
 
 
 ## Kept for old callers: the year's tables exist (made at New Game and every new year).
 func ensure_event() -> void:
 	if leagues.is_empty() or int(leagues.values()[0].get("year", 0)) != year:
 		start_year()
-	event = leagues.get(rank, {})
+	sync_event()
 
 
 ## Every division whose league night has gone by plays its round (yours is played by your fight;
@@ -1717,23 +1780,29 @@ func catch_up_leagues() -> Array:
 		while Career.round_due(ev, week, day_index()) and guard < Career.ROUNDS:
 			guard += 1
 			if Career.has_player(ev):
-				if ev["phase"] == "finals" and Career.player_opponent(ev) == -1:
-					# your year is over but the playoffs go on without you
+				if (ev["phase"] == "finals" or ev["phase"] == "playoffs") and Career.player_opponent(ev) == -1:
+					# you're out (or not in this round) but it goes on without you
 					Career.play_npc_round(ev)
 					lines += settle_bets("event", ev)["lines"]
 					if ev["phase"] == "done":
-						pending_talk.append({"lines": [["GUS", finish_event(ev), {}]]})
+						pending_talk.append({"lines": [["GUS", finish_title(ev) if stage == "title" else finish_event(ev), {}]]})
 					continue
 				var res: Dictionary = Career.after_player_fight(ev, false, 0)   # didn't turn up: a loss
 				losses += 1
 				if res["phase_changed"]:
 					league_end(ev)
 				if res["done"]:
-					finish_event(ev)
+					if stage == "title":
+						finish_title(ev)
+					else:
+						finish_event(ev)
 				bets = bets.filter(func(b): return b["on"] != "event")
 				continue
 			Career.play_npc_round(ev)
 			lines += settle_bets("div:" + stage, ev)["lines"]
+	if trials_over() and not leagues.has("scrap") and not leagues.is_empty():
+		build_scrap()
+	sync_event()
 	return lines
 
 
@@ -1777,28 +1846,52 @@ func week_plan(y: int, w: int, d: String = "sat") -> Dictionary:
 	if d == "wed" and y == year and not circuit.is_empty() and circuit.get("phase", "") != "done" and circuit["weeks"].has(w) \
 			and Career.player_opponent(circuit) != -1:
 		return {"kind": "cup", "text": "%s" % circuit["name"], "stage": "cup"}
-	if d != "sat":
-		# any free day this week: there's always a pickup fight down at the scrapyard
-		if this_week:
-			return {"kind": "open", "text": "pickup fight", "stage": "pickup"}
-		return {"kind": "none", "text": ""}
-	if not event.is_empty() and int(event.get("year", year)) == y and Career.PLAYOFF_WEEKS.has(w):
-		# the playoffs: tonight if you're in one, the possible nights before the table is final
-		var short0: String = tr(Career.STAGES[event["stage"]]["short"])
-		if event["phase"] == "finals" and Career.week_of_round(event) == w and Career.player_opponent(event) != -1:
-			return {"kind": "playoff", "text": tr(Career.round_name(event)), "stage": event["stage"]}
-		if event["phase"] == "league":
-			return {"kind": "playoff", "text": tr("%s\nplayoffs (if you qualify)") % short0, "stage": event["stage"]}
-	if not event.is_empty() and event.get("phase", "") == "league" and int(event.get("year", year)) == y and event["weeks"].has(w):
-		var k: int = event["weeks"].find(w)
-		var short: String = tr(Career.STAGES[event["stage"]]["short"])
-		if k < event["schedule"].size():
-			var o := Career.robot_of(event, int(event["schedule"][k]))
-			return {"kind": "league", "text": tr("%s R%d\nvs %s") % [short, k + 1, o.get("name", "?")], "stage": event["stage"], "round": k}
-		if event["phase"] == "playoffs" or Career.player_opponent(event) != -1:
-			return {"kind": "playoff", "text": tr("%s\nPLAYOFFS") % short, "stage": event["stage"]}
-		return {"kind": "playoff", "text": tr("%s\nplayoffs (if you qualify)") % short, "stage": event["stage"]}
-	return {"kind": "open", "text": "pickup fight", "stage": "pickup"}
+	if y == year:
+		for key in ["title", "open", rank]:
+			var ev: Dictionary = leagues.get(key, {})
+			if ev.is_empty() or not Career.has_player(ev):
+				continue
+			var p := plan_for(ev, w, di)
+			if not p.is_empty():
+				return p
+	if this_week or d == "sat":
+		# a free night: there's always a pickup fight down at the Rusty Bolt
+		return {"kind": "open", "text": "pickup fight", "stage": "pickup"}
+	return {"kind": "none", "text": ""}
+
+
+## Your fight in one of your events on week w, day di (or {}).
+func plan_for(ev: Dictionary, w: int, di: int) -> Dictionary:
+	var stage := str(ev["stage"])
+	var short: String = tr(Career.STAGES[stage]["short"])
+	match str(ev.get("phase", "")):
+		"league":
+			if di == 5 and ev["weeks"].has(w):
+				var k: int = ev["weeks"].find(w)
+				if k >= int(ev["round"]) and k < ev["schedule"].size():
+					var o := Career.robot_of(ev, int(ev["schedule"][k]))
+					return {"kind": "league", "text": tr("%s R%d\nvs %s") % [short, k + 1, o.get("name", "?")], "stage": stage, "round": k}
+			for sl in Career.PLAYOFF_SLOTS:
+				if int(sl[0]) == w and int(sl[1]) == di:
+					return {"kind": "playoff", "text": tr("%s\nplayoffs (if you qualify)") % short, "stage": stage}
+		"finals":
+			var slots: Array = ev.get("slots", Career.PLAYOFF_SLOTS)
+			for r in range(int(ev["po_round"]), slots.size()):
+				if int(slots[r][0]) == w and int(slots[r][1]) == di:
+					if r == int(ev["po_round"]):
+						if Career.player_opponent(ev) != -1:
+							return {"kind": "playoff", "text": tr(Career.round_name(ev)), "stage": stage}
+					elif Career.finals_side(ev, 0) != "":
+						return {"kind": "playoff", "text": tr("%s\n(if you get through)") % short, "stage": stage}
+		"playoffs":
+			for r in range(int(ev["round"]), ev["weeks"].size()):
+				if int(ev["weeks"][r]) == w and di == 5:
+					if r == int(ev["round"]):
+						if Career.player_opponent(ev) != -1:
+							return {"kind": "playoff", "text": tr(Career.round_name(ev)), "stage": stage}
+					else:
+						return {"kind": "playoff", "text": tr("%s\n(if you get through)") % short, "stage": stage}
+	return {}
 
 
 ## Which kind of fight a logged result was (scrap / regional / championship / cup / pickup / exhibition).
@@ -1848,12 +1941,10 @@ func ev_for(on: String) -> Dictionary:
 ## [key, event] (yours first). Only on a league Saturday, before the round is played.
 func league_night() -> Array:
 	var out: Array = []
-	if day != "sat":
-		return out
-	for stage in Career.ORDER:
+	for stage in Career.EVENTS:
 		var ev: Dictionary = leagues.get(stage, {})
-		if not ["league", "finals"].has(str(ev.get("phase", ""))) or (ev["phase"] == "league" and int(ev["round"]) >= ev["weeks"].size()) \
-				or Career.week_of_round(ev) != week or Career.round_matches(ev).is_empty():
+		if not ["league", "finals", "playoffs"].has(str(ev.get("phase", ""))) or (ev["phase"] == "league" and int(ev["round"]) >= ev["weeks"].size()) \
+				or Career.week_of_round(ev) != week or Career.fight_day(ev) != day_index() or Career.round_matches(ev).is_empty():
 			continue
 		if Career.has_player(ev):
 			if fight_mode() == "story":
@@ -1871,7 +1962,7 @@ func headline_match() -> Dictionary:
 		return {}
 	var best: Array = night[night.size() - 1]
 	for x in night:
-		if Career.ORDER.find(str(x[1]["stage"])) > Career.ORDER.find(str(best[1]["stage"])):
+		if Career.EVENTS.find(str(x[1]["stage"])) > Career.EVENTS.find(str(best[1]["stage"])):
 			best = x
 	var ev: Dictionary = best[1]
 	var top: Array = []
@@ -2801,7 +2892,10 @@ func record_result(won: bool, part_hp: Dictionary, destroyed: int, salvage_ids: 
 			if res["phase_changed"]:
 				event_done = league_end(event)
 			if res["done"]:
-				event_done = finish_event(event)
+				event_done = finish_title(event) if event.get("stage", "") == "title" else finish_event(event)
+				if event.get("stage", "") == "open":
+					build_scrap()
+			sync_event()
 			next_day()
 		"circuit":
 			Career.after_player_fight(circuit, won, destroyed)
@@ -2854,20 +2948,21 @@ func league_end(ev: Dictionary) -> String:
 	elif pos == 3:
 		money += Career.fourth_prize(ev["stage"])
 		text += tr(". Fourth place pays $%d.") % Career.fourth_prize(ev["stage"])
+	else:
+		text += "."
+	var steel: bool = ev["stage"] == "steel"
 	match Career.zone(ev, pos):
 		"up":
-			text += " " + tr("Straight up to the %s!") % tr(Career.STAGES[Career.ORDER[Career.ORDER.find(str(ev["stage"])) + 1]]["name"])
+			if steel:
+				text += " " + tr("Into the Kane Championship!")
+			else:
+				text += " " + tr("Straight up to the %s!") % tr(Career.STAGES[Career.ORDER[Career.ORDER.find(str(ev["stage"])) + 1]]["name"])
 		"up_po":
-			text += " " + tr("Into the promotion playoff: three more go up.")
+			text += " " + (tr("Into the title playoff: three more get into the Championship.") if steel else tr("Into the promotion playoff: three more go up."))
 		"down_po":
 			text += " " + tr("Into the relegation playoff: three more go down.")
 		"down":
 			text += " " + tr("Relegated.")
-	if ev["stage"] == "championship" and m == 1:
-		if not champion:
-			pending_stories.append("post_9")
-		champion = true
-		make_offers()
 	return text
 
 
@@ -2875,7 +2970,10 @@ func league_end(ev: Dictionary) -> String:
 func finish_event(ev: Dictionary) -> String:
 	var idx := Career.ORDER.find(str(ev["stage"]))
 	var text := ""
-	if ev.get("promoted", []).has(0) and idx < Career.ORDER.size() - 1:
+	if ev["stage"] == "steel" and ev.get("promoted", []).has(0):
+		text = tr("We're in the Kane Championship! Next year, on the open dates.")
+		pending_stories.append("title_in")
+	elif ev.get("promoted", []).has(0) and idx < Career.ORDER.size() - 1:
 		rank = Career.ORDER[idx + 1]
 		text = tr("Promoted to the %s!") % tr(Career.STAGES[rank]["name"])
 		pending_stories.append("up_" + rank)
@@ -2890,8 +2988,28 @@ func finish_event(ev: Dictionary) -> String:
 			pending_stories.append("down")
 	else:
 		text = tr("Another year in the %s.") % tr(str(ev["name"]))
-		if not (ev["stage"] == "championship" and Career.medal_of(ev, 0) == 1):
-			pending_stories.append("stay_" + str(ev["stage"]))
+		pending_stories.append("stay_" + str(ev["stage"]))
+	return text
+
+
+## The Kane Championship is over: medals, prize money, and the title.
+func finish_title(ev: Dictionary) -> String:
+	var info: Dictionary = Career.STAGES["title"]
+	var m := Career.medal_of(ev, 0)
+	var text := tr("%s: %s") % [tr(str(ev["name"])), Career.finish_text(ev)]
+	if m > 0:
+		var prize: int = info["prizes"][m - 1]
+		money += prize
+		trophies.append(trophy_record(ev, "title", m))
+		text += tr(". Prize $%d and a trophy for the bay!") % prize
+	if m == 1:
+		if not champion:
+			pending_stories.append("post_9")
+		champion = true
+		make_offers()
+	else:
+		pending_stories.append("title_out")
+	sync_event()
 	return text
 
 
@@ -2929,8 +3047,9 @@ func make_offers() -> void:
 
 ## A cup takes 3 Wednesdays, starting next week. Leagues are on Saturdays, so the two never clash -
 ## it just has to finish before the year ends.
+## Cups run between the open dates and the playoffs (weeks 4 to 50).
 func cup_fits() -> bool:
-	return cup_start_week() + 2 <= Career.WEEKS_PER_YEAR
+	return cup_start_week() >= Career.LEAGUE_START and cup_start_week() + 2 <= Career.PLAYOFF_SLOTS[0][0] - 1
 
 
 func cup_start_week() -> int:
@@ -3267,7 +3386,7 @@ func save_game() -> bool:
 		"losses": losses, "champion": champion, "story_seen": story_seen,
 		"owned_chips": owned_chips, "chips": chips, "circuit": circuit, "circuit_offers": circuit_offers,
 		"circuits_won": circuits_won, "pickup": pickup, "setups": setups, "custom_parts": custom_parts,
-		"year": year, "week": week, "day": day, "rank": rank, "event": {}, "leagues": leagues, "trophies": trophies, "career_stats": career_stats,
+		"year": year, "week": week, "day": day, "rank": rank, "event": {}, "leagues": leagues, "title_seeds": title_seeds, "trophies": trophies, "career_stats": career_stats,
 		"style": style, "style_locked": style_locked, "shop_stock": shop_stock, "chip_stock": chip_stock, "scout": scout, "wingmen": wingmen, "sending": sending, "pilot_look": pilot_look, "owned_controllers": owned_controllers, "tips_seen": tips_seen, "h2h": h2h, "rivals": rivals, "grudge": grudge, "pending_talk": pending_talk, "streak": streak, "pub_seen": pub_seen, "digs_left": digs_left, "bills_note": bills_note, "fight_log": fight_log, "bets": bets, "world": world,
 	}
 	var f := FileAccess.open(slot_path(save_slot), FileAccess.WRITE)
@@ -3394,7 +3513,7 @@ func load_game(slot: int = -1) -> String:
 	career_stats = {"heads": 0, "arms": 0, "legs": 0, "cores": 0, "parts": 0}
 	if typeof(data.get("career_stats")) == TYPE_DICTIONARY:
 		career_stats.merge(data["career_stats"], true)
-	var old_career: bool = int(data.get("version", 1)) < 4 or not data.has("leagues")
+	var old_career: bool = int(data.get("version", 1)) < 5 or not data.has("leagues")
 	if data.has("event"):
 		year = int(data.get("year", 1))
 		week = int(data.get("week", 1))
@@ -3404,16 +3523,24 @@ func load_game(slot: int = -1) -> String:
 		rank = str(data.get("rank", "scrap"))
 	else:
 		year = 1
-		rank = "scrap" if fight_index < 3 else ("regional" if fight_index < 6 else "championship")
+		rank = "scrap" if fight_index < 3 else ("rust" if fight_index < 6 else "iron")
 	_fix_numbers(circuit)
 	migrate_unlock_scenes()
 	if old_career:
 		# a save from before the year-round tables: you keep your robot, parts, money and story,
 		# and a new year starts in the division you'd reached (with a fresh Port Ferrum around you)
+		# the old league names: Qualifiers / Scrap Heap / Regional / Championship (or before that,
+		# the one-year career) become Scrap / Rust / Iron / Steel
+		var v := int(data.get("version", 1))
+		if v == 4:
+			rank = {"open": "open", "qualifiers": "scrap", "scrap": "rust", "regional": "iron", "championship": "steel"}.get(rank, "scrap")
+		else:
+			rank = {"scrap": "scrap", "regional": "rust", "championship": "iron"}.get(rank, "scrap")
 		if champion:
-			rank = "championship"
+			rank = "steel"
 		if not Career.ORDER.has(rank):
 			rank = "scrap"
+		title_seeds = []
 		for bt in bets:
 			money += int(bt.get("stake", 0))
 		bets = []
@@ -3431,7 +3558,8 @@ func load_game(slot: int = -1) -> String:
 		leagues = data.get("leagues", {})
 		for st in leagues:
 			_fix_numbers(leagues[st])
-		event = leagues.get(rank, {})
+		title_seeds = data.get("title_seeds", [])
+		sync_event()
 		if leagues.is_empty():
 			start_year()
 	# (an older save keeps the fresh world new_game() made)
@@ -3466,7 +3594,7 @@ func _fix_world() -> void:
 func _fix_numbers(ev: Dictionary) -> void:
 	if ev.is_empty():
 		return
-	for k in ["round", "year", "seed", "tier", "prize"]:
+	for k in ["round", "year", "seed", "tier", "prize", "po_round"]:
 		if ev.has(k):
 			ev[k] = int(ev[k])
 	ev["weeks"] = ev.get("weeks", []).map(func(w): return int(w))
