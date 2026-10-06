@@ -2,7 +2,7 @@ extends Node
 
 # helper scripts, loaded by path so the game also runs without an editor scan
 ## The game's version, shown on the main menu. Bump it with every change (1.1, 1.2, ...).
-const VERSION := "1.3"
+const VERSION := "1.4"
 const Arena = preload("res://arena.gd")
 const I18n = preload("res://i18n.gd")
 const Catalog = preload("res://catalog.gd")
@@ -36,9 +36,9 @@ const ROBOT_LAST := ["", "", "", " JR", " MK II", " 3000", "-9", " PRIME", " ZER
 
 # Robot slots. Front = the side facing the camera (drawn in front).
 const SLOTS := ["head", "head2", "torso", "arm_front", "arm_back", "arm_front2", "arm_back2", "leg_front", "leg_back", "back", "reactor"]
-const SLOT_NAMES := {"head": "Head", "head2": "Second Head", "torso": "Torso", "arm_front": "Front Arm", "arm_back": "Back Arm",
-		"arm_front2": "Lower Front Arm", "arm_back2": "Lower Back Arm",
-		"leg_front": "Front Leg", "leg_back": "Back Leg", "back": "Back Gear", "reactor": "Reactor"}
+const SLOT_NAMES := {"head": "Head", "head2": "Second Head", "torso": "Torso", "arm_front": "Left Arm", "arm_back": "Right Arm",
+		"arm_front2": "Lower Left Arm", "arm_back2": "Lower Right Arm",
+		"leg_front": "Left Leg", "leg_back": "Right Leg", "back": "Back Gear", "reactor": "Reactor"}
 const SLOT_KIND := {"head": "head", "head2": "head", "torso": "torso", "arm_front": "arm", "arm_back": "arm",
 		"arm_front2": "arm", "arm_back2": "arm", "leg_front": "leg", "leg_back": "leg", "back": "back", "reactor": "reactor"}
 const EXTRA_SLOTS := ["head2", "arm_front2", "arm_back2"]   # only exist on torsos with mount points

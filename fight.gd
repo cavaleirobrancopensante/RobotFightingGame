@@ -40,8 +40,8 @@ const COMBO_BONUS := 0.08     # extra damage per hit in a combo
 const BODY_PARTS := ["head", "head2", "torso", "arm_front", "arm_back", "arm_front2", "arm_back2", "leg_front", "leg_back"]
 const SPLIT_BUTTONS := ["punch", "kick"]   # touch buttons cut in half: left half = left limb, right half = right limb
 const ARM_SLOTS := ["arm_front", "arm_back", "arm_front2", "arm_back2"]
-const PART_LABELS := {"head": "HEAD", "head2": "2ND HEAD", "torso": "TORSO", "arm_front": "FRONT ARM", "arm_back": "BACK ARM",
-		"arm_front2": "LOWER FRONT ARM", "arm_back2": "LOWER BACK ARM", "leg_front": "FRONT LEG", "leg_back": "BACK LEG"}
+const PART_LABELS := {"head": "HEAD", "head2": "2ND HEAD", "torso": "TORSO", "arm_front": "LEFT ARM", "arm_back": "RIGHT ARM",
+		"arm_front2": "LOWER LEFT ARM", "arm_back2": "LOWER RIGHT ARM", "leg_front": "LEFT LEG", "leg_back": "RIGHT LEG"}
 const WEAK_BONUS := 0.15      # extra damage on the part the scanner marks as weakest
 const GADGET_KEYS := [KEY_1, KEY_2, KEY_3]
 ## Keyboard attacks: U / I punch with the left / right arm, J / K kick with the left / right leg.
@@ -185,7 +185,7 @@ class Fighter:
 	## If that side's limb is gone, the other side does the job.
 	func limb_for(kind: String, prefer_back: bool = false, side: String = "") -> String:
 		if side != "" and (kind == "arm" or kind == "leg"):
-			var near := (side == "L") == (facing == 1)
+			var near := side == "L"   # L = the left arm/leg (the _front slots), R = the right one
 			var front: Array = ["arm_front", "arm_front2"] if kind == "arm" else ["leg_front"]
 			var back: Array = ["arm_back", "arm_back2"] if kind == "arm" else ["leg_back"]
 			for grp in ([front, back] if near else [back, front]):
@@ -2887,19 +2887,18 @@ func draw_weak_point(f: Fighter, off: Vector2) -> void:
 	draw_string(font, p + Vector2(-60, r + 16), tr("WEAK"), HORIZONTAL_ALIGNMENT_CENTER, 120, fs(11), c)
 
 
-func draw_part_map(f: Fighter, at: Vector2, mirror: bool, k: float = UI_SCALE) -> void:
+func draw_part_map(f: Fighter, at: Vector2, _mirror: bool, k: float = UI_SCALE) -> void:
 	var boxes := {
 		"head": Rect2(-7, 0, 14, 12), "head2": Rect2(-19, 2, 10, 10), "torso": Rect2(-10, 14, 20, 22),
-		"arm_front": Rect2(12, 14, 6, 20), "arm_back": Rect2(-18, 14, 6, 20),
-		"arm_front2": Rect2(20, 20, 5, 16), "arm_back2": Rect2(-25, 20, 5, 16),
-		"leg_front": Rect2(1, 38, 7, 18), "leg_back": Rect2(-8, 38, 7, 18),
+		"arm_front": Rect2(-18, 14, 6, 20), "arm_back": Rect2(12, 14, 6, 20),
+		"arm_front2": Rect2(-25, 20, 5, 16), "arm_back2": Rect2(20, 20, 5, 16),
+		"leg_front": Rect2(-8, 38, 7, 18), "leg_back": Rect2(1, 38, 7, 18),
 	}
 	for slot in boxes:
 		if not f.parts.has(slot) or f.parts[slot].is_empty():
 			continue
 		var r: Rect2 = boxes[slot]
-		if mirror:
-			r.position.x = -(r.position.x + r.size.x)
+		# (no mirroring: the map is the robot seen from the front, left parts on the left, like the bay)
 		r = Rect2(at + r.position * k, r.size * k)
 		var c := Color(0.25, 0.25, 0.28)
 		if f.state == "ko":
@@ -3679,7 +3678,7 @@ func ready_special() -> String:
 
 
 func part_word(slot: String) -> String:
-	return tr({"head": "head", "arm_front": "front arm", "arm_back": "back arm", "leg_front": "front leg", "leg_back": "back leg"}.get(slot, slot))
+	return tr({"head": "head", "arm_front": "left arm", "arm_back": "right arm", "leg_front": "left leg", "leg_back": "right leg"}.get(slot, slot))
 
 
 const GUS_LOOK := {"skin": "#6b4530", "hair": "#33507a", "hat": "cap", "beard": "full", "beard_color": "#c4c4c4",

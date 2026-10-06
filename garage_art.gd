@@ -9,7 +9,7 @@ const RobotArt = preload("res://robot_art.gd")
 
 ## Where the robot stands in each scene: [x as fraction of width, height as fraction of panel]
 const ROBOT_SPOT := {
-	"build": [0.62, 0.74], "shop": [0.8, 0.5], "workshop": [0.74, 0.56], "scrap": [0.8, 0.5],
+	"build": [0.55, 0.64], "shop": [0.8, 0.5], "workshop": [0.74, 0.56], "scrap": [0.8, 0.5],
 	"paint": [0.5, 0.72], "moves": [0.62, 0.7], "team": [0.64, 0.66], "cups": [0.68, 0.62],
 	"storage": [0.72, 0.5],
 }
@@ -90,6 +90,8 @@ static func _props_back(ci: CanvasItem, size: Vector2, scene: String, t: float, 
 			var ps := clampf(size.y / 300.0, 0.6, 1.3)
 			PilotArt.draw_person(ci, Vector2(lx + 4.0, lerpf(floor_y, top_y, 0.68)), ps, info.get("pilot", {}), -1.0, "point", t + 1.3)
 			_head(info, "YOU", Vector2(lx + 4.0, lerpf(floor_y, top_y, 0.68)), ps)
+			if info.has("gantry"):
+				_gantry(ci, info["gantry"], floor_y)
 			# lift platform
 			ci.draw_rect(Rect2(size.x * 0.56 - 50, floor_y - 6, 100, 8), Color(0.75, 0.6, 0.15))
 			for k in 6:
@@ -181,11 +183,11 @@ static func _front(ci: CanvasItem, size: Vector2, scene: String, t: float, info:
 	match scene:
 		"build":
 			# Gus works on the robot's leg with a wrench, sparks fly (the pilot is up the ladder behind)
-			PilotArt.draw_person(ci, Vector2(robot_base.x - 52 * s, floor_y), s, gus, 1.0, "wrench", t)
-			_head(info, "GUS", Vector2(robot_base.x - 52 * s, floor_y), s)
+			PilotArt.draw_person(ci, Vector2(robot_base.x - 84 * s, floor_y), s, gus, 1.0, "wrench", t)
+			_head(info, "GUS", Vector2(robot_base.x - 84 * s, floor_y), s)
 			var spark_age: float = info.get("spark", 99.0)
 			if fmod(t, 2.4) < 0.25 or spark_age < 0.6:
-				_sparks(ci, Vector2(robot_base.x - 22 * s, floor_y - robot_h * 0.25), t, 1.5 if spark_age < 0.6 else 1.0)
+				_sparks(ci, Vector2(robot_base.x - 50 * s, floor_y - robot_h * 0.25), t, 1.5 if spark_age < 0.6 else 1.0)
 		"shop":
 			# a desk with a computer showing the parts website
 			var desk := Rect2(12, floor_y - 44 * s, size.x * 0.6, 8 * s)
@@ -323,6 +325,47 @@ static func _front(ci: CanvasItem, size: Vector2, scene: String, t: float, info:
 
 
 # ---------------------------------------------------------------- bits
+
+## Gus's gantry: two steel posts, a hazard-striped beam over the robot's head, and chains down to
+## its shoulders, so it hangs there arms open while he works on it.
+## g = {"left": shoulder, "right": shoulder, "top": y above the head, "reach": half the width with arms}
+static func _gantry(ci: CanvasItem, g: Dictionary, floor_y: float) -> void:
+	var sl: Vector2 = g["left"]
+	var sr: Vector2 = g["right"]
+	var mid := (sl.x + sr.x) * 0.5
+	var reach: float = g["reach"]
+	var beam_y: float = g["top"] - 26.0
+	var steel := Color(0.36, 0.38, 0.43)
+	var xl := mid - reach - 12.0
+	var xr := mid + reach + 12.0
+	for x in [xl, xr]:
+		ci.draw_rect(Rect2(x - 5, beam_y, 10, floor_y - beam_y), steel)
+		ci.draw_rect(Rect2(x - 5, beam_y, 3, floor_y - beam_y), steel.lightened(0.15))
+		ci.draw_rect(Rect2(x - 12, floor_y - 6, 24, 6), steel.darkened(0.3))   # foot plate
+	# corner braces
+	ci.draw_line(Vector2(xl + 4, beam_y + 30), Vector2(xl + 30, beam_y + 8), steel, 4.0)
+	ci.draw_line(Vector2(xr - 4, beam_y + 30), Vector2(xr - 30, beam_y + 8), steel, 4.0)
+	# the beam, hazard striped
+	var beam := Rect2(xl - 8, beam_y - 6, xr - xl + 16, 13)
+	ci.draw_rect(beam, Color(0.1, 0.1, 0.1))
+	var x := beam.position.x + 2.0
+	while x < beam.end.x - 10.0:
+		ci.draw_colored_polygon(PackedVector2Array([Vector2(x, beam.end.y - 2), Vector2(x + 6, beam.end.y - 2),
+				Vector2(x + 12, beam.position.y + 2), Vector2(x + 6, beam.position.y + 2)]), Color(0.95, 0.76, 0.19))
+		x += 14.0
+	ci.draw_rect(beam, Color(0.05, 0.05, 0.05), false, 2.0)
+	# chains down to the shoulders, with a hook at the end
+	for sh in [sl, sr]:
+		var top := Vector2(sh.x, beam.end.y)
+		var n := int((sh.y - 10.0 - top.y) / 7.0)
+		for k in maxi(n, 0):
+			var p := top + Vector2(0, 4 + k * 7.0)
+			if k % 2 == 0:
+				ci.draw_rect(Rect2(p - Vector2(2.5, 3.5), Vector2(5, 7)), Color(0.55, 0.56, 0.6), false, 1.6)
+			else:
+				ci.draw_line(p - Vector2(0, 3.5), p + Vector2(0, 3.5), Color(0.55, 0.56, 0.6), 2.0)
+		ci.draw_arc(Vector2(sh.x, sh.y - 6.0), 5.0, PI * 0.1, PI * 1.2, 8, Color(0.7, 0.7, 0.74), 2.5)
+
 
 ## Remember where a person's head is (stage coordinates), so the garage can point speech bubbles at it.
 static func _head(info: Dictionary, who: String, feet: Vector2, s: float, sitting: bool = false) -> void:

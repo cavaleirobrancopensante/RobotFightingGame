@@ -195,6 +195,83 @@ static func draw(ci: CanvasItem, base: Vector2, look: Dictionary, pose: Dictiona
 	ci.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
 
+# ---------------------------------------------------------------- front view (the bay's gantry)
+
+## Body measurements seen from the front: torso in the middle, the left arm/leg (the _front slots)
+## on the left of the picture, the right ones on the right. Shoulder/hip points are for the right
+## side; the left side is the same point mirrored.
+static func front_geom(look: Dictionary) -> Dictionary:
+	var g := geom(look)
+	var tw: float = g["tw"]
+	var top: float = g["top"]
+	var th: float = g["th"]
+	var head: Rect2 = g["head"]
+	var head2: Rect2 = g["head2"]
+	var two_heads: bool = _alive(look, "head2") or look["parts"].get("head2", {}).has("shape")
+	head.position.x = (tw * 0.2 if two_heads else 0.0) - head.size.x * 0.5
+	head2.position.x = -tw * 0.2 - head2.size.x * 0.5
+	g["head"] = head
+	g["head2"] = head2
+	g["shoulder"] = Vector2(tw * 0.5 + 3.0, top + 12.0)
+	g["shoulder2"] = Vector2(tw * 0.5 + 5.0, top + th * 0.55)
+	g["hip"] = Vector2(maxf(tw * 0.3, 16.0), -g["L"])
+	return g
+
+
+## The robot facing you, arms hanging open (the bay, hanging on Gus's gantry).
+static func draw_front(ci: CanvasItem, base: Vector2, look: Dictionary, pose: Dictionary = {}) -> void:
+	var sc: float = pose.get("scale", 1.0) * look.get("scale", 1.0)
+	var t: float = pose.get("time", 0.0)
+	var g := front_geom(look)
+	var trim: Color = look["trim"]
+	var eye: Color = look["eye"]
+	var right := Transform2D(0.0, Vector2(sc, sc), 0.0, base)
+	var left := right * Transform2D(0.0, Vector2(-1.0, 1.0), 0.0, Vector2.ZERO)
+	ci.draw_set_transform_matrix(right)
+	_draw_back(ci, look, g, pose, false, trim, t)   # back gear peeks out from behind
+	ci.draw_set_transform_matrix(left)
+	_draw_leg(ci, look, "leg_front", g["hip"], g["L"], "stand", 0.0, false, false, trim)
+	ci.draw_set_transform_matrix(right)
+	_draw_leg(ci, look, "leg_back", g["hip"], g["L"], "stand", 0.0, false, false, trim)
+	_draw_torso(ci, look, g, false, trim, eye, t, true)
+	for side in [["arm_front", left], ["arm_back", right]]:
+		ci.draw_set_transform_matrix(side[1])
+		if look["parts"].has(side[0] + "2") and look["parts"][side[0] + "2"].has("shape"):
+			_draw_arm(ci, look, side[0] + "2", g["shoulder2"], "open", false, false, trim, t)
+		_draw_arm(ci, look, side[0], g["shoulder"], "open", false, false, trim, t)
+	ci.draw_set_transform_matrix(right)
+	if look["parts"].has("head2") and look["parts"]["head2"].has("shape"):
+		_draw_head(ci, look, g, false, trim, eye, t, "head2", true)
+	_draw_head(ci, look, g, false, trim, eye, t, "head", true)
+	ci.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+
+
+## Tap boxes for the front view (local coordinates, standing). Order = tap priority.
+static func front_regions(look: Dictionary) -> Array:
+	var g := front_geom(look)
+	var sh: Vector2 = g["shoulder"]
+	var sh2: Vector2 = g["shoulder2"]
+	var hip: Vector2 = g["hip"]
+	var L: float = g["L"]
+	var out: Array = []
+	for k in ["head", "head2"]:
+		if _alive(look, k):
+			out.append([k, (g[k] as Rect2).grow(6.0)])
+	var arm := Rect2(sh.x - 8.0, sh.y - 12.0, 50.0, 80.0)
+	var arm2 := Rect2(sh2.x - 8.0, sh2.y - 10.0, 48.0, 76.0)
+	var leg := Rect2(hip.x - 13.0, hip.y, 26.0, L)
+	for pair in [["arm_back", arm], ["arm_back2", arm2], ["leg_back", leg]]:
+		if _alive(look, pair[0]):
+			out.append([pair[0], pair[1]])
+		var lslot: String = str(pair[0]).replace("_back", "_front")
+		if _alive(look, lslot):
+			var r: Rect2 = pair[1]
+			out.append([lslot, Rect2(-r.end.x, r.position.y, r.size.x, r.size.y)])
+	if _alive(look, "torso"):
+		out.append(["torso", g["torso"]])
+	return out
+
+
 static func _col(p: Dictionary, flash: bool, back: bool) -> Color:
 	if flash:
 		return Color.WHITE
@@ -248,6 +325,10 @@ static func _draw_arm(ci: CanvasItem, look: Dictionary, slot: String, s: Vector2
 		"limp":
 			e = s + Vector2(4 if not back else -6, 26)
 			h = s + Vector2(10 if not back else 0, 50)
+		"open":
+			# front view on the gantry: hanging down and out to the side
+			e = s + Vector2(12, 28)
+			h = s + Vector2(26, 58)
 		_:
 			e = s + Vector2(6 if not back else -8, 26)
 			h = s + Vector2(36 if not back else 30, 18 if not back else 24)
@@ -544,7 +625,7 @@ static func _rounded(r: Rect2, rad: float) -> PackedVector2Array:
 	return pts
 
 
-static func _draw_torso(ci: CanvasItem, look: Dictionary, g: Dictionary, flash: bool, trim: Color, eye: Color, t: float) -> void:
+static func _draw_torso(ci: CanvasItem, look: Dictionary, g: Dictionary, flash: bool, trim: Color, eye: Color, t: float, front: bool = false) -> void:
 	var p := _part(look, "torso")
 	if not p.get("alive", false):
 		return
@@ -555,7 +636,7 @@ static func _draw_torso(ci: CanvasItem, look: Dictionary, g: Dictionary, flash: 
 	var y0 := r.position.y
 	var y1 := r.end.y
 	var w := r.size.x
-	var chest := Vector2(r.get_center().x + w * 0.1, y0 + r.size.y * 0.38)
+	var chest := Vector2(r.get_center().x + (0.0 if front else w * 0.1), y0 + r.size.y * 0.38)
 	match p["shape"]:
 		"barrel":
 			ci.draw_colored_polygon(_rounded(r, w * 0.3), c)
@@ -622,10 +703,17 @@ static func _draw_torso(ci: CanvasItem, look: Dictionary, g: Dictionary, flash: 
 		"cannon":
 			ci.draw_rect(r, c)
 			ci.draw_rect(Rect2(x0 - 4, y0 - 2, w + 8, 12), trim)
-			var mouth := Vector2(x1, y0 + r.size.y * 0.5)
-			ci.draw_rect(Rect2(x1 - 10, mouth.y - 11, 26, 22), c.darkened(0.3))
-			ci.draw_circle(mouth + Vector2(16, 0), 10.0, Color(0.08, 0.08, 0.08))
-			ci.draw_arc(mouth + Vector2(16, 0), 10.0, 0, TAU, 16, trim, 3.0)
+			if front:
+				# the cannon's muzzle, looking straight at you
+				var m := Vector2(r.get_center().x, y0 + r.size.y * 0.66)
+				ci.draw_circle(m, 13.0, c.darkened(0.3))
+				ci.draw_circle(m, 9.0, Color(0.08, 0.08, 0.08))
+				ci.draw_arc(m, 9.0, 0, TAU, 16, trim, 3.0)
+			else:
+				var mouth := Vector2(x1, y0 + r.size.y * 0.5)
+				ci.draw_rect(Rect2(x1 - 10, mouth.y - 11, 26, 22), c.darkened(0.3))
+				ci.draw_circle(mouth + Vector2(16, 0), 10.0, Color(0.08, 0.08, 0.08))
+				ci.draw_arc(mouth + Vector2(16, 0), 10.0, 0, TAU, 16, trim, 3.0)
 		"slim":
 			ci.draw_rect(r, c)
 			ci.draw_line(Vector2(x0, y1 - 10), Vector2(x1, y0 + 20), trim, 5.0)
@@ -656,7 +744,7 @@ static func _draw_torso(ci: CanvasItem, look: Dictionary, g: Dictionary, flash: 
 
 
 # ---- head
-static func _draw_head(ci: CanvasItem, look: Dictionary, g: Dictionary, flash: bool, trim: Color, eye: Color, t: float, slot: String = "head") -> void:
+static func _draw_head(ci: CanvasItem, look: Dictionary, g: Dictionary, flash: bool, trim: Color, eye: Color, t: float, slot: String = "head", front: bool = false) -> void:
 	var p := _part(look, slot)
 	if not p.get("alive", false):
 		if _alive(look, "torso"):
@@ -675,8 +763,9 @@ static func _draw_head(ci: CanvasItem, look: Dictionary, g: Dictionary, flash: b
 		"bucket":
 			ci.draw_colored_polygon(PackedVector2Array([Vector2(x0 + 5, y0), Vector2(x0 + w - 5, y0), Vector2(x0 + w + 2, y0 + h), Vector2(x0 - 2, y0 + h)]), c)
 			ci.draw_arc(Vector2(cen.x, y0), w * 0.35, PI, TAU, 10, trim, 2.0)
-			ci.draw_circle(Vector2(cen.x + w * 0.1, y0 + h * 0.45), 3.5, eye)
-			ci.draw_circle(Vector2(cen.x + w * 0.32, y0 + h * 0.45), 3.5, eye)
+			var bx := -w * 0.21 if front else 0.0
+			ci.draw_circle(Vector2(cen.x + w * 0.1 + bx, y0 + h * 0.45), 3.5, eye)
+			ci.draw_circle(Vector2(cen.x + w * 0.32 + bx, y0 + h * 0.45), 3.5, eye)
 		"dome":
 			var pts := PackedVector2Array()
 			for k in 13:
@@ -685,14 +774,15 @@ static func _draw_head(ci: CanvasItem, look: Dictionary, g: Dictionary, flash: b
 			pts.append(Vector2(x0 + w, y0 + h))
 			pts.append(Vector2(x0, y0 + h))
 			ci.draw_colored_polygon(pts, c)
-			ci.draw_rect(Rect2(cen.x - w * 0.1, y0 + h * 0.5, w * 0.55, 6), eye)
+			ci.draw_rect(Rect2(cen.x - (w * 0.3 if front else w * 0.1), y0 + h * 0.5, w * 0.6 if front else w * 0.55, 6), eye)
 			ci.draw_circle(Vector2(cen.x - w * 0.15, y0 + h * 0.25), 4.0, Color(1, 1, 1, 0.35))
 		"cyclops":
 			var rad := minf(w, h) * 0.5
 			ci.draw_circle(cen, rad, c)
-			ci.draw_circle(cen + Vector2(rad * 0.25, 0), rad * 0.55, trim)
-			ci.draw_circle(cen + Vector2(rad * 0.3, 0), rad * 0.42, eye)
-			ci.draw_circle(cen + Vector2(rad * 0.4, 0), rad * 0.15, Color(0.05, 0.05, 0.05))
+			var cx := 0.0 if front else 1.0
+			ci.draw_circle(cen + Vector2(rad * 0.25 * cx, 0), rad * 0.55, trim)
+			ci.draw_circle(cen + Vector2(rad * 0.3 * cx, 0), rad * 0.42, eye)
+			ci.draw_circle(cen + Vector2(rad * 0.4 * cx, 0), rad * 0.15, Color(0.05, 0.05, 0.05))
 		"visor":
 			ci.draw_rect(r, c)
 			ci.draw_rect(Rect2(x0 + 2, y0 + h * 0.35, w - 2, h * 0.3), eye)
@@ -702,19 +792,27 @@ static func _draw_head(ci: CanvasItem, look: Dictionary, g: Dictionary, flash: b
 			ci.draw_rect(r, c)
 			ci.draw_colored_polygon(PackedVector2Array([Vector2(x0, y0 + 4), Vector2(x0 + 10, y0), Vector2(x0 - 8, y0 - 18)]), trim)
 			ci.draw_colored_polygon(PackedVector2Array([Vector2(x0 + w, y0 + 4), Vector2(x0 + w - 10, y0), Vector2(x0 + w + 8, y0 - 18)]), trim)
-			ci.draw_rect(Rect2(cen.x - 2, y0 + h * 0.38, w * 0.45, 6), eye)
+			ci.draw_rect(Rect2(cen.x - (w * 0.25 if front else 2.0), y0 + h * 0.38, w * 0.5 if front else w * 0.45, 6), eye)
 		"skull":
 			ci.draw_rect(Rect2(x0, y0, w, h * 0.62), c)
 			ci.draw_rect(Rect2(x0 + 2, y0 + h * 0.68, w - 2, h * 0.32), c.darkened(0.15))
 			for k in 5:
 				var tx := x0 + 6 + k * (w - 10) / 4.0
 				ci.draw_colored_polygon(PackedVector2Array([Vector2(tx - 3, y0 + h * 0.62), Vector2(tx + 3, y0 + h * 0.62), Vector2(tx, y0 + h * 0.75)]), Color(0.9, 0.9, 0.85))
-			ci.draw_circle(Vector2(cen.x + w * 0.05, y0 + h * 0.3), 4.5, eye)
-			ci.draw_circle(Vector2(cen.x + w * 0.3, y0 + h * 0.3), 4.5, eye)
+			var kx := -w * 0.175 if front else 0.0
+			ci.draw_circle(Vector2(cen.x + w * 0.05 + kx, y0 + h * 0.3), 4.5, eye)
+			ci.draw_circle(Vector2(cen.x + w * 0.3 + kx, y0 + h * 0.3), 4.5, eye)
 		"wedge":
-			ci.draw_colored_polygon(PackedVector2Array([Vector2(x0, y0), Vector2(x0 + w * 0.55, y0), Vector2(x0 + w + 8, y0 + h * 0.7), Vector2(x0 + w, y0 + h), Vector2(x0, y0 + h)]), c)
-			ci.draw_colored_polygon(PackedVector2Array([Vector2(x0 + w * 0.2, y0), Vector2(x0 + w * 0.35, y0 - 14), Vector2(x0 + w * 0.5, y0)]), trim)
-			ci.draw_line(Vector2(x0 + w * 0.5, y0 + h * 0.45), Vector2(x0 + w + 2, y0 + h * 0.62), eye, 4.0)
+			if front:
+				# a wedge seen nose-on: a shield shape with a fin on top and a V of an eye
+				ci.draw_colored_polygon(PackedVector2Array([Vector2(x0, y0), Vector2(x0 + w, y0), Vector2(x0 + w, y0 + h * 0.6), Vector2(cen.x, y0 + h + 4), Vector2(x0, y0 + h * 0.6)]), c)
+				ci.draw_colored_polygon(PackedVector2Array([Vector2(cen.x - 4, y0), Vector2(cen.x, y0 - 14), Vector2(cen.x + 4, y0)]), trim)
+				ci.draw_line(Vector2(x0 + w * 0.2, y0 + h * 0.4), Vector2(cen.x, y0 + h * 0.55), eye, 4.0)
+				ci.draw_line(Vector2(x0 + w * 0.8, y0 + h * 0.4), Vector2(cen.x, y0 + h * 0.55), eye, 4.0)
+			else:
+				ci.draw_colored_polygon(PackedVector2Array([Vector2(x0, y0), Vector2(x0 + w * 0.55, y0), Vector2(x0 + w + 8, y0 + h * 0.7), Vector2(x0 + w, y0 + h), Vector2(x0, y0 + h)]), c)
+				ci.draw_colored_polygon(PackedVector2Array([Vector2(x0 + w * 0.2, y0), Vector2(x0 + w * 0.35, y0 - 14), Vector2(x0 + w * 0.5, y0)]), trim)
+				ci.draw_line(Vector2(x0 + w * 0.5, y0 + h * 0.45), Vector2(x0 + w + 2, y0 + h * 0.62), eye, 4.0)
 		"tall":
 			ci.draw_rect(r, c)
 			ci.draw_rect(Rect2(x0 + 4, y0 + 8, w - 4, 6), eye)
@@ -731,8 +829,8 @@ static func _draw_head(ci: CanvasItem, look: Dictionary, g: Dictionary, flash: b
 				var a := PI + PI * k / 8.0
 				dome.append(Vector2(cen.x, y0 + h * 0.2) + Vector2(cos(a) * w * 0.5, sin(a) * h * 0.22))
 			ci.draw_colored_polygon(dome, c)
-			ci.draw_rect(Rect2(x0 + w * 0.35, y0 + h * 0.38, w * 0.62, 5), Color(0.05, 0.05, 0.05))
-			ci.draw_rect(Rect2(x0 + w * 0.45, y0 + h * 0.38, w * 0.4, 5), eye)
+			ci.draw_rect(Rect2(x0 + (w * 0.15 if front else w * 0.35), y0 + h * 0.38, w * (0.7 if front else 0.62), 5), Color(0.05, 0.05, 0.05))
+			ci.draw_rect(Rect2(x0 + (w * 0.3 if front else w * 0.45), y0 + h * 0.38, w * 0.4, 5), eye)
 			for k in 3:
 				ci.draw_line(Vector2(x0 + w * 0.5 + k * 6, y0 + h * 0.58), Vector2(x0 + w * 0.5 + k * 6, y0 + h * 0.85), c.darkened(0.45), 2.0)
 			ci.draw_line(Vector2(cen.x - 4, y0), Vector2(cen.x - 16, y0 - 16), trim, 6.0)
@@ -740,12 +838,16 @@ static func _draw_head(ci: CanvasItem, look: Dictionary, g: Dictionary, flash: b
 		"orb":
 			var rad := minf(w, h) * 0.5
 			ci.draw_circle(cen, rad, c)
-			ci.draw_arc(cen, rad * 0.8, -0.8, 0.8, 12, eye, 4.0)
-			ci.draw_circle(cen + Vector2(rad * 0.45, -rad * 0.1), rad * 0.22, eye)
+			if front:
+				ci.draw_arc(cen + Vector2(0, rad * 0.1), rad * 0.55, 0.5, PI - 0.5, 12, eye, 3.0)
+				ci.draw_circle(cen + Vector2(0, -rad * 0.1), rad * 0.22, eye)
+			else:
+				ci.draw_arc(cen, rad * 0.8, -0.8, 0.8, 12, eye, 4.0)
+				ci.draw_circle(cen + Vector2(rad * 0.45, -rad * 0.1), rad * 0.22, eye)
 			ci.draw_circle(cen + Vector2(-rad * 0.35, -rad * 0.4), rad * 0.18, Color(1, 1, 1, 0.3))
 		"speaker":
 			ci.draw_rect(r, c)
-			var sc2 := Vector2(cen.x + w * 0.12, cen.y + h * 0.05)
+			var sc2 := Vector2(cen.x + (0.0 if front else w * 0.12), cen.y + h * 0.05)
 			for k in 3:
 				ci.draw_arc(sc2, h * (0.12 + k * 0.1), 0, TAU, 16, c.darkened(0.35 + k * 0.1), 3.0)
 			ci.draw_circle(sc2, h * 0.08, eye)
@@ -757,16 +859,17 @@ static func _draw_head(ci: CanvasItem, look: Dictionary, g: Dictionary, flash: b
 			var scr := Rect2(x0 + 5, y0 + 5, w - 14, h - 10)
 			ci.draw_rect(scr, Color(0.05, 0.12, 0.08))
 			var face_y := scr.position.y + scr.size.y * 0.4
-			ci.draw_rect(Rect2(scr.position.x + scr.size.x * 0.45, face_y, 5, 5), eye)
-			ci.draw_rect(Rect2(scr.position.x + scr.size.x * 0.75, face_y, 5, 5), eye)
-			ci.draw_line(Vector2(scr.position.x + scr.size.x * 0.45, face_y + 12), Vector2(scr.end.x - 4, face_y + 12), eye, 2.0)
+			var tvx := -scr.size.x * 0.2 if front else 0.0
+			ci.draw_rect(Rect2(scr.position.x + scr.size.x * 0.45 + tvx, face_y, 5, 5), eye)
+			ci.draw_rect(Rect2(scr.position.x + scr.size.x * 0.75 + tvx, face_y, 5, 5), eye)
+			ci.draw_line(Vector2(scr.position.x + scr.size.x * 0.45 + tvx, face_y + 12), Vector2(scr.end.x - 4 + tvx, face_y + 12), eye, 2.0)
 			var scan := scr.position.y + fmod(t * 30.0, scr.size.y)
 			ci.draw_line(Vector2(scr.position.x, scan), Vector2(scr.end.x, scan), Color(1, 1, 1, 0.12), 2.0)
 			ci.draw_line(Vector2(cen.x - 6, y0), Vector2(cen.x - 14, y0 - 14), trim, 2.0)
 			ci.draw_line(Vector2(cen.x + 2, y0), Vector2(cen.x + 10, y0 - 14), trim, 2.0)
 		"dish":
 			ci.draw_rect(Rect2(x0 + w * 0.2, y0 + h * 0.45, w * 0.6, h * 0.55), c)
-			ci.draw_rect(Rect2(cen.x, y0 + h * 0.6, w * 0.32, 6), eye)
+			ci.draw_rect(Rect2(cen.x - (w * 0.16 if front else 0.0), y0 + h * 0.6, w * 0.32, 6), eye)
 			var dc := Vector2(cen.x - 2, y0 + h * 0.2)
 			var wob := sin(t * 2.0) * 0.4
 			ci.draw_arc(dc, w * 0.45, PI + 0.3 + wob, TAU - 0.3 + wob, 14, trim, 5.0)
@@ -774,9 +877,13 @@ static func _draw_head(ci: CanvasItem, look: Dictionary, g: Dictionary, flash: b
 			ci.draw_circle(dc + Vector2(sin(wob) * 4.0, -w * 0.3), 3.0, eye)
 		"laser":
 			ci.draw_rect(r, c)
-			ci.draw_rect(Rect2(x0 + w - 4, cen.y - 8, 14, 16), c.darkened(0.3))
-			ci.draw_circle(Vector2(x0 + w + 10, cen.y), 7.0, eye)
-			ci.draw_circle(Vector2(x0 + w + 10, cen.y), 3.0, Color(1, 1, 1, 0.9))
+			var lz := Vector2(cen.x, cen.y + 2) if front else Vector2(x0 + w + 10, cen.y)
+			if front:
+				ci.draw_circle(lz, 10.0, c.darkened(0.3))
+			else:
+				ci.draw_rect(Rect2(x0 + w - 4, cen.y - 8, 14, 16), c.darkened(0.3))
+			ci.draw_circle(lz, 7.0, eye)
+			ci.draw_circle(lz, 3.0, Color(1, 1, 1, 0.9))
 			ci.draw_line(Vector2(x0 + 3, y0 + 6), Vector2(x0 + w - 6, y0 + 6), c.darkened(0.4), 2.0)
 		"bulb":
 			ci.draw_rect(Rect2(cen.x - w * 0.3, y0 + h * 0.75, w * 0.6, h * 0.25), trim)
@@ -788,7 +895,7 @@ static func _draw_head(ci: CanvasItem, look: Dictionary, g: Dictionary, flash: b
 			ci.draw_polyline(fil, eye, 2.0)
 		_:
 			ci.draw_rect(r, c)
-			ci.draw_rect(Rect2(cen.x + 2, y0 + h * 0.36, w * 0.42, 7), eye)
+			ci.draw_rect(Rect2(cen.x - (w * 0.25 if front else -2.0), y0 + h * 0.36, w * (0.5 if front else 0.42), 7), eye)
 			ci.draw_line(Vector2(x0 + 8, y0), Vector2(x0 + 4, y0 - 14), trim, 3.0)
 			ci.draw_circle(Vector2(x0 + 4, y0 - 15), 3.0, eye)
 	var hp: float = p.get("health", 1.0)

@@ -79,6 +79,14 @@ class Backdrop extends Control:
 			pivot_offset = stage.position + pivot
 			scale = Vector2(ZOOM, ZOOM)
 		var info: Dictionary = garage.scene_info()
+		if pv.front and not pv.look.is_empty():
+			# where the robot's shoulders and head are, so the gantry's chains reach them
+			var k: float = pv._sc * float(pv.look.get("scale", 1.0))
+			var fg := RobotArt.front_geom(pv.look)
+			var sh: Vector2 = fg["shoulder"]
+			var top: float = minf((fg["head"] as Rect2).position.y, (fg["head2"] as Rect2).position.y if pv.look["parts"].get("head2", {}).has("shape") else 0.0)
+			info["gantry"] = {"left": pv._base + Vector2(-sh.x, sh.y) * k, "right": pv._base + sh * k,
+					"top": pv._base.y + top * k, "reach": (sh.x + 38.0) * k}
 		GarageArt.draw_back(self, size, stage, garage.scene, t, info)
 		GarageArt.draw_front(self, stage, garage.scene, t, info, pv._base, pv.robot_height)
 		# where everyone's head is on screen, for the speech bubbles
@@ -95,6 +103,8 @@ var repair_button: Button
 var left_col: VBoxContainer
 var bubble
 const GUI = preload("res://garage_ui.gd")
+const PartNotes = preload("res://part_notes.gd")
+const RobotArt = preload("res://robot_art.gd")
 
 
 ## The little green body next to the fight button (same as in the arena): what's hurt, what's missing.
@@ -232,6 +242,7 @@ func _ready() -> void:
 	preview.custom_minimum_size = Vector2(300, 110)
 	preview.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	preview.part_tapped.connect(_on_part_tapped)
+	preview.callout_font = GUI.bold()
 	preview.background_tapped.connect(_on_backdrop_tapped)
 	left_col.add_child(preview)
 	stats_box = VBoxContainer.new()
@@ -795,6 +806,7 @@ func refresh() -> void:
 	set_seg(seg())
 	set_scene_for_tab()
 	preview.highlight = selected if tab == "Bay" and seg() == "robot" else ""
+	preview.callouts = part_callouts(preview.highlight)
 	refresh_stats()
 	build_rail()
 	build_seg_bar()
@@ -972,6 +984,21 @@ func make_tap_row(icon: Control, title: String, subtitle: String, cb: Callable, 
 
 
 ## Health as a block bar (1 block = 10 HP) with the numbers glowing next to it.
+## The notes drawn off the selected part in the bay (what it is, who made it, what's wrong with it).
+func part_callouts(slot: String) -> Array:
+	if slot == "":
+		return []
+	var inst := GameData.equipped_inst(slot)
+	if inst.is_empty() or not inst.has("id"):
+		return [tr("Empty - tap to fit a part")]
+	var d := GameData.part_def(inst["id"])
+	var out: Array = []
+	for n in PartNotes.notes(d, str(d.get("kind", GameData.SLOT_KIND.get(slot, ""))), GameData.hp_ratio(inst), str(inst.get("uid", inst["id"]))):
+		var warn := str(n).begins_with("!")
+		out.append(("!" if warn else "") + tr(str(n).trim_prefix("!")))
+	return out
+
+
 func hp_widget(p: Dictionary) -> HBoxContainer:
 	var d := GameData.part_def(p["id"])
 	var h := GameData.hp_ratio(p)
@@ -1576,6 +1603,7 @@ func set_scene_for_tab() -> void:
 			scene = "team"
 	preview.spot = GarageArt.robot_spot(scene)
 	preview.facing = 1 if scene == "paint" else -1
+	preview.front = scene == "build"   # in the bay the robot hangs on Gus's gantry, facing you
 	preview.queue_redraw()
 
 

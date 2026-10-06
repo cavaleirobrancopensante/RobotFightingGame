@@ -1,0 +1,127 @@
+extends RefCounted
+## Flavour for the bay's callouts: short notes about what a part is, how it's built and how
+## beaten up it is. Shown next to the part you tap on the robot hanging on Gus's gantry.
+## Each shape has two notes (a part shows one, picked by its id, so parts of the same shape differ),
+## brands add one, and damage adds a warning. Edit freely - keep notes short (they sit in a small box).
+
+const SHAPE := {
+	# heads
+	"head:bucket": ["Actual bucket. Still holds water", "Eye holes drilled by hand"],
+	"head:box": ["Sheet steel, riveted square", "Antenna picks up the radio"],
+	"head:dome": ["Pressed steel dome", "Wide-angle eye strip"],
+	"head:cyclops": ["One big lens, 180° sweep", "Iris motor whirs when it aims"],
+	"head:visor": ["Full-width optic visor", "Night vision, mostly"],
+	"head:horned": ["Horns are welded rebar", "Horns: decorative. Allegedly"],
+	"head:skull": ["Jaw bolted shut", "Teeth are filed bolts"],
+	"head:wedge": ["Wedge nose splits punches", "Fin keeps it pointed forward"],
+	"head:tall": ["Antenna mast, 3 bands", "Tall head, long sight lines"],
+	"head:bulb": ["Glass dome, hot filament", "Do not tap the glass"],
+	"head:tv": ["Old CRT, warm-up 2 s", "Face is a screensaver"],
+	"head:dish": ["Radar dish tracks moves", "Dish pings 4 times a second"],
+	"head:laser": ["Laser rangefinder", "Red dot never misses (it says)"],
+	"head:knight": ["Visor slit, 6 mm", "Plume mount, no plume"],
+	"head:orb": ["Sealed sphere, no seams", "Gyro keeps the eye level"],
+	"head:speaker": ["Woofer face, 400 W", "Plays the crowd back at them"],
+	# torsos
+	"torso:barrel": ["Oil drum, two hoops", "Still smells of diesel"],
+	"torso:box": ["Boxed steel frame", "Hatch for the battery"],
+	"torso:vee": ["V-chest, wide shoulders", "Tapered for a lower stance"],
+	"torso:core": ["Glowing core, keep clear", "Core hums at 50 Hz"],
+	"torso:tank": ["Riveted tank plating", "Heavy, slow, hard to dent"],
+	"torso:slim": ["Slim frame, all spine", "Light chassis, quick turns"],
+	"torso:ribcage": ["Open ribs, easy to fix", "Wires run through the ribs"],
+	"torso:hex": ["Hex-cell armor shell", "Each cell takes a hit alone"],
+	"torso:cannon": ["Chest cannon (blank rounds)", "Muzzle doubles as a vent"],
+	"torso:crate": ["Shipping crate, cross-braced", "Stencil still says FRAGILE"],
+	"torso:furnace": ["Coal furnace, 600 °C", "Grill doubles as a toaster"],
+	"torso:orb": ["Ball chassis, rolls with hits", "Glancing hits slide off"],
+	"torso:yoke": ["Two necks, one spine", "Second head mount"],
+	"torso:quad": ["Four shoulder mounts", "Extra arms bolt on low"],
+	"torso:monster": ["Every mount there is", "Spikes are load-bearing"],
+	# arms
+	"arm:rod": ["Steel pipe, ball fist", "Elbow is a door hinge"],
+	"arm:piston": ["Hydraulic piston, 2 t push", "Piston stroke 30 cm"],
+	"arm:claw": ["Two-finger claw grip", "Claw closes in 0.2 s"],
+	"arm:spike": ["Spiked knuckles", "Spikes hardened twice"],
+	"arm:bulky": ["Heavy forearm, big fist", "Fist alone weighs 40 kg"],
+	"arm:hammer": ["Sledgehammer head", "Head swings on a pivot"],
+	"arm:drill": ["Drill at 1,800 rpm", "Tungsten drill bit"],
+	"arm:rocket": ["Rocket fist, it comes back", "Fist launches on a cable"],
+	"arm:grapple": ["Grapple hook, 3 m line", "Pulls them in for a hold"],
+	"arm:saw": ["Saw spins at 3,200 rpm", "Blade guard removed"],
+	"arm:blade": ["Forearm blade, honed", "Blade folds for transport"],
+	"arm:flame": ["Flamer nozzle, pilot light on", "Fuel line runs to the torso"],
+	"arm:magnet": ["Electromagnet, 1 t pull", "Keep your keys away"],
+	# legs
+	"leg:rod": ["Pipe leg, rubber foot", "Knee is a bike hub"],
+	"leg:piston": ["Piston knee, soft landing", "Hydraulic shock absorber"],
+	"leg:spring": ["Coil spring, bouncy step", "Spring steel, 40 coils"],
+	"leg:reverse": ["Reverse knee, big jumps", "Bird-leg joint"],
+	"leg:pillar": ["Solid pillar, won't budge", "Concrete-filled shin"],
+	"leg:thick": ["Thick plated leg", "Wide foot, steady stance"],
+	"leg:pogo": ["Pogo stick shin", "Boing"],
+	"leg:wheel": ["Wheel foot, fast on flat", "Bearings packed in grease"],
+	"leg:tread": ["Tank tread, all terrain", "Treads grip the canvas"],
+	"leg:blade": ["Blade runner foot", "Carbon spring blade"],
+	"leg:hover": ["Hover pad, 5 cm lift", "Fan intake, keep fingers out"],
+	"leg:spider": ["Spider leg, low stance", "Three joints, all wobbly"],
+	# back gear
+	"back:battery": ["Spare battery pack", "Hot-swappable cells"],
+	"back:spikes": ["Back spikes, no hugs", "Spikes face the grabber"],
+	"back:booster": ["Twin boosters", "Burns for a dash"],
+	"back:jet": ["Jet pack, two nozzles", "Fuel for a few hops"],
+	"back:plating": ["Bolt-on back plating", "Armor where they grab you"],
+	"back:wings": ["Folding wings, double jump", "Flaps for balance"],
+	"back:shield": ["Pop-up shield arm", "Shield on a swing mount"],
+}
+
+const KIND := {
+	"head": ["Sensors and chip slots", "Brain of the outfit"],
+	"torso": ["Holds the power core", "Everything bolts to this"],
+	"arm": ["Shoulder bolted at 4 points", "Wiring run inside the arm"],
+	"leg": ["Hip joint greased today", "Balance motor in the knee"],
+	"back": ["Bolted to the back plate", "Clips onto the spine"],
+	"reactor": ["Power for every part", "Cooling fins on the casing"],
+}
+
+const BRAND := {
+	"scrap": "Scrapworks: cheap, honest junk",
+	"ironclad": "Ironclad: built like a bunker",
+	"volta": "Volta: crackles when it moves",
+	"pyro": "Pyro Labs: runs hot",
+	"frost": "Frostbyte: frost on the joints",
+	"magnetica": "Magnetica: tools stick to it",
+	"kane": "Kane Dynamics: serial filed off",
+	"nimbus": "Nimbus: light as a kite",
+	"medix": "Medix: smells of disinfectant",
+	"boom": "Boomstick: don't drop it",
+}
+
+# [a bit beaten up (under 60%), badly beaten up (under 30%)] per kind
+const DAMAGE := {
+	"head": [["Dented, one eye flickers", "Cracked lens"], ["Hanging by its wires", "Sees double"]],
+	"torso": [["Bent frame, rattles", "Plates sprung loose"], ["Core exposed!", "Sparks in the chest"]],
+	"arm": [["Elbow loose", "Fist knocked out of true"], ["Hanging by two bolts", "Shoulder half torn off"]],
+	"leg": [["Bent strut", "Knee clicks"], ["Knee about to fold", "Foot dragging"]],
+	"back": [["Mount bracket bent", "Rattling about"], ["Barely attached", "Leaking"]],
+	"reactor": [["Running warm", "Power flickers"], ["Overheating!", "Smoke from the vents"]],
+}
+
+
+## The callout lines for a part: [what it is, its brand or build, damage warning ("!" = red)].
+static func notes(d: Dictionary, kind: String, health: float, seed_text: String) -> Array:
+	var pick := absi(hash(seed_text)) % 2
+	var out: Array = []
+	var shape_key := "%s:%s" % [kind, d.get("shape", "")]
+	if SHAPE.has(shape_key):
+		out.append(SHAPE[shape_key][pick])
+	elif KIND.has(kind):
+		out.append(KIND[kind][pick])
+	var brand: String = d.get("brand", "")
+	if BRAND.has(brand):
+		out.append(BRAND[brand])
+	elif KIND.has(kind) and out.size() == 1 and SHAPE.has(shape_key):
+		out.append(KIND[kind][1 - pick])
+	if DAMAGE.has(kind) and health < 0.6:
+		out.append("!" + DAMAGE[kind][1 if health < 0.3 else 0][pick])
+	return out

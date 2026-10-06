@@ -10,6 +10,11 @@ signal background_tapped(pos: Vector2)   # a tap that missed the robot (the gara
 
 var look := {}
 var facing := 1
+## The bay: the robot faces you, hanging on Gus's gantry. Tapped parts get a hazard-stripe outline,
+## and callouts (short notes about the selected part) are drawn off to the side with a line to it.
+var front := false
+var callouts: Array = []
+var callout_font: Font
 var show_floor := true
 var anim := true
 var interactive := false
@@ -26,9 +31,9 @@ var robot_height := 0.0
 var part_health := {}
 const MAP_BOXES := {
 	"head": Rect2(-7, 0, 14, 12), "head2": Rect2(-19, 2, 10, 10), "torso": Rect2(-10, 14, 20, 22),
-	"arm_front": Rect2(12, 14, 6, 20), "arm_back": Rect2(-18, 14, 6, 20),
-	"arm_front2": Rect2(20, 20, 5, 16), "arm_back2": Rect2(-25, 20, 5, 16),
-	"leg_front": Rect2(1, 38, 7, 18), "leg_back": Rect2(-8, 38, 7, 18),
+	"arm_front": Rect2(-18, 14, 6, 20), "arm_back": Rect2(12, 14, 6, 20),
+	"arm_front2": Rect2(-25, 20, 5, 16), "arm_back2": Rect2(20, 20, 5, 16),
+	"leg_front": Rect2(-8, 38, 7, 18), "leg_back": Rect2(1, 38, 7, 18),
 }   # how tall the robot is drawn, in pixels (for the people around it)
 
 
@@ -63,16 +68,22 @@ func _draw() -> void:
 		_sc = clampf((size.y * float(spot[1]) - 10.0) / tall, 0.2, 2.5) / look.get("scale", 1.0)
 		_base = Vector2(size.x * float(spot[0]), floor_y)
 	robot_height = tall * _sc * look.get("scale", 1.0)
-	RobotArt.draw(self, _base, look, {"scale": _sc, "facing": facing, "time": t})
+	if front:
+		RobotArt.draw_front(self, _base, look, {"scale": _sc, "time": t})
+	else:
+		RobotArt.draw(self, _base, look, {"scale": _sc, "facing": facing, "time": t})
 	if interactive and highlight != "":
 		for r in _regions():
 			if r[0] == highlight:
 				var rect: Rect2 = r[1]
 				var k: float = _sc * look.get("scale", 1.0)
+				var f := 1 if front else facing
 				# mirrored robots: flip the box's size too, then abs() puts it back the right way round
-				var world := Rect2(_base + rect.position * k * Vector2(facing, 1), rect.size * k * Vector2(facing, 1))
-				world = world.abs()
-				draw_rect(world.grow(4.0), Color(1.0, 0.85, 0.2, 0.9 + 0.1 * sin(t * 6.0)), false, 3.0)
+				var world := Rect2(_base + rect.position * k * Vector2(f, 1), rect.size * k * Vector2(f, 1))
+				world = world.abs().grow(4.0)
+				_hazard_rect(world)
+				if not callouts.is_empty():
+					_draw_callouts(world)
 	if not part_health.is_empty():
 		var k := 1.25
 		# top-right corner of the scene, clear of signs, the scoreboard and the people
@@ -82,6 +93,12 @@ func _draw() -> void:
 
 
 func _regions() -> Array:
+	if front:
+		var fl := RobotArt.front_regions(look)
+		var fg := RobotArt.geom(look)
+		var ft: Rect2 = fg["torso"]
+		fl.insert(fl.size() - 1, ["back", Rect2(ft.position.x - 30.0, ft.position.y + 6.0, 26.0, ft.size.y * 0.6)])
+		return fl
 	var list := RobotArt.regions(look)
 	var g := RobotArt.geom(look)
 	var tr: Rect2 = g["torso"]
@@ -95,7 +112,7 @@ func _gui_input(event: InputEvent) -> void:
 	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
 		var k: float = _sc * look.get("scale", 1.0)
 		var l: Vector2 = (event.position - _base) / k
-		l.x *= facing
+		l.x *= 1 if front else facing
 		for r in _regions():
 			if (r[1] as Rect2).grow(8.0).has_point(l):
 				part_tapped.emit(r[0])
@@ -121,3 +138,69 @@ func draw_body_map(at: Vector2, k: float) -> void:
 		var c := Color(0.9, 0.2, 0.15).lerp(Color(0.3, 0.9, 0.35), h) if h < 1.0 else Color(0.3, 0.9, 0.35)
 		draw_rect(r, c)
 
+
+
+## A yellow-and-black dashed outline that crawls around the part.
+func _hazard_rect(r: Rect2) -> void:
+	var pts := [r.position, Vector2(r.end.x, r.position.y), r.end, Vector2(r.position.x, r.end.y), r.position]
+	var dash := 7.0
+	var shift := fmod(t * 18.0, dash * 2.0)
+	for i in 4:
+		var a: Vector2 = pts[i]
+		var b: Vector2 = pts[i + 1]
+		var length := a.distance_to(b)
+		var dir := (b - a) / maxf(length, 0.001)
+		draw_line(a, b, Color(0.08, 0.08, 0.08), 4.0)
+		var d := -shift
+		while d < length:
+			var d0 := maxf(d, 0.0)
+			var d1 := minf(d + dash, length)
+			if d1 > d0:
+				draw_line(a + dir * d0, a + dir * d1, Color(0.95, 0.76, 0.19), 4.0)
+			d += dash * 2.0
+
+
+## Diagnostic callouts: a line from the part, an elbow, and a little dark label with the notes.
+func _draw_callouts(part: Rect2) -> void:
+	var font: Font = callout_font if callout_font else ThemeDB.fallback_font
+	var fs := 13
+	var w := 0.0
+	for line in callouts:
+		w = maxf(w, font.get_string_size(str(line), HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x)
+	var box := Vector2(w + 16.0, callouts.size() * 17.0 + 8.0)
+	var anchor := part.get_center()
+	var side := -1.0 if anchor.x <= _base.x + 4.0 else 1.0
+	var edge := Vector2(part.position.x if side < 0 else part.end.x, anchor.y)
+	# the garage zooms the scene in: keep the box inside the part of the panel you can actually see
+	var lo := pivot_offset - pivot_offset / scale + Vector2(4, 4)
+	var hi := pivot_offset + (size - pivot_offset) / scale - box - Vector2(4, 24)
+	# first choice: up in the band over the gantry beam, with an elbow line climbing to it
+	var k: float = _sc * look.get("scale", 1.0)
+	var fg := RobotArt.front_geom(look)
+	var top_y: float = (fg["head"] as Rect2).position.y
+	if look["parts"].get("head2", {}).has("shape"):
+		top_y = minf(top_y, (fg["head2"] as Rect2).position.y)
+	var head_top := _base.y + top_y * k
+	var line: PackedVector2Array
+	var pos := Vector2.ZERO
+	if head_top - 34.0 - box.y >= lo.y:
+		var out_x := edge.x + side * 14.0
+		pos = Vector2(clampf(out_x - box.x * 0.5, lo.x, maxf(lo.x, hi.x)), head_top - 34.0 - box.y)
+		line = PackedVector2Array([edge, Vector2(out_x, edge.y), Vector2(out_x, pos.y + box.y)])
+	else:
+		var elbow := edge + Vector2(side * 22.0, -26.0)
+		pos = Vector2(elbow.x - box.x if side < 0 else elbow.x, elbow.y - box.y * 0.5)
+		pos.x = clampf(pos.x, lo.x, maxf(lo.x, hi.x))
+		pos.y = clampf(pos.y, lo.y, maxf(lo.y, hi.y))
+		var end := Vector2(pos.x + (box.x if side < 0 else 0.0), clampf(elbow.y, pos.y + 6.0, pos.y + box.y - 6.0))
+		line = PackedVector2Array([edge, elbow, end])
+	var lc := Color(0.95, 0.76, 0.19)
+	draw_circle(edge, 3.5, lc)
+	draw_polyline(line, lc, 2.0, true)
+	draw_rect(Rect2(pos, box), Color(0.04, 0.04, 0.06, 0.88))
+	draw_rect(Rect2(pos + Vector2(0, box.y - 3), Vector2(box.x, 3)), lc)
+	for i in callouts.size():
+		var c := Color(0.95, 0.95, 0.97) if i == 0 else Color(0.66, 0.67, 0.72)
+		if str(callouts[i]).begins_with("!"):
+			c = Color(1.0, 0.48, 0.35)
+		draw_string(font, pos + Vector2(8, 18 + i * 17), str(callouts[i]).trim_prefix("!"), HORIZONTAL_ALIGNMENT_LEFT, -1, fs, c)
