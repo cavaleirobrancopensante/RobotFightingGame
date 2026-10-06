@@ -92,6 +92,7 @@ class Fighter:
 	var blocking := false
 	var on_ground := true
 	var walk_phase := 0.0
+	var roll_a := 0.0        # no arms and no legs: the robot rolls along on its head and torso
 	var step_timer := 0.0
 	var target := ""
 	var ripped: Array = []
@@ -246,6 +247,8 @@ class Fighter:
 				s += parts[slot]["speed"]
 				n += 1
 		var leg_factor: float = [0.35, 0.65, 1.0][clampi(n, 0, 2)]
+		if n == 0:
+			leg_factor = [0.22, 0.28, 0.35][clampi(arms(), 0, 2)]   # crawling on two arms, one, or rolling
 		return (1.0 + (s / maxf(1, n) + torso_speed()) / 100.0) * leg_factor * mod_speed() * (0.8 if hobble_t > 0.0 else 1.0) * (1.0 + ctrl.get("move", 0.0))
 
 	func attack_speed(limb: String) -> float:
@@ -2192,8 +2195,12 @@ func update_fighter(f: Fighter, o: Fighter, i: Dictionary, delta: float) -> void
 			if f.boost_t <= 0.0:
 				f.vel.x = dir * WALK_SPEED * spd
 			f.state = "walk" if dir != 0 else "idle"
+			if f.legs() == 0 and f.arms() == 0 and dir != 0:
+				f.roll_a += f.vel.x * delta / (18.0 * f.scale)   # rolling: the turn follows the ground covered
+			elif absf(f.roll_a) > 0.001:
+				f.roll_a = lerp_angle(f.roll_a, round(f.roll_a / TAU) * TAU, minf(1.0, delta * 8.0))   # rocks back upright
 			if dir != 0:
-				f.walk_phase += delta * 12.0 * spd
+				f.walk_phase += delta * (8.0 if f.legs() < 2 else 12.0) * spd
 				f.step_timer -= delta
 				if f.step_timer <= 0.0:
 					f.step_timer = 0.28 / maxf(0.4, spd)
@@ -2957,6 +2964,20 @@ func draw_fighter(f: Fighter, off: Vector2) -> void:
 		lean = -f.facing * 0.38 * k
 		dx = -f.facing * 12.0 * k * f.scale
 		sx = 1.0 - 0.08 * k
+	elif f.state == "walk" and f.legs() == 1:
+		# one leg: hop, hop, hop. Up in an arc, squash on landing
+		var hp := absf(sin(f.walk_phase))
+		base.y -= hp * 16.0 * f.scale
+		lean = signf(f.vel.x) * 0.14
+		sy = 1.0 - 0.1 * pow(1.0 - hp, 6.0)
+		sx = 1.0 + 0.06 * pow(1.0 - hp, 6.0)
+	elif f.state == "walk" and f.legs() == 0 and f.arms() > 0:
+		# no legs: claw the floor and drag the torso along, lurching with every pull
+		var pull := sin(f.walk_phase * (1.0 if f.arms() == 1 else 2.0))
+		lean = signf(f.vel.x) * (0.1 + 0.04 * pull) * (1.0 if f.facing == signf(f.vel.x) else 0.5)
+		if f.arms() == 1:
+			lean += 0.06 * pull * f.facing   # one arm: it lurches to that side with every pull
+		dx = pull * 3.0 * f.scale * signf(f.vel.x)
 	elif f.state == "walk":
 		lean = signf(f.vel.x) * 0.08
 		base.y -= absf(sin(f.walk_phase)) * 4.0 * f.scale
@@ -2977,6 +2998,20 @@ func draw_fighter(f: Fighter, off: Vector2) -> void:
 	if rot == 0.0:
 		rot = lean
 	base.x += dx
+	if f.legs() == 0 and f.arms() == 0 and absf(f.roll_a) > 0.001 and f.state != "ko":
+		# rolling round the middle of the torso, not the feet
+		var gr := RobotArt.geom(f.get_look())
+		var sv := Vector2(f.facing * f.scale * sx, f.scale * sy)
+		var cl := Vector2(0, -(float(gr["L"]) + float(gr["th"]) * 0.5)) * sv
+		rot = f.roll_a
+		base += cl - cl.rotated(rot)
+		# whatever end is down (the head, a corner of the torso) rides on the floor, never through it
+		var low := 0.0
+		for rc in [gr["torso"], gr["head"]]:
+			var r2: Rect2 = rc
+			for pt in [r2.position, r2.position + Vector2(r2.size.x, 0), r2.end, r2.position + Vector2(0, r2.size.y)]:
+				low = maxf(low, (Vector2(pt) * sv).rotated(rot).y + (cl - cl.rotated(rot)).y)
+		base.y -= low
 	if f.state == "ko":
 		if f.on_ground:
 			rot = -f.facing * PI / 2.0
@@ -3005,7 +3040,8 @@ func draw_fighter(f: Fighter, off: Vector2) -> void:
 		rot = lean
 	RobotArt.draw(self, base, f.get_look(), {
 		"facing": f.facing, "state": state, "extended": extended, "attack_limb": f.attack_limb, "knee": knee,
-		"swing": sin(f.walk_phase) * 10.0 if f.state == "walk" else 0.0,
+		"swing": sin(f.walk_phase) * 10.0 if f.state == "walk" and f.legs() == 2 else 0.0,
+		"crawl": fmod(f.walk_phase / TAU, 1.0) if f.state == "walk" and f.legs() == 0 and f.arms() > 0 else -1.0,
 		"crouch": f.crouching, "blocking": f.blocking or (f.state == "special" and state == "block"),
 		"flash": f.flash > 0.0, "rot": rot, "time": clock, "fist_out": fist_out,
 		"shield": f.shield_t > 0.0, "overcharge": f.over_t > 0.0, "stunned": f.stun_t > 0.0,

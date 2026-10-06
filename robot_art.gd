@@ -162,6 +162,16 @@ static func draw(ci: CanvasItem, base: Vector2, look: Dictionary, pose: Dictiona
 		elif state == "sweep":
 			leg_pose[limb] = "sweep"
 
+	# crawling with no legs: the arms that are left claw at the floor in turn and drag the robot
+	var crawl: float = pose.get("crawl", -1.0)
+	if crawl >= 0.0:
+		var clawing: Array = []
+		for k in ["arm_front", "arm_back", "arm_front2", "arm_back2"]:
+			if _alive(look, k) and not pose.get("fist_out", []).has(k):
+				clawing.append(k)
+		for i in clawing.size():
+			arm_pose[clawing[i]] = "claw:%f" % fmod(crawl + float(i) / clawing.size(), 1.0)
+
 	var fist_out: Array = pose.get("fist_out", [])
 	if pose.get("overcharge", false):
 		var pulse := 0.5 + 0.5 * sin(t * 14.0)
@@ -329,6 +339,17 @@ static func _draw_arm(ci: CanvasItem, look: Dictionary, slot: String, s: Vector2
 			# front view on the gantry: hanging down and out to the side
 			e = s + Vector2(12, 28)
 			h = s + Vector2(26, 58)
+		_ when pose.begins_with("claw:"):
+			# crawling: the hand plants far out in front and pulls back along the floor (the robot
+			# slides forward over it), then lifts and swings forward for the next grab
+			var k := float(pose.substr(5))
+			var floor_y := -20.0   # the fist (and its claws or spike) end up on the floor line
+			if k < 0.6:
+				h = Vector2(s.x + lerpf(72.0, 12.0, k / 0.6), floor_y)
+			else:
+				var u := (k - 0.6) / 0.4
+				h = Vector2(s.x + lerpf(12.0, 72.0, u), floor_y - sin(u * PI) * 30.0)
+			e = Vector2(lerpf(s.x, h.x, 0.45), minf(s.y + 10.0, h.y - 30.0))   # elbow up, forearm reaching down to the floor
 		_:
 			e = s + Vector2(6 if not back else -8, 26)
 			h = s + Vector2(36 if not back else 30, 18 if not back else 24)
