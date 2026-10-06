@@ -441,3 +441,83 @@ class TalkBar extends Control:
 		draw_rect(Rect2(0, 0, size.x * clampf(ratio, 0.0, 1.0), size.y), color)
 
 
+
+
+# ---------------------------------------------------------------- calendar symbols
+
+## One symbol per kind of fight night, so calendar days stay the same size:
+## scrap = rusty gear, regional = blue shield, championship = gold crown, cup = purple trophy,
+## pickup = a green coin, rent = red bill, stock = a crate.
+const EVENT_COLORS := {"scrap": Color(0.86, 0.48, 0.24), "regional": Color(0.35, 0.6, 1.0), "championship": YELLOW,
+		"cup": Color(0.75, 0.5, 1.0), "pickup": Color(0.55, 0.78, 0.42), "exhibition": YELLOW,
+		"rent": Color(1.0, 0.42, 0.35), "stock": Color(0.62, 0.5, 0.36)}
+
+static func draw_event_icon(ci: CanvasItem, kind: String, c: Vector2, r: float, ring: bool = false) -> void:
+	var col: Color = EVENT_COLORS.get(kind, MUTED)
+	var dark := Color(0.08, 0.08, 0.1)
+	match kind:
+		"scrap":
+			for k in 8:
+				var a := k * TAU / 8.0
+				var d := Vector2(cos(a), sin(a))
+				var n := Vector2(-d.y, d.x)
+				ci.draw_colored_polygon(PackedVector2Array([c + d * r * 0.55 + n * r * 0.18, c + d * r * 0.95 + n * r * 0.14,
+						c + d * r * 0.95 - n * r * 0.14, c + d * r * 0.55 - n * r * 0.18]), col)
+			ci.draw_circle(c, r * 0.68, col)
+			ci.draw_circle(c, r * 0.28, dark)
+		"regional":
+			var pts := PackedVector2Array([c + Vector2(-r * 0.8, -r * 0.85), c + Vector2(r * 0.8, -r * 0.85), c + Vector2(r * 0.8, r * 0.05),
+					c + Vector2(0, r * 0.95), c + Vector2(-r * 0.8, r * 0.05)])
+			ci.draw_colored_polygon(pts, col)
+			ci.draw_rect(Rect2(c + Vector2(-r * 0.8, -r * 0.3), Vector2(r * 1.6, r * 0.28)), Color(1, 1, 1, 0.85))
+		"championship", "exhibition":
+			ci.draw_colored_polygon(PackedVector2Array([c + Vector2(-r * 0.9, r * 0.45), c + Vector2(-r * 0.9, -r * 0.6), c + Vector2(-r * 0.45, -r * 0.05),
+					c + Vector2(0, -r * 0.85), c + Vector2(r * 0.45, -r * 0.05), c + Vector2(r * 0.9, -r * 0.6), c + Vector2(r * 0.9, r * 0.45)]), col)
+			ci.draw_rect(Rect2(c + Vector2(-r * 0.9, r * 0.55), Vector2(r * 1.8, r * 0.3)), col)
+			ci.draw_circle(c + Vector2(0, r * 0.15), r * 0.16, Color(0.9, 0.2, 0.25))
+		"cup":
+			var bowl := PackedVector2Array()
+			for k in 9:
+				var a := PI * k / 8.0
+				bowl.append(c + Vector2(-cos(a) * r * 0.62, -r * 0.75 + sin(a) * r * 0.9))
+			ci.draw_colored_polygon(bowl, col)
+			ci.draw_arc(c + Vector2(-r * 0.62, -r * 0.4), r * 0.28, PI * 0.5, PI * 1.5, 8, col, maxf(2.0, r * 0.14))
+			ci.draw_arc(c + Vector2(r * 0.62, -r * 0.4), r * 0.28, -PI * 0.5, PI * 0.5, 8, col, maxf(2.0, r * 0.14))
+			ci.draw_rect(Rect2(c + Vector2(-r * 0.1, r * 0.1), Vector2(r * 0.2, r * 0.45)), col)
+			ci.draw_rect(Rect2(c + Vector2(-r * 0.45, r * 0.55), Vector2(r * 0.9, r * 0.3)), col)
+		"pickup":
+			ci.draw_circle(c, r * 0.85, col)
+			ci.draw_circle(c, r * 0.65, col.darkened(0.25))
+			var f := headb()
+			var fsz := int(r * 1.2)
+			ci.draw_string(f, c + Vector2(-r, fsz * 0.36), "$", HORIZONTAL_ALIGNMENT_CENTER, r * 2.0, fsz, Color(0.95, 1, 0.9))
+		"rent":
+			ci.draw_rect(Rect2(c - Vector2(r * 0.9, r * 0.55), Vector2(r * 1.8, r * 1.1)), col)
+			ci.draw_rect(Rect2(c - Vector2(r * 0.9, r * 0.55), Vector2(r * 1.8, r * 1.1)), col.darkened(0.4), false, 1.5)
+			var f2 := headb()
+			var fs2 := int(r * 1.0)
+			ci.draw_string(f2, c + Vector2(-r, fs2 * 0.36), "$", HORIZONTAL_ALIGNMENT_CENTER, r * 2.0, fs2, Color(1, 0.95, 0.9))
+		"stock":
+			var b := Rect2(c - Vector2(r * 0.75, r * 0.7), Vector2(r * 1.5, r * 1.4))
+			ci.draw_rect(b, col)
+			ci.draw_rect(b, col.darkened(0.45), false, 1.5)
+			ci.draw_line(b.position, b.end, col.darkened(0.45), 1.5)
+			ci.draw_line(Vector2(b.end.x, b.position.y), Vector2(b.position.x, b.end.y), col.darkened(0.45), 1.5)
+		_:
+			ci.draw_circle(c, r * 0.6, col)
+	if ring:
+		ci.draw_arc(c, r * 1.12, 0, TAU, 20, YELLOW, 2.0)
+
+
+## A small control that draws one event symbol (for legends and popups).
+class EventIcon extends Control:
+	var kind := "pickup"
+	var ring := false
+	func _init(k: String = "pickup", sz: float = 22.0, playoff: bool = false) -> void:
+		kind = k
+		ring = playoff
+		custom_minimum_size = Vector2(sz, sz)
+		mouse_filter = Control.MOUSE_FILTER_IGNORE
+	func _draw() -> void:
+		var GUI = load("res://garage_ui.gd")
+		GUI.draw_event_icon(self, kind, size * 0.5, minf(size.x, size.y) * 0.42, ring)

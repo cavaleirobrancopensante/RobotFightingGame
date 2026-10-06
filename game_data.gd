@@ -2,7 +2,7 @@ extends Node
 
 # helper scripts, loaded by path so the game also runs without an editor scan
 ## The game's version, shown on the main menu. Bump it with every change (1.1, 1.2, ...).
-const VERSION := "1.20"
+const VERSION := "1.21"
 const Arena = preload("res://arena.gd")
 const I18n = preload("res://i18n.gd")
 const Catalog = preload("res://catalog.gd")
@@ -1387,34 +1387,51 @@ func enters_stage(stage: String) -> bool:
 func week_plan(y: int, w: int, d: String = "sat") -> Dictionary:
 	for e in fight_log:
 		if int(e["y"]) == y and int(e["w"]) == w and str(e.get("d", "sat")) == d:
-			return {"kind": "done", "won": e["won"], "text": tr("WON vs %s" if e["won"] else "LOST vs %s") % e["opp"], "title": e["title"]}
+			return {"kind": "done", "won": e["won"], "text": tr("WON vs %s" if e["won"] else "LOST vs %s") % e["opp"], "title": e["title"], "stage": log_stage(e)}
 	if y < year or (y == year and (w < week or (w == week and d == "wed" and day == "sat"))):
 		return {"kind": "past", "text": ""}
 	if d == "wed":
 		# Wednesday: cup night
 		if y == year and not circuit.is_empty() and circuit.get("phase", "") != "done" and circuit["weeks"].has(w) \
 				and Career.player_opponent(circuit) != -1:
-			return {"kind": "cup", "text": "%s" % circuit["name"]}
+			return {"kind": "cup", "text": "%s" % circuit["name"], "stage": "cup"}
 		if y == year and w == week and day == "wed":
-			return {"kind": "open", "text": "pickup fight"}
+			return {"kind": "open", "text": "pickup fight", "stage": "pickup"}
 		return {"kind": "none", "text": ""}
 	if not event.is_empty() and event.get("phase", "") != "done" and int(event.get("year", year)) == y and event["weeks"].has(w):
 		var k: int = event["weeks"].find(w)
 		var short: String = tr(Career.STAGES[event["stage"]]["short"])
 		if k < event["schedule"].size():
 			var o := Career.robot_of(event, int(event["schedule"][k]))
-			return {"kind": "league", "text": tr("%s R%d\nvs %s") % [short, k + 1, o.get("name", "?")]}
+			return {"kind": "league", "text": tr("%s R%d\nvs %s") % [short, k + 1, o.get("name", "?")], "stage": event["stage"], "round": k}
 		if event["phase"] == "playoffs" or Career.player_opponent(event) != -1:
-			return {"kind": "playoff", "text": tr("%s\nPLAYOFFS") % short}
-		return {"kind": "playoff", "text": tr("%s\nplayoffs (if you qualify)") % short}
+			return {"kind": "playoff", "text": tr("%s\nPLAYOFFS") % short, "stage": event["stage"]}
+		return {"kind": "playoff", "text": tr("%s\nplayoffs (if you qualify)") % short, "stage": event["stage"]}
 	if y == year:
 		for stage in Career.ORDER:
 			var info: Dictionary = Career.STAGES[stage]
 			var start: int = info["start"]
 			var length: int = int(info["size"]) - 1 + Career.playoff_rounds(int(info["playoff"]))
 			if w >= start and w < start + length and w > week and enters_stage(stage) and (event.is_empty() or event.get("phase", "") == "done" or event["stage"] != stage):
-				return {"kind": "league", "text": tr("%s\n(qualified)") % tr(info["short"])}
-	return {"kind": "open", "text": "pickup fight"}
+				return {"kind": "league", "text": tr("%s\n(qualified)") % tr(info["short"]), "stage": stage}
+	return {"kind": "open", "text": "pickup fight", "stage": "pickup"}
+
+
+## Which kind of fight a logged result was (scrap / regional / championship / cup / pickup / exhibition).
+func log_stage(e: Dictionary) -> String:
+	var st := str(e.get("stage", ""))
+	if st != "":
+		return st
+	match str(e.get("mode", "")):
+		"circuit":
+			return "cup"
+		"pickup", "exhibition":
+			return str(e["mode"])
+	var t := str(e.get("title", "")).to_upper()
+	for stage in Career.ORDER:
+		if t.begins_with(tr(Career.STAGES[stage]["short"]).to_upper()):
+			return stage
+	return "pickup" if t.contains("PICKUP") else ("cup" if str(e.get("d", "sat")) == "wed" else "scrap")
 
 
 # ---------------------------------------------------------------- betting
@@ -2218,7 +2235,8 @@ func record_result(won: bool, part_hp: Dictionary, destroyed: int, salvage_ids: 
 		bonus = destroyed * 50
 	var was_in_debt := money < 0
 	money += reward + bonus
-	fight_log.append({"y": year, "w": week, "d": day, "opp": str(o.get("name", "?")), "won": won, "mode": fight_mode(), "title": fight_title()})
+	fight_log.append({"y": year, "w": week, "d": day, "opp": str(o.get("name", "?")), "won": won, "mode": fight_mode(), "title": fight_title(),
+			"stage": str(event.get("stage", "")) if fight_mode() == "story" else ("cup" if fight_mode() == "circuit" else fight_mode())})
 	if fight_log.size() > 400:
 		fight_log.pop_front()
 
@@ -2848,8 +2866,8 @@ func load_game(slot: int = -1) -> String:
 	fight_log = []
 	for e in data.get("fight_log", []):
 		if typeof(e) == TYPE_DICTIONARY:
-			fight_log.append({"y": int(e.get("y", 1)), "w": int(e.get("w", 1)), "opp": str(e.get("opp", "?")), "won": bool(e.get("won", false)),
-					"mode": str(e.get("mode", "")), "title": str(e.get("title", ""))})
+			fight_log.append({"y": int(e.get("y", 1)), "w": int(e.get("w", 1)), "d": str(e.get("d", "sat")), "opp": str(e.get("opp", "?")), "won": bool(e.get("won", false)),
+					"mode": str(e.get("mode", "")), "stage": str(e.get("stage", "")), "title": str(e.get("title", ""))})
 	owned_controllers = ["gamepad"]
 	for c in data.get("owned_controllers", []):
 		if CONTROLLER_INFO.has(str(c)) and not owned_controllers.has(str(c)):
