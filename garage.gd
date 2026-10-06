@@ -111,8 +111,9 @@ func clock_key() -> String:
 var body_map: BodyMap
 var rail_box: VBoxContainer
 var date_button: Button
-var next_button: Button
-var repair_button: Button
+var bell_button: Button
+var repair_all_btn: Button
+var dig_button: Button   # Scrapyard: Dig anywhere (the tour points at it)   # Bay > Robot: Repair all, at the top of the part list   # bottom left: how ready the robot will be tonight; opens the job board
 var left_col: VBoxContainer
 var bubble
 const GUI = preload("res://garage_ui.gd")
@@ -139,7 +140,6 @@ class BodyMap extends Control:
 				draw_rect(r, Color(1.0, 0.25, 0.2), false, 1.5)
 				continue
 			draw_rect(r, Color(0.9, 0.2, 0.15).lerp(Color(0.3, 0.9, 0.35), h) if h < 1.0 else Color(0.3, 0.9, 0.35))
-var scout_button: Button
 var send_button: Button
 var overlay: Control
 var popup_scroll: ScrollContainer   # the open pop-up's contents (scrolls when they don't fit)
@@ -236,23 +236,6 @@ func _ready() -> void:
 		date_button.add_theme_color_override(c, GUI.GREEN)
 	date_button.pressed.connect(func(): _on_tab("Season"); season_view = "calendar"; refresh())
 	top.add_child(date_button)
-	# the clock: morning -> afternoon -> evening -> tomorrow. The bay works while it runs.
-	next_button = Button.new()
-	next_button.focus_mode = Control.FOCUS_NONE
-	next_button.add_theme_font_override("font", GUI.num())
-	next_button.add_theme_font_size_override("font_size", 22)
-	var ns := GUI.box(Color(0.1, 0.08, 0.03), 18, 4)
-	ns.content_margin_left = 14
-	ns.content_margin_right = 14
-	ns.border_color = Color(0.45, 0.35, 0.12)
-	ns.set_border_width_all(1)
-	for st in ["normal", "hover", "pressed", "hover_pressed", "disabled"]:
-		next_button.add_theme_stylebox_override(st, ns)
-	for c in ["font_color", "font_hover_color", "font_pressed_color", "font_hover_pressed_color"]:
-		next_button.add_theme_color_override(c, GUI.AMBER)
-	next_button.add_theme_color_override("font_disabled_color", Color(0.4, 0.36, 0.3))
-	next_button.pressed.connect(_on_next_phase)
-	top.add_child(next_button)
 	title_label = UI.label("", 22)   # kept empty: the middle of the top strip is space for ads
 	title_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	top.add_child(title_label)
@@ -354,16 +337,15 @@ func _ready() -> void:
 	var bottom := HBoxContainer.new()
 	bottom.add_theme_constant_override("separation", 10)
 	root.add_child(bottom)
-	repair_button = UI.button("", _on_repair_all, 15, Vector2(170, 46))
-	bottom.add_child(repair_button)
+	bell_button = UI.button("", _on_bell, 15, Vector2(230, 46))
+	bell_button.add_theme_font_override("font", GUI.num())
+	bell_button.add_theme_font_size_override("font_size", 22)
+	bottom.add_child(bell_button)
 	send_button = UI.button("", _on_send, 14, Vector2(150, 46))
 	bottom.add_child(send_button)
 	var spacer := Control.new()
 	spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	bottom.add_child(spacer)
-	scout_button = UI.button("", _on_open_scout, 17, Vector2(150, 48))
-	scout_button.visible = false
-	bottom.add_child(scout_button)
 	body_map = BodyMap.new()
 	body_map.custom_minimum_size = Vector2(52, 62)
 	body_map.tooltip_text = "Green = healthy, red = hurt, dark with a red edge = missing."
@@ -412,9 +394,11 @@ func _ready() -> void:
 
 ## The rail's sections, as they unlock. "Parts" is shown as Get Parts.
 func tab_list() -> Array:
-	var t := ["Bay", "Storage", "Parts", "Pub", "Feed"]
+	# in the order of a day: the robot, its parts, the week's plan, the town, your phone, the crew
+	var t := ["Bay", "Storage", "Parts"]
 	if GameData.unlocked("season"):
 		t.append("Season")
+	t += ["Pub", "Feed"]
 	if GameData.team_unlocked():
 		t.append("Crew")
 	return t
@@ -455,9 +439,6 @@ func segs_of(t: String) -> Array:
 		"Feed":
 			out.append(["town", tr("News"), ""])
 			out.append(["all", tr("Messages"), ""])
-			out.append(["pilots", tr("Pilots"), ""])
-			out.append(["gus", tr("Gus"), ""])
-			out.append(["story", tr("Story"), ""])
 			out.append(["profile", tr("Profile"), ""])
 			if GameData.unlocked("pilot"):
 				out.append(["gear", tr("Gear"), "pilot"])
@@ -524,7 +505,7 @@ func build_rail() -> void:
 		b.kind = SECTION_ICONS[t]
 		b.label = tr(SECTION_LABELS[t])
 		b.on = t == tab
-		b.star = section_new(t)
+		GUI.mark_new(b, section_new(t))
 		b.font = GUI.head()
 		b.pressed.connect(func(): Sfx.play("click", 0.05); _on_tab(t))
 		rail_box.add_child(b)
@@ -554,7 +535,8 @@ func build_seg_bar() -> void:
 		return
 	for sg in list:
 		var on: bool = sg[0] == seg()
-		var b := UI.button(str(sg[1]) + (" ★" if seg_new(sg[0], sg[2]) else ""), _on_seg.bind(sg[0]), 13, Vector2(0, 34))
+		var b := UI.button(str(sg[1]), _on_seg.bind(sg[0]), 13, Vector2(0, 34))
+		GUI.mark_new(b, seg_new(sg[0], sg[2]))
 		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		var st := GUI.seg_style(on)
 		for k in ["normal", "disabled"]:
@@ -565,9 +547,9 @@ func build_seg_bar() -> void:
 		tabs_box.add_child(b)
 	if tab == "Bay" and seg() == "robot":
 		if GameData.unlocked("setups"):
-			tabs_box.add_child(UI.button(star(tr("Setups ▾"), "setups"), _on_open_setups, 12, Vector2(96, 34)))
+			tabs_box.add_child(marked(UI.button(tr("Setups ▾"), _on_open_setups, 12, Vector2(96, 34)), "setups"))
 		if GameData.unlocked("randomize"):
-			tabs_box.add_child(UI.button(star(tr("Randomize"), "randomize"), _on_randomize, 12, Vector2(100, 34)))
+			tabs_box.add_child(marked(UI.button(tr("Randomize"), _on_randomize, 12, Vector2(100, 34)), "randomize"))
 
 
 func _on_seg(key: String) -> void:
@@ -685,7 +667,7 @@ func play_story(keys: Array, after: Callable = Callable()) -> bool:
 	if lines.is_empty():
 		return false
 	for l in lines:
-		GameData.log_talk(str(l[0]), str(l[1]), "story" if str(l[2].get("place", "")) != "*" else "talk", l[2].get("look", {}))
+		GameData.log_talk(str(l[0]), str(l[1]), "story" if str(l[2].get("place", "")) != "*" else "talk", l[2].get("look", {}), int(l[2].get("wid", -1)))
 	if talk_story:
 		talk_lines += lines   # a scene already playing finishes first
 	else:
@@ -880,13 +862,14 @@ func refresh() -> void:
 	money_label.text = GameData.money_text(GameData.money)
 	money_label.add_theme_color_override("font_color", GUI.RED if GameData.money < 0 else GUI.AMBER)
 	date_button.text = tr("%s %s · WK %d") % [tr(DAY_NAMES[GameData.day_index()]), tr(PHASE_SHORT[GameData.phase]), GameData.week]
-	next_button.text = tr("NEXT > %s") % tr(["AFTERNOON", "EVENING", "TOMORROW"][GameData.phase])
-	next_button.disabled = GameData.phase == 2 and not GameData.can_pass_day()
-	next_button.tooltip_text = tr("Your fight is tonight.") if next_button.disabled else tr("Let time pass: the bay works on the job board.")
-	var total := GameData.repair_all_cost()
-	repair_button.text = tr("Repair all $%d") % total if total > 0 else (tr("On the bench") if GameData.has_work("m") else tr("All repaired"))
-	repair_button.disabled = total <= 0   # (short on cash? pressing it has Gus explain)
-	repair_button.add_theme_color_override("font_color", GUI.AMBER)
+	# the bell chip: how ready the robot will be by tonight, and how much is on the job board
+	var ready := bell_readiness()
+	var njobs := GameData.jobs.size()
+	bell_button.text = tr("BY TONIGHT %d%%") % roundi(ready * 100.0) + (tr(" · %d JOBS") % njobs if njobs > 0 else "")
+	var bc: Color = GUI.GREEN if ready >= 0.9 else (GUI.AMBER if ready >= 0.6 else GUI.RED)
+	for c in ["font_color", "font_hover_color", "font_pressed_color"]:
+		bell_button.add_theme_color_override(c, bc)
+	bell_button.tooltip_text = tr("How much of the robot will be fit to fight by tonight's bell. Tap for the job board.")
 	var mode := GameData.fight_mode()   # "open": nothing booked tonight, pickups are your choice (the Rusty Bolt)
 	title_label.text = ""   # the top strip is kept free (space for ads); the date lives in the Season calendar
 	var o := GameData.current_opponent()
@@ -900,12 +883,15 @@ func refresh() -> void:
 		GameData.sending = -1
 	send_button.visible = not backups.is_empty() and not GameData.is_team_fight()
 	send_button.text = tr("Send: %s") % (tr("main robot") if GameData.sending < 0 else GameData.WINGMAN_NAMES[GameData.sending])
-	if mode == "open":
-		fight_button.text = tr("FIND A FIGHT")
+	# one button for whatever comes next: the clock until the evening, then tonight's fight (or tomorrow)
+	if GameData.phase < 2 or mode == "open":
+		fight_button.text = tr("NEXT ▸ %s") % tr(["AFTERNOON", "EVENING", "TOMORROW"][GameData.phase])
+		if GameData.phase < 2 and mode != "open":
+			fight_button.text += tr(" · FIGHT NIGHT")
 		fight_button.disabled = talk_after.is_valid()
 	elif not GameData.can_send():
-		fight_button.text = "Need a head and a torso"
-		fight_button.disabled = true
+		fight_button.text = tr("FIGHT NIGHT: CHECK THE ROBOT")
+		fight_button.disabled = talk_after.is_valid()
 	else:
 		fight_button.disabled = talk_after.is_valid()   # the rival's still talking; the fight starts after
 		var label: String = {"story": "FIGHT: %s ($%d)", "circuit": "CUP FIGHT: %s ($%d)", "exhibition": "REMATCH: %s ($%d)",
@@ -918,8 +904,6 @@ func refresh() -> void:
 		elif not core.is_empty() and GameData.hp_ratio(core) < 0.35:
 			fight_button.text += tr(" · core damaged!")
 
-	scout_button.visible = false   # scouting lives in the pre-fight popup now
-	scout_button.text = star(tr("Scout report") if GameData.scouted() else tr("Scout $%d") % GameData.scout_cost(), "scout")
 	preview.look = GameData.player_look()
 	body_map.health = body_health()
 	body_map.queue_redraw()
@@ -1255,7 +1239,7 @@ func build_detail() -> void:
 	if d.is_empty():
 		detail = {}
 		if tab == "Season" and seg() == "calendar":
-			build_next_fight_card()
+			detail_panel.visible = false   # the office wall (trophies) stays in view; tonight's fight is a strip above the month
 		else:
 			detail_panel.visible = false
 		return
@@ -1346,101 +1330,42 @@ func build_detail() -> void:
 			detail_box.add_child(GUI.text(tr("Fitted to the %s.") % tr(GameData.SLOT_NAMES[fitted_slot]), 12, GUI.GREEN))
 		for sl in slots:
 			if sl != fitted_slot:
-				add_btn.call(tr("Fit: %s") % tr(GameData.SLOT_NAMES[sl]), _on_detail_fit.bind(int(p["uid"]), sl), not wreck, GUI.YELLOW)
+				add_btn.call(tr("Fit: %s · %s") % [tr(GameData.SLOT_NAMES[sl]), GameData.hours_text(GameData.swap_hours(d))], _on_detail_fit.bind(int(p["uid"]), sl), not wreck, GUI.YELLOW)
 		var c := GameData.repair_cost(p)
 		if c > 0:
-			add_btn.call((tr("Rebuild $%d") if wreck else tr("Fix $%d")) % c, _on_repair.bind(int(p["uid"])), GameData.can_repair(c), GUI.AMBER)
+			add_btn.call((tr("Rebuild $%d · %s") if wreck else tr("Fix $%d · %s")) % [c, GameData.hours_text(GameData.repair_hours(p))], _on_repair.bind(int(p["uid"])), GameData.can_repair(c), GUI.AMBER)
 		if fitted_slot == "":
 			add_btn.call(tr("Sell $%d") % GameData.sell_value(p), _on_sell.bind(int(p["uid"])), true)
 	else:
 		var cost := int(d["cost"])
 		for sl in slots:
-			add_btn.call(tr("Buy & fit: %s") % tr(GameData.SLOT_NAMES[sl]), _on_buy_fit.bind(str(d["id"]), sl), GameData.money >= cost, GUI.YELLOW)
+			add_btn.call(tr("Buy & fit: %s · %s") % [tr(GameData.SLOT_NAMES[sl]), GameData.hours_text(GameData.swap_hours(d))], _on_buy_fit.bind(str(d["id"]), sl), GameData.money >= cost, GUI.YELLOW)
 		add_btn.call(tr("Buy to storage $%d") % cost, _on_buy_keep.bind(str(d["id"])), GameData.money >= cost)
 		# try before you buy: bolt it on for a practice round against Toaster Tim
 		if not slots.is_empty() and kind in ["head", "torso", "arm", "leg", "back", "reactor"]:
 			add_btn.call(tr("Test drive"), _on_test_drive.bind("toaster", str(d["id"]), best_slot(kind), "dealer"), GameData.can_fight(), GUI.CYAN)
 
 
-## The calendar's left pane: your next fight on a little fight-night poster, with Scout, Bets and Fight.
-func build_next_fight_card() -> void:
-	detail_panel.visible = not (dad_talk and talk_story)
-	for c in detail_box.get_children() + detail_footer.get_children():
-		c.queue_free()
+## Above the calendar: tonight in one line (who, purse, odds) and the button to act on it.
+func tonight_strip(mode: String) -> void:
+	var bar := action_bar()
 	var o := GameData.current_opponent()
-	var night := tonight_name()
-	var t := GUI.text(night, 22, GUI.YELLOW, "stencil")
-	t.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	detail_box.add_child(t)
-	detail_box.add_child(GUI.HazardStrip.new())
+	var text := ""
 	if o.is_empty():
-		# nothing booked tonight
-		var none := GUI.text(tr("No fight booked tonight. Pickups are up to you: whoever's at the Rusty Bolt will take you on."), 15, GUI.TEXT)
-		none.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		none.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		detail_box.add_child(none)
-		var fb := UI.button(tr("Find a fight ›"), go_to.bind("Pub", "bar"), 14, Vector2(0, 46))
-		fb.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		fb.add_theme_color_override("font_color", GUI.YELLOW)
-		detail_footer.add_child(fb)
-		return
-	var title := GUI.text(GameData.fight_title(), 14, GUI.TEXT, "headb")
-	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	detail_box.add_child(title)
-	# you vs them, robots facing each other
-	var vs := HBoxContainer.new()
-	vs.add_theme_constant_override("separation", 6)
-	detail_box.add_child(vs)
-	var me := RobotPreview.new()
-	me.look = GameData.player_look()
-	me.facing = 1
-	me.anim = false
-	me.custom_minimum_size = Vector2(0, 150)
-	me.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	vs.add_child(me)
-	var vl := GUI.text("VS", 26, GUI.YELLOW, "stencil")
-	vl.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	vs.add_child(vl)
-	var them := bot_preview(o)
-	them.custom_minimum_size = Vector2(0, 150)
-	them.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	vs.add_child(them)
-	var names := HBoxContainer.new()
-	detail_box.add_child(names)
-	var a := GUI.text(GameData.robot_name, 13, GUI.CYAN, "headb")
-	a.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	a.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	names.add_child(a)
-	var who := str(o.get("pilot", ""))
-	var b := GUI.text(str(o.get("name", "?")) + ("" if who == "" else "\n" + tr("piloted by %s") % who), 13, GUI.RED, "headb")
-	b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	b.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	names.add_child(b)
-	var nums := HBoxContainer.new()
-	detail_box.add_child(nums)
-	var purse := GUI.readout(tr("Purse $%d") % GameData.current_reward(), 20, GUI.AMBER)
-	purse.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	purse.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	nums.add_child(purse)
-	var mb := my_fight_bet()
-	if not mb.is_empty():
-		var od := GUI.readout(tr("odds %.2fx") % float(mb["odds"]), 20, GUI.GREEN)
-		od.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		od.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		nums.add_child(od)
-	var btn := func(text: String, cb: Callable, enabled: bool, col: Color = GUI.TEXT) -> void:
-		var bb := UI.button(text, cb, 14, Vector2(0, 46))
-		bb.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		bb.disabled = not enabled
-		bb.add_theme_color_override("font_color", col)
-		detail_footer.add_child(bb)
-	if GameData.scout_key() != "" and GameData.unlocked("scout"):
-		btn.call(tr("Scouting report") if GameData.scouted() else tr("Scout $%d") % GameData.scout_cost(), _on_open_scout,
-				GameData.scouted() or GameData.money >= GameData.scout_cost())
-	if not mb.is_empty():
-		btn.call(tr("Bets ›"), go_to.bind("Pub", "bets"), true)
-	btn.call(tr("Fight night ›"), open_fight_popup, GameData.can_send(), GUI.YELLOW)
+		text = tr("TONIGHT: nothing booked. Pickups at the Rusty Bolt if you want one.")
+	else:
+		text = tr("TONIGHT: %s · %s") % [GameData.fight_title(), str(o.get("name", "?"))] + "   " + tr("Purse $%d") % GameData.current_reward()
+		var mb := my_fight_bet()
+		if not mb.is_empty():
+			text += "   " + tr("odds %.2fx") % float(mb["odds"])
+	var l := GUI.text(text, 14, GUI.YELLOW, "headb")
+	l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	bar.add_child(l)
+	if o.is_empty():
+		row_button(bar, tr("Find a fight ›"), go_to.bind("Pub", "bar"), true, 150)
+	else:
+		row_button(bar, tr("Bell Check ›"), open_fight_popup, true, 150)
 
 
 ## Off to the scrapyard ring for a practice round (nothing that happens there sticks).
@@ -1666,9 +1591,18 @@ func health_text(p: Dictionary) -> String:
 
 func build_overview() -> void:
 	var key := HBoxContainer.new()
-	key.alignment = BoxContainer.ALIGNMENT_END
 	key.add_theme_constant_override("separation", 6)
 	list_box.add_child(key)
+	# Repair all sits right by the damage it fixes, with its price and its hours
+	var total := GameData.repair_all_cost()
+	repair_all_btn = UI.button((tr("Repair all $%d · %s") % [total, GameData.hours_text(GameData.repair_all_hours())]) if total > 0
+			else (tr("On the job board") if GameData.has_work("m") else tr("All repaired")), _on_repair_all, 14, Vector2(0, 38))
+	repair_all_btn.disabled = total <= 0
+	repair_all_btn.add_theme_color_override("font_color", GUI.AMBER)
+	key.add_child(repair_all_btn)
+	var kgap := Control.new()
+	kgap.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	key.add_child(kgap)
 	var blk := ColorRect.new()
 	blk.color = GUI.GREEN
 	blk.custom_minimum_size = Vector2(6, 11)
@@ -1693,7 +1627,7 @@ func build_overview() -> void:
 			row.add_child(hp_widget(p))
 			var c := GameData.repair_cost(p)
 			if c > 0:
-				var fb := UI.button(tr("Fix $%d") % c, _on_repair.bind(p["uid"]), 13, Vector2(80, 36))
+				var fb := UI.button(tr("Fix $%d · %s") % [c, GameData.hours_text(GameData.repair_hours(p))], _on_repair.bind(p["uid"]), 13, Vector2(120, 36))
 				fb.disabled = not GameData.can_repair(c)
 				fb.add_theme_color_override("font_color", GUI.AMBER)
 				fb.size_flags_vertical = Control.SIZE_SHRINK_CENTER
@@ -1763,7 +1697,7 @@ func job_etas() -> Array:
 func tour_steps() -> Array:
 	return [
 		{"target": "repair", "text": tr("First thing: the robot's dented. Repair all puts every dent on the job board, and the bay fixes it while time passes. It costs money, so check the price. Tap it.")},
-		{"target": "next", "text": tr("Time only moves when you say so. Tap NEXT. The bay works a shift and the clock moves on. Fights are in the evening.")},
+		{"target": "next", "text": tr("Time only moves when you say so. The big yellow button does whatever's next: it moves the clock through the day while the bay works, and on fight night it takes you to the fight. Tap it.")},
 		{"target": "rail:Parts", "text": tr("Get Parts, then the Scrapyard. One free dig a day, and you never know what's in the pile.")},
 		{"target": "dig", "text": tr("Go on, tap Dig anywhere. Mostly junk, but junk is free.")},
 		{"target": "rail:Pub", "text": tr("The Rusty Bolt, down the road. Whoever's at the bar will fight you for a few bucks.")},
@@ -1798,13 +1732,13 @@ func tour_target(i: int) -> Control:
 	var t: String = tour_steps()[i]["target"]
 	match t:
 		"repair":
-			return repair_button
+			return repair_all_btn if is_instance_valid(repair_all_btn) else null
 		"next":
-			return next_button
+			return fight_button
 		"fight":
 			return fight_button
 		"dig":
-			return null
+			return dig_button if is_instance_valid(dig_button) else null
 	if t.begins_with("rail:") and rail_buttons.has(t.substr(5)) and is_instance_valid(rail_buttons[t.substr(5)]):
 		return rail_buttons[t.substr(5)]
 	return null
@@ -1868,6 +1802,14 @@ func build_feed() -> void:
 				ic = "title"
 			make_row(GUI.EventIcon.new(ic, 40.0), tr("Year %d, week %d") % [int(n["y"]), int(n["w"])], GameData.World.news_text(n))
 		return
+	# Messages: one list, with a filter (who said it)
+	var fbar := action_bar()
+	fbar.add_child(GUI.text(tr("Show:"), 14, GUI.MUTED))
+	for f in [["all", tr("Everyone")], ["gus", tr("Gus")], ["pilots", tr("Pilots")], ["story", tr("Story")]]:
+		var fb := row_button(fbar, str(f[1]), _on_msg_filter.bind(str(f[0])), true, 0)
+		fb.toggle_mode = true
+		fb.button_pressed = msg_filter == str(f[0])
+	view = msg_filter
 	var shown := 0
 	var last_day := ""
 	for i in range(GameData.inbox.size() - 1, -1, -1):
@@ -1900,12 +1842,23 @@ func build_feed() -> void:
 			shown_name = GameData.robot_name
 		elif who == "NARRATOR":
 			shown_name = tr("NARRATOR")
-		make_row(face, shown_name, str(e["text"]), null, {"story": tr("story"), "gus": "", "talk": ""}.get(kind, ""))
+		if e.has("wid"):
+			make_tap_row(face, shown_name, str(e["text"]), open_pilot.bind(int(e["wid"])))
+		else:
+			make_row(face, shown_name, str(e["text"]), null, {"story": tr("story"), "gus": "", "talk": ""}.get(kind, ""))
 		shown += 1
 		if shown >= 150:
 			break
 	if shown == 0:
 		section(tr("Nothing here yet."))
+
+
+var msg_filter := "all"
+
+
+func _on_msg_filter(f: String) -> void:
+	msg_filter = f
+	refresh()
 
 
 ## Bay > Job board: everything being fixed or bolted on, in order, with the hands that work it.
@@ -1949,7 +1902,7 @@ func build_jobs_view() -> void:
 			sub += "  ·  " + tr("being worked on")
 		if j["rush"]:
 			sub += "  ·  " + tr("RUSH")
-		var row := make_row(part_icon(d, GameData.hp_ratio(p)), title, sub, null, tr("#%d") % (i + 1))
+		var row := make_tap_row(part_icon(d, GameData.hp_ratio(p)), title, sub, _on_detail.bind({"src": "inv", "uid": int(j["uid"])}), tr("#%d") % (i + 1))
 		var bb := GUI.BlockBar.new()   # 1 block = 1 hour of work
 		bb.block_w = 14.0
 		bb.setup(float(j["done"]), 1.0, maxf(1.0, ceilf(float(j["total"]))), GUI.CYAN if j["kind"] == "swap" else GUI.GREEN)
@@ -1958,6 +1911,14 @@ func build_jobs_view() -> void:
 		var rc := GameData.rush_cost(j)
 		row_button(row, tr("Rush $%d") % rc if not j["rush"] else tr("Rushed"), _on_rush.bind(i), not j["rush"] and GameData.money >= rc, 110)
 		row_button(row, tr("Up"), _on_job_up.bind(i), i > 0, 60)
+		if j["kind"] == "repair":
+			row_button(row, tr("Cancel +$%d") % GameData.job_refund(j), _on_cancel_job.bind(i), true, 120)
+
+
+func _on_cancel_job(i: int) -> void:
+	say(GameData.cancel_job(i), "sell")
+	GameData.save_game()
+	refresh()
 
 
 func _on_hire_mechanic() -> void:
@@ -2006,9 +1967,9 @@ func build_slot(slot: String) -> void:
 		var row := make_row(part_icon(d, GameData.hp_ratio(p)), d["name"], part_info(d))
 		var c := GameData.repair_cost(p)
 		if c > 0:
-			row_button(row, tr("Fix $%d") % c, _on_repair.bind(p["uid"]), GameData.can_repair(c), 95).add_theme_color_override("font_color", GUI.AMBER)
+			row_button(row, tr("Fix $%d · %s") % [c, GameData.hours_text(GameData.repair_hours(p))], _on_repair.bind(p["uid"]), GameData.can_repair(c), 130).add_theme_color_override("font_color", GUI.AMBER)
 		if slot != "reactor":
-			row_button(row, "Remove", _on_unequip.bind(slot), true, 95)
+			row_button(row, "Remove", _on_unequip_ask.bind(slot), true, 95)
 		if not GameData.UNDAMAGEABLE.has(d["kind"]):
 			var hw := hp_widget(p)
 			row.add_child(hw)
@@ -2026,13 +1987,13 @@ func build_slot(slot: String) -> void:
 				_on_detail.bind({"src": "inv", "uid": sp["uid"]}), "", is_detail("inv", sp["uid"]))
 		if not GameData.UNDAMAGEABLE.has(d["kind"]):
 			row.add_child(hp_widget(sp))
-		row_button(row, "Fit", _on_equip.bind(sp["uid"], slot), true, 90)
+		row_button(row, tr("Fit · %s") % GameData.hours_text(GameData.swap_hours(d)), _on_equip.bind(sp["uid"], slot), true, 110)
 	for sp in wrecks:
 		var d := GameData.part_def(sp["id"])
 		var c := GameData.repair_cost(sp)
 		var row := make_tap_row(part_icon(d, 0.0), d["name"] + tr("  (WRECKED)"), tr("Rebuild it to use it again."),
 				_on_detail.bind({"src": "inv", "uid": sp["uid"]}), "", is_detail("inv", sp["uid"]))
-		row_button(row, tr("Rebuild $%d") % c, _on_repair.bind(sp["uid"]), GameData.can_repair(c), 130).add_theme_color_override("font_color", GUI.AMBER)
+		row_button(row, tr("Rebuild $%d · %s") % [c, GameData.hours_text(GameData.repair_hours(sp))], _on_repair.bind(sp["uid"]), GameData.can_repair(c), 160).add_theme_color_override("font_color", GUI.AMBER)
 	# never stuck: if this slot is empty and there's nothing to fit, Gus has some junk lying around
 	if p.is_empty() and options.is_empty() and slot in ["head", "torso"]:
 		section("Gus's emergency junk:")
@@ -2047,7 +2008,7 @@ func build_slot(slot: String) -> void:
 		for id in for_sale:
 			var d := GameData.part_def(id)
 			var row := make_tap_row(part_icon(d), d["name"], delta_text(d, slot), _on_detail.bind({"src": "shop", "id": id}), "", is_detail("shop", id))
-			row_button(row, tr("Buy & fit $%d") % d["cost"], _on_buy_fit.bind(id, slot), GameData.money >= d["cost"], 150)
+			row_button(row, tr("Buy & fit $%d · %s") % [d["cost"], GameData.hours_text(GameData.swap_hours(d))], _on_buy_fit.bind(id, slot), GameData.money >= d["cost"], 180)
 	var more := action_bar()
 	if GameData.unlocked("shop"):
 		row_button(more, "Dealer's stock", _on_go_shop.bind(kind), true, 200)
@@ -2264,11 +2225,6 @@ func _on_open_setups() -> void:
 const StoryScript = preload("res://story.gd")
 
 
-## Design your pilot: they stand in your corner during fights and appear in the story.
-func _on_open_pilot() -> void:
-	go_to("Crew", "pilot")
-
-
 ## Crew > Controllers: the pads and gadgets your pilot fights with.
 func build_pilot_view() -> void:
 	build_controllers()
@@ -2441,9 +2397,6 @@ func open_controller(id: String) -> void:
 		act.disabled = GameData.money < int(cinfo["cost"])
 	act.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	bar.add_child(act)
-	var close := UI.button(tr("Back"), close_popup, 16, Vector2(0, 50))
-	close.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	bar.add_child(close)
 
 
 ## Health of each body part for the little damage map over the robot (-1 = should have one, doesn't).
@@ -2478,7 +2431,6 @@ func set_scene_for_tab() -> void:
 		"Crew":
 			scene = "team"
 	stats_panel.visible = STATS_SCENES.has(scene)
-	repair_button.visible = scene == "build"   # Repair all: only in the bay, where the robot hangs on the gantry
 	preview.spot = GarageArt.robot_spot(scene)
 	preview.facing = 1 if scene == "paint" else -1
 	preview.front = scene == "build"   # in the bay the robot hangs on Gus's gantry, facing you
@@ -2497,10 +2449,6 @@ func set_scene_for_tab() -> void:
 		(func():
 			play_story(["dad_trophies"])
 			detail_panel.visible = false).call_deferred()
-
-
-func _on_open_paint() -> void:
-	go_to("Bay", "style")
 
 
 # ---------------------------------------------------------------- SHOP
@@ -2562,7 +2510,7 @@ func build_dealer() -> void:
 			row.add_child(hb)
 		var target := best_slot(str(d["kind"]))
 		if target != "":
-			row_button(row, tr("Buy & fit $%d") % d["cost"], _on_buy_fit.bind(id, target), GameData.money >= d["cost"], 150)
+			row_button(row, tr("Buy & fit $%d · %s") % [d["cost"], GameData.hours_text(GameData.swap_hours(d))], _on_buy_fit.bind(id, target), GameData.money >= d["cost"], 180)
 		else:
 			row_button(row, tr("Buy $%d") % d["cost"], _on_buy.bind(id), GameData.money >= d["cost"], 150)
 	if (f == "all" or f == "chip") and not chips.is_empty():
@@ -2605,7 +2553,7 @@ func build_scrapyard_tab() -> void:
 	if GameData.digs_left <= 0:
 		row_button(bar, tr("Dug today. Back tomorrow"), _on_dig.bind(""), false, 270)
 	else:
-		row_button(bar, tr("Dig anywhere"), _on_dig.bind(""), true, 150)
+		dig_button = row_button(bar, tr("Dig anywhere"), _on_dig.bind(""), true, 150)
 		var kinds := action_bar()
 		kinds.add_child(UI.label(tr("Dig for:"), 16, Color(1.0, 0.8, 0.4)))
 		for k in ["head", "torso", "arm", "leg"]:
@@ -2692,7 +2640,7 @@ func show_find(uid: int, grade: String) -> void:
 	var look := UI.button(tr("Take a closer look"), func(): close_popup(); _on_detail({"src": "inv", "uid": uid}), 16, Vector2(0, 50))
 	look.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	bar.add_child(look)
-	var keep := UI.button(tr("Into storage"), close_popup, 16, Vector2(0, 50))
+	var keep := UI.button(tr("Into storage"), func(): close_popup(); _on_keep_find(uid), 16, Vector2(0, 50))
 	keep.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	bar.add_child(keep)
 
@@ -2901,11 +2849,6 @@ func build_season_tab() -> void:
 			build_league_view()
 
 
-func _on_season_view(v: String) -> void:
-	season_view = v
-	refresh()
-
-
 ## A wall calendar: 4-week months, cups on Wednesday nights, everything else on Saturday nights,
 ## new stock and fresh scrapyard junk every Sunday, rent on the last Sunday.
 ## Only what you're actually in shows up - leagues you haven't qualified for aren't there.
@@ -2914,6 +2857,7 @@ func build_calendar() -> void:
 	if cal_month < 0:
 		cal_month = cur_month
 	var mode := GameData.fight_mode()
+	tonight_strip(mode)
 	var head := HBoxContainer.new()
 	head.add_theme_constant_override("separation", 8)
 	list_box.add_child(head)
@@ -2946,7 +2890,7 @@ func build_calendar() -> void:
 	key.add_theme_constant_override("h_separation", 12)
 	list_box.add_child(key)
 	for k in [["open", "Open Trials"], ["scrap", "Scrap League"], ["rust", "Rust League"], ["iron", "Iron League"], ["steel", "Steel League"], ["title", "Championship"], ["cup", "Cup"],
-			["pickup", "Pickup fight"], ["rent", "Rent"], ["stock", "New stock"]]:
+			["pickup", "Pickup booked"], ["rent", "Rent"], ["stock", "New stock"]]:
 		var it := HBoxContainer.new()
 		it.add_theme_constant_override("separation", 4)
 		it.add_child(GUI.EventIcon.new(k[0], 18.0))
@@ -2954,20 +2898,7 @@ func build_calendar() -> void:
 		key.add_child(it)
 	var info := tr("Record %d-%d.  Medals %d.") % [GameData.wins, GameData.losses, GameData.trophies.size()]
 	section(info)
-	if mode == "pickup" or mode == "open":
-		var nxt := GameData.next_event_info()
-		var league_sat := ["league", "playoff"].has(str(GameData.week_plan(GameData.year, GameData.week, "sat")["kind"]))
-		if GameData.my_fight_ahead():
-			section("Nothing of yours tonight. Take a pickup fight at the scrapyard for a few dollars (Fight button), let the day go, or skip straight to your fight night.")
-		else:
-			section("No fight of yours left this week. Take a pickup fight at the scrapyard any day for a few dollars (Fight button), enter a cup if you can, or rest till Monday.")
-		var bar := action_bar()
-		var nb := row_button(bar, tr("NEXT > %s") % tr(["AFTERNOON", "EVENING", "TOMORROW"][GameData.phase]), _on_next_phase, GameData.phase < 2 or GameData.can_pass_day(), 240)
-		nb.add_theme_color_override("font_color", GUI.AMBER)
-		if GameData.my_fight_ahead():
-			row_button(bar, "Skip to fight night", _on_skip_fight_night, true, 200)
-		elif not league_sat:
-			row_button(bar, "Rest till Monday", _on_rest, true, 180)
+	section(tr("Tap a day to see what's on, or to go straight to it. Time moves with the big yellow button."))
 
 
 ## One calendar day, all the same size: the date, a symbol for each thing on, W / L after your fight.
@@ -3090,13 +3021,10 @@ func day_events(w: int, day: int) -> Array:
 					e["matches"].append({"ev": my_ev, "a": 0, "b": opp, "bet": false})
 				out.append(e)
 			"open":
-				if (this_week and GameData.day_index() <= day) or (w > GameData.week and day == 5):
-					var e := {"icon": "pickup", "tonight": tonight, "title": tr("SCRAPYARD PICKUP FIGHT"),
-							"text": tr("A few dollars down at the scrapyard, against whoever's hanging around."), "matches": []}
-					if tonight and mode == "pickup":
-						e["matches"].append({"pickup": true, "a": 0, "b": -1, "bet": true})
-					elif tonight:
-						e["matches"].append({"pickup": true, "a": 0, "b": -1, "bet": false})
+				# pickups are impromptu (whoever's at the bar): only one you've booked gets a mark
+				if tonight and mode == "pickup":
+					var e := {"icon": "pickup", "tonight": tonight, "title": tr("PICKUP FIGHT"),
+							"text": tr("Booked at the Rusty Bolt."), "matches": [{"pickup": true, "a": 0, "b": -1, "bet": true}]}
 					out.append(e)
 		if day == 5 and y == GameData.year:
 			# the other divisions fight the same Saturdays: the top of their card
@@ -3202,24 +3130,33 @@ func match_label(m: Dictionary) -> String:
 	return tr("%s  vs  %s") % [who(ev, a), who(ev, b)] + ("   %.2fx / %.2fx" % [Career.odds(ev, a, b), Career.odds(ev, b, a)] if m.get("bet", false) else "")
 
 
-## A single fight from the calendar: both robots side by side, records, odds, and (on the night)
-## betting, Watch for other people's fights, Scout for yours.
+## A single fight from the calendar: both robots side by side, records and odds. Betting lives at the
+## Rusty Bolt (one desk for every bet), so on fight night this sends you there; Watch for other people's fights.
 func _on_cal_match(w: int, day: int, i: int, k: int) -> void:
 	var events := day_events(w, day)
 	if i >= events.size() or k >= events[i].get("matches", []).size():
 		return
 	var m: Dictionary = events[i]["matches"][k]
-	if m.get("pickup", false) and GameData.fight_mode() == "open" and w == GameData.week:
-		GameData.start_pickup()   # see who's hanging around the scrapyard tonight
-		refresh()
-		events = day_events(w, day)
-		m = events[i]["matches"][k]
 	Sfx.play("click")
 	var col := open_popup(str(events[i].get("title", "")))
+	var pickup: bool = m.get("pickup", false)
+	if pickup and GameData.pickup.is_empty():
+		# nothing booked: pickups are whoever's at the bar that day
+		var l := GUI.text(tr("No fight booked. Whoever's at the Rusty Bolt that night will take you on, if you want a fight."), 15, GUI.TEXT)
+		l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		col.add_child(l)
+		var nav := HBoxContainer.new()
+		nav.add_theme_constant_override("separation", 8)
+		popup_footer.add_child(nav)
+		nav.add_child(UI.button(tr("< Back"), _on_cal_day.bind(w, day), 15, Vector2(110, 44)))
+		if w == GameData.week and day == GameData.day_index():
+			var fb := UI.button(tr("Find a fight ›"), func(): close_popup(); go_to("Pub", "bar"), 15, Vector2(0, 44))
+			fb.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			nav.add_child(fb)
+		return
 	var sides := HBoxContainer.new()
 	sides.add_theme_constant_override("separation", 14)
 	col.add_child(sides)
-	var pickup: bool = m.get("pickup", false)
 	var ev: Dictionary = {} if pickup else m["ev"]
 	var a := int(m["a"])
 	var b := int(m["b"])
@@ -3244,7 +3181,10 @@ func _on_cal_match(w: int, day: int, i: int, k: int) -> void:
 		pv.custom_minimum_size = Vector2(220, 170)
 		v.add_child(pv)
 		var name_t := who(ev, id) if not pickup or id == 0 else tr("%s · %s") % [str(o.get("pilot", "?")), str(o.get("name", "?"))]
-		v.add_child(GUI.text(name_t, 16, GUI.YELLOW if id == 0 else GUI.TEXT, "headb"))
+		var wid := -1
+		if id != 0:
+			wid = int(o.get("wid", -1)) if pickup else int(Career.pilot(ev, id).get("wid", -1))
+		v.add_child(name_button(name_t, wid, 16, GUI.YELLOW if id == 0 else GUI.TEXT))
 		var info := ""
 		if not pickup:
 			var t: Array = ev["table"].get(str(id), [0, 0, 0, 0])
@@ -3255,70 +3195,18 @@ func _on_cal_match(w: int, day: int, i: int, k: int) -> void:
 		else:
 			info = tr("Parts worth $%d") % int(GameData.World.bot_value(o)) if o.has("parts") else ""
 		v.add_child(GUI.text(info, 14, GUI.MUTED))
-		if bet and w == GameData.week:
-			if pickup and id == 0:
-				v.add_child(UI.button(tr("Bet $%d on yourself") % bet_stake, _on_cal_bet.bind(0, -1, w, day, i, k), 15, Vector2(0, 40)))
-			elif not pickup and other != 0:
-				v.add_child(UI.button(tr("Bet $%d") % bet_stake, _on_cal_bet.bind(id, other, w, day, i, k), 15, Vector2(0, 40)))
-	if bet and w == GameData.week:
-		var bar := HBoxContainer.new()
-		bar.add_theme_constant_override("separation", 6)
-		col.add_child(bar)
-		bar.add_child(GUI.text(tr("Stake:"), 15, GUI.MUTED))
-		for st in GameData.stakes():
-			var sb := UI.button("$%d" % st, _on_cal_stake.bind(st, w, day, i, k), 14, Vector2(64, 36))
-			sb.toggle_mode = true
-			sb.button_pressed = st == bet_stake
-			bar.add_child(sb)
-		var mine: Array = GameData.bets.filter(func(x): return (pickup and x["on"] == "self") or (not pickup and x["on"] == GameData.bet_target() and int(x["round"]) == int(ev["round"]) and [a, b].has(int(x["pick"]))))
-		for x in mine:
-			var pick_name: String = GameData.pilot_name if int(x["pick"]) == 0 else str(Career.pilot(ev, int(x["pick"])).get("pilot", "?"))
-			col.add_child(GUI.text(tr("  $%d on %s at %.2fx  ->  pays $%d") % [x["stake"], pick_name, x["odds"], int(x["stake"] * x["odds"])], 14, GUI.AMBER))
-	elif not bet:
-		col.add_child(GUI.text(tr("Betting opens on fight night."), 14, GUI.MUTED))
+	if not bet:
+		col.add_child(GUI.text(tr("Betting opens on fight night, at the Rusty Bolt."), 14, GUI.MUTED))
 	var foot := HBoxContainer.new()
 	foot.add_theme_constant_override("separation", 8)
-	col.add_child(foot)
-	foot.add_child(UI.button(tr("< Back"), _on_cal_day.bind(w, day), 15, Vector2(110, 40)))
+	popup_footer.add_child(foot)
+	foot.add_child(UI.button(tr("< Back"), _on_cal_day.bind(w, day), 15, Vector2(110, 44)))
+	if bet and w == GameData.week:
+		var bb := UI.button(tr("Bet at the Rusty Bolt ›"), func(): close_popup(); go_to("Pub", "bets"), 15, Vector2(0, 44))
+		bb.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		foot.add_child(bb)
 	if bet and not pickup and a != 0 and GameData.can_watch(ev, a, b):
-		foot.add_child(UI.button(tr("Watch"), _on_watch.bind(a, b, str(m.get("on", ""))), 15, Vector2(110, 40)))
-
-
-func _on_cal_stake(st: int, w: int, day: int, i: int, k: int) -> void:
-	bet_stake = st
-	_on_cal_match(w, day, i, k)
-
-
-func _on_cal_bet(pick: int, vs: int, w: int, day: int, i: int, k: int) -> void:
-	var events := day_events(w, day)
-	var on := ""
-	if i < events.size() and k < events[i].get("matches", []).size():
-		on = str(events[i]["matches"][k].get("on", ""))
-	_on_bet_on(on, pick, vs)
-	_on_cal_match(w, day, i, k)
-
-
-func day_cell(n: int, text: String, col: Color, bg: Color, today: bool) -> PanelContainer:
-	var p := PanelContainer.new()
-	p.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	p.custom_minimum_size = Vector2(0, 50)
-	var sb := StyleBoxFlat.new()
-	sb.bg_color = bg
-	sb.set_content_margin_all(2)
-	if today:
-		sb.border_color = Color(1.0, 0.85, 0.3)
-		sb.set_border_width_all(2)
-	p.add_theme_stylebox_override("panel", sb)
-	var v := VBoxContainer.new()
-	v.add_theme_constant_override("separation", 0)
-	p.add_child(v)
-	v.add_child(UI.label(str(n), 10, Color(0.6, 0.6, 0.65)))
-	if text != "":
-		var l := UI.label(text, 11, col)
-		l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		v.add_child(l)
-	return p
+		foot.add_child(UI.button(tr("Watch"), _on_watch.bind(a, b, str(m.get("on", ""))), 15, Vector2(110, 44)))
 
 
 var bet_stake := 50
@@ -3331,35 +3219,136 @@ var bet_div := "event"   # which division's card the Bets screen shows on a leag
 ## The Rusty Bolt: who's at the bar (today's pickup fight), what's on the TV (tonight's top league
 ## fight, watch it), and the bookies: bets on any division fighting tonight, the cup, or yourself.
 func build_bets() -> void:
-	var night := GameData.league_night()
-	var keys: Array = night.map(func(x): return str(x[0]))
-	if not night.is_empty():
-		if not keys.has(bet_div):
-			bet_div = keys[0]
-		var tabs := action_bar()
-		for x in night:
-			var k := str(x[0])
-			var label := (tr("Your division") if k == "event" else tr(Career.STAGES[x[1]["stage"]]["short"]).capitalize())
-			var b := row_button(tabs, label, _on_bet_div.bind(k), true, 0)
-			b.toggle_mode = true
-			b.button_pressed = k == bet_div
-		bet_card(bet_div, GameData.ev_for(bet_div))
-		return
+	# every bet still open, wherever it was placed
+	if not GameData.bets.is_empty():
+		section(tr("YOUR OPEN BETS"))
+		for x in GameData.bets:
+			section("  " + bet_line(x))
+	# every board the bookies have up tonight: the league tables, the cup, your own pickup
+	var boards: Array = []
+	for x in GameData.league_night():
+		var k := str(x[0])
+		boards.append([k, tr("Your division") if k == "event" else tr(Career.STAGES[x[1]["stage"]]["short"]).capitalize()])
 	if GameData.bet_target() == "cup":
-		bet_card("cup", GameData.circuit)
+		boards.append(["cup", tr("Cup")])
+	elif GameData.bet_target() == "self":
+		boards.append(["self", tr("Your fight")])
+	if boards.is_empty():
+		section("No fights to bet on tonight. League nights are every other Saturday, cups on Wednesdays.")
+		var tv := tv_info()
+		if not tv.is_empty():
+			section(tr("ON THE TV: %s") % str(tv["title"]) + "   " + str(tv["a"]))
 		return
-	if GameData.bet_target() == "self":
-		build_self_bets()
-		return
-	section("No fights to bet on tonight. League nights are every other Saturday, cups on Wednesdays.")
-	var tv := tv_info()
-	if not tv.is_empty():
-		section(tr("ON THE TV: %s") % str(tv["title"]) + "   " + str(tv["a"]))
+	var keys: Array = boards.map(func(x): return str(x[0]))
+	if not keys.has(bet_div):
+		bet_div = keys[0]
+	if boards.size() > 1:
+		var tabs := action_bar()
+		for x in boards:
+			var b := row_button(tabs, str(x[1]), _on_bet_div.bind(str(x[0])), true, 0)
+			b.toggle_mode = true
+			b.button_pressed = str(x[0]) == bet_div
+	match bet_div:
+		"self":
+			build_self_bets()
+		"cup":
+			bet_card("cup", GameData.circuit)
+		_:
+			bet_card(bet_div, GameData.ev_for(bet_div))
+
+
+## "$50 on ROOK at 1.80x, pays $90 (Rust League)"
+func bet_line(x: Dictionary) -> String:
+	var on := str(x["on"])
+	var who_name := GameData.pilot_name
+	var where := tr("your fight")
+	if on != "self":
+		var ev := GameData.ev_for(on)
+		if int(x["pick"]) != 0:
+			who_name = str(Career.pilot(ev, int(x["pick"])).get("pilot", "?"))
+		where = tr(str(ev.get("name", "?")))
+	return tr("$%d on %s at %.2fx, pays $%d (%s)") % [int(x["stake"]), who_name, float(x["odds"]), int(float(x["stake"]) * float(x["odds"])), where]
 
 
 func _on_bet_div(k: String) -> void:
 	bet_div = k
 	refresh()
+
+
+## A pilot's name you can tap: opens their pilot card. wid < 0 (you, a story rival, nobody) = plain text.
+func name_button(text: String, wid: int, size: int = 16, col: Color = GUI.TEXT) -> Control:
+	if wid < 0 or GameData.World.pilot(wid).is_empty():
+		return GUI.text(text, size, col, "headb")
+	var b := Button.new()
+	b.text = text
+	b.flat = true
+	b.focus_mode = Control.FOCUS_NONE
+	b.alignment = HORIZONTAL_ALIGNMENT_LEFT
+	b.add_theme_font_override("font", GUI.headb())
+	b.add_theme_font_size_override("font_size", size)
+	for c in ["font_color", "font_hover_color", "font_pressed_color"]:
+		b.add_theme_color_override(c, col)
+	b.tooltip_text = tr("Pilot card")
+	b.pressed.connect(open_pilot.bind(wid))
+	return b
+
+
+class PilotFace extends Control:
+	var look := {}
+	func _draw() -> void:
+		draw_rect(Rect2(Vector2.ZERO, size), Color(0.08, 0.08, 0.1))
+		load("res://pilot_art.gd").draw_head(self, size * 0.5 + Vector2(0, 6), minf(size.x, size.y) * 0.32, look, 1.0, 0.0)
+
+
+## The pilot card: who they are, how they're doing, what's between the two of you, and their robot.
+## Opens from any pilot's name: tables, the pub, messages, the calendar.
+func open_pilot(wid: int) -> void:
+	var W = GameData.World
+	var p: Dictionary = W.pilot(wid)
+	if p.is_empty():
+		return
+	Sfx.play("click")
+	var col := open_popup(str(p["name"]) + (("  " + grudge_tag(wid)) if grudge_tag(wid) != "" else ""))
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 14)
+	col.add_child(row)
+	var face := PilotFace.new()
+	face.look = W.look_of(wid)
+	face.custom_minimum_size = Vector2(120, 140)
+	row.add_child(face)
+	var info := VBoxContainer.new()
+	info.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	info.add_theme_constant_override("separation", 4)
+	row.add_child(info)
+	info.add_child(GUI.text(GameData.pilot_standing(wid), 16, GUI.YELLOW, "headb"))
+	info.add_child(GUI.text(tr("Career record %d-%d · this season %d-%d") % [int(p.get("w", 0)), int(p.get("l", 0)), int(p.get("sw", 0)), int(p.get("sl", 0))], 14, GUI.TEXT))
+	var h: Array = GameData.h2h.get(str(wid), [0, 0])
+	if int(h[0]) + int(h[1]) > 0:
+		info.add_child(GUI.text(tr("Against you: you %d, them %d") % [int(h[0]), int(h[1])], 14, GUI.AMBER))
+	else:
+		info.add_child(GUI.text(tr("You've never fought."), 14, GUI.MUTED))
+	var g := grudge_tag(wid)
+	if g != "":
+		var gl := GUI.text({tr("(bad blood)"): tr("Bad blood both ways. Neither of you has forgotten."), tr("(rival)"): tr("You've got a score to settle with them."),
+				tr("(hates you)"): tr("They hold a grudge against you.")}.get(g, ""), 14, GUI.RED)
+		gl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		info.add_child(gl)
+	var bot: Dictionary = W.robot(wid)
+	var brow := HBoxContainer.new()
+	brow.add_theme_constant_override("separation", 14)
+	col.add_child(brow)
+	var pv := bot_preview(bot)
+	pv.custom_minimum_size = Vector2(160, 130)
+	brow.add_child(pv)
+	var bi := VBoxContainer.new()
+	bi.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	brow.add_child(bi)
+	bi.add_child(GUI.text(str(bot.get("name", "?")), 16, GUI.TEXT, "headb"))
+	bi.add_child(GUI.text(tr("Parts worth $%d") % int(W.bot_value(p.get("bot", {}))), 14, GUI.MUTED))
+	# at the bar tonight? then you can take them on from here
+	if GameData.patrons_today().any(func(x): return int(x["wid"]) == wid) and GameData.can_pass_day():
+		var cb := UI.button(tr("Challenge ($%d)") % GameData.PICKUP_PURSE.get(str(p["tier"]), 100), func(): close_popup(); _on_challenge(wid), 16, Vector2(0, 46))
+		popup_footer.add_child(cb)
 
 
 ## How you two feel about each other: "(rival)" (you resent them), "(hates you)" (they resent
@@ -3390,9 +3379,16 @@ func build_pub_cards() -> void:
 		var tag := grudge_tag(wid)
 		if tag != "":
 			sub += "   " + tag
-		var row := make_row(bot_preview(o), tr("%s · %s") % [str(pat["name"]), str(o.get("name", "?"))], sub)
+		var row := make_tap_row(bot_preview(o), tr("%s · %s") % [str(pat["name"]), str(o.get("name", "?"))], sub, open_pilot.bind(wid))
 		var purse: int = int(GameData.PICKUP_PURSE.get(str(pat["tier"]), 120))
-		row_button(row, tr("Challenge ($%d)") % purse if can else tr("Not tonight"), _on_challenge.bind(wid), can, 150)
+		row_button(row, tr("Challenge ($%d)") % purse if can else tr("Your fight's tonight"), _on_challenge.bind(wid), can, 150)
+		if tag != "":
+			# a pilot with something to say to you: the stripes say "go and talk"
+			var host: Node = row
+			while host != null and not (host is Button):
+				host = host.get_parent()
+			if host:
+				GUI.mark_new(host, true)
 	var tv := tv_info()
 	if not tv.is_empty():
 		var hm := GameData.headline_match()
@@ -3438,7 +3434,7 @@ func bet_card(on: String, ev: Dictionary) -> void:
 		bet_side(row, ev, b, a, on)
 		if a != 0:
 			row_button(row, "Watch", _on_watch.bind(a, b, on), GameData.can_watch(ev, a, b), 80)
-	var mine: Array = GameData.bets.filter(func(x): return x["on"] == on and int(x["round"]) == int(ev["round"]))
+	var mine: Array = GameData.bets.filter(func(x): return x["on"] == on and int(x["round"]) == Career.round_key(ev))
 	if not mine.is_empty():
 		section("Your bets this round:")
 		for x in mine:
@@ -3601,15 +3597,7 @@ func _on_juke_stop() -> void:
 
 func build_pilots_view() -> void:
 	var World = GameData.World
-	section("Port Ferrum's pilots. Between fights they earn, repair, upgrade, sell parts, and some retire.")
-	var news: Array = GameData.world.get("news", [])
-	if not news.is_empty():
-		section("NEWS")
-		for k in range(news.size() - 1, maxi(-1, news.size() - 9), -1):
-			var n: Dictionary = news[k]
-			var l := UI.label(tr("Y%d W%d  %s") % [int(n["y"]), int(n["w"]), World.news_text(n)], 13, Color(0.85, 0.85, 0.9))
-			l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-			list_box.add_child(l)
+	section("Port Ferrum's pilots, ranked by the bookies. Tap a pilot for their card. The town's news is on BotMedia.")
 	var order: Array = [GameData.rank] + World.TIERS.filter(func(t): return t != GameData.rank)
 	var widths := [34, 0, 70, 78, 96]
 	for tier in order:
@@ -3642,7 +3630,7 @@ func build_pilots_view() -> void:
 			var wallet := tr("in debt") if cash < 0 else (tr("rich") if cash > living * 12 else (tr("comfortable") if cash > living * 3 else tr("getting by")))
 			var col := Color(1, 0.55, 0.5) if cash < 0 else Color(0.9, 0.9, 0.95)
 			table_row([str(k + 1), tr("%s · %s") % [p["name"], p["bot"]["name"]], "%d-%d" % [int(p["w"]), int(p["l"])],
-					"$%d" % int(World.bot_value(p["bot"])), wallet], widths, col, Color(0, 0, 0, 0))
+					"$%d" % int(World.bot_value(p["bot"])), wallet], widths, col, Color(0, 0, 0, 0), int(p["wid"]))
 	var gone: Array = GameData.world.get("pilots", {}).values().filter(func(p): return p["retired"])
 	if not gone.is_empty():
 		gone.sort_custom(func(a, b): return int(a.get("ret_y", 0)) * 100 + int(a.get("ret_w", 0)) > int(b.get("ret_y", 0)) * 100 + int(b.get("ret_w", 0)))
@@ -3680,12 +3668,6 @@ func _on_go_to_day(idx: int) -> void:
 	time_end()
 
 
-func _on_skip_fight_night() -> void:
-	close_popup()
-	time_begin()
-	GameData.skip_to_fight_night()
-	refresh()
-	time_end()
 
 
 const PHASE_SHORT := ["AM", "PM", "EVE"]
@@ -3702,15 +3684,6 @@ func _on_next_phase() -> void:
 	time_end()
 
 
-func _on_skip_wednesday() -> void:
-	close_popup()
-	if not GameData.can_pass_day():
-		say(tr("Your fight is tonight."), "error")
-		return
-	time_begin()
-	GameData.skip_wednesday()
-	refresh()
-	time_end()
 
 
 func _on_cal_month(step: int) -> void:
@@ -3834,7 +3807,7 @@ func show_table(ev: Dictionary) -> void:
 			var tg := grudge_tag(int(e["wid"]))
 			if tg != "":
 				mark += "  " + tg
-		table_row([str(pos + 1), who(ev, id) + mark, "%d-%d" % [t[0], t[1]], str(t[2]), str(t[3])], widths, col, bg)
+		table_row([str(pos + 1), who(ev, id) + mark, "%d-%d" % [t[0], t[1]], str(t[2]), str(t[3])], widths, col, bg, int(e.get("wid", -1)))
 
 
 func show_bracket(ev: Dictionary) -> void:
@@ -3867,8 +3840,15 @@ func who(ev: Dictionary, id: int) -> String:
 	return tr("%s · %s") % [pilot, o.get("name", "?")]
 
 
-func table_row(cells: Array, widths: Array, col: Color, bg: Color) -> void:
+func table_row(cells: Array, widths: Array, col: Color, bg: Color, wid: int = -1) -> void:
 	var p := PanelContainer.new()
+	if wid >= 0:
+		# a pilot's row: tap it for their pilot card
+		p.mouse_filter = Control.MOUSE_FILTER_STOP
+		p.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+		p.gui_input.connect(func(e):
+			if (e is InputEventMouseButton and e.pressed and e.button_index == MOUSE_BUTTON_LEFT) or (e is InputEventScreenTouch and e.pressed):
+				open_pilot(wid))
 	var sb := StyleBoxFlat.new()
 	sb.bg_color = bg
 	sb.set_content_margin_all(2)
@@ -3886,16 +3866,6 @@ func table_row(cells: Array, widths: Array, col: Color, bg: Color) -> void:
 	list_box.add_child(p)
 
 
-func _on_rest() -> void:
-	time_begin()
-	var t := GameData.rest_week()
-	refresh()
-	if not time_end():
-		say(t, "error")
-
-
-func _on_skip() -> void:
-	say(GameData.skip_to_next_event() + bills_text(), "click")
 
 
 # ---------------------------------------------------------------- time passing
@@ -3946,8 +3916,10 @@ func time_end() -> bool:
 	for k in tp["jobs"]:
 		if not still.has(k):
 			lines.append([str(tp["jobs"][k]), GUI.GREEN])
+	var done_lines := lines.size()
 	if not GameData.jobs.is_empty():
 		lines.append([tr("Still on the board: %d jobs.") % GameData.jobs.size() if GameData.jobs.size() != 1 else tr("Still on the board: 1 job."), GUI.CYAN])
+	var before_money := lines.size()
 	# money
 	if GameData.bills_note > int(tp["bills"]):
 		lines.append([(tr("Rent and food: -$%d.") if GameData.rank_index() < 2 else tr("Rent, crew and travel: -$%d.")) % (GameData.bills_note - int(tp["bills"])), GUI.RED])
@@ -3963,6 +3935,12 @@ func time_end() -> bool:
 	for i in range(news.size() - fresh, news.size()):
 		if i >= 0:
 			lines.append([GameData.World.news_text(news[i]), GUI.MUTED])
+	# one shift with nothing to report: no window, just the clock moving on
+	if steps == 1 and done_lines == 0 and lines.size() == before_money:
+		tp = {}
+		Sfx.play("time")
+		say(tr("%s. The bay put in its shift.") % tr(GameData.PHASE_NAMES[GameData.phase]).capitalize() if GameData.phase > 0 else tr("A new day: %s.") % tr(GameData.DAY_FULL[GameData.day_index()]))
+		return true
 	if lines.is_empty():
 		lines.append([tr("A quiet stretch. Nothing much happened."), GUI.MUTED])
 	var from_label: String = tp["label"]
@@ -4067,7 +4045,7 @@ func build_team_tab() -> void:
 			row_button(row, tr("Sell gantry"), _on_sell_gantry, true, 120)
 		if not w.is_empty():
 			var c := GameData.wingman_repair_cost(k)
-			row_button(row, tr("Fix $%d") % c if c > 0 else tr("OK"), _on_repair_wingman.bind(k), c > 0 and GameData.can_repair(c), 95)
+			row_button(row, (tr("Fix $%d · %s") % [c, GameData.hours_text(GameData.wingman_repair_hours(k))]) if c > 0 else (tr("On the job board") if GameData.has_work("w%d" % k) else tr("All repaired")), _on_repair_wingman.bind(k), c > 0 and GameData.can_repair(c), 150)
 			row_button(row, "Disband", _on_disband_wingman.bind(k), true, 100)
 
 
@@ -4102,6 +4080,10 @@ func _on_repair_wingman(k: int) -> void:
 
 
 func _on_disband_wingman(k: int) -> void:
+	confirm(tr("DISBAND %s?") % GameData.wingman_name(k), tr("Its parts go back to Storage. Building it again means bolting every part on again."), tr("Disband"), _do_disband.bind(k))
+
+
+func _do_disband(k: int) -> void:
 	GameData.clear_wingman(k)
 	say(tr("%s's parts went back to your Spares.") % GameData.wingman_name(k), "click")
 	refresh()
@@ -4117,7 +4099,7 @@ func bot_preview(o: Dictionary) -> RobotPreview:
 
 # ---------------------------------------------------------------- actions
 
-## New things carry a star: the first tap has Gus explain them (a short scene), then opens them.
+## New things carry marching stripes: the first tap has Gus explain them (a short scene), then opens them.
 ## The first time you open something new, Gus explains it in his bubble while you look at it.
 ## Returns true only when the caller should wait (block = true) instead of going ahead.
 func gus_explains(feature: String, block: bool = false) -> bool:
@@ -4128,7 +4110,13 @@ func gus_explains(feature: String, block: bool = false) -> bool:
 
 
 func star(text: String, feature: String) -> String:
-	return text + (" ★" if GameData.is_new(feature) else "")
+	return text   # (new things get marching stripes now: marked())
+
+
+## New things get the marching hazard stripes round them: "here, something to do".
+func marked(c: Control, feature: String) -> Control:
+	GUI.mark_new(c, GameData.is_new(feature))
+	return c
 
 
 ## A rail button. The first visit to a section Gus hasn't shown you yet plays his scene first.
@@ -4254,11 +4242,6 @@ func _on_slot(slot: String) -> void:
 	refresh()
 
 
-func _on_shop_kind(kind: String) -> void:
-	shop_kind = kind
-	refresh()
-
-
 func _on_go_shop(kind: String) -> void:
 	shop_kind = kind
 	shop_filter = kind
@@ -4268,11 +4251,6 @@ func _on_go_shop(kind: String) -> void:
 func _on_order_kind(k: String) -> void:
 	order_kind = k
 	refresh()
-
-
-func _on_shop_view(v: String) -> void:
-	tab = "Parts"
-	_on_seg("order" if v == "order" else "dealer")
 
 
 func _on_go_workshop(kind: String) -> void:
@@ -4286,10 +4264,6 @@ func _on_reroll() -> void:
 	var before := GameData.money
 	say(GameData.reroll_stock(), "buy" if GameData.money < before else "error")
 	refresh()
-
-
-func _on_open_style() -> void:
-	go_to("Bay", "style")
 
 
 ## Bay > Style & paint: pick a fighting style (watch each signature move first), and a paint job.
@@ -4381,7 +4355,7 @@ func _on_pick_style(id: String) -> void:
 func _on_open_scout() -> void:
 	if GameData.scout_key() == "":
 		return   # nothing booked tonight: nobody to scout
-	if gus_explains("scout", true):
+	if gus_explains("scout"):
 		return
 	var msg := ""
 	if not GameData.scouted():
@@ -4482,31 +4456,6 @@ func _on_buy(id: String) -> void:
 	refresh()
 
 
-## Fit a part from storage: compare it with what's on the robot now, slot by slot, then pick.
-func _on_fit_choose(uid: int, slots: Array) -> void:
-	var p := GameData.inst(uid)
-	var d := GameData.part_def(p["id"])
-	var col := open_popup(tr("FIT %s") % str(d["name"]).to_upper())
-	col.custom_minimum_size = Vector2(720, 0)
-	col.add_child(UI.label(tr("GOING ON:"), 15, Color(0.5, 1.0, 0.6)))
-	make_row(part_icon(d, GameData.hp_ratio(p)), tr("%s  [%s]") % [d["name"], tr(str(d["kind"]).to_upper())], health_text(p), col)
-	col.add_child(UI.label(tr("COMING OFF:") if slots.size() == 1 else tr("COMING OFF: pick the slot."), 15, Color(1.0, 0.7, 0.4)))
-	for sl in slots:
-		var cur := GameData.equipped_inst(sl)
-		var row: HBoxContainer
-		if cur.is_empty():
-			row = make_row(part_icon({}), tr("%s: empty") % tr(GameData.SLOT_NAMES[sl]), tr("Nothing there now."), col)
-		else:
-			var cd := GameData.part_def(cur["id"])
-			row = make_row(part_icon(cd, GameData.hp_ratio(cur)), tr("%s: %s") % [tr(GameData.SLOT_NAMES[sl]), cd["name"]], health_text(cur), col)
-		row_button(row, "Fit here", _on_fit_pick.bind(uid, sl), true, 110)
-
-
-func _on_fit_pick(uid: int, slot: String) -> void:
-	close_popup()
-	_on_equip(uid, slot)
-
-
 func _on_equip(uid: int, slot: String) -> void:
 	say(GameData.equip(uid, slot), "equip")
 	refresh()
@@ -4535,12 +4484,68 @@ func _on_repair_all() -> void:
 	refresh()
 
 
+## A yes/no window for things that can't be undone.
+func confirm(title: String, text: String, yes_text: String, cb: Callable) -> void:
+	var col := open_popup(title)
+	var l := GUI.text(text, 16, GUI.TEXT)
+	l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	col.add_child(l)
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 10)
+	popup_footer.add_child(row)
+	var yes := UI.button(yes_text, func(): close_popup(); cb.call(), 17, Vector2(0, 48))
+	yes.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.add_child(yes)
+	var no := UI.button(tr("Keep it"), close_popup, 17, Vector2(0, 48))
+	no.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.add_child(no)
+
+
+## Taking a part off is quick, but putting one back (or another) means bolting it on again from scratch.
+func _on_unequip_ask(slot: String) -> void:
+	var p := GameData.equipped_inst(slot)
+	if p.is_empty():
+		return
+	var col := open_popup(tr("TAKE IT OFF?"))
+	var d := GameData.part_def(p["id"])
+	var l := GUI.text(tr("%s comes off and goes to Storage. Bolting it back on, or anything else in that slot, takes %s of bay work from scratch.") % [d["name"], GameData.hours_text(GameData.swap_hours(d))], 16, GUI.TEXT)
+	l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	col.add_child(l)
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 10)
+	popup_footer.add_child(row)
+	var yes := UI.button(tr("Take it off"), func(): close_popup(); _on_unequip(slot), 17, Vector2(0, 48))
+	yes.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.add_child(yes)
+	var no := UI.button(tr("Leave it on"), close_popup, 17, Vector2(0, 48))
+	no.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.add_child(no)
+
+
 func _on_randomize() -> void:
 	if gus_explains("randomize"):
 		return
-	say(GameData.randomize_robot(), "equip")
+	var before := bolting_left()
+	var t := GameData.randomize_robot()
+	say(t + bolting_note(before), "equip")
 	Sfx.play("repair", 0.2)
 	refresh()
+
+
+## Hours of bolting on still to do for the main robot.
+func bolting_left() -> float:
+	GameData.sync_swaps()
+	var h := 0.0
+	for j in GameData.jobs:
+		if j["kind"] == "swap" and j["robot"] == "m":
+			h += float(j["total"]) - float(j["done"])
+	return h
+
+
+## " That's 6 h of bolting on the job board." when a change added work.
+func bolting_note(before: float) -> String:
+	var added := bolting_left() - before
+	return (" " + tr("That's %s more bolting on the job board.") % GameData.hours_text(added)) if added > 0.05 else ""
 
 
 func _on_save_setup(k: int) -> void:
@@ -4550,7 +4555,9 @@ func _on_save_setup(k: int) -> void:
 
 
 func _on_load_setup(k: int) -> void:
-	say(GameData.load_setup(k), "equip")
+	var before := bolting_left()
+	var t := GameData.load_setup(k)
+	say(t + bolting_note(before), "equip")
 	close_popup()
 	refresh()
 
@@ -4673,17 +4680,14 @@ func _on_enter_cup(k: int) -> void:
 
 
 func _on_abandon() -> void:
+	confirm(tr("LEAVE THE CUP?"), tr("You're out of it for good, and any bets on it are off."), tr("Leave the cup"), _do_abandon)
+
+
+func _do_abandon() -> void:
 	GameData.abandon_circuit()
 	GameData.save_game()
 	say("Left the cup.", "error")
 	refresh()
-
-
-func _on_save() -> void:
-	if GameData.save_game():
-		say("Game saved.", "buy")
-	else:
-		say("Couldn't save!", "error")
 
 
 func _on_menu() -> void:
@@ -4739,86 +4743,140 @@ func damage_report() -> Array:
 
 ## Fight! Always a last look first: who it is, a chance to scout them, and what's wrong with your robot.
 func _on_fight() -> void:
-	if GameData.fight_mode() == "open":
-		# nothing booked: pickups are always optional, pick someone at the bar (or don't)
-		go_to("Pub", "bar")
-		say(tr("Nobody's booked us tonight. Pick someone at the bar if you want a fight, or let the day go by. Your call."))
+	# the one button: time moves on until the evening; then tonight's fight, or on to tomorrow
+	if GameData.phase < 2 or GameData.fight_mode() == "open":
+		_on_next_phase()
 		return
 	open_fight_popup()
 
 
+## The bell chip: straight to the job board.
+func _on_bell() -> void:
+	Sfx.play("click")
+	go_to("Bay", "jobs")
+
+
+## How fit to fight the robot going in tonight will be at the bell, 0..1: each body part's HP by
+## the bell against its full HP (a limb less than half bolted on counts as gone, a loose one half).
+func bell_readiness() -> float:
+	var robot := "m"
+	var eq: Dictionary = GameData.equipped
+	if GameData.sending >= 0 and not GameData.is_team_fight() and GameData.sending < GameData.wingmen.size():
+		robot = "w%d" % GameData.sending
+		eq = GameData.wingmen[GameData.sending]
+	var swaps := {}
+	for e in GameData.at_the_bell():
+		var j: Dictionary = e["job"]
+		if j["kind"] == "swap" and j["robot"] == robot:
+			swaps[j["slot"]] = float(e["progress"])
+	var have := 0.0
+	var full := 0.0
+	for slot in ["head", "torso", "arm_front", "arm_back", "leg_front", "leg_back"]:
+		var p := GameData.inst(int(eq.get(slot, -1)))
+		if p.is_empty():
+			full += 50.0   # a missing part counts against you
+			continue
+		var mx := float(GameData.part_def(p["id"])["hp"])
+		full += mx
+		var hp := GameData.bell_hp_ratio(p) * mx
+		if swaps.has(slot):
+			hp *= 0.0 if (float(swaps[slot]) < 0.5 and not (slot == "torso" or slot == "head")) else 0.5
+		have += hp
+	return clampf(have / maxf(1.0, full), 0.0, 1.0)
+
+
 func open_fight_popup() -> void:
+	var keep_scroll := popup_scroll.scroll_vertical if overlay != null and is_instance_valid(popup_scroll) else 0
 	var o := GameData.current_opponent()
-	var col := open_popup(tonight_name() + (" · " + tr("CUP") if GameData.fight_mode() == "circuit" else ""))
+	var mode := GameData.fight_mode()
+	var col := open_popup(tr("BELL CHECK · %s") % tonight_name() + (" · " + tr("CUP") if mode == "circuit" else ""))
 	col.custom_minimum_size = Vector2(640, 0)
 	fight_popup_open = true
-	if GameData.fight_mode() == "story" and GameData.event.get("trials", false):
+	if mode == "story" and GameData.event.get("trials", false):
 		# the Open Trials: the whole year hangs on this
 		var left: int = GameData.event.get("slots", []).size() - int(GameData.event.get("po_round", 0))
-		var mb := GUI.text(tr("MAKE OR BREAK"), 22, GUI.RED, "stencil")
-		col.add_child(mb)
+		col.add_child(GUI.text(tr("MAKE OR BREAK"), 22, GUI.RED, "stencil"))
 		var ml := GUI.text(tr("Win once and we're in the Scrap League. Lose all three chances and it's a whole year in the gutter: pickups and cups, no league, no league money.") + " " +
 				(tr("This is the last chance.") if left <= 1 else tr("Chances left: %d.") % left), 15, GUI.AMBER)
 		ml.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		col.add_child(ml)
-	var who := str(o.get("pilot", ""))
-	var head := UI.label(GameData.fight_title() + "\n" + (tr("%s, piloted by %s") % [o.get("name", "?"), who] if who != "" else str(o.get("name", "?"))) + "   " + tr("Purse: $%d") % GameData.current_reward(), 18, Color(1.0, 0.85, 0.4))
-	head.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	col.add_child(head)
-	var left_h: int = [8, 4, 0][GameData.phase]
-	var clock := UI.label((tr("%s %s. The bell rings this evening: %d more hours of work in the bay before it.") % [tr(DAY_FULL_UP[GameData.day_index()]), tr(GameData.PHASE_NAMES[GameData.phase]), left_h]) if left_h > 0 else tr("It's the evening. The bell's about to ring: no more work on the robot before it."), 14, GUI.CYAN)
-	clock.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	col.add_child(clock)
-	if GameData.day_index() < 5 and GameData.fight_mode() != "story" and ["league", "playoff"].has(str(GameData.week_plan(GameData.year, GameData.week, "sat")["kind"])):
-		var warn := UI.label(tr("Your league fight is this Saturday. Whatever breaks tonight has to be fixed (and paid for) by then."), 15, Color(0.75, 0.85, 1.0))
+	# who, and for how much
+	var who_p := str(o.get("pilot", ""))
+	col.add_child(GUI.text(GameData.fight_title(), 14, GUI.MUTED, "headb"))
+	var opp_line := HBoxContainer.new()
+	opp_line.add_theme_constant_override("separation", 10)
+	col.add_child(opp_line)
+	opp_line.add_child(name_button(tr("%s, piloted by %s") % [o.get("name", "?"), who_p] if who_p != "" else str(o.get("name", "?")), int(o.get("wid", -1)), 18, GUI.YELLOW))
+	opp_line.add_child(GUI.readout(tr("Purse $%d") % GameData.current_reward(), 20, GUI.AMBER))
+	if mode != "story" and mode != "circuit" and GameData.day_index() < 5 and ["league", "playoff"].has(str(GameData.week_plan(GameData.year, GameData.week, "sat")["kind"])):
+		var warn := GUI.text(tr("Your big fight is this Saturday. Whatever breaks tonight has to be fixed (and paid for) by then."), 14, GUI.CYAN)
 		warn.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		col.add_child(warn)
-	if GameData.can_pass_day():
-		var wrow := HBoxContainer.new()
-		wrow.add_theme_constant_override("separation", 10)
-		col.add_child(wrow)
-		var wl := UI.label(tr("Just a pickup fight tonight, for a few dollars. Or sit it out and save the robot for your next real fight."), 15, Color(0.75, 0.85, 1.0))
-		wl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		wl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		wrow.add_child(wl)
-		wrow.add_child(UI.button(tr("Next day"), _on_skip_wednesday, 16, Vector2(150, 46)))
+	# the robot as it will be when the bell rings
+	var ready := bell_readiness()
+	var rrow := HBoxContainer.new()
+	rrow.add_theme_constant_override("separation", 10)
+	col.add_child(rrow)
+	rrow.add_child(GUI.text(tr("AT THE BELL"), 15, GUI.YELLOW, "headb"))
+	var rb := GUI.BlockBar.new()   # 1 block = 5%
+	rb.setup(ready * 100.0, 5.0, 100.0, GUI.GREEN if ready >= 0.9 else (GUI.AMBER if ready >= 0.6 else GUI.RED))
+	rb.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	rrow.add_child(rb)
+	rrow.add_child(GUI.readout("%d%%" % roundi(ready * 100.0), 20, GUI.GREEN if ready >= 0.9 else (GUI.AMBER if ready >= 0.6 else GUI.RED)))
+	var issues := damage_report()
+	for line in issues:
+		col.add_child(GUI.text("• " + str(line), 15, GUI.RED))
+	if GameData.phase < 2:
+		var left_h: int = [8, 4, 0][GameData.phase]
+		var cl := GUI.text(tr("The bell rings this evening: the bay gets %d more hours on the job board before it.") % left_h, 14, GUI.CYAN)
+		cl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		col.add_child(cl)
 	# scouting: pay a kid with a camera to look at their robot first
 	if GameData.scout_key() != "" and GameData.unlocked("scout"):
 		var srow := HBoxContainer.new()
 		srow.add_theme_constant_override("separation", 10)
 		col.add_child(srow)
-		var sl := UI.label(tr("You know what they're bringing.") if GameData.scouted() else tr("Scout them first? A kid at the docks sneaks a camera into their garage."), 15, Color(0.75, 0.85, 1.0))
+		var sl := GUI.text(tr("You know what they're bringing.") if GameData.scouted() else tr("Scout them first? A kid at the docks sneaks a camera into their garage."), 14, GUI.TEXT)
 		sl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		sl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		srow.add_child(sl)
-		var sb := UI.button(star(tr("Scouting report") if GameData.scouted() else tr("Scout $%d") % GameData.scout_cost(), "scout"), _on_open_scout, 16, Vector2(170, 46))
+		var sb := marked(UI.button(tr("Scouting report") if GameData.scouted() else tr("Scout $%d") % GameData.scout_cost(), _on_open_scout, 16, Vector2(170, 44)), "scout")
 		sb.disabled = not GameData.scouted() and GameData.money < GameData.scout_cost()
 		srow.add_child(sb)
-	# damage: missing limbs, a hurt core, parts hanging off
-	var issues := damage_report()
-	if not issues.is_empty():
-		col.add_child(UI.label(tr("YOUR ROBOT IS DAMAGED"), 17, Color(1.0, 0.45, 0.35)))
-		for line in issues:
-			col.add_child(UI.label("• " + str(line), 16, Color(1.0, 0.55, 0.45)))
-		var hint := UI.label(tr("GUS: Fight like this and it's going to hurt. Your call, kid."), 14, Color(0.95, 0.75, 0.45))
-		hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		col.add_child(hint)
 	prefight_bet(col)
+	# the decision
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 10)
 	popup_footer.add_child(row)
-	var cost := GameData.repair_all_cost()
-	if cost > 0 and GameData.can_repair(cost):
-		var rb := UI.button(tr("Repair all $%d") % cost, _on_repair_then_fight_popup, 17, Vector2(0, 50))
-		rb.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		rb.add_theme_color_override("font_color", GUI.AMBER)
-		row.add_child(rb)
-	var back := UI.button("Back to the bay", close_popup, 17, Vector2(0, 50))
+	if mode == "pickup" or mode == "exhibition":
+		var off := UI.button(tr("Call it off"), _on_call_off, 16, Vector2(0, 50))
+		off.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		row.add_child(off)
+	var back := UI.button(tr("Back to the bay"), close_popup, 16, Vector2(0, 50))
 	back.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	row.add_child(back)
-	var go := UI.button(tr("FIGHT!") if issues.is_empty() else tr("Fight anyway"), _start_fight, 19, Vector2(0, 50))
+	var go_text := tr("FIGHT!") if issues.is_empty() else tr("Fight anyway")
+	if GameData.phase < 2:
+		go_text = tr("FIGHT TONIGHT (%d h of bay work first)") % [8, 4, 0][GameData.phase]
+	var go := UI.button(go_text, _start_fight, 18, Vector2(0, 50))
 	go.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	go.disabled = not GameData.can_send()
+	if not GameData.can_send():
+		go.text = tr("Needs a head and a torso")
 	row.add_child(go)
+	if keep_scroll > 0:
+		(func(): popup_scroll.scroll_vertical = keep_scroll).call_deferred()
+
+
+## A booked pickup (or the rematch) is called off: no fight tonight.
+func _on_call_off() -> void:
+	close_popup()
+	GameData.refund_self_bets()
+	GameData.pickup = {}
+	GameData.exhibition = false
+	GameData.save_game()
+	say(tr("Called it off. No fight tonight."))
+	refresh()
 
 
 ## Bet on yourself right in the pre-fight window: pick a stake, tap Bet.
@@ -4891,21 +4949,6 @@ func _on_prefight_bet() -> void:
 	open_fight_popup()
 
 
-func _on_repair_and_fight() -> void:
-	close_popup()
-	_on_repair_all()
-	_start_fight()
-
-
-func _on_repair_then_fight_popup() -> void:
-	close_popup()
-	_on_repair_all()
-	open_fight_popup()
-
-
-func _on_repair_then_close() -> void:
-	close_popup()
-	_on_repair_all()
 
 
 func _start_fight() -> void:

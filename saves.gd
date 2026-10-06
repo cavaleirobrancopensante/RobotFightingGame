@@ -176,6 +176,7 @@ func build_difficulty() -> void:
 		[tr("CPU difficulty: %s") % tr(SETTINGS.DIFF_NAMES[int(s["difficulty"])]), _on_diff_step.bind("difficulty")],
 		[tr("Gus's coaching: %s") % tr(SETTINGS.COACH_NAMES[clampi(int(s.get("coaching", 2)), 0, 3)]), _on_diff_step.bind("coaching")],
 		[tr("Starting money: %s (new games)") % GameData.money_text(int(s.get("start_money", GameData.START_MONEY))), _on_diff_step.bind("start_money")],
+		[tr("Rent & food: %s") % (tr("none") if int(s.get("living_cost", GameData.LIVING_COST)) == 0 else tr("$%d a month") % int(s.get("living_cost", GameData.LIVING_COST))), _on_diff_step.bind("living_cost")],
 		[tr("Pecking Order: %s (x%.1f a grade)") % [tr(pk["name"]), float(pk["k"])], _on_diff_step.bind("pecking")],
 	]
 	for it in items:
@@ -193,6 +194,9 @@ func _on_diff_step(key: String) -> void:
 			var opts: Array = GameData.START_MONEY_OPTIONS
 			s["start_money"] = opts[(opts.find(int(s.get("start_money", GameData.START_MONEY))) + 1) % opts.size()]
 			GameData.money = int(s["start_money"])
+		"living_cost":
+			var lopts: Array = GameData.LIVING_COST_OPTIONS
+			s["living_cost"] = lopts[(lopts.find(int(s.get("living_cost", GameData.LIVING_COST))) + 1) % lopts.size()]
 		"pecking":
 			GameData.set_pecking((int(s.get("pecking", 1)) + 1) % GameData.PECKING.size())
 	GameData.save_settings()

@@ -279,6 +279,61 @@ class HazardStrip extends Control:
 			x += 16.0
 
 
+## "Here, something to do": the bay's marching hazard stripes running clockwise round anything new
+## (a section, a toggle, a button, a pilot with something to say). Sits over its parent, takes no taps.
+class MarchFrame extends Control:
+	var t := 0.0
+
+	func _init() -> void:
+		mouse_filter = Control.MOUSE_FILTER_IGNORE
+		set_anchors_preset(Control.PRESET_FULL_RECT)
+
+	func _process(delta: float) -> void:
+		t += delta
+		queue_redraw()
+
+	func _draw() -> void:
+		var r := Rect2(Vector2(2, 2), size - Vector2(4, 4))
+		var corners := [r.position, Vector2(r.end.x, r.position.y), r.end, Vector2(r.position.x, r.end.y)]
+		var lengths: Array = []
+		var perimeter := 0.0
+		for i in 4:
+			var l: float = (corners[i] as Vector2).distance_to(corners[(i + 1) % 4])
+			lengths.append(l)
+			perimeter += l
+		var pairs := maxi(4, int(round(perimeter / 16.0)))
+		var stripe := perimeter / (pairs * 2.0)
+		var offset := fmod(t * 34.0, stripe * 2.0)
+		draw_polyline(PackedVector2Array(corners + [corners[0]]), Color(0.08, 0.08, 0.08), 3.0)
+		for k in pairs:
+			var a := fmod(offset + k * stripe * 2.0, perimeter)
+			_seg(corners, lengths, a, a + stripe)
+
+	func _seg(corners: Array, lengths: Array, from: float, to: float) -> void:
+		var pos := 0.0
+		for lap in 2:
+			for i in 4:
+				var l: float = lengths[i]
+				var s0 := maxf(from, pos)
+				var s1 := minf(to, pos + l)
+				if s1 > s0:
+					var a: Vector2 = corners[i]
+					var dir: Vector2 = ((corners[(i + 1) % 4] as Vector2) - a) / maxf(l, 0.001)
+					draw_line(a + dir * (s0 - pos), a + dir * (s1 - pos), Color(0.95, 0.76, 0.19), 3.0)
+				pos += l
+
+
+## Puts the marching stripes round a control (or takes them off).
+static func mark_new(c: Control, on: bool) -> void:
+	var old := c.get_node_or_null("March")
+	if on and old == null:
+		var m := MarchFrame.new()
+		m.name = "March"
+		c.add_child(m)
+	elif not on and old != null:
+		old.queue_free()
+
+
 ## One button on the side rail: an outline icon over its name, yellow when it's the open section.
 class RailButton extends Button:
 	var kind := "bay"
@@ -302,7 +357,7 @@ class RailButton extends Button:
 		_icon(c, col)
 		var f: Font = font
 		var fs := 13
-		var txt := tr(label) + (" ★" if star else "")
+		var txt := tr(label)
 		while fs > 9 and f.get_string_size(txt, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x > size.x - 6:
 			fs -= 1
 		draw_string(f, Vector2(0, size.y - 12), txt, HORIZONTAL_ALIGNMENT_CENTER, size.x, fs, col)
@@ -459,6 +514,8 @@ class TalkBox extends PanelContainer:
 ## Gus's tour: a fat yellow arrow bouncing next to what you should tap, with a pulsing frame
 ## round it. It sits beside the target and points at it from wherever there's room.
 class TourArrow extends Control:
+	## Gus's tour: the thing to tap next gets the marching hazard stripes (the same "here, something
+	## to do" as anything new), drawn a little outside it so the button itself stays readable.
 	var target := Rect2()
 
 	func _process(_d: float) -> void:
@@ -467,38 +524,31 @@ class TourArrow extends Control:
 
 	func _draw() -> void:
 		var t := Time.get_ticks_msec() / 1000.0
-		var bob := sin(t * 6.0) * 8.0
-		var c := target.get_center()
-		var yellow := Color(0.95, 0.76, 0.19)
-		var pulse := 0.5 + 0.5 * sin(t * 6.0)
-		draw_rect(target.grow(4.0 + pulse * 3.0), Color(yellow, 0.5 + 0.5 * pulse), false, 3.0)
-		# which way to point: from the side with the most room
-		var dir := Vector2.LEFT if c.x < size.x * 0.2 else (Vector2.DOWN if c.y > size.y * 0.7 else (Vector2.UP if c.y < size.y * 0.2 else Vector2.RIGHT))
-		var tip: Vector2
-		match dir:
-			Vector2.LEFT:   # target on the left rail: arrow to its right, pointing left
-				tip = Vector2(target.end.x + 10.0 + bob, c.y)
-			Vector2.DOWN:   # target at the bottom: arrow above it, pointing down
-				tip = Vector2(c.x, target.position.y - 10.0 - bob)
-			Vector2.UP:     # target at the top: arrow below it, pointing up
-				tip = Vector2(c.x, target.end.y + 10.0 + bob)
-			_:
-				tip = Vector2(target.position.x - 10.0 - bob, c.y)
-		var back := -dir if dir != Vector2.RIGHT else Vector2.LEFT
-		if dir == Vector2.RIGHT:
-			back = Vector2.LEFT
-		var along := back   # from the tip back along the arrow's body
-		var side := along.orthogonal()
-		var head := PackedVector2Array([tip, tip + along * 26.0 + side * 20.0, tip + along * 26.0 - side * 20.0])
-		var body := PackedVector2Array([tip + along * 24.0 + side * 9.0, tip + along * 70.0 + side * 9.0, tip + along * 70.0 - side * 9.0, tip + along * 24.0 - side * 9.0])
-		for poly in [head, body]:
-			var sh := PackedVector2Array()
-			for p in poly:
-				sh.append(p + Vector2(3, 4))
-			draw_colored_polygon(sh, Color(0, 0, 0, 0.45))
-		draw_colored_polygon(body, yellow)
-		draw_colored_polygon(head, yellow)
-		draw_polyline(PackedVector2Array([head[0], head[1], head[2], head[0]]), Color(0.08, 0.08, 0.08), 2.0)
+		var r := target.grow(5.0)
+		var corners := [r.position, Vector2(r.end.x, r.position.y), r.end, Vector2(r.position.x, r.end.y)]
+		var lengths: Array = []
+		var perimeter := 0.0
+		for i in 4:
+			var l: float = (corners[i] as Vector2).distance_to(corners[(i + 1) % 4])
+			lengths.append(l)
+			perimeter += l
+		var pairs := maxi(4, int(round(perimeter / 18.0)))
+		var stripe := perimeter / (pairs * 2.0)
+		var offset := fmod(t * 40.0, stripe * 2.0)
+		draw_polyline(PackedVector2Array(corners + [corners[0]]), Color(0.08, 0.08, 0.08), 5.0)
+		for k in pairs:
+			var a := fmod(offset + k * stripe * 2.0, perimeter)
+			var pos := 0.0
+			for lap in 2:
+				for i in 4:
+					var l: float = lengths[i]
+					var s0 := maxf(a, pos)
+					var s1 := minf(a + stripe, pos + l)
+					if s1 > s0:
+						var c0: Vector2 = corners[i]
+						var dir: Vector2 = ((corners[(i + 1) % 4] as Vector2) - c0) / maxf(l, 0.001)
+						draw_line(c0 + dir * (s0 - pos), c0 + dir * (s1 - pos), Color(0.95, 0.76, 0.19), 5.0)
+					pos += l
 
 
 ## The ✓ button (drawn, so it doesn't depend on the font having the glyph).

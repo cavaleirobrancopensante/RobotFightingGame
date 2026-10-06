@@ -101,7 +101,7 @@ func _ready() -> void:
 	music_button = UI.button("", _on_music, 19, Vector2(470, 50))
 	shake_button = UI.button("", _on_shake, 19, Vector2(470, 50))
 	size_button = UI.button("", _on_size, 19, Vector2(470, 50))
-	delete_button = UI.button("", _on_delete, 19, Vector2(470, 50))
+	delete_button = UI.button("", _on_walkin, 19, Vector2(470, 50))   # (save files live under Load Game)
 	team_button = UI.button("", _on_team, 19, Vector2(470, 50))
 	battery_button = UI.button("", _on_battery, 19, Vector2(470, 50))
 	errors_button = UI.button("", _on_errors, 19, Vector2(470, 50))
@@ -126,7 +126,7 @@ func refresh() -> void:
 	errors_button.text = tr("Error log (%d)") % n if n > 0 else tr("Error log (no errors)")
 	battery_button.text = tr("Battery saver: %s") % tr("ON (30 fps)" if s.get("battery_saver", false) else "OFF (60 fps)")
 	team_button.text = tr("Team controls: %s") % tr("SPLIT (a pad per robot)" if s.get("team_controls", "split") == "split" else "LINKED (one pad for all)")
-	delete_button.text = tr("Manage save files")
+	delete_button.text = tr("Walk-in show: %s") % tr("OFF (straight to the countdown)" if s.get("skip_intros", false) else "ON")
 	reset_button.text = tr("Sure? Tap again to reset") if reset_armed else tr("Restore default settings")
 	if diff_button:
 		diff_button.text = tr("CPU difficulty: %s") % tr(DIFF_NAMES[s["difficulty"]])
@@ -341,6 +341,12 @@ func _on_living() -> void:
 	var opts: Array = GameData.LIVING_COST_OPTIONS
 	var i := opts.find(int(GameData.settings.get("living_cost", GameData.LIVING_COST)))
 	GameData.settings["living_cost"] = opts[(i + 1) % opts.size()]
+	GameData.save_settings()
+	refresh()
+
+
+func _on_walkin() -> void:
+	GameData.settings["skip_intros"] = not GameData.settings.get("skip_intros", false)
 	GameData.save_settings()
 	refresh()
 

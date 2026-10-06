@@ -2,7 +2,7 @@ extends Node
 
 # helper scripts, loaded by path so the game also runs without an editor scan
 ## The game's version, shown on the main menu. Bump it with every change (1.1, 1.2, ...).
-const VERSION := "1.32"
+const VERSION := "1.33"
 const Arena = preload("res://arena.gd")
 const I18n = preload("res://i18n.gd")
 const Catalog = preload("res://catalog.gd")
@@ -272,7 +272,8 @@ var digs_left := DIGS_PER_FIGHT   # scrapyard digs: one a day
 ## +5% for every day you don't dig, up to 50%. Digging spends it.
 const DIG_LUCK_STEP := 0.05
 const DIG_LUCK_MAX := 0.5
-var dig_luck := 0.0   # Gus's one-time tips (fight and garage) already shown
+var dig_luck := 0.0
+var forfeit := false   # the fight being recorded was quit (counts as a loss, pays nothing)   # Gus's one-time tips (fight and garage) already shown
 var inventory: Array = []   # [{uid, id, hp}]
 var equipped := {}          # slot -> uid (-1 = empty)
 var gantries := 0          # gantries bought for backup robots (each one is a robot more, and more rent)
@@ -843,7 +844,7 @@ func repair(uid: int) -> String:
 	if not can_repair(c):
 		return "Not enough cash. No repairs on credit. Fight with the dents and win some money."
 	money -= c
-	var h := queue_repair(p)
+	var h := queue_repair(p, c)
 	return tr("%s is on the bench: $%d, about %s of work.") % [part_def(p["id"])["name"], c, hours_text(h)]
 
 
@@ -866,7 +867,7 @@ func repair_all() -> String:
 	for slot in BODY_SLOTS:
 		var p := equipped_inst(slot)
 		if not p.is_empty() and repair_cost(p) > 0:
-			h += queue_repair(p)
+			h += queue_repair(p, repair_cost(p))
 	money -= c
 	return tr("Everything's on the job board: $%d, about %s of work.") % [c, hours_text(h)]
 
@@ -923,6 +924,27 @@ func overtime_cost() -> int:
 	return int(OVERTIME_PRICE * hands() * pow(GRADE_PRICE, my_grade() - 1))
 
 
+## Hours of bay work to fix a part from where it is now to full (what queue_repair will book).
+func repair_hours(p: Dictionary) -> float:
+	var d := part_def(p["id"])
+	return (1.0 - hp_ratio(p)) * float(REPAIR_HOURS.get(d["kind"], 3.0)) * time_factor(d) * (WRECK_TIME if is_wreck(p) else 1.0)
+
+
+## Hours of bay work to bolt a part on.
+func swap_hours(d: Dictionary) -> float:
+	return float(SWAP_HOURS.get(d["kind"], 1.0)) * time_factor(d)
+
+
+## Hours of work Repair all would book.
+func repair_all_hours() -> float:
+	var h := 0.0
+	for slot in BODY_SLOTS:
+		var p := equipped_inst(slot)
+		if not p.is_empty() and repair_cost(p) > 0:
+			h += repair_hours(p)
+	return h
+
+
 func time_factor(d: Dictionary) -> float:
 	return 1.0 + GRADE_TIME * maxi(0, int(d.get("grade", 1)) - 1)
 
@@ -974,7 +996,7 @@ func robot_uids(robot: String) -> Array:
 
 
 ## Put a repair on the board (or top it up). Returns the hours it adds.
-func queue_repair(p: Dictionary) -> float:
+func queue_repair(p: Dictionary, paid: int = 0) -> float:
 	var d := part_def(p["id"])
 	var mx := float(d["hp"])
 	var missing := 1.0 - hp_ratio(p)
@@ -982,8 +1004,27 @@ func queue_repair(p: Dictionary) -> float:
 		return 0.0
 	var h: float = missing * float(REPAIR_HOURS.get(d["kind"], 3.0)) * time_factor(d) * (WRECK_TIME if is_wreck(p) else 1.0)
 	jobs.append({"kind": "repair", "uid": int(p["uid"]), "robot": "", "slot": "", "total": h, "done": 0.0, "rush": false,
-			"start": float(p["hp"]), "to": mx})
+			"start": float(p["hp"]), "to": mx, "paid": paid})
 	return h
+
+
+## What's given back for a repair job that's called off: the share of the price not worked yet.
+func job_refund(j: Dictionary) -> int:
+	if j["kind"] != "repair":
+		return 0
+	return int(float(j.get("paid", 0)) * clampf(1.0 - float(j["done"]) / maxf(0.01, float(j["total"])), 0.0, 1.0))
+
+
+## Call off a repair job: the money for the hours not worked comes back; the HP already done stays.
+func cancel_job(i: int) -> String:
+	if i < 0 or i >= jobs.size() or jobs[i]["kind"] != "repair":
+		return ""
+	var j: Dictionary = jobs[i]
+	var back := job_refund(j)
+	money += back
+	jobs.remove_at(i)
+	var p := inst(int(j["uid"]))
+	return tr("Called off: %s. $%d back for the hours not worked.") % [part_def(p["id"])["name"] if not p.is_empty() else "?", back]
 
 
 ## Anything fitted that isn't bolted on yet gets a swap job; jobs for parts that came off are dropped.
@@ -1129,6 +1170,12 @@ func advance_phase() -> void:
 	next_day()
 
 
+## After a fight: the night goes by (overtime, if booked, is worked), and it's tomorrow morning.
+func end_fight_night() -> void:
+	phase = 2
+	advance_phase()
+
+
 ## Up to the evening (fights): the day's remaining shifts get worked.
 func to_evening() -> void:
 	while phase < 2:
@@ -1211,9 +1258,13 @@ func sell(uid: int) -> String:
 	if wingman_of_uid(uid) != -1:
 		return "A wingman is using that part."
 	var v := sell_value(p)
+	# nothing left on the board for a part that's gone (unworked repair hours are paid back)
+	for j in jobs:
+		if int(j["uid"]) == uid:
+			v += job_refund(j)
 	money += v
 	inventory.erase(p)
-	jobs = jobs.filter(func(j): return int(j["uid"]) != uid)   # nothing left on the board for a part that's gone
+	jobs = jobs.filter(func(j): return int(j["uid"]) != uid)
 	return tr("Sold %s for $%d.") % [part_def(p["id"])["name"], v]
 
 
@@ -2056,7 +2107,7 @@ const DAY_FULL := ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Satu
 
 ## Every line anyone says to you goes in the inbox (Messages): kind = story / talk (pilots,
 ## hate mail, pub) / gus (his remarks on what you do) / news.
-func log_talk(who: String, text: String, kind: String, look: Dictionary = {}) -> void:
+func log_talk(who: String, text: String, kind: String, look: Dictionary = {}, wid: int = -1) -> void:
 	if text.strip_edges() == "":
 		return
 	if not inbox.is_empty() and inbox[-1]["text"] == text and inbox[-1]["who"] == who:
@@ -2064,6 +2115,8 @@ func log_talk(who: String, text: String, kind: String, look: Dictionary = {}) ->
 	var e := {"y": year, "w": week, "d": day, "ph": phase, "who": who, "text": text, "kind": kind}
 	if not look.is_empty():
 		e["look"] = look
+	if wid >= 0:
+		e["wid"] = wid   # a world pilot: their name opens the pilot card
 	inbox.append(e)
 	if inbox.size() > INBOX_MAX:
 		inbox = inbox.slice(inbox.size() - INBOX_MAX)
@@ -3147,11 +3200,22 @@ func repair_wingman(k: int) -> String:
 	if not can_repair(c):
 		return tr("Repairing %s costs $%d.") % [wingman_name(k), c]
 	money -= c
+	var h := 0.0
 	for slot in wingmen[k]:
 		var p := inst(int(wingmen[k][slot]))
-		if not p.is_empty():
-			p["hp"] = float(part_def(p["id"])["hp"])
-	return tr("Repaired %s for $%d.") % [wingman_name(k), c]
+		if not p.is_empty() and repair_cost(p) > 0:
+			h += queue_repair(p, repair_cost(p))
+	return tr("%s is on the job board: $%d, about %s of work.") % [wingman_name(k), c, hours_text(h)]
+
+
+## Hours of bay work to fix a backup robot.
+func wingman_repair_hours(k: int) -> float:
+	var h := 0.0
+	for slot in wingmen[k]:
+		var p := inst(int(wingmen[k][slot]))
+		if not p.is_empty() and repair_cost(p) > 0:
+			h += repair_hours(p)
+	return h
 
 
 ## After a team fight: wingmen keep their damage, destroyed parts can be lost.
@@ -3354,6 +3418,9 @@ func record_result(won: bool, part_hp: Dictionary, destroyed: int, salvage_ids: 
 	var o := current_opponent()
 	var base: int = current_reward()
 	var reward: int = base if won else loss_pay(base)
+	if forfeit:
+		reward = 0   # threw in the towel: no pay
+		forfeit = false
 	# dismantle bonus: every part you tore off pays $50, plus a tenth of what that part is worth
 	var bonus := 0
 	for sv in salvage_ids:
@@ -3481,16 +3548,16 @@ func record_result(won: bool, part_hp: Dictionary, destroyed: int, salvage_ids: 
 				if event.get("stage", "") == "open":
 					build_scrap()
 			sync_event()
-			next_day()
+			end_fight_night()
 		"circuit":
 			Career.after_player_fight(circuit, won, destroyed)
 			bet_result = settle_bets("cup", circuit)
 			if circuit["phase"] == "done":
 				cup_done = finish_cup()
-			next_day()   # Wednesday's done: Thursday's next
+			end_fight_night()   # Wednesday's done: Thursday's next
 		"exhibition", "pickup":
 			bet_result = settle_self_bets(won)
-			next_day()
+			end_fight_night()
 	exhibition = false
 	pickup = {}
 	scout = {}

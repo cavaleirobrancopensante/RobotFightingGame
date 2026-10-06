@@ -672,9 +672,10 @@ func handle_tap(p: Vector2) -> bool:
 				quit_ask = true
 				Sfx.play("click")
 			return true
-		quit_ask = false
-		toggle_pause()
-		return true
+		if resume_rect_p.has_point(p):
+			quit_ask = false
+			toggle_pause()
+		return true   # (a stray tap on the move list doesn't throw you back into the fight)
 	if phase != "intro" and phase != "fight":
 		return false
 	if phase == "intro" and intro_step == "show":
@@ -1512,7 +1513,8 @@ func _process(delta: float) -> void:
 				time_left = 0.0
 				time_up()
 		"ko":
-			if phase_timer > 2.0 and tap_pending:
+			# the KO lands, then the results come up by themselves (a tap hurries them)
+			if phase_timer > 2.6 or (phase_timer > 1.0 and tap_pending):
 				finish_match()
 		"results":
 			if phase_timer > 1.0 and tap_pending:
@@ -1738,21 +1740,12 @@ func quit_fight() -> void:
 		GameData.quick = {}
 		get_tree().change_scene_to_file("res://main.tscn")
 		return
-	for slot in BODY_PARTS:
-		if team_p[0].wingman == -1 and not team_p[0].parts[slot].is_empty():
-			var p := GameData.equipped_inst(slot)
-			if not p.is_empty():
-				p["hp"] = maxf(1.0, team_p[0].parts[slot]["hp"] / team_p[0].hp_scale)
-	for f in team_p:
-		if f.wingman >= 0:
-			for slot in BODY_PARTS:
-				if not f.parts[slot].is_empty() and GameData.wingmen[f.wingman].has(slot):
-					var p := GameData.inst(int(GameData.wingmen[f.wingman][slot]))
-					if not p.is_empty():
-						p["hp"] = maxf(1.0, f.parts[slot]["hp"] / f.hp_scale)
-	GameData.last_result = {"quit": true, "opponent": opp["name"]}
-	GameData.save_game()
-	Loading.go("res://garage.tscn")
+	# a career fight: throwing in the towel counts as a loss, pays nothing, and the night goes on
+	GameData.forfeit = true
+	paused = false
+	quit_ask = false
+	end_by(team_c[0], "FORFEIT")
+	finish_match()
 
 
 # ---------------------------------------------------------------- moves
@@ -3321,7 +3314,7 @@ func draw_results() -> void:
 	if mode == "watch":
 		lines.append([tr("That's the result on the books. Bets on it pay when the round is over."), Color(0.8, 0.8, 0.85)])
 	elif mode == "quick":
-		lines.append([tr("Quick fight, nothing saved. Tap to go back to the menu."), Color(0.8, 0.8, 0.85)])
+		lines.append([tr("Quick fight, nothing saved."), Color(0.8, 0.8, 0.85)])
 	elif mode == "test":
 		lines.append([tr("Test drive. No damage, no prize, nothing saved."), Color(0.8, 0.8, 0.85)])
 	else:
@@ -3347,8 +3340,16 @@ func draw_results() -> void:
 		draw_string(font, Vector2(0, y), l[0], HORIZONTAL_ALIGNMENT_CENTER, screen.x, fs(24), l[1])
 		y += 38.0
 	y = draw_result_cards(y)
+	if mode not in ["quick", "test", "watch"]:
+		draw_string(font, Vector2(0, y + 6), tr("The night goes by. Tomorrow morning, back in the bay."), HORIZONTAL_ALIGNMENT_CENTER, screen.x, fs(18), Color(0.6, 0.85, 1.0))
 	if phase_timer > 1.0:
-		draw_string(font, Vector2(0, y + 20), tr("Tap to continue"), HORIZONTAL_ALIGNMENT_CENTER, screen.x, fs(22), Color(0.8, 0.8, 0.8))
+		# one clear way out (a tap anywhere does the same)
+		var label: String = {"quick": tr("BACK TO THE MENU"), "test": tr("BACK TO THE SCRAPYARD")}.get(mode, tr("BACK TO THE BAY"))
+		var bw := minf(360.0, screen.x * 0.4)
+		var br := Rect2(screen.x * 0.5 - bw * 0.5, screen.y - 78.0, bw, 56.0)
+		draw_rect(br, Color(0.95, 0.76, 0.19))
+		draw_rect(br, Color(0.08, 0.08, 0.08), false, 3.0)
+		draw_string(font, Vector2(br.position.x, br.position.y + br.size.y * 0.5 + fs(20) * 0.35), label, HORIZONTAL_ALIGNMENT_CENTER, br.size.x, fs(20), Color(0.08, 0.08, 0.08))
 
 
 ## Parts won and lost, as picture cards: green for parts you got, orange wrecked, red lost.
@@ -3463,7 +3464,7 @@ func draw_moves_list() -> void:
 	resume_rect_p = Rect2(screen.x * 0.5 - bw - 12.0, screen.y - bh - 18.0, bw, bh)
 	quit_rect_p = Rect2(screen.x * 0.5 + 12.0, screen.y - bh - 18.0, bw, bh)
 	if quit_ask:
-		var q := tr("You walk away with no pay, and the damage comes home with you. In a quick fight nothing is lost.")
+		var q := tr("Nothing is lost in a quick fight.") if mode == "quick" else tr("You throw in the towel: it counts as a loss, there's no pay, and the damage comes home with you.")
 		draw_multiline_string(font, Vector2(screen.x * 0.15, y + 20.0), q, HORIZONTAL_ALIGNMENT_CENTER, screen.x * 0.7, fs(20), -1, Color(0.9, 0.9, 0.95))
 	else:
 		_draw_pause_lines(x, y, resume_rect_p.position.y - 10.0)
