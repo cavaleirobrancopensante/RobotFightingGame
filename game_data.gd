@@ -2,7 +2,7 @@ extends Node
 
 # helper scripts, loaded by path so the game also runs without an editor scan
 ## The game's version, shown on the main menu. Bump it with every change (1.1, 1.2, ...).
-const VERSION := "1.7"
+const VERSION := "1.8"
 const Arena = preload("res://arena.gd")
 const I18n = preload("res://i18n.gd")
 const Catalog = preload("res://catalog.gd")
@@ -284,6 +284,7 @@ var world := {}               # every computer pilot, their money and robots (se
 var watching := {}            # a computer-vs-computer fight you're watching: {on, round, a, b}
 var last_enemy_hp := {}       # the enemy's part health when the last fight ended: {slot: [hp, max]}
 var quick := {}               # Quick Fight from the menu: {player, enemy} random bots, never saved
+var test_drive := {}          # Scrapyard Test Drive: {"junker": id, "try": part id or "", "slot": slot} - never saved, no damage
 var setups: Array = []        # saved builds: {} or {name, equipped, chips, paint}
 var custom_parts: Array = []  # part definitions you designed in the workshop
 var ALL_PARTS: Array = []     # every catalog part id (classic + brand parts, and their Mini / Heavy sizes)
@@ -513,6 +514,7 @@ func new_game() -> void:
 	scout = {}
 	shop_stock = []
 	quick = {}
+	test_drive = {}
 	circuit = {}
 	circuit_offers = []
 	circuits_won = 0
@@ -1018,6 +1020,8 @@ func global_traits(ids: Dictionary) -> Array:
 
 
 func fight_mode() -> String:
+	if not test_drive.is_empty():
+		return "test"
 	if not quick.is_empty():
 		return "quick"
 	if not watching.is_empty():
@@ -1047,6 +1051,8 @@ func current_opponent_index() -> int:
 
 ## apply_scout = false: the robot as your scout saw it (before they swapped a part on you).
 func current_opponent(apply_scout: bool = true) -> Dictionary:
+	if fight_mode() == "test":
+		return junker(str(test_drive["junker"]))
 	if fight_mode() == "quick":
 		return quick["enemy"]
 	if fight_mode() == "watch":
@@ -1167,7 +1173,7 @@ func current_reward() -> int:
 ## Prize money for the fight against o (league rounds pay a bit more as the season goes on, playoffs more).
 func current_reward_for(o: Dictionary) -> int:
 	match fight_mode():
-		"quick":
+		"quick", "test":
 			return 0
 		"exhibition":
 			return EXHIBITION_REWARD
@@ -1187,6 +1193,8 @@ func current_reward_for(o: Dictionary) -> int:
 
 func fight_title() -> String:
 	match fight_mode():
+		"test":
+			return tr("TEST DRIVE")
 		"quick":
 			return tr("QUICK FIGHT")
 		"watch":
@@ -1223,7 +1231,7 @@ func current_arena() -> Array:
 			if watching["on"] == "event":
 				return Arena.career_venue(event["stage"], Career.round_name(event))
 			rng.seed = int(circuit["seed"]) + int(circuit["round"]) * 7
-		"pickup":
+		"pickup", "test":
 			return ["scrap_ring", "scrappers"]
 		"exhibition":
 			return ["champ_gala", "high_society"]
@@ -1654,6 +1662,8 @@ func fight_player_team() -> Array:
 		for b in wa.get("team", []):
 			ws.append(opponent_spec_from(b, 1.0))
 		return ws
+	if fight_mode() == "test":
+		return [test_drive_spec()]
 	if fight_mode() == "quick":
 		var out: Array = []
 		for b in quick.get("players", [quick["player"]]):
@@ -1716,7 +1726,7 @@ var _save_due := -1.0
 
 
 func request_save() -> void:
-	if save_slot < 0 or not quick.is_empty() or not watching.is_empty():
+	if save_slot < 0 or not quick.is_empty() or not watching.is_empty() or not test_drive.is_empty():
 		return
 	if _save_due < 0.0:
 		_save_due = Time.get_ticks_msec() / 1000.0 + 0.6
@@ -2020,6 +2030,61 @@ func apply_wingman_damage(k: int, part_hp: Dictionary, lost: Array, wrecked: Arr
 				lost.append(tr("%s (%s)") % [part_def(p["id"])["name"], wingman_name(k)])
 				cards.append({"id": p["id"], "what": "lost", "health": 0.0})
 				inventory.erase(p)
+
+
+# ---------------------------------------------------------------- Scrapyard Test Drive
+
+## Gus's silly practice robots, built from scrapyard junk. He pilots them himself (badly, on purpose).
+## junk = how they behave in the ring (see fight.gd junk_input).
+const JUNKERS := {
+	"fridge": {"name": "THE FRIDGE", "junk": "fridge", "body": "#e8ecef", "style": "tank",
+		"desc": "Only ever blocks. Practise grabs - they beat a block - and breaking a guard.",
+		"parts": {"head": "junk_head_box", "torso": "junk_torso_box", "arm_front": "junk_arm", "arm_back": "junk_arm", "leg_front": "junk_leg_thick", "leg_back": "junk_leg_thick"}},
+	"toaster": {"name": "TOASTER TIM", "junk": "toaster", "body": "#c0c4c8", "style": "striker",
+		"desc": "Throws one slow punch every couple of seconds. Practise blocking, then hitting back.",
+		"parts": {"head": "junk_head_tv", "torso": "junk_torso_box", "arm_front": "junk_arm_piston", "arm_back": "junk_arm_piston", "leg_front": "junk_leg_wheel", "leg_back": "junk_leg_wheel"}},
+	"mower": {"name": "LAWNMOWER LARRY", "junk": "mower", "body": "#3f9a3a", "style": "mechanic",
+		"desc": "Wanders about the ring and bumps into things. Practise chasing and aiming at parts.",
+		"parts": {"head": "junk_head_dome", "torso": "junk_torso_crate", "arm_front": "junk_arm_claw", "arm_back": "junk_arm_claw", "leg_front": "junk_leg_wheel", "leg_back": "junk_leg_wheel"}},
+	"mop": {"name": "MOP BUCKET", "junk": "dummy", "body": "#e0c25a", "style": "tank",
+		"desc": "Stands still and never breaks. Practise your combos and special moves.",
+		"parts": {"head": "junk_head", "torso": "junk_torso", "arm_front": "junk_arm", "arm_back": "junk_arm", "leg_front": "junk_leg", "leg_back": "junk_leg"}},
+}
+
+
+## A Junker as an opponent robot.
+func junker(id: String) -> Dictionary:
+	var j: Dictionary = JUNKERS.get(id, JUNKERS["mop"])
+	var parts: Dictionary = j["parts"].duplicate()
+	parts["reactor"] = "junk_reactor"
+	return {"name": tr(j["name"]), "pilot": "GUS", "junk": j["junk"], "hp": 1.0, "damage": 0.6, "speed": 0.7, "scale": 1.0,
+			"think": 1.0, "block": 0.0, "smart": 0.0, "body": j["body"], "trim": "#555a60", "eye": "#ffb340",
+			"parts": parts, "specials": [], "style": j["style"], "reward": 0}
+
+
+## Your robot for a test drive: at full health (nothing that happens here sticks), with the part
+## you're trying out bolted on in its slot.
+func test_drive_spec() -> Dictionary:
+	var eq := equipped.duplicate()
+	var temp := -1
+	var try_id := str(test_drive.get("try", ""))
+	if try_id != "" and not part_def(try_id).is_empty():
+		temp = add_part(try_id)
+		eq[str(test_drive["slot"])] = temp
+	var spec := player_spec(eq, robot_name)
+	if temp >= 0:
+		inventory.erase(inst(temp))
+		next_uid -= 1
+	spec["specials"] = active_chips()
+	for slot in spec["parts"]:
+		var p: Dictionary = spec["parts"][slot]
+		if not p.is_empty():
+			p["hp"] = p["max_hp"]
+	return spec
+
+
+func start_test_drive(junker_id: String, try_id: String = "", slot: String = "") -> void:
+	test_drive = {"junker": junker_id, "try": try_id, "slot": slot}
 
 
 ## Set up a Quick Fight: two random robots of the same strength.

@@ -1242,6 +1242,9 @@ func build_detail() -> void:
 		for sl in slots:
 			add_btn.call(tr("Buy & fit: %s") % tr(GameData.SLOT_NAMES[sl]), _on_buy_fit.bind(str(d["id"]), sl), GameData.money >= cost, GUI.YELLOW)
 		add_btn.call(tr("Buy to storage $%d") % cost, _on_buy_keep.bind(str(d["id"])), GameData.money >= cost)
+		# try before you buy: bolt it on for a practice round against Toaster Tim
+		if not slots.is_empty() and kind in ["head", "torso", "arm", "leg", "back", "reactor"]:
+			add_btn.call(tr("Test drive"), _on_test_drive.bind("toaster", str(d["id"]), best_slot(kind), "dealer"), GameData.can_fight(), GUI.CYAN)
 
 
 ## The calendar's left pane: your next fight on a little fight-night poster, with Scout, Bets and Fight.
@@ -1312,6 +1315,15 @@ func build_next_fight_card() -> void:
 	if not mb.is_empty():
 		btn.call(tr("Bets ›"), go_to.bind("Season", "bets"), true)
 	btn.call(tr("Fight night ›"), open_fight_popup, GameData.can_send(), GUI.YELLOW)
+
+
+## Off to the scrapyard ring for a practice round (nothing that happens there sticks).
+func _on_test_drive(junker_id: String, try_id: String, slot: String, from: String) -> void:
+	GameData.flush_save()
+	GameData.start_test_drive(junker_id, try_id, slot)
+	GameData.test_drive["from"] = from
+	Sfx.play("click")
+	get_tree().change_scene_to_file("res://fight.tscn")
 
 
 func _on_detail_fit(uid: int, slot: String) -> void:
@@ -2059,6 +2071,12 @@ func build_scrapyard_tab() -> void:
 		for k in ["head", "torso", "arm", "leg"]:
 			var b := row_button(kinds, tr({"head": "Head", "torso": "Torso", "arm": "Arm", "leg": "Leg"}[k]), _on_dig.bind(k), true, 0)
 			b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	# Test Drive: Gus's silly practice robots, behind the pile
+	section(tr("TEST DRIVE - Gus pilots his Junkers so you can practise. No damage, no prize, nothing saved."))
+	for jid in GameData.JUNKERS:
+		var j: Dictionary = GameData.JUNKERS[jid]
+		var row := make_row(bot_preview(GameData.junker(jid)), tr(j["name"]), tr(j["desc"]))
+		row_button(row, "Test drive", _on_test_drive.bind(jid, "", "", "scrap"), GameData.can_fight(), 130)
 	# what the pile has given you so far (spare parts that still need fixing)
 	var finds: Array = GameData.spares().filter(func(p): return p.get("dug", false))
 	if not finds.is_empty():

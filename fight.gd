@@ -278,6 +278,7 @@ var prev_held := {}
 var tap_pending := false
 var quit_rect := Rect2()
 var moves_rect := Rect2()
+var reset_rect := Rect2()   # Test Drive: start over
 var touch_device := false
 var control_pads := 1      # movement pads on screen (multibot split controls use more)
 var paused := false
@@ -396,6 +397,13 @@ func _ready() -> void:
 		ai_save(f)
 	for f in team_p:
 		f.foe = cpu
+	if mode == "test":
+		# Gus's Junkers: each one has a silly habit instead of a brain, and there's no clock
+		for f in team_c:
+			f.spec["junk"] = str(opp.get("junk", "dummy"))
+			f.spec["next_t"] = 1.5
+			f.spec["hit_t"] = -10.0
+		time_left = 5999.0
 	# Gus spots a part that's far better than the rest of an enemy robot
 	for f in team_c:
 		var ids := {}
@@ -518,6 +526,7 @@ func layout() -> void:
 			buttons.append(btn)
 	quit_rect = Rect2(w * 0.5 - 140.0, h * 0.04 + 52.0, 130.0, 44.0)
 	moves_rect = Rect2(w * 0.5 + 10.0, h * 0.04 + 52.0, 130.0, 44.0)
+	reset_rect = Rect2(w * 0.5 - 290.0, h * 0.04 + 52.0, 130.0, 44.0)
 
 
 # ---------------------------------------------------------------- input
@@ -586,8 +595,12 @@ func handle_tap(p: Vector2) -> bool:
 		return true
 	if phase != "intro" and phase != "fight":
 		return false
+	if mode == "test" and reset_rect.has_point(p):
+		Sfx.play("click")
+		get_tree().reload_current_scene()
+		return true
 	if quit_rect.has_point(p):
-		if mode == "watch":
+		if mode == "watch" or mode == "test":
 			quit_fight()
 		else:
 			# quitting walks away with no pay: ask first, on the pause screen
@@ -895,6 +908,8 @@ func read_ai_input(delta: float) -> Dictionary:
 	var i := empty_input()
 	if phase != "fight":
 		return i
+	if str(cpu.spec.get("junk", "")) != "":
+		return junk_input(i)
 	ai_timer -= delta
 	ai_special_cd -= delta
 	ai_gadget_cd -= delta
@@ -969,6 +984,36 @@ func read_ai_input(delta: float) -> Dictionary:
 	if ATTACKS.has(cpu.state) and cpu.landed and cpu.power > cpu.power_max * 0.3 and randf() < ai_smart * 0.08 + (0.05 if cpu.style == "striker" else 0.0):
 		i["punch" if randf() < 0.6 else "kick"] = true
 	return i
+
+
+## Gus's Junkers (Test Drive): no tactics, just one habit each.
+func junk_input(i: Dictionary) -> Dictionary:
+	var dx := player.pos.x - cpu.pos.x
+	var dist := absf(dx)
+	var toward := "right" if dx > 0 else "left"
+	var melee := 82.0 * cpu.scale + 25.0 * player.scale
+	match str(cpu.spec["junk"]):
+		"fridge":
+			# The Fridge: blocks. Always. (a grab gets through)
+			i["block"] = true
+		"toaster":
+			# Toaster Tim: rolls up slowly, then one big slow punch every couple of seconds
+			if dist > melee:
+				i[toward] = fmod(clock, 1.0) < 0.45
+			elif clock > float(cpu.spec["next_t"]):
+				i["punch"] = true
+				cpu.spec["next_t"] = clock + 2.3
+		"mower":
+			# Lawnmower Larry: wanders off in a random direction, turns round, sometimes bumps into you
+			if clock > float(cpu.spec["next_t"]):
+				cpu.spec["next_t"] = clock + randf_range(1.0, 2.6)
+				cpu.spec["wander"] = ["left", "right", ""][randi() % 3]
+			var wd := str(cpu.spec.get("wander", ""))
+			if wd != "":
+				i[wd] = true
+			if dist < melee and randf() < 0.01:
+				i["kick"] = true
+	return i   # (the Mop Bucket just stands there)
 
 
 ## The CPU's plan for the next fraction of a second, built around the parts it actually has.
@@ -1385,6 +1430,13 @@ func _process(delta: float) -> void:
 
 	update_effects(delta)
 	update_pilots(delta)
+	if mode == "test":
+		for f in team_c:
+			if f.spec.get("junk", "") == "dummy" and clock - float(f.spec.get("hit_t", 0.0)) > 1.6:
+				for slot in f.parts:
+					if not f.parts[slot].is_empty() and f.parts[slot]["hp"] < f.parts[slot]["max_hp"]:
+						f.parts[slot]["hp"] = minf(f.parts[slot]["max_hp"], f.parts[slot]["hp"] + f.parts[slot]["max_hp"] * delta)
+						f.look_dirty = true
 	arena_redraw_t -= delta
 	if arena_redraw_t <= 0.0 and arena_layer:
 		arena_redraw_t = 1.0 / ARENA_FPS
@@ -1477,7 +1529,7 @@ func finish_match() -> void:
 		phase_timer = 0.0
 		Sfx.play("victory")
 		return
-	if mode == "quick":
+	if mode == "quick" or mode == "test":
 		result = {"won": won, "reward": 0}
 		phase = "results"
 		phase_timer = 0.0
@@ -1514,6 +1566,9 @@ func finish_match() -> void:
 
 func leave_after_results() -> void:
 	Sfx.play("click")
+	if mode == "test":
+		leave_test_drive()
+		return
 	if mode == "watch":
 		GameData.watching = {}
 		GameData.last_result = {}
@@ -1536,7 +1591,21 @@ func leave_after_results() -> void:
 	get_tree().change_scene_to_file("res://garage.tscn")
 
 
+## Back to where the test drive started (the scrapyard, or the dealer's part you were trying).
+func leave_test_drive() -> void:
+	var from := str(GameData.test_drive.get("from", "scrap"))
+	GameData.test_drive = {}
+	GameData.open_tab = "Parts"
+	GameData.open_action = from
+	GameData.last_result = {}
+	get_tree().change_scene_to_file("res://garage.tscn")
+
+
 func quit_fight() -> void:
+	if mode == "test":
+		Sfx.play("click")
+		leave_test_drive()
+		return
 	Sfx.play("error")
 	if mode == "watch":
 		GameData.watching = {}   # walked out: the round will decide it on paper
@@ -2427,6 +2496,11 @@ func damage_part(f: Fighter, slot: String, amount: float, quiet: bool = false) -
 		amount *= 1.1
 	p["hp"] -= amount * (1.0 - minf(armor, 75.0) / 100.0)
 	f.look_dirty = true
+	if f.spec.get("junk", "") == "dummy":
+		# the Mop Bucket never breaks: it dents, then pops back out
+		p["hp"] = maxf(p["hp"], 1.0)
+		f.spec["hit_t"] = clock
+		return
 	if p["hp"] <= 0.0:
 		p["hp"] = 0.0
 		if slot != "torso":
@@ -2582,6 +2656,8 @@ func _draw() -> void:
 	if demo_move != "":
 		return   # the move showcase: just the robots
 	draw_hud()
+	if mode == "test" and (phase == "fight" or phase == "intro"):
+		draw_input_readout()
 	draw_coach()
 	if (phase == "intro" or phase == "fight") and mode != "watch":
 		draw_buttons()
@@ -3021,7 +3097,10 @@ func draw_hud() -> void:
 	var bw := minf(gap_r - gap_l, 420.0)
 	draw_title_board(Rect2(screen.x * 0.5 - bw * 0.5, 6.0, bw, minf(quit_rect.position.y - 12.0, 70.0)))
 	if phase == "intro" or phase == "fight":
-		for rr in ([[quit_rect, "LEAVE"]] if mode == "watch" else [[quit_rect, "QUIT"], [moves_rect, "MOVES"]]):
+		var hud_btns: Array = [[quit_rect, "LEAVE"]] if mode == "watch" else [[quit_rect, "QUIT"], [moves_rect, "MOVES"]]
+		if mode == "test":
+			hud_btns = [[quit_rect, "LEAVE"], [moves_rect, "MOVES"], [reset_rect, "RESET"]]
+		for rr in hud_btns:
 			draw_rect(rr[0], Color(1, 1, 1, 0.1))
 			draw_rect(rr[0], Color(1, 1, 1, 0.4), false, 2.0)
 			draw_string(font, (rr[0] as Rect2).position + Vector2(0, 31), tr(rr[1]), HORIZONTAL_ALIGNMENT_CENTER, (rr[0] as Rect2).size.x, fs(19), Color(1, 1, 1, 0.75))
@@ -3052,6 +3131,19 @@ func draw_hud() -> void:
 			draw_results()
 
 
+## Test Drive: what you just pressed (fades out), so you can see why a combo did or didn't come out.
+func draw_input_readout() -> void:
+	var toks: Array = []
+	for b in player.buffer:
+		if clock - float(b["t"]) < 2.5:
+			toks.append(b["tok"])
+	var y := screen.y * 0.04 + 112.0
+	var box := Rect2(screen.x * 0.5 - 220, y, 440, 40)
+	draw_rect(box, Color(0, 0, 0, 0.55))
+	draw_string(font, box.position + Vector2(12, 27), tr("INPUT"), HORIZONTAL_ALIGNMENT_LEFT, -1, fs(14), Color(0.6, 0.6, 0.65))
+	draw_string(font, box.position + Vector2(80, 28), Specials.seq_text(toks) if not toks.is_empty() else "-", HORIZONTAL_ALIGNMENT_LEFT, 350, fs(22), Color(0.55, 1.0, 0.65))
+
+
 func draw_results() -> void:
 	draw_rect(Rect2(Vector2.ZERO, screen), Color(0, 0, 0, 0.7))
 	var y := screen.y * 0.2
@@ -3065,6 +3157,8 @@ func draw_results() -> void:
 		lines.append([tr("That's the result on the books - bets on it pay when the round is over."), Color(0.8, 0.8, 0.85)])
 	elif mode == "quick":
 		lines.append([tr("Quick fight - nothing saved. Tap to go back to the menu."), Color(0.8, 0.8, 0.85)])
+	elif mode == "test":
+		lines.append([tr("Test drive - no damage, no prize, nothing saved."), Color(0.8, 0.8, 0.85)])
 	else:
 		var pay: int = result.get("reward", 0)
 		if pay > 0:
@@ -3298,7 +3392,9 @@ func setup_pilots() -> void:
 			mine = random_pilot_look(lp + str(team_p[0].label))
 	var theirs := {}
 	var auto := false
-	if mode != "quick":
+	if mode == "test":
+		theirs = PilotArt.GUS_LOOK
+	elif mode != "quick":
 		var who := str(opp.get("pilot", ""))
 		auto = who == ""
 		theirs = Story.SPEAKERS.get(who, {}).get("face", {})
@@ -3468,7 +3564,7 @@ var coach_t := 0.0
 
 
 func coach(id: String, text: String) -> void:
-	if mode == "quick" or mode == "watch" or mode == "demo" or GameData.tips_seen.has(id) or id == coach_id:
+	if mode == "quick" or mode == "watch" or mode == "demo" or mode == "test" or GameData.tips_seen.has(id) or id == coach_id:
 		return
 	for q in coach_queue:
 		if q["id"] == id:
@@ -3686,7 +3782,7 @@ const GUS_LOOK := {"skin": "#6b4530", "hair": "#33507a", "hat": "cap", "beard": 
 
 
 func gus_here() -> bool:
-	return mode != "quick" and mode != "watch" and mode != "demo"
+	return mode != "quick" and mode != "watch" and mode != "demo" and mode != "test"   # (in a test drive he pilots the Junker)
 
 
 ## Gus stands just behind your pilot in the corner, looking over their shoulder (so he never
