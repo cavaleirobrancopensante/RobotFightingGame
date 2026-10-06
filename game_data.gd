@@ -2,7 +2,7 @@ extends Node
 
 # helper scripts, loaded by path so the game also runs without an editor scan
 ## The game's version, shown on the main menu. Bump it with every change (1.1, 1.2, ...).
-const VERSION := "1.29"
+const VERSION := "1.30"
 const Arena = preload("res://arena.gd")
 const I18n = preload("res://i18n.gd")
 const Catalog = preload("res://catalog.gd")
@@ -3489,7 +3489,7 @@ func league_end(ev: Dictionary) -> String:
 		var prize: int = info["prizes"][m - 1]
 		money += prize
 		trophies.append(trophy_record(ev, ev["stage"], m))
-		text += tr(". Prize $%d and a trophy for the bay!") % prize
+		text += tr(". Prize $%d and a trophy for the office wall!") % prize
 	elif pos == 3:
 		money += Career.fourth_prize(ev["stage"])
 		text += tr(". Fourth place pays $%d.") % Career.fourth_prize(ev["stage"])
@@ -3546,7 +3546,7 @@ func finish_title(ev: Dictionary) -> String:
 		var prize: int = info["prizes"][m - 1]
 		money += prize
 		trophies.append(trophy_record(ev, "title", m))
-		text += tr(". Prize $%d and a trophy for the bay!") % prize
+		text += tr(". Prize $%d and a trophy for the office wall!") % prize
 	if m == 1:
 		if not champion:
 			pending_stories.append("post_9")

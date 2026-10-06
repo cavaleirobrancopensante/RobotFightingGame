@@ -463,7 +463,8 @@ static func _gantry(ci: CanvasItem, g: Dictionary, floor_y: float) -> void:
 
 ## A cork board full of fixtures, results and pilot photos, with red string between them.
 static func _office_back(ci: CanvasItem, size: Vector2, floor_y: float, t: float, info: Dictionary) -> void:
-	var board := Rect2(size.x * 0.05, size.y * 0.24, size.x * 0.5, size.y * 0.38)
+	_trophy_wall(ci, size, info)
+	var board := Rect2(size.x * 0.05, size.y * 0.4, size.x * 0.5, size.y * 0.3)
 	ci.draw_rect(board.grow(5), Color(0.38, 0.25, 0.13))
 	ci.draw_rect(board, Color(0.62, 0.45, 0.28))
 	var pins: Array = []
@@ -846,34 +847,41 @@ const MEDAL_COLORS := [Color(0.5, 0.5, 0.5), Color(0.95, 0.78, 0.25), Color(0.8,
 ## playoff or a cup. Gold, silver or bronze; the shape tells you which event it's from.
 ## Where each trophy stands on the bay's shelves: [index into the trophy list, base point] (newest ones
 ## shown). Used for drawing them and for tapping them.
+## The trophy wall in Gus's office (Season): two long shelves above the cork board, the newest
+## trophies at the end. [index into the trophies list, base point]
+const TROPHY_SCALE := 1.35
 static func trophy_spots(size: Vector2, count: int) -> Array:
-	var x0 := size.x * 0.42
+	var x0 := size.x * 0.05
 	var w := size.x * 0.56
-	var per_shelf := maxi(1, int((w - 10.0) / 26.0))
+	var step := 26.0 * TROPHY_SCALE
+	var per_shelf := maxi(1, int((w - 12.0) / step))
 	var shown := mini(count, per_shelf * 2)
 	var out: Array = []
 	for k in shown:
-		out.append([count - shown + k, Vector2(x0 + 14.0 + (k % per_shelf) * 26.0, 86.0 + (k / per_shelf) * 44.0)])
+		out.append([count - shown + k, Vector2(x0 + 8.0 + step * 0.5 + (k % per_shelf) * step, size.y * 0.17 + (k / per_shelf) * (size.y * 0.15))])
 	return out
 
 
-static func _bay_trophies(ci: CanvasItem, size: Vector2, info: Dictionary) -> void:
+static func _trophy_wall(ci: CanvasItem, size: Vector2, info: Dictionary) -> void:
 	var list: Array = info.get("medals", [])
-	var x0 := size.x * 0.42
+	var x0 := size.x * 0.05
 	var w := size.x * 0.56
-	var shelves := {}
+	# two long shelves on brackets, whether there's anything on them yet or not
+	for k in 2:
+		var y := size.y * 0.17 + k * size.y * 0.15
+		ci.draw_rect(Rect2(x0, y, w, 6), Color(0.45, 0.32, 0.2))
+		ci.draw_rect(Rect2(x0, y + 6, w, 2), Color(0.3, 0.2, 0.12))
+		for bx in [x0 + 10.0, x0 + w - 16.0]:
+			ci.draw_colored_polygon(PackedVector2Array([Vector2(bx, y + 6), Vector2(bx + 6, y + 6), Vector2(bx, y + 18)]), Color(0.3, 0.3, 0.32))
+	if list.is_empty():
+		ci.draw_string(ThemeDB.fallback_font, Vector2(x0, size.y * 0.17 - 8), I18n.t("(room for trophies)"), HORIZONTAL_ALIGNMENT_CENTER, w, 12, Color(0.6, 0.6, 0.6, 0.6))
 	for s in trophy_spots(size, list.size()):
-		var base: Vector2 = s[1]
-		if not shelves.has(base.y):
-			shelves[base.y] = true
-			ci.draw_rect(Rect2(x0, base.y, w, 5), Color(0.45, 0.32, 0.2))
 		var tr: Dictionary = list[s[0]]
-		draw_trophy(ci, base, str(tr.get("kind", "cup")), int(tr.get("medal", 1)), 1.0)
-	_scoreboard(ci, Rect2(10, 24, size.x * 0.4, 82), info)
-	# the championship belt hangs on the wall under the scoreboard
+		draw_trophy(ci, s[1], str(tr.get("kind", "cup")), int(tr.get("medal", 1)), TROPHY_SCALE)
+	# the championship belt hangs on the wall beside the shelves
 	if info.get("champion", false):
 		var gold: Color = MEDAL_COLORS[1]
-		var bc := Vector2(62, size.y * 0.47)
+		var bc := Vector2(size.x * 0.74, size.y * 0.42)
 		ci.draw_rect(Rect2(bc.x - 52, bc.y - 6, 104, 12), Color(0.15, 0.12, 0.1))
 		ci.draw_circle(bc, 16, gold)
 		ci.draw_circle(bc, 10, Color(0.8, 0.15, 0.2))
@@ -882,13 +890,54 @@ static func _bay_trophies(ci: CanvasItem, size: Vector2, info: Dictionary) -> vo
 			ci.draw_circle(bc + Vector2(side * 32, 0), 7, gold)
 
 
-## One trophy standing on a shelf at base. kind: scrap / regional / championship / cup.
+static func _bay_trophies(ci: CanvasItem, size: Vector2, info: Dictionary) -> void:
+	_scoreboard(ci, Rect2(10, 24, size.x * 0.4, 82), info)
+
+
+## One trophy standing on a shelf at base, one design per league: open (ticket plaque), scrap (welded robot),
+## rust (hex nut), iron (shield), steel (star), title (the big cup with a crown), cups (small cup, purple plinth).
 static func draw_trophy(ci: CanvasItem, base: Vector2, kind: String, medal: int, s: float) -> void:
 	var c: Color = MEDAL_COLORS[clampi(medal, 0, 3)]
 	var dark := c.darkened(0.3)
 	var wood := Color(0.35, 0.25, 0.18)
 	match kind:
-		"scrap", "rust", "open":
+		"open":
+			# Open Trials: a small wooden plaque with a ticket stub nailed to it
+			ci.draw_rect(Rect2(base + Vector2(-9, -22) * s, Vector2(18, 22) * s), wood)
+			ci.draw_rect(Rect2(base + Vector2(-9, -22) * s, Vector2(18, 22) * s), wood.darkened(0.3), false, 1.2 * s)
+			ci.draw_rect(Rect2(base + Vector2(-6, -16) * s, Vector2(12, 8) * s), c)
+			ci.draw_circle(base + Vector2(-6, -12) * s, 1.6 * s, wood)
+			ci.draw_circle(base + Vector2(6, -12) * s, 1.6 * s, wood)
+			ci.draw_circle(base + Vector2(0, -19.5) * s, 1.0 * s, Color(0.7, 0.7, 0.72))
+		"rust":
+			# Rust League: a giant hex nut, rusty orange inside the medal metal, on a plinth
+			ci.draw_rect(Rect2(base + Vector2(-8, -5) * s, Vector2(16, 5) * s), wood)
+			var hc := base + Vector2(0, -16) * s
+			var hexp := PackedVector2Array()
+			for k in 6:
+				hexp.append(hc + Vector2(cos(k * PI / 3.0 + PI / 6.0), sin(k * PI / 3.0 + PI / 6.0)) * 10.0 * s)
+			ci.draw_colored_polygon(hexp, c)
+			ci.draw_circle(hc, 4.5 * s, Color(0.55, 0.27, 0.12))
+			ci.draw_arc(hc, 4.5 * s, 0, TAU, 10, dark, 1.2 * s)
+		"iron", "regional":
+			# Iron League: a shield on a stand
+			ci.draw_rect(Rect2(base + Vector2(-7, -5) * s, Vector2(14, 5) * s), wood)
+			ci.draw_rect(Rect2(base + Vector2(-1.5, -9) * s, Vector2(3, 4) * s), dark)
+			ci.draw_colored_polygon(PackedVector2Array([base + Vector2(-9, -28) * s, base + Vector2(9, -28) * s, base + Vector2(9, -18) * s,
+					base + Vector2(0, -9) * s, base + Vector2(-9, -18) * s]), c)
+			ci.draw_line(base + Vector2(0, -27) * s, base + Vector2(0, -11) * s, dark, 1.6 * s)
+			ci.draw_line(base + Vector2(-8, -21) * s, base + Vector2(8, -21) * s, dark, 1.6 * s)
+		"steel":
+			# Steel League: a five-pointed star on a tall stem
+			ci.draw_rect(Rect2(base + Vector2(-8, -5) * s, Vector2(16, 5) * s), Color(0.2, 0.22, 0.26))
+			ci.draw_rect(Rect2(base + Vector2(-1.5, -16) * s, Vector2(3, 11) * s), Color(0.7, 0.75, 0.82))
+			var sc := base + Vector2(0, -25) * s
+			var star := PackedVector2Array()
+			for k in 10:
+				var rr := (10.0 if k % 2 == 0 else 4.2) * s
+				star.append(sc + Vector2(cos(-PI / 2.0 + k * PI / 5.0), sin(-PI / 2.0 + k * PI / 5.0)) * rr)
+			ci.draw_colored_polygon(star, c)
+		"scrap":
 			# a little robot welded together from scrap, arms up: bolt base, leg strut, box body, round head
 			ci.draw_rect(Rect2(base + Vector2(-8, -5) * s, Vector2(16, 5) * s), Color(0.3, 0.3, 0.32))
 			ci.draw_circle(base + Vector2(-5, -2.5) * s, 1.3 * s, c)
@@ -902,13 +951,6 @@ static func draw_trophy(ci: CanvasItem, base: Vector2, kind: String, medal: int,
 			ci.draw_circle(base + Vector2(11, -28) * s, 2.0 * s, dark)
 			ci.draw_circle(base + Vector2(0, -26) * s, 5.0 * s, c)
 			ci.draw_rect(Rect2(base + Vector2(-3.5, -27) * s, Vector2(7, 2) * s), Color(0.15, 0.1, 0.08))
-		"regional", "iron", "steel":
-			ci.draw_rect(Rect2(base + Vector2(-7, -6) * s, Vector2(14, 6) * s), wood)
-			ci.draw_rect(Rect2(base + Vector2(-2, -13) * s, Vector2(4, 7) * s), c)
-			ci.draw_arc(base + Vector2(0, -20) * s, 8 * s, 0, PI, 10, c, 6.0 * s)
-			ci.draw_rect(Rect2(base + Vector2(-8.5, -26) * s, Vector2(17, 3) * s), c)
-			ci.draw_arc(base + Vector2(-9, -21) * s, 3.5 * s, PI * 0.5, PI * 1.5, 6, c, 1.8 * s)
-			ci.draw_arc(base + Vector2(9, -21) * s, 3.5 * s, -PI * 0.5, PI * 0.5, 6, c, 1.8 * s)
 		"championship", "title":
 			# the big one: two-step base, tall stem, wide cup and a little robot on the lid
 			ci.draw_rect(Rect2(base + Vector2(-10, -5) * s, Vector2(20, 5) * s), wood)
@@ -918,10 +960,12 @@ static func draw_trophy(ci: CanvasItem, base: Vector2, kind: String, medal: int,
 			ci.draw_rect(Rect2(base + Vector2(-11, -35) * s, Vector2(22, 3) * s), c)
 			ci.draw_arc(base + Vector2(-12, -28) * s, 5 * s, PI * 0.5, PI * 1.5, 6, c, 2.0 * s)
 			ci.draw_arc(base + Vector2(12, -28) * s, 5 * s, -PI * 0.5, PI * 0.5, 6, c, 2.0 * s)
-			ci.draw_circle(base + Vector2(0, -38) * s, 3.0 * s, c)
+			# a crown on the lid: the Titanium Championship
+			ci.draw_colored_polygon(PackedVector2Array([base + Vector2(-6, -36) * s, base + Vector2(-6, -41) * s, base + Vector2(-3, -38) * s,
+					base + Vector2(0, -43) * s, base + Vector2(3, -38) * s, base + Vector2(6, -41) * s, base + Vector2(6, -36) * s]), c.lightened(0.15))
 			ci.draw_circle(base + Vector2(0, -28) * s, 2.5 * s, Color(0.9, 0.2, 0.25))
-		_:   # cups: a small cup on a plinth
-			ci.draw_rect(Rect2(base + Vector2(-5, -5) * s, Vector2(10, 5) * s), wood)
+		_:   # cups: a small cup on a purple plinth
+			ci.draw_rect(Rect2(base + Vector2(-5, -5) * s, Vector2(10, 5) * s), Color(0.42, 0.25, 0.55))
 			ci.draw_rect(Rect2(base + Vector2(-1.5, -10) * s, Vector2(3, 5) * s), c)
 			ci.draw_arc(base + Vector2(0, -15) * s, 6 * s, 0, PI, 8, c, 5.0 * s)
 			ci.draw_rect(Rect2(base + Vector2(-6.5, -20) * s, Vector2(13, 2) * s), c)

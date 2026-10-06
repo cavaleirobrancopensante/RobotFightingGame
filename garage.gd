@@ -2798,7 +2798,7 @@ func build_cups_tab() -> void:
 	if not fits:
 		section("Too close to the end of the year for a three-week cup. New ones start in January.")
 	else:
-		section(tr("Cups: 8 pilots, a three-week knockout on Wednesday nights. Your Saturday league fights carry on as normal. Gold, silver and bronze go on the bay wall.") + " " + (tr("Enter tonight and your first round is tonight.") if GameData.day == "wed" else tr("Your first round is next Wednesday.")))
+		section(tr("Cups: 8 pilots, a three-week knockout on Wednesday nights. Your Saturday league fights carry on as normal. Gold, silver and bronze go on the trophy wall in the office.") + " " + (tr("Enter tonight and your first round is tonight.") if GameData.day == "wed" else tr("Your first round is next Wednesday.")))
 	if GameData.circuit_offers.is_empty():
 		GameData.make_offers()
 	for k in GameData.circuit_offers.size():
@@ -4099,11 +4099,11 @@ func _on_backdrop_tapped(pos: Vector2) -> void:
 				open_controller(str(sp[0]))
 				return
 		return
-	if scene != "build":
+	if scene != "office":
 		return
 	for s in GarageArt.trophy_spots(preview.size, GameData.trophies.size()):
 		var base: Vector2 = s[1]
-		if Rect2(base + Vector2(-13, -40), Vector2(26, 42)).has_point(pos):
+		if Rect2(base + Vector2(-18, -50), Vector2(36, 52)).has_point(pos):
 			Sfx.play("click")
 			open_trophy(int(s[0]))
 			return
