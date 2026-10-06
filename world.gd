@@ -18,17 +18,20 @@ const TIERS := ["open", "scrap", "rust", "iron", "steel"]
 const TIER_SIZE := {"open": 40, "scrap": 64, "rust": 48, "iron": 40, "steel": 32}
 ## Robot value (sum of part prices) when the world is made: [low, high, skew]. Skew > 1 = most
 ## pilots near the low end, a few rich ones near the top.
-const TIER_VALUE := {"open": [0.0, 500.0, 2.6], "scrap": [0.0, 900.0, 2.4], "rust": [300.0, 2600.0, 2.0], "iron": [1500.0, 7500.0, 1.5], "steel": [5000.0, 16000.0, 1.4]}
+const TIER_VALUE := {"open": [0.0, 900.0, 2.6], "scrap": [300.0, 3000.0, 1.8], "rust": [2500.0, 9000.0, 1.6], "iron": [8000.0, 27000.0, 1.5], "steel": [25000.0, 80000.0, 1.4]}
 const TIER_SKILL := {"open": [0.0, 0.1], "scrap": [0.0, 0.16], "rust": [0.1, 0.32], "iron": [0.28, 0.58], "steel": [0.55, 0.95]}
 ## Per month: what living costs, and what the day job / sponsors pay.
-const LIVING := {"open": 150, "scrap": 200, "rust": 280, "iron": 750, "steel": 1900}
-const INCOME := {"open": [150, 320], "scrap": [190, 380], "rust": [240, 460], "iron": [600, 1100], "steel": [1100, 2300]}
+const LIVING := {"open": 300, "scrap": 600, "rust": 1600, "iron": 5000, "steel": 15000}
+const INCOME := {"open": [250, 450], "scrap": [400, 800], "rust": [900, 1700], "iron": [1500, 3000], "steel": [4000, 8000]}
 ## Signing-on money from a sponsor when a pilot moves up a tier.
-const SPONSOR := {"scrap": 200, "rust": 600, "iron": 3500, "steel": 9000}
+const SPONSOR := {"scrap": 600, "rust": 3000, "iron": 15000, "steel": 45000}
+## Robots stop getting upgrades past this value (a league's robots stay in its grade; the rest of
+## the money piles up, and rich pilots retire).
+const VALUE_CAP := {"open": 1000.0, "scrap": 2600.0, "rust": 7500.0, "iron": 22000.0, "steel": 66000.0}
 ## Cash at which a pilot might cash out and retire.
-const RICH := {"open": 2000, "scrap": 3000, "rust": 6000, "iron": 18000, "steel": 60000}
+const RICH := {"open": 4000, "scrap": 9000, "rust": 27000, "iron": 80000, "steel": 250000}
 ## What a league fight pays the winner.
-const FIGHT_PAY := {"open": 60, "scrap": 90, "rust": 170, "iron": 540, "steel": 1150, "title": 3000, "cup": 400}
+const FIGHT_PAY := {"open": 300, "scrap": 800, "rust": 2400, "iron": 7000, "steel": 21000, "title": 90000, "cup": 2000}
 const HABITS := ["saver", "spender", "gambler"]
 const SPEND_CHANCE := {"saver": 0.3, "spender": 0.75, "gambler": 0.5}
 const UPGRADE_SLOTS := ["head", "torso", "arm_front", "arm_back", "leg_front", "leg_back", "reactor", "back"]
@@ -134,22 +137,41 @@ static func by_kind(kind: String) -> Array:
 			_kinds[k].sort_custom(func(a, b): return GameData.PARTS[a]["cost"] < GameData.PARTS[b]["cost"])
 	return _kinds.get(kind, [])
 
-## A robot worth about `budget` dollars of parts. Starts from junk and upgrades slot by slot;
-## some pilots blow most of their money on one big part (that's what Gus warns you about).
+## A robot worth about `budget` dollars of parts. The money is shared out over the slots, each
+## slot gets the best grade its share buys (most robots are mostly one grade); some pilots blow
+## a big piece of it on one part a grade up (that's what Gus warns you about).
 static func build_bot(rng: RandomNumberGenerator, budget: float, skill: float) -> Dictionary:
 	var bot: Dictionary = GameData.random_bot(rng, 0.0, skill * 3.6)
 	var parts: Dictionary = {}
-	for slot in ["head", "torso", "arm_front", "arm_back", "leg_front", "leg_back", "reactor"]:
+	var slots := ["head", "torso", "arm_front", "arm_back", "leg_front", "leg_back", "reactor"]
+	for slot in slots:
 		parts[slot] = cheapest(rng, GameData.SLOT_KIND[slot])
 	bot["parts"] = parts
+	var tg := grade_for_value(budget)
+	bot["tg"] = tg
 	var left := budget
-	if budget > 300.0 and rng.randf() < 0.35:
+	if budget > 300.0 and rng.randf() < 0.3:
 		var slot: String = ["arm_front", "arm_front", "arm_back", "torso", "head", "leg_front"][rng.randi() % 6]
-		var big := best_under(GameData.SLOT_KIND[slot], left * rng.randf_range(0.45, 0.8), slot)
+		var big := best_under(GameData.SLOT_KIND[slot], left * rng.randf_range(0.3, 0.5), slot, mini(5, tg + 1))
 		if big != "":
-			left -= part_cost(big) - part_cost(parts[slot])
+			left -= part_cost(big)
 			set_part(rng, bot, slot, big)
-	left = upgrade_loop(rng, bot, left, 90)
+	var weights := {"head": 0.9, "torso": 1.4, "arm_front": 1.0, "arm_back": 1.0, "leg_front": 0.9, "leg_back": 0.9, "reactor": 0.8}
+	var open_w := 0.0
+	for slot in slots:
+		if part_cost(parts[slot]) <= 0.0:
+			open_w += weights[slot]
+	for slot in slots:
+		if part_cost(parts[slot]) > 0.0 or open_w <= 0.0:
+			continue
+		var share: float = left * weights[slot] / open_w
+		var pick := pick_for(rng, GameData.SLOT_KIND[slot], share, tg)
+		if pick != "":
+			set_part(rng, bot, slot, pick)
+	if rng.randf() < 0.12 and budget > 1500.0:
+		var bk := pick_for(rng, "back", budget * 0.08, tg)
+		if bk != "":
+			parts["back"] = bk
 	if rng.randf() < 0.5:   # matching pairs look more like a real build
 		for pair in [["arm_front", "arm_back"], ["leg_front", "leg_back"]]:
 			var a: String = parts[pair[0]]
@@ -162,8 +184,36 @@ static func build_bot(rng: RandomNumberGenerator, budget: float, skill: float) -
 	return bot
 
 
-## Spend `left` dollars making the robot better, one part at a time. Returns what's left.
-static func upgrade_loop(rng: RandomNumberGenerator, bot: Dictionary, left: float, tries: int) -> float:
+## A part of `kind` for about `money`: the best grade (up to max_g) that money buys, then any
+## design of that grade it can pay for.
+static func pick_for(rng: RandomNumberGenerator, kind: String, money: float, max_g: int) -> String:
+	for g in range(max_g, 0, -1):
+		var opts: Array = []
+		for id in by_kind(kind):
+			var d: Dictionary = GameData.PARTS[id]
+			if int(d.get("grade", 0)) == g and d["shop"] and float(d["cost"]) <= money:
+				opts.append(id)
+		if opts.size() >= 2 or (g == 1 and not opts.is_empty()):
+			# favour the better half of what fits
+			return opts[rng.randi_range(opts.size() / 2, opts.size() - 1)]
+	return ""
+
+
+## The part grade a robot worth `value` is built from (a full Scrap robot is about $2,000, x3 a grade).
+static func grade_for_value(value: float) -> int:
+	if value < 2500.0:
+		return 1
+	if value < 8000.0:
+		return 2
+	if value < 24000.0:
+		return 3
+	if value < 72000.0:
+		return 4
+	return 5
+
+
+## Spend `left` dollars making the robot better, one part at a time (up to grade max_g). Returns what's left.
+static func upgrade_loop(rng: RandomNumberGenerator, bot: Dictionary, left: float, tries: int, max_g: int = 5) -> float:
 	for k in tries:
 		if left < 40.0:
 			break
@@ -175,7 +225,7 @@ static func upgrade_loop(rng: RandomNumberGenerator, bot: Dictionary, left: floa
 			var c: float = GameData.PARTS[id]["cost"]
 			if c - cur_cost > left:
 				break
-			if c > cur_cost:
+			if c > cur_cost and int(GameData.PARTS[id].get("grade", 0)) <= max_g and GameData.PARTS[id]["shop"]:
 				opts.append(id)
 		if opts.is_empty():
 			continue
@@ -242,12 +292,13 @@ static func cheapest(rng: RandomNumberGenerator, kind: String) -> String:
 	return opts[rng.randi() % opts.size()]
 
 
-static func best_under(kind: String, money: float, _slot: String) -> String:
+static func best_under(kind: String, money: float, _slot: String, max_g: int = 5) -> String:
 	var best := ""
 	for id in by_kind(kind):
 		if GameData.PARTS[id]["cost"] > money:
 			break
-		best = id
+		if int(GameData.PARTS[id].get("grade", 0)) <= max_g:
+			best = id
 	return best
 
 
@@ -352,7 +403,7 @@ static func standout_slot(parts: Dictionary) -> String:
 static func after_fight(rng: RandomNumberGenerator, winner: Dictionary, loser: Dictionary, stage: String) -> void:
 	var pay: int = FIGHT_PAY.get(stage, 100)
 	if stage == "pickup":
-		pay = 60 + 40 * maxi(0, TIERS.find(str(winner.get("tier", loser.get("tier", "rust")))))
+		pay = int(GameData.PICKUP_PURSE.get(str(winner.get("tier", loser.get("tier", "rust"))), 250))
 	if not winner.is_empty():
 		winner["cash"] = int(winner["cash"]) + pay
 		winner["w"] = int(winner["w"]) + 1
@@ -559,10 +610,11 @@ static func month_passed(rng: RandomNumberGenerator, busy: Dictionary) -> void:
 				p["wear"][slot] = rng.randf_range(0.35, 0.7)
 		var spare: int = int(p["cash"]) - reserve - living
 		var value := bot_value(p["bot"])
-		if spare > 200 and rng.randf() < SPEND_CHANCE[p["habit"]]:
+		var cap: float = VALUE_CAP.get(tier, 3000.0)
+		if spare > 200 and value < cap and rng.randf() < SPEND_CHANCE[p["habit"]]:
 			if spare > value * 1.5 + 800.0 and rng.randf() < 0.3:
 				# a whole new robot: the old one is sold off
-				var budget := value * 0.4 + spare * 0.8
+				var budget := minf(value * 0.4 + spare * 0.8, cap)
 				var old_name: String = p["bot"]["name"]
 				var nb := build_bot(rng, budget, float(p["skill"]))
 				p["cash"] = int(p["cash"]) - int(spare * 0.8)
@@ -570,8 +622,8 @@ static func month_passed(rng: RandomNumberGenerator, busy: Dictionary) -> void:
 				p["wear"] = {}
 				news("%s sold %s and built a brand-new robot: %s.", [p["name"], old_name, nb["name"]])
 			else:
-				var budget := spare * rng.randf_range(0.4, 0.9)
-				var left := upgrade_loop(rng, p["bot"], budget, 3)
+				var budget := minf(spare * rng.randf_range(0.4, 0.9), cap - value)
+				var left := upgrade_loop(rng, p["bot"], budget, 3, int(GameData.RANK_GRADE.get(str(p["tier"]), 1)))
 				var spent := int(budget - left)
 				if spent > 0:
 					p["cash"] = int(p["cash"]) - spent   # (the price difference: the old part is traded in)

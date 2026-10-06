@@ -7,7 +7,7 @@ const UI = preload("res://ui.gd")
 const GUI = preload("res://garage_ui.gd")
 const Arena = preload("res://arena.gd")
 const Scoreboard = preload("res://scoreboard.gd")
-## Main menu, dressed like the game: the Kane Championship Arena behind it, two robots squaring
+## Main menu, dressed like the game: the Titanium Championship Arena behind it, two robots squaring
 ## off in the ring, the title on the arena's boards ("ROBOT" in the Championship's red LED dots,
 ## "FIGHTING" on the Regional's flip tiles), and every button from a different corner of the game:
 ##   Quick Fight - Regional / cups flip tiles      New Game - Championship red LED dots

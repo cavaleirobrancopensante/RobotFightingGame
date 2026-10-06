@@ -136,6 +136,7 @@ class Fighter:
 	var ai := {}             # this robot's own AI state (CPU robots)
 	var wingman := -1        # which of the player's wingmen this is (-1 = main robot / not ours)
 	var tag := ""            # little label over its head in team fights
+	var gpow := 1.0          # average grade multiplier of the body parts (specials and gadgets hit this hard)
 	var hp_scale := 1.0      # team robots fight with less health (your parts' real damage is scaled back after)
 	var ctrl := {}           # the pilot's controller bonuses (see GameData.CONTROLLER_INFO)
 	# power: every move costs some; run dry and the robot burns out for a moment
@@ -222,8 +223,12 @@ class Fighter:
 		var slot: String = g["slot"]
 		return not parts.has(slot) or alive(slot)
 
+	## A hit thrown with one limb: that limb's grade decides how hard it lands.
+	func limb_damage(limb: Dictionary) -> float:
+		return mod_damage() / gpow * float(limb.get("gm", 1.0))
+
 	func mod_damage() -> float:
-		return dmg_mult * eff * (1.4 if over_t > 0.0 else 1.0) * (0.85 if burnout else 1.0) \
+		return gpow * dmg_mult * eff * (1.4 if over_t > 0.0 else 1.0) * (0.85 if burnout else 1.0) \
 				* (1.15 if style == "striker" else 1.0) * (0.85 if numb_t > 0.0 else 1.0) * (1.0 + ctrl.get("damage", 0.0))
 
 	func mod_speed() -> float:
@@ -533,6 +538,13 @@ func make_fighter(spec: Dictionary) -> Fighter:
 	f.spd_mult = spec["speed_mult"]
 	f.scale = minf(spec["scale"] * BOT_SCALE, 1.5)   # cap so giants still fit under the HUD
 	f.hp_scale = float(spec.get("hp_scale", 1.0))
+	var gsum := 0.0
+	var gn := 0
+	for slot in BODY_PARTS:
+		if not f.parts[slot].is_empty():
+			gsum += float(f.parts[slot].get("gm", 1.0))
+			gn += 1
+	f.gpow = gsum / gn if gn > 0 else 1.0
 	if f.hp_scale != 1.0:
 		for slot in f.parts:
 			if not f.parts[slot].is_empty():
@@ -1938,7 +1950,7 @@ func use_gadget(f: Fighter, g: Dictionary) -> void:
 				return
 			f.fist_out[g["slot"]] = true
 			var arm: Dictionary = f.parts[g["slot"]]
-			var dmg: float = (12.0 if id == "rocket_fist" else 5.0) * (1.0 + arm["damage"] / 100.0) * f.mod_damage()
+			var dmg: float = (12.0 if id == "rocket_fist" else 5.0) * (1.0 + arm["damage"] / 100.0) * f.limb_damage(arm)
 			fire_projectile(f, "fist" if id == "rocket_fist" else "claw", dmg, "punch", g["slot"])
 			Sfx.play("uppercut", 0.1)
 		"laser":
@@ -2073,7 +2085,7 @@ func update_fighter(f: Fighter, o: Fighter, i: Dictionary, delta: float) -> void
 			f.power = 0.0   # the overcharge drains the tank: burnout
 			f.burn_pending = true
 	if f.has_gadget("regen") and f.alive("torso") and phase == "fight":
-		f.parts["torso"]["hp"] = minf(f.parts["torso"]["max_hp"], f.parts["torso"]["hp"] + 1.2 * delta)
+		f.parts["torso"]["hp"] = minf(f.parts["torso"]["max_hp"], f.parts["torso"]["hp"] + 1.2 * f.gpow * delta)
 	f.slow_t = maxf(0.0, f.slow_t - delta)
 	f.hobble_t = maxf(0.0, f.hobble_t - delta)
 	f.numb_t = maxf(0.0, f.numb_t - delta)
@@ -2276,7 +2288,7 @@ func try_hit(att: Fighter, d: Fighter, a: Dictionary) -> void:
 	att.hit_done = true
 	var limb: Dictionary = att.parts[att.attack_limb] if att.parts.has(att.attack_limb) and att.alive(att.attack_limb) else {"damage": 0}
 	var hit := a.duplicate()
-	hit["damage"] = a["damage"] * (1.0 + limb["damage"] / 100.0) * att.mod_damage()
+	hit["damage"] = a["damage"] * (1.0 + limb["damage"] / 100.0) * att.limb_damage(limb)
 	hit["src"] = att.attack_limb
 	var at := Vector2(att.pos.x + att.facing * minf(dx, reach), d.pos.y - 90.0 * d.scale)
 	if a.get("family", "") == "hold" and d.shield_t <= 0.0 and d.state != "ko":
@@ -2461,7 +2473,7 @@ func apply_hit(att: Fighter, d: Fighter, a: Dictionary, at: Vector2) -> void:
 		# offensive traits
 		var burn := off_trait(att, src, "burn")
 		if burn > 0.0 and d.alive(slot):
-			d.burns.append({"slot": slot, "dps": burn / 3.0, "t": 3.0})
+			d.burns.append({"slot": slot, "dps": burn / 3.0 * att.gpow, "t": 3.0})
 		var chill := off_trait(att, src, "chill")
 		if chill > 0.0:
 			d.slow_t = maxf(d.slow_t, chill)
@@ -2620,7 +2632,7 @@ func rip_off(f: Fighter, slot: String) -> void:
 		coach("own_lost", tr("We lost a part! Ripped-off parts must be bought again. Dented ones can be repaired."))
 	f.fist_out.erase(slot)
 	f.burns = f.burns.filter(func(b): return b["slot"] != slot)
-	var boom: float = limb_trait(f, slot, "explosive") + f.gtraits.get("explosive", 0.0)
+	var boom: float = (limb_trait(f, slot, "explosive") + f.gtraits.get("explosive", 0.0)) * float(p.get("gm", f.gpow))
 	var at := to_world_point(f, RobotArt.part_center(f.get_look(), slot))
 	var size := Vector2(46, 14) if slot.begins_with("arm") else (Vector2(16, 52) if slot.begins_with("leg") else Vector2(36, 32))
 	debris.append({"pos": at, "vel": Vector2(-f.facing * randf_range(150, 350), randf_range(-650, -400)),

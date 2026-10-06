@@ -178,7 +178,10 @@ static func _props_back(ci: CanvasItem, size: Vector2, scene: String, t: float, 
 			var spot: Array = ROBOT_SPOT["team"]
 			var rh: float = size.y * float(spot[1]) - 10.0
 			_frame(ci, size.x * float(spot[0]), rh * 0.42, floor_y - rh - 26.0, floor_y)
-			_frame(ci, size.x * 0.24, rh * 0.34, floor_y - rh * 0.8 - 26.0, floor_y)
+			if GameData.gantries >= 1:   # one more gantry for each backup robot you've paid for
+				_frame(ci, size.x * 0.24, rh * 0.34, floor_y - rh * 0.8 - 26.0, floor_y)
+			if GameData.gantries >= 2:
+				_frame(ci, size.x * 0.08, rh * 0.3, floor_y - rh * 0.72 - 26.0, floor_y)
 		"storage":
 			_sign(ci, Vector2(size.x * 0.5, 30), I18n.t("STOREROOM"), Color(0.95, 0.75, 0.4))
 			_lamp(ci, Vector2(size.x * 0.42, 0), size, t)

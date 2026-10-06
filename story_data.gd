@@ -1,7 +1,7 @@
 extends RefCounted
 ## All the story text. Each scene: {"place": where it happens, "lines": [[speaker, text], ...]}
 ## Scenes: "intro", "pre_N" (before the fight with story rival N, 0-9), "post_N" (after beating them;
-## post_9 is the title, when you win the Kane Championship), and the year's results:
+## post_9 is the title, when you win the Titanium Championship), and the year's results:
 ## "up_<division>", "down", "stay_<division>".
 ## Rivals 0-2 fight in the Scrap League, 3-5 in the Rust League, 6-8 in the Iron League, and
 ## OVERLORD (9) is your last fight of a Steel League year. The rest of the story is emergent:
@@ -108,33 +108,33 @@ const SCENES := {
 		["GUS", "...Get some sleep. Both of us need it."],
 	]},
 
-	"pre_6": {"place": "KANE CHAMPIONSHIP ARENA", "lines": [
+	"pre_6": {"place": "TITANIUM CHAMPIONSHIP ARENA", "lines": [
 		["BULL", "Bull. SLEDGE's got two hammers and no brakes, same as me. My boys throw bolts. Don't take it personal."],
 		["YOU", "Gus. 'Unit 00.' 'Handler link trials.' You flinch every time. Who wrote those logs?"],
 		["GUS", "You don't know what you're asking! You don't know what I did!"],
 		["GUS", "...Sorry. Not now. Win this one first. Then ask me again."],
 	]},
-	"post_6": {"place": "KANE CHAMPIONSHIP ARENA", "lines": [
+	"post_6": {"place": "TITANIUM CHAMPIONSHIP ARENA", "lines": [
 		["BULL", "Heh. My boys picked a side. Listen, rookie. Every pilot in this town is watching you now. Rosa, the twins, even Bruno. Don't make us look stupid."],
 		["YOU", "The crowd is chanting something."],
 		["GUS", "It's ECHO's name, kid. And yours."],
 	]},
 
-	"pre_7": {"place": "KANE CHAMPIONSHIP ARENA", "lines": [
+	"pre_7": {"place": "TITANIUM CHAMPIONSHIP ARENA", "lines": [
 		["NARRATOR", "Halfway through the Iron League. Kane watches from her private box, high above the ring."],
 		["KANE", "Let me save you the suspense. Unit 00 was our handler-link prototype. With a good pilot, it beat every machine we built."],
 		["KANE", "Do you know what a good pilot costs? A cut of every purse, forever. Programs don't ask for a cut. So we buried the project and built OVERLORD."],
 		["DR. VOSS", "BRIMSTONE runs version 11. It has studied every one of your fights. Every one."],
 		["YOU", "Then it should've studied the pilots you put out of work."],
 	]},
-	"post_7": {"place": "KANE CHAMPIONSHIP ARENA", "lines": [
+	"post_7": {"place": "TITANIUM CHAMPIONSHIP ARENA", "lines": [
 		["KANE", "Security. That chassis is Kane Dynamics property. Confiscate it."],
 		["GUS", "Service tunnel! Get it on the cart, kid, NOW!"],
 		["NARRATOR", "You make it through the tunnels under the arena with the robot strapped to a cart and the alarms howling. Bruno's dock truck is waiting at the loading bay."],
 		["BRUNO", "Get in. Your father would've done the same for me."],
 	]},
 
-	"pre_8": {"place": "KANE CHAMPIONSHIP ARENA", "lines": [
+	"pre_8": {"place": "TITANIUM CHAMPIONSHIP ARENA", "lines": [
 		["YOU", "I dug around under the crane last night, Gus. Found this. A burned-out handler console. Your name's scratched on the back."],
 		["GUS", "...Seven years ago I was an engineer at Kane. I built the handler link. Built this arm out of their parts, too."],
 		["GUS", "When they ordered Unit 00 crushed, I smuggled it out and gave it to the best pilot I knew. Your father. He kept it hidden here, under the crane."],
@@ -142,9 +142,9 @@ const SCENES := {
 		["GUS", "Then I rented you the bay next door, cheap. It'll never be enough."],
 		["IRONSIDE", "Ironside. JUGGERNAUT. I was Gus's pilot, back when he still built for the right side. You two done crying? Good. Let's give 'em a fight."],
 	]},
-	"post_8": {"place": "KANE CHAMPIONSHIP ARENA", "lines": [
+	"post_8": {"place": "TITANIUM CHAMPIONSHIP ARENA", "lines": [
 		["IRONSIDE", "Ha. Best beating I've taken in years. Tomorrow I'll be in the front row with every pilot Kane ever fired."],
-		["GUS", "One more league, kid. The Steel League, OVERLORD's table. Finish high enough and we're in the Kane Championship."],
+		["GUS", "One more league, kid. The Steel League, OVERLORD's table. Finish high enough and we're in the Titanium Championship."],
 		["YOU", "Gus. Whatever you wrote back then, you also built the thing that's going to prove it wrong."],
 	]},
 
@@ -157,7 +157,7 @@ const SCENES := {
 		["YOU", "Tonight they learn what people can do with them."],
 	]},
 	"post_9": {"place": "THE KANE GRAND HALL: FINAL", "lines": [
-		["ANNOUNCER", "THE KANE CHAMPIONSHIP IS DECIDED! THE SCRAP-HEAP UNDERDOG IS YOUR NEW CHAMPION!"],
+		["ANNOUNCER", "THE TITANIUM CHAMPIONSHIP IS DECIDED! THE SCRAP-HEAP UNDERDOG IS YOUR NEW CHAMPION!"],
 		["KANE", "...Impossible. It had every advantage. Every program. Every simulation."],
 		["GUS", "It had no pilot."],
 		["GUS", "Kid. Your father would have been proud. I'm... I'm proud too. For what that's worth."],
@@ -171,7 +171,7 @@ const SCENES := {
 		["GUS", "Welcome to the bay. Don't touch the coffee."],
 		["GUS", "{RENT_GARAGE}"],
 		["GUS", "Keep winning and the prize money starts coming in. Climb out of the hole, then we talk to the dealer about real parts."],
-		["GUS", "And remember: the Open Trials, then the Scrap League, Rust, Iron, Steel, and the Kane Championship at the top. One rung a year, if we're good."],
+		["GUS", "And remember: the Open Trials, then the Scrap League, Rust, Iron, Steel, and the Titanium Championship at the top. One rung a year, if we're good."],
 		["GUS", "The Rusty Bolt's just down the road. Whoever's at the bar will fight you for a few bucks. Get some practice in before Saturday."],
 	]},
 	# ---- career moments (shown after the fight that decides them)
@@ -193,13 +193,13 @@ const SCENES := {
 		["ANNOUNCER", "...and they're going UP! Next year, the Iron League!"],
 		["GUS", "The Iron League, kid. Kane's people will be watching every fight. Let them."],
 	]},
-	"up_steel": {"place": "KANE CHAMPIONSHIP ARENA", "lines": [
+	"up_steel": {"place": "TITANIUM CHAMPIONSHIP ARENA", "lines": [
 		["ANNOUNCER", "...and they're going UP! Into the STEEL LEAGUE!"],
 		["GUS", "The top table. OVERLORD's table. The whole city watches every other Saturday."],
 		["GUS", "Not long ago you were fighting for pennies behind the junkyard. Don't forget that."],
 	]},
-	"title_in": {"place": "KANE CHAMPIONSHIP ARENA", "lines": [
-		["ANNOUNCER", "...and there are your eight for the KANE CHAMPIONSHIP!"],
+	"title_in": {"place": "TITANIUM CHAMPIONSHIP ARENA", "lines": [
+		["ANNOUNCER", "...and there are your eight for the TITANIUM CHAMPIONSHIP!"],
 		["GUS", "We're in, kid. Eight pilots, three nights, one belt. Next year, on the open dates."],
 	]},
 	"title_out": {"place": "THE KANE GRAND HALL", "lines": [
@@ -221,10 +221,10 @@ const SCENES := {
 	"stay_rust": {"place": "PORT FERRUM SPORTS HALL", "lines": [
 		["GUS", "Another year in the Rust League. Till then, cups, pickup fights, and every dollar into that robot."],
 	]},
-	"stay_iron": {"place": "KANE CHAMPIONSHIP ARENA", "lines": [
+	"stay_iron": {"place": "TITANIUM CHAMPIONSHIP ARENA", "lines": [
 		["GUS", "Another year in the Iron League. Kane's people will keep watching. Let them."],
 	]},
-	"stay_steel": {"place": "KANE CHAMPIONSHIP ARENA", "lines": [
+	"stay_steel": {"place": "TITANIUM CHAMPIONSHIP ARENA", "lines": [
 		["GUS", "Not enough for the Championship this year. We stay in the Steel League."],
 		["YOU", "Next year."],
 		["GUS", "Next year. Same table, same city. We'll be ready."],

@@ -161,6 +161,27 @@ static func draw_blocks(ci: CanvasItem, r: Rect2, n: int, filled: float, col: Co
 			ci.draw_rect(Rect2(x + (bw - fw if from_right else 0.0), r.position.y, fw, r.size.y), col)
 
 
+## Bars longer than WRAP blocks (high-grade parts have hundreds of HP) wrap onto more rows of
+## thinner blocks: a block is still 10 HP, so a tougher part has a bigger bar.
+const WRAP := 30
+
+
+static func rows_height(n: int, one_row: float) -> float:
+	if n <= WRAP:
+		return one_row
+	return ceilf(float(n) / WRAP) * 7.0 - 2.0
+
+
+static func draw_wrapped(ci: CanvasItem, n: int, filled: float, bw: float, col: Color) -> void:
+	for i in n:
+		var x := (i % WRAP) * bw
+		var y := (i / WRAP) * 7.0
+		ci.draw_rect(Rect2(x, y, bw - 1.0, 5.0), Color(0.15, 0.17, 0.155))
+		var part := clampf(filled - i, 0.0, 1.0)
+		if part > 0.0:
+			ci.draw_rect(Rect2(x, y, (bw - 1.0) * part, 5.0), col)
+
+
 ## A block bar for a value: one block per `per_block` up to `max_value`.
 class BlockBar extends Control:
 	var n := 10
@@ -173,7 +194,7 @@ class BlockBar extends Control:
 		n = maxi(1, int(ceilf(max_value / per_block)))
 		filled = value / per_block
 		color = col
-		custom_minimum_size = Vector2(n * block_w, height)
+		custom_minimum_size = Vector2(mini(n, WRAP) * block_w, load("res://garage_ui.gd").rows_height(n, height))
 		queue_redraw()
 
 	func set_fill(f: float) -> void:
@@ -182,9 +203,12 @@ class BlockBar extends Control:
 			queue_redraw()
 
 	func _draw() -> void:
-		var y := (size.y - height) * 0.5
-		var GUI = load("res://garage_ui.gd")
-		GUI.draw_blocks(self, Rect2(0, y, size.x, height), n, filled, color)
+		if n <= WRAP:
+			var y := (size.y - height) * 0.5
+			var GUI = load("res://garage_ui.gd")
+			GUI.draw_blocks(self, Rect2(0, y, size.x, height), n, filled, color)
+			return
+		load("res://garage_ui.gd").draw_wrapped(self, n, filled, block_w, color)
 
 
 ## Health as joined blocks: every block is 10 HP, so a tough part has a longer bar and the dark blocks
@@ -199,12 +223,16 @@ class SegBar extends Control:
 		hp = value
 		max_hp = maxf(1.0, maximum)
 		color = col
-		custom_minimum_size = Vector2(ceilf(max_hp / 10.0) * BLOCK, 12)
+		var nb := int(ceilf(max_hp / 10.0))
+		custom_minimum_size = Vector2(mini(nb, WRAP) * BLOCK, load("res://garage_ui.gd").rows_height(nb, 12.0))
 		queue_redraw()
 
 	func _draw() -> void:
 		var n := int(ceilf(max_hp / 10.0))
 		var filled := hp / 10.0
+		if n > WRAP:
+			load("res://garage_ui.gd").draw_wrapped(self, n, filled, BLOCK, color)
+			return
 		var y := (size.y - 12.0) * 0.5
 		for i in n:
 			var x := i * BLOCK

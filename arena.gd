@@ -21,7 +21,7 @@ const ARENAS := {
 	"scrap_ring": {"name": "The Scrap Heap Ring", "sky": ["#2a1a12", "#6b4a2e"], "floor": "#4a3d30", "rope": "#8c8c8c", "post": "#6b3a1e", "light": "#ffcf7a", "ring": "junk"},
 	"regional_hall": {"name": "Port Ferrum Sports Hall", "sky": ["#1d2430", "#34404f"], "floor": "#6a5a44", "rope": "#d63a3a", "post": "#2c3e50", "light": "#fff4d6"},
 	"regional_final": {"name": "Port Ferrum Regional: Final", "sky": ["#141a2a", "#2d3550"], "floor": "#5a4a38", "rope": "#e0b84a", "post": "#1f2a44", "light": "#ffffff"},
-	"champ_arena": {"name": "Kane Championship Arena", "sky": ["#0a0d1a", "#1c2340"], "floor": "#20242e", "rope": "#3a7bd5", "post": "#c0c6d0", "light": "#e8f0ff"},
+	"champ_arena": {"name": "Titanium Championship Arena", "sky": ["#0a0d1a", "#1c2340"], "floor": "#20242e", "rope": "#3a7bd5", "post": "#c0c6d0", "light": "#e8f0ff"},
 	"champ_gala": {"name": "The Kane Grand Hall", "sky": ["#1a0608", "#3d0f18"], "floor": "#2a1a14", "rope": "#b0182e", "post": "#e0c070", "light": "#fff0c8", "ring": "gold"},
 }
 const STORY_ARENAS := ["fish_market", "docks", "cannery", "test_track", "harbor", "substation", "steelworks", "rooftop", "dry_dock", "main_event"]
@@ -345,7 +345,7 @@ static func draw_backdrop(ci: CanvasItem, id: String, screen: Vector2, floor_y: 
 				var sc := Rect2(w * side, 104, w * 0.2, 40)
 				ci.draw_rect(sc.grow(4), Color(0.08, 0.08, 0.1))
 				ci.draw_rect(sc, Color(0.05, 0.1, 0.25))
-				ci.draw_string(ThemeDB.fallback_font, sc.position + Vector2(0, 27), I18n.t("KANE CHAMPIONSHIP"), HORIZONTAL_ALIGNMENT_CENTER, sc.size.x, fit(I18n.t("KANE CHAMPIONSHIP"), sc.size.x, 20), Color(0.4, 0.75, 1.0))
+				ci.draw_string(ThemeDB.fallback_font, sc.position + Vector2(0, 27), I18n.t("TITANIUM CHAMPIONSHIP"), HORIZONTAL_ALIGNMENT_CENTER, sc.size.x, fit(I18n.t("TITANIUM CHAMPIONSHIP"), sc.size.x, 20), Color(0.4, 0.75, 1.0))
 			# LED ribbon board scrolling round the arena
 			ci.draw_rect(Rect2(0, 148, w, 18), Color(0.02, 0.02, 0.05))
 			var msg := "  KANE DYNAMICS  *  CHAMPIONSHIP SEASON  *  PORT FERRUM  *"
@@ -380,7 +380,7 @@ static func draw_backdrop(ci: CanvasItem, id: String, screen: Vector2, floor_y: 
 					ci.draw_circle(p, 3.0, Color(1.0, 0.95, 0.75, 0.6 + 0.4 * sin(t * 4.0 + j + k * 3)))
 			ci.draw_rect(Rect2(w * 0.32, 118, w * 0.36, 28), Color(0.12, 0.04, 0.06))   # gold-lettered banner
 			ci.draw_rect(Rect2(w * 0.32, 118, w * 0.36, 28), Color(0.85, 0.7, 0.3), false, 2.0)
-			ci.draw_string(ThemeDB.fallback_font, Vector2(w * 0.32, 138), I18n.t("THE KANE CHAMPIONSHIP"), HORIZONTAL_ALIGNMENT_CENTER, w * 0.36, fit(I18n.t("THE KANE CHAMPIONSHIP"), w * 0.36, 18), Color(0.95, 0.8, 0.4))
+			ci.draw_string(ThemeDB.fallback_font, Vector2(w * 0.32, 138), I18n.t("THE TITANIUM CHAMPIONSHIP"), HORIZONTAL_ALIGNMENT_CENTER, w * 0.36, fit(I18n.t("THE TITANIUM CHAMPIONSHIP"), w * 0.36, 18), Color(0.95, 0.8, 0.4))
 		"main_event":
 			var sc := Rect2(w * 0.38, 96, w * 0.24, 46)   # jumbotron
 			ci.draw_rect(sc.grow(5), Color(0.1, 0.1, 0.12))

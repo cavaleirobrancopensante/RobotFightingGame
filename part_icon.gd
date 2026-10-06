@@ -11,6 +11,24 @@ var trim := Color(0.85, 0.85, 0.9)
 
 func _draw() -> void:
 	draw_part(self, Rect2(Vector2.ZERO, size), part, health, trim)
+	draw_grade(self, Rect2(Vector2.ZERO, size), part)
+
+
+const GRADE_TAGS := ["", "S", "R", "I", "St", "Ti"]
+
+
+## The grade chip in the icon's corner: Scrap, Rust, Iron, Steel, Titanium (junk has none).
+static func draw_grade(ci: CanvasItem, box: Rect2, part: Dictionary) -> void:
+	var g := int(part.get("grade", 0))
+	if g < 1 or g >= GRADE_TAGS.size():
+		return
+	var col := Color(GameData.GRADE_COLORS[g])
+	var fs := int(clampf(box.size.y * 0.24, 9.0, 16.0))
+	var w := fs * (1.3 if GRADE_TAGS[g].length() > 1 else 0.95) + 4.0
+	var r := Rect2(box.end - Vector2(w + 2.0, fs + 4.0), Vector2(w, fs + 2.0))
+	ci.draw_rect(r, col)
+	ci.draw_rect(r, col.darkened(0.5), false, 1.0)
+	ci.draw_string(ThemeDB.fallback_font, Vector2(r.position.x, r.end.y - fs * 0.22), GRADE_TAGS[g], HORIZONTAL_ALIGNMENT_CENTER, w, fs, Color(0.08, 0.08, 0.1))
 
 
 ## Draw a part picture into any rect of any canvas (the results screen uses this too).

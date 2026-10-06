@@ -2,7 +2,7 @@ extends Node
 
 # helper scripts, loaded by path so the game also runs without an editor scan
 ## The game's version, shown on the main menu. Bump it with every change (1.1, 1.2, ...).
-const VERSION := "1.25"
+const VERSION := "1.26"
 const Arena = preload("res://arena.gd")
 const I18n = preload("res://i18n.gd")
 const Catalog = preload("res://catalog.gd")
@@ -18,7 +18,7 @@ const UI = preload("res://ui.gd")
 const OLD_SAVE_PATH := "user://savegame.json"   # single save from earlier versions -> becomes slot 1
 const SAVE_SLOTS := 3
 const SETTINGS_PATH := "user://settings.json"
-const SAVE_VERSION := 5   # 5: Scrap/Rust/Iron/Steel + the Championship cup (older saves are converted on load)
+const SAVE_VERSION := 6   # 6: part grades. 5: Scrap/Rust/Iron/Steel + the Championship cup (older saves are converted on load)
 const START_MONEY := -1000   # default: you start in debt (back rent to Gus) and climb out
 const MONTH_WEEKS := 4        # every 4 weeks...
 const LIVING_COST := 1000     # ...rent and food come out of your balance (default)
@@ -83,7 +83,7 @@ const PART_LIST := [
 	{"id": "head_mast",    "kind": "head", "name": "Command Mast",  "cost": 2800, "hp": 70, "armor": 20, "aim": 30, "draw": 5, "chips": 4, "shape": "tall",    "color": "#1a1a2e", "shop": false},
 	# ---- torsos (the torso is the robot's core: if it breaks, it's a knockout)
 	{"id": "junk_torso",   "kind": "torso", "name": "Oil Drum",      "cost": 0,    "hp": 80,  "armor": 0,  "speed": 0,   "draw": 1, "shape": "barrel", "color": "#7d7466"},
-	{"id": "torso_box",    "kind": "torso", "name": "Steel Box",     "cost": 200,  "hp": 100, "armor": 5,  "speed": 0,   "draw": 2, "shape": "box",    "color": "#5b6f8a"},
+	{"id": "torso_box",    "kind": "torso", "name": "Tin Box",     "cost": 200,  "hp": 100, "armor": 5,  "speed": 0,   "draw": 2, "shape": "box",    "color": "#5b6f8a"},
 	{"id": "torso_vee",    "kind": "torso", "name": "Vee Frame",     "cost": 600,  "hp": 115, "armor": 10, "speed": 5,   "draw": 3, "shape": "vee",    "color": "#3d8f6a"},
 	{"id": "torso_plate",  "kind": "torso", "name": "Plated Barrel", "cost": 1200, "hp": 140, "armor": 15, "speed": 0,   "draw": 4, "shape": "barrel", "color": "#8f6b3d", "size": 1.15},
 	{"id": "torso_core",   "kind": "torso", "name": "Reactor Chest", "cost": 1500, "hp": 125, "armor": 10, "speed": 0,   "draw": 3, "shape": "core",   "color": "#2e7c9e", "output": 6},
@@ -94,7 +94,7 @@ const PART_LIST := [
 	{"id": "torso_slim",   "kind": "torso", "name": "Racing Frame",  "cost": 1000, "hp": 95,  "armor": 5,  "speed": 15,  "draw": 3, "shape": "slim",   "color": "#d4c21f", "shop": false},
 	# ---- arms
 	{"id": "junk_arm",     "kind": "arm", "name": "Pipe Arm",    "cost": 0,    "hp": 30, "armor": 0,  "damage": 0,  "speed": 0,   "draw": 1, "shape": "rod",    "color": "#8a7f74", "size": 0.8},
-	{"id": "arm_rod",      "kind": "arm", "name": "Steel Rod",   "cost": 150,  "hp": 45, "armor": 5,  "damage": 10, "speed": 5,   "draw": 2, "shape": "rod",    "color": "#8f9aa6"},
+	{"id": "arm_rod",      "kind": "arm", "name": "Rebar Arm",   "cost": 150,  "hp": 45, "armor": 5,  "damage": 10, "speed": 5,   "draw": 2, "shape": "rod",    "color": "#8f9aa6"},
 	{"id": "arm_piston",   "kind": "arm", "name": "Piston Arm",  "cost": 450,  "hp": 55, "armor": 10, "damage": 25, "speed": 0,   "draw": 3, "shape": "piston", "color": "#6c8fb3"},
 	{"id": "arm_claw",     "kind": "arm", "name": "Claw Arm",    "cost": 700,  "hp": 50, "armor": 5,  "damage": 20, "speed": 15,  "draw": 3, "shape": "claw",   "color": "#3d8f6a"},
 	{"id": "arm_spike",    "kind": "arm", "name": "Spike Fist",  "cost": 1200, "hp": 55, "armor": 10, "damage": 40, "speed": 5,   "draw": 4, "shape": "spike",  "color": "#c0392b"},
@@ -106,7 +106,7 @@ const PART_LIST := [
 	{"id": "arm_drill",    "kind": "arm", "name": "Drill Arm",   "cost": 2000, "hp": 60, "armor": 10, "damage": 50, "speed": 5,   "draw": 5, "shape": "drill",  "color": "#9aa0a6", "shop": false},
 	# ---- legs (damage = kick power)
 	{"id": "junk_leg",     "kind": "leg", "name": "Stilt Leg",   "cost": 0,    "hp": 35,  "armor": 0,  "damage": 0,  "speed": -5,  "draw": 1, "shape": "rod",     "color": "#77706a", "size": 0.8},
-	{"id": "leg_steel",    "kind": "leg", "name": "Steel Leg",   "cost": 150,  "hp": 50,  "armor": 5,  "damage": 5,  "speed": 5,   "draw": 2, "shape": "rod",     "color": "#8f9aa6"},
+	{"id": "leg_steel",    "kind": "leg", "name": "Strut Leg",   "cost": 150,  "hp": 50,  "armor": 5,  "damage": 5,  "speed": 5,   "draw": 2, "shape": "rod",     "color": "#8f9aa6"},
 	{"id": "leg_piston",   "kind": "leg", "name": "Piston Leg",  "cost": 450,  "hp": 60,  "armor": 10, "damage": 15, "speed": 10,  "draw": 3, "shape": "piston",  "color": "#4f86c6"},
 	{"id": "leg_spring",   "kind": "leg", "name": "Spring Leg",  "cost": 800,  "hp": 50,  "armor": 5,  "damage": 5,  "speed": 30,  "draw": 3, "shape": "spring",  "color": "#2fb58a"},
 	{"id": "leg_raptor",   "kind": "leg", "name": "Raptor Leg",  "cost": 1300, "hp": 60,  "armor": 10, "damage": 25, "speed": 25,  "draw": 4, "shape": "reverse", "color": "#c4501f"},
@@ -194,7 +194,18 @@ const OPPONENTS := [
 	 "body": "#1a1a2e", "trim": "#e0b84a", "eye": "#ff00aa",
 	 "parts": {"head": "head_mast", "torso": "torso_cannon", "arm_front": "arm_drill", "arm_back": "arm_rocket", "leg_front": "leg_raptor", "leg_back": "leg_raptor", "back": "back_shield", "reactor": "reactor_over"}, "specials": ["scrap_fury", "rising_piston", "piston_barrage", "rocket_punch"]},
 ]
-const EXHIBITION_REWARD := 900
+const EXHIBITION_REWARD := 30000
+## Story rivals fight in their own league's grade: Scrap 0-2, Rust 3-5, Iron 6-8, OVERLORD Steel.
+const RIVAL_GRADE := [1, 1, 1, 2, 2, 2, 3, 3, 3, 4]
+
+
+## A story rival's robot, in the grade of the league it fights in.
+func rival(idx: int) -> Dictionary:
+	var o: Dictionary = OPPONENTS[idx].duplicate(true)
+	var g: int = RIVAL_GRADE[clampi(idx, 0, RIVAL_GRADE.size() - 1)]
+	for slot in o["parts"]:
+		o["parts"][slot] = graded_id(str(o["parts"][slot]), g)
+	return o
 const SETUP_SLOTS := 4
 const CIRCUIT_NAMES := ["Rust Belt Cup", "Neon Night League", "Dockside Brawl", "Chrome Crown", "Scrapheap Classic",
 		"Thunderdome Trials", "Gearhead Gauntlet", "Iron Harbor Open", "Voltage Vault Cup", "Junkyard Jamboree"]
@@ -202,7 +213,12 @@ const BOT_PREFIX := ["RUST", "IRON", "VOLT", "SCRAP", "STEEL", "CHROME", "MAG", 
 		"COG", "SLAG", "OHM", "TITAN", "BUZZ", "ROT"]
 const BOT_SUFFIX := ["JAW", "FIST", "KING", "BITE", "WRECK", "TRON", "BUSTER", "CRUSH", "HOWL", "DOZER", "SPARK", "FANG",
 		"BOX", "MAW", "GRINDER", "BARON", "HULK", "VIPER"]
-const TIER_BUDGET := [350, 900, 1600, 2600, 4000]
+const TIER_BUDGET := [500, 1500, 4500, 13500, 40000]
+## Cups (tier 1-5): a round pays this (more each round); the winner's prize is CUP_PRIZE.
+const CUP_PURSE := [400, 1200, 3600, 11000, 33000]
+const CUP_PRIZE := [1500, 4500, 13500, 40000, 120000]
+## Running costs: Gus's rent in the gutter and Scrap, then a mechanic, a crew, travel... (x the Settings amount / $1,000)
+const RUNNING := {"open": 1.0, "scrap": 1.0, "rust": 2.8, "iron": 9.0, "steel": 28.0}
 
 # ---- custom part workshop
 # Each grade gives stat points to spend. Every point costs more than in the shop: you pay for choice.
@@ -216,8 +232,8 @@ const CUSTOM_KINDS := {
 }
 const CUSTOM_STEP := {"hp": 8, "armor": 4, "damage": 7, "speed": 6, "aim": 6, "chips": 1}
 const CUSTOM_MAX_PER_STAT := 6
-const CUSTOM_POINT_PRICE := 170
-const CUSTOM_GADGET_PRICE := 600
+const CUSTOM_POINT_PRICE := 60   # x3 per grade: the workshop builds in your league's grade
+const CUSTOM_GADGET_PRICE := 250
 const CUSTOM_COLORS := ["#c0392b", "#e67e22", "#f1c40f", "#2ecc71", "#1abc9c", "#3498db", "#9b59b6",
 		"#e84393", "#ecf0f1", "#7f8c8d", "#2d3436", "#8d6e63"]
 
@@ -249,9 +265,14 @@ var pilot_look := DEFAULT_PILOT_LOOK.duplicate()   # how your pilot looks in the
 var owned_controllers: Array = ["gamepad"]
 var tips_seen: Array = []
 const DIGS_PER_FIGHT := 1
+## Scrapyard digs: [grade, chance] (cumulative, checked rarest first): anything can turn up, rarely.
+const DIG_RARE := [[5, 0.0004], [4, 0.002], [3, 0.007], [2, 0.022]]
 var digs_left := DIGS_PER_FIGHT   # scrapyard digs; refilled every Sunday   # Gus's one-time tips (fight and garage) already shown
 var inventory: Array = []   # [{uid, id, hp}]
 var equipped := {}          # slot -> uid (-1 = empty)
+var gantries := 0          # gantries bought for backup robots (each one is a robot more, and more rent)
+const GANTRY_PRICE := 1500     # the first; each further gantry costs double
+const GANTRY_RENT := 0.35      # each gantry adds this share of your running costs every month
 var wingmen: Array = [{}, {}]   # extra robots for team fights, built from spares: [{slot: uid}, ...]
 var sending := -1           # which robot fights the next 1-on-1: -1 = your main robot, 0/1 = a backup robot
 var next_uid := 1
@@ -269,7 +290,7 @@ var story_queue: Array = [] # more story scenes to show after the current one
 var bay_stories: Array = [] # story scenes the garage plays when you get back (post-fight talk, medals)
 var converted_note := false   # this save was converted to the year-round tables (Gus explains once)
 var leagues: Dictionary = {}
-var title_seeds: Array = []     # who's in next year's Kane Championship (event entries, best first; "player" = you)
+var title_seeds: Array = []     # who's in next year's Titanium Championship (event entries, best first; "player" = you)
 var h2h: Dictionary = {}        # world pilot wid -> [your wins, your losses] against them
 var rivals: Array = []          # wids of the pilots who've become your rivals
 var grudge: Dictionary = {}     # wid -> [how much you resent them, how much they resent you]
@@ -308,6 +329,15 @@ const SIZE_CLASSES := {
 	"L": {"name": "Heavy", "hp": 1.4, "armor": 4, "damage": 1.35, "speed": -10, "draw": 1.75, "cost": 1.5, "size": 1.22},
 }
 const SIZE_NAMES := {"S": "Small", "M": "Medium", "L": "Large"}
+# Grades: every common part design comes in all five, and the grade sets how big its numbers are.
+# Each grade up multiplies HP and hit damage by the Pecking Order (Settings) and the price by 3.
+# Grade 1 (Scrap) is the plain id; higher grades end in "^2".."^5". Junk is grade 0.
+const GRADES := ["Junk", "Scrap", "Rust", "Iron", "Steel", "Titanium"]
+const GRADE_COLORS := ["#8a8f98", "#9a6a4a", "#d0702c", "#7d8794", "#6fa8dc", "#e0c25a"]
+const GRADE_PRICE := 3.0
+const PECKING := [{"name": "Underdog", "k": 1.4}, {"name": "Standard", "k": 1.5}, {"name": "Brutal", "k": 1.6}]
+## A league's grade: the gutter and Scrap use Scrap grade, then one grade per league.
+const RANK_GRADE := {"open": 1, "scrap": 1, "rust": 2, "iron": 3, "steel": 4}
 # Weight class = total power your parts draw. [name, max power]
 const WEIGHT_CLASSES := [["LIGHTWEIGHT", 12], ["MIDDLEWEIGHT", 22], ["HEAVYWEIGHT", 9999]]
 # A team shares one heavyweight's worth of power: 2 robots get half each, 3 get a third.
@@ -324,7 +354,7 @@ var last_result := {}       # handed from the fight to the garage
 var story_key := ""         # which story scene to show next
 var story_return := ""      # scene to go to after the story
 const DEFAULT_SETTINGS := {"sound": true, "music": true, "shake": true, "button_size": 1, "difficulty": 1, "layout": {}, "team_controls": "split", "battery_saver": false,
-		"start_money": START_MONEY, "living_cost": LIVING_COST, "coaching": 2, "lang": "en"}
+		"start_money": START_MONEY, "living_cost": LIVING_COST, "coaching": 2, "lang": "en", "pecking": 1}
 var settings := DEFAULT_SETTINGS.duplicate(true)
 
 
@@ -466,6 +496,8 @@ func _ready() -> void:
 			d["gimmick"] = ""
 		if not d.has("size_class"):
 			d["size_class"] = "M"
+		d["cost_v5"] = int(d["cost"])   # the price before grades (old saves get their grade from it)
+		d["cost"] = grade_one_price(int(d["cost"]))
 		PARTS[d["id"]] = d
 	# Mini and Heavy versions of every body part
 	var base_ids := ALL_PARTS.duplicate()
@@ -479,6 +511,7 @@ func _ready() -> void:
 	for id in PARTS:
 		PARTS[id]["name_en"] = PARTS[id]["name"]
 	load_settings()
+	build_grades()
 	set_language(str(settings.get("lang", "en")))
 	apply_performance()
 	migrate_old_save()
@@ -505,6 +538,9 @@ func new_game() -> void:
 	robot_name = DEFAULT_ROBOT
 	inventory = []
 	equipped = {}
+	wingmen = [{}, {}]
+	gantries = 0
+	sending = -1
 	next_uid = 1
 	for slot in SLOTS:
 		equipped[slot] = add_part(STARTER[slot]) if STARTER.has(slot) else -1
@@ -647,34 +683,44 @@ func progress() -> int:
 	return mini(wins, 30) / 3 + rank_index() * 2 + circuits_won * 2 + (2 if champion else 0)
 
 
-## Restock the shop with a random selection. Better parts show up as you progress.
+## The grade the dealer stocks for you: your league's (Titanium once you're the champion).
+func my_grade() -> int:
+	return 5 if champion else int(RANK_GRADE.get(rank, 1))
+
+
+## Restock the shop: mostly parts of your grade, a few one grade up, and one "special order"
+## from the grade above that (cheapest end of it).
 func roll_stock() -> void:
-	var max_cost := 600 + progress() * 380
-	var pool: Array = []
+	var g := my_grade()
+	var here: Array = []
+	var up: Array = []
 	for id in ALL_PARTS:
 		var d: Dictionary = PARTS[id]
-		if d["shop"] and d["cost"] > 0 and d["cost"] <= max_cost:
-			pool.append(id)
-	pool.shuffle()
-	shop_stock = pool.slice(0, STOCK_SIZE)
-	# one "special order" a bit above your level, if there is one
-	var stretch: Array = []
-	for id in ALL_PARTS:
-		var d: Dictionary = PARTS[id]
-		if d["shop"] and d["cost"] > max_cost and d["cost"] <= max_cost * 1.6:
-			stretch.append(id)
-	if not stretch.is_empty():
-		shop_stock.append(stretch[randi() % stretch.size()])
+		if not d["shop"] or d["cost"] <= 0:
+			continue
+		if int(d.get("grade", 0)) == g:
+			here.append(id)
+		elif int(d.get("grade", 0)) == g + 1:
+			up.append(id)
+	here.shuffle()
+	up.shuffle()
+	var n_up := 2 if not up.is_empty() else 0
+	shop_stock = here.slice(0, STOCK_SIZE - n_up) + up.slice(0, n_up)
 	# training chips are just more stock: one or two the dealer happens to have
+	var max_cost := 600 + progress() * 380
 	var chips_pool: Array = chip_ids().filter(func(id): return not owned_chips.has(id) and int(Specials.MOVES[id]["cost"]) <= max_cost * 1.6)
 	chips_pool.shuffle()
 	chip_stock = chips_pool.slice(0, 1 + (1 if randf() < 0.5 else 0))
 
 
+func reroll_cost() -> int:
+	return int(REROLL_COST * pow(GRADE_PRICE, my_grade() - 1))
+
+
 func reroll_stock() -> String:
-	if money < REROLL_COST:
-		return tr("Restocking costs $%d.") % REROLL_COST
-	money -= REROLL_COST
+	if money < reroll_cost():
+		return tr("Restocking costs $%d.") % reroll_cost()
+	money -= reroll_cost()
 	roll_stock()
 	return "The dealer wheeled in a fresh load of parts."
 
@@ -835,6 +881,8 @@ func part_stat_text(d: Dictionary, cur_hp: float = -1.0) -> String:
 	if cur_hp >= 0.0:
 		var lost := 100 - ceili(cur_hp / maxf(1.0, float(d["hp"])) * 100.0)
 		bits = [tr("HP %d/%d") % [ceili(cur_hp), d["hp"]] + ((tr(" (-%d%%)") % lost) if lost > 0 else "")]
+	if float(d.get("gm", 1.0)) > 1.001:
+		bits.append(tr("HIT x%.1f") % float(d["gm"]))   # the grade: every hit with it lands this much harder
 	if d["armor"] != 0:
 		bits.append(tr("ARM %d%%") % d["armor"])
 	if d["damage"] != 0:
@@ -937,6 +985,7 @@ func stats(eq: Dictionary = {}) -> Dictionary:
 	var used := 0
 	var output := 0
 	var arm_dmg := 0.0
+	var arm_gm := 0.0
 	var arms := 0
 	var leg_spd := 0.0
 	var legs := 0
@@ -955,6 +1004,7 @@ func stats(eq: Dictionary = {}) -> Dictionary:
 			"arm":
 				arms += 1
 				arm_dmg += d["damage"]
+				arm_gm += float(d.get("gm", 1.0))
 			"leg":
 				legs += 1
 				leg_spd += d["speed"]
@@ -968,7 +1018,7 @@ func stats(eq: Dictionary = {}) -> Dictionary:
 	var eff := 1.0 if used <= output or used == 0 else float(output) / used
 	var leg_factor: float = [0.35, 0.65, 1.0][mini(legs, 2)]
 	var speed := (100.0 + (leg_spd / maxf(1, legs)) + torso_spd) * leg_factor * eff
-	var damage := (100.0 + arm_dmg / maxf(1, arms)) * eff if arms > 0 else 0.0
+	var damage := (100.0 + arm_dmg / maxf(1, arms)) * eff * (arm_gm / arms) if arms > 0 else 0.0
 	var t := inst(int(eq.get("torso", -1)))
 	return {
 		"power_used": used, "power_output": output, "efficiency": eff,
@@ -992,7 +1042,7 @@ func player_spec(eq: Dictionary = {}, label: String = "") -> Dictionary:
 			parts[slot] = {"id": d["id"], "hp": p["hp"], "max_hp": float(d["hp"]), "armor": d["armor"],
 					"damage": d["damage"], "speed": d["speed"], "aim": d["aim"], "draw": float(d["draw"]),
 					"shape": d["shape"], "size": d["size"], "color": Color(d["color"]),
-					"trait": d["trait"], "trait_lv": d["trait_lv"]}
+					"trait": d["trait"], "trait_lv": d["trait_lv"], "gm": float(d.get("gm", 1.0))}
 	var s := stats(eq)
 	var gadgets: Array = []
 	for slot in SLOTS:
@@ -1090,7 +1140,7 @@ func current_opponent(apply_scout: bool = true) -> Dictionary:
 			else:
 				o = (pickup["enemy"] as Dictionary).duplicate(true)
 		"exhibition":
-			o = OPPONENTS[OPPONENTS.size() - 1].duplicate(true)
+			o = rival(OPPONENTS.size() - 1)
 			o["pilot"] = ""
 		_:
 			return {}
@@ -1154,7 +1204,7 @@ func do_scout() -> String:
 		var opts: Array = []
 		for id in ALL_PARTS:
 			var d: Dictionary = PARTS[id]
-			if d["kind"] == old["kind"] and id != old["id"] and d["cost"] <= old["cost"] * 2.0 + 600 and d["cost"] >= old["cost"] * 0.6 and d.get("mounts", []).is_empty():
+			if d["kind"] == old["kind"] and id != old["id"] and int(d.get("grade", 0)) == maxi(1, int(old.get("grade", 0))) and d.get("mounts", []).is_empty():
 				opts.append(id)
 		if opts.is_empty():
 			for id in ALL_PARTS:
@@ -1171,7 +1221,7 @@ func do_scout() -> String:
 ## What a defeat pays: in the scrapyard you pay the winner, in the Regional and cups you get nothing,
 ## in the Championship (and exhibitions) you still get a small purse.
 ## What a pickup against the pilot at the bar pays, by their division (stars pay more, and hit harder).
-const PICKUP_PURSE := {"open": 100, "scrap": 150, "rust": 220, "iron": 450, "steel": 900}
+const PICKUP_PURSE := {"open": 100, "scrap": 250, "rust": 750, "iron": 2200, "steel": 6500}
 
 
 func loss_pay(base: int) -> int:
@@ -1205,9 +1255,9 @@ func current_reward_for(o: Dictionary) -> int:
 		"pickup":
 			if pickup.has("tier"):
 				return int(PICKUP_PURSE.get(str(pickup["tier"]), 120))
-			return 70 + 50 * rank_index()
+			return int(PICKUP_PURSE.get(rank, 120))
 		"circuit":
-			return 200 + 250 * int(circuit["tier"]) + 100 * int(circuit["round"])
+			return int(CUP_PURSE[clampi(int(circuit["tier"]) - 1, 0, CUP_PURSE.size() - 1)] * (1.0 + 0.25 * int(circuit["round"])))
 		"story":
 			var info: Dictionary = Career.STAGES[event["stage"]]
 			var n: float = maxf(1.0, event["weeks"].size() - 1)
@@ -1322,7 +1372,7 @@ func patrons_today() -> Array:
 	return out
 
 
-## "4th in the Kane Championship", "a spare at the qualifiers"
+## "4th in the Titanium Championship", "a spare at the qualifiers"
 func pilot_standing(wid: int) -> String:
 	for stage in leagues:
 		var ev: Dictionary = leagues[stage]
@@ -1527,7 +1577,7 @@ func start_pickup(wid: int = -1) -> void:
 	if not p.is_empty():
 		pickup = {"wid": int(p["wid"]), "enemy": World.robot(int(p["wid"])), "week": week, "year": year}
 		return
-	var bot := random_bot(rng, 300.0 + rank_index() * 500.0, lv)
+	var bot := random_bot(rng, [200.0, 300.0, 900.0, 2700.0, 8000.0][clampi(rank_index(), 0, 4)], lv)
 	bot["pilot"] = Career.PILOT_NAMES[rng.randi() % Career.PILOT_NAMES.size()]
 	pickup = {"enemy": bot, "week": week, "year": year}
 
@@ -1648,7 +1698,7 @@ func new_year() -> void:
 				Career.after_player_fight(ev, false, 0)   # (a playoff you never turned up for)
 				continue
 			Career.play_npc_round(ev)
-	# who's in next year's Kane Championship: the 8 who made it from the Steel League
+	# who's in next year's Titanium Championship: the 8 who made it from the Steel League
 	title_seeds = []
 	var steel: Dictionary = leagues.get("steel", {})
 	for id in steel.get("promoted", []):
@@ -1666,7 +1716,39 @@ func new_year() -> void:
 
 
 func living_cost() -> int:
-	return int(settings.get("living_cost", LIVING_COST))
+	return int(int(settings.get("living_cost", LIVING_COST)) * float(RUNNING.get(rank, 1.0)) * (1.0 + GANTRY_RENT * gantries) / 10.0) * 10
+
+
+## What one more gantry adds to the monthly bill.
+func gantry_rent() -> int:
+	return int(int(settings.get("living_cost", LIVING_COST)) * float(RUNNING.get(rank, 1.0)) * GANTRY_RENT / 10.0) * 10
+
+
+func gantry_price() -> int:
+	return GANTRY_PRICE * int(pow(2, gantries))
+
+
+## A backup robot needs its own gantry in the crew bay, and a bigger bay costs more rent.
+func buy_gantry() -> String:
+	if gantries >= wingmen.size():
+		return "The crew bay is full. No room for another gantry."
+	var c := gantry_price()
+	if money < c:
+		return tr("A gantry costs $%d. No credit at Gus's.") % c
+	money -= c
+	gantries += 1
+	return tr("Gus bolts a new gantry into the crew bay. $%d, and the rent goes up $%d a month.") % [c, gantry_rent()]
+
+
+func sell_gantry() -> String:
+	if gantries <= 0:
+		return ""
+	if not wingmen[gantries - 1].is_empty():
+		return "Take the backup robot off that gantry first (Disband)."
+	gantries -= 1
+	var back := gantry_price() / 2
+	money += back
+	return tr("Gus unbolts a gantry and sells it on for $%d. The rent goes back down.") % back
 
 
 ## Weeks until the next living-cost bill.
@@ -1704,7 +1786,7 @@ func start_year() -> void:
 			leagues[stage] = Career.new_trials(year, rng.randi(), mine, wids)
 			continue
 		leagues[stage] = Career.new_event(stage, year, rng.randi(), mine, wids)
-	# the Kane Championship: last year's top of the Steel League (a brand-new world: its best 8)
+	# the Titanium Championship: last year's top of the Steel League (a brand-new world: its best 8)
 	var entries: Array = title_seeds.duplicate(true)
 	if entries.is_empty():
 		entries.append({"rival": 9, "pilot": "KANE DYNAMICS", "str": 9.0})
@@ -1753,7 +1835,7 @@ func build_scrap() -> void:
 	leagues["scrap"] = Career.new_event("scrap", year, rng.randi(), rank == "scrap", tier_pick("scrap", rank == "scrap"))
 
 
-## Which event is "yours" right now: the Kane Championship while you're still in it, otherwise
+## Which event is "yours" right now: the Titanium Championship while you're still in it, otherwise
 ## your league (or the Open Trials, in the gutter).
 func sync_event() -> void:
 	var t: Dictionary = leagues.get("title", {})
@@ -1982,6 +2064,15 @@ func headline_match() -> Dictionary:
 
 
 ## A bet on any match on tonight's card (`on` = "event" / "cup" / "div:<stage>").
+## Bet sizes grow with your league, like everything else.
+func stakes() -> Array:
+	var m := pow(GRADE_PRICE, my_grade() - 1)
+	var out: Array = []
+	for st in [10, 50, 100, 250, 500]:
+		out.append(int(st * m))
+	return out
+
+
 func place_bet_on(on: String, pick: int, vs: int, stake: int) -> String:
 	var ev := ev_for(on)
 	if ev.is_empty():
@@ -2446,19 +2537,30 @@ func dig_scrap(kind: String = "") -> Dictionary:
 	var decent_odds := 0.5 if kind == "" else 0.22
 	var pool: Array = []
 	var grade := "junk"
-	if r < good_odds:
-		grade = "good"
-		var top := 900 + progress() * 250
+	# once in a long while the heap gives up something from far above the gutter
+	var rare := randf()
+	var dig_g := 1
+	for pair in DIG_RARE:
+		if rare < float(pair[1]):
+			dig_g = int(pair[0])
+			break
+	if dig_g > 1:
+		grade = "rare"
 		for id in ALL_PARTS:
 			var d: Dictionary = PARTS[id]
-			if d["shop"] and d["cost"] >= 400 and d["cost"] <= top and not UNDAMAGEABLE.has(d["kind"]) and (kind == "" or d["kind"] == kind):
+			if d["shop"] and int(d.get("grade", 0)) == dig_g and not UNDAMAGEABLE.has(d["kind"]) and (kind == "" or d["kind"] == kind):
+				pool.append(id)
+	elif r < good_odds:
+		grade = "good"
+		for id in ALL_PARTS:
+			var d: Dictionary = PARTS[id]
+			if d["shop"] and int(d.get("grade", 0)) == 1 and d["cost"] >= 250 and not UNDAMAGEABLE.has(d["kind"]) and (kind == "" or d["kind"] == kind):
 				pool.append(id)
 	elif r < decent_odds:
 		grade = "decent"
-		var top := 300 + progress() * 80
 		for id in ALL_PARTS:
 			var d: Dictionary = PARTS[id]
-			if d["shop"] and d["cost"] > 0 and d["cost"] <= top and not UNDAMAGEABLE.has(d["kind"]) and (kind == "" or d["kind"] == kind):
+			if d["shop"] and int(d.get("grade", 0)) == 1 and d["cost"] <= 250 and not UNDAMAGEABLE.has(d["kind"]) and (kind == "" or d["kind"] == kind):
 				pool.append(id)
 	if pool.is_empty():
 		grade = "junk"
@@ -2470,6 +2572,8 @@ func dig_scrap(kind: String = "") -> Dictionary:
 	inst(dug_uid)["dug"] = true   # shown on the Scrapyard screen; fight salvage only goes to Storage
 	var name: String = part_def(id)["name"]
 	match grade:
+		"rare":
+			return {"text": tr("Gus drops his coffee. A %s, in the gutter's scrap heap! Somebody up there lost this. Battered, but it's ours (in Storage).") % name, "part": id, "grade": "good"}
 		"good":
 			return {"text": tr("Jackpot! A %s, buried under a dead robot. Banged up, but it's real gear (in Storage).") % name, "part": id, "grade": grade}
 		"decent":
@@ -2508,6 +2612,8 @@ func wingman_ready(k: int) -> bool:
 
 ## Build a wingman out of the best spare parts you have.
 func build_wingman(k: int) -> String:
+	if k >= gantries:
+		return "No gantry for it. Buy one first."
 	clear_wingman(k)
 	var w := {}
 	var free := spares().filter(func(p): return not is_wreck(p))
@@ -2658,7 +2764,7 @@ func start_test_drive(junker_id: String, try_id: String = "", slot: String = "")
 func start_quick_fight() -> void:
 	var rng := RandomNumberGenerator.new()
 	rng.randomize()
-	var budget := rng.randf_range(400.0, 4000.0)
+	var budget := exp(rng.randf_range(log(150.0), log(15000.0)))   # per part: any grade, Scrap to Steel, same for both
 	var level := rng.randf_range(0.5, 3.0)
 	quick = {"player": random_bot(rng, budget, level), "enemy": random_bot(rng, budget, level)}
 	# sometimes a team fight: tag teams and swarms, on either side (or both)
@@ -2690,7 +2796,7 @@ func current_opponent_spec() -> Dictionary:
 
 
 func opponent_spec(index: int) -> Dictionary:
-	return opponent_spec_from(OPPONENTS[index], 1.0)
+	return opponent_spec_from(rival(index), 1.0)
 
 
 func opponent_spec_from(o: Dictionary, _unused: float) -> Dictionary:
@@ -2714,7 +2820,7 @@ func opponent_spec_from(o: Dictionary, _unused: float) -> Dictionary:
 		parts[slot] = {"id": d["id"], "hp": now, "max_hp": mx, "armor": d["armor"] + o.get("armor_bonus", 0),
 				"damage": d["damage"], "speed": d["speed"], "aim": d["aim"], "draw": float(d["draw"]),
 				"shape": d["shape"], "size": d["size"], "color": c,
-				"trait": d["trait"], "trait_lv": d["trait_lv"]}
+				"trait": d["trait"], "trait_lv": d["trait_lv"], "gm": float(d.get("gm", 1.0))}
 	var gadgets: Array = []
 	for slot in o["parts"]:
 		var g: String = part_def(o["parts"][slot])["gimmick"]
@@ -2954,7 +3060,7 @@ func league_end(ev: Dictionary) -> String:
 	match Career.zone(ev, pos):
 		"up":
 			if steel:
-				text += " " + tr("Into the Kane Championship!")
+				text += " " + tr("Into the Titanium Championship!")
 			else:
 				text += " " + tr("Straight up to the %s!") % tr(Career.STAGES[Career.ORDER[Career.ORDER.find(str(ev["stage"])) + 1]]["name"])
 		"up_po":
@@ -2971,7 +3077,7 @@ func finish_event(ev: Dictionary) -> String:
 	var idx := Career.ORDER.find(str(ev["stage"]))
 	var text := ""
 	if ev["stage"] == "steel" and ev.get("promoted", []).has(0):
-		text = tr("We're in the Kane Championship! Next year, on the open dates.")
+		text = tr("We're in the Titanium Championship! Next year, on the open dates.")
 		pending_stories.append("title_in")
 	elif ev.get("promoted", []).has(0) and idx < Career.ORDER.size() - 1:
 		rank = Career.ORDER[idx + 1]
@@ -2992,7 +3098,7 @@ func finish_event(ev: Dictionary) -> String:
 	return text
 
 
-## The Kane Championship is over: medals, prize money, and the title.
+## The Titanium Championship is over: medals, prize money, and the title.
 func finish_title(ev: Dictionary) -> String:
 	var info: Dictionary = Career.STAGES["title"]
 	var m := Career.medal_of(ev, 0)
@@ -3042,7 +3148,7 @@ func make_offers() -> void:
 		var rng := RandomNumberGenerator.new()
 		rng.seed = seed
 		circuit_offers.append({"name": CIRCUIT_NAMES[rng.randi() % CIRCUIT_NAMES.size()], "tier": tier,
-				"seed": seed, "prize": 1000 * tier})
+				"seed": seed, "prize": CUP_PRIZE[clampi(tier - 1, 0, CUP_PRIZE.size() - 1)]})
 
 
 ## A cup takes 3 Wednesdays, starting next week. Leagues are on Saturdays, so the two never clash -
@@ -3104,6 +3210,93 @@ func random_bot(rng: RandomNumberGenerator, budget: float, level: float, sizes: 
 	}
 
 
+## The old catalog spread prices from $150 to $4,200 for parts that were only 2-3x better.
+## Inside one grade the spread is squeezed (about $150 to $600 at Scrap grade): the grade is what costs.
+static func grade_one_price(c: int) -> int:
+	if c <= 150:
+		return c
+	return int(150.0 * pow(c / 150.0, 0.42) / 10.0) * 10
+
+
+## The Pecking Order (Settings): how much tougher and harder hitting each grade is.
+func pecking_k() -> float:
+	return float(PECKING[clampi(int(settings.get("pecking", 1)), 0, PECKING.size() - 1)]["k"])
+
+
+## HP and hit-damage multiplier of a grade (grade 1 = Scrap = x1).
+func grade_mult(g: int) -> float:
+	return pow(pecking_k(), maxi(0, g - 1))
+
+
+func grade_of(id: String) -> int:
+	return int(part_def(id).get("grade", 0))
+
+
+## Same design, another grade ("" if the part has no grades: junk).
+func graded_id(id: String, g: int) -> String:
+	var d := part_def(id)
+	if d.is_empty() or int(d.get("grade", 0)) == 0:
+		return id
+	var base: String = str(d.get("grade_base", id))
+	var out := base if g <= 1 else "%s^%d" % [base, clampi(g, 2, GRADES.size() - 1)]
+	return out if PARTS.has(out) else id
+
+
+## Grades 2-5 of every part that costs something (salvage-only parts too, so rivals can carry them).
+func build_grades() -> void:
+	var base_ids := ALL_PARTS.duplicate()
+	for id in base_ids:
+		var d: Dictionary = PARTS[id]
+		if int(d["cost"]) <= 0 or d.get("custom", false):
+			d["grade"] = 0
+			d["gm"] = 1.0
+			continue
+		d["grade"] = 1
+		d["gm"] = 1.0
+		d["hp_base"] = d["hp"]
+		d["out_base"] = d["output"]
+		for g in range(2, GRADES.size()):
+			var v := d.duplicate(true)
+			v["id"] = "%s^%d" % [id, g]
+			v["grade"] = g
+			v["grade_base"] = id
+			v["cost"] = int(d["cost"] * pow(GRADE_PRICE, g - 1) / 10.0) * 10
+			v["output"] = int(round(d["output"] * (1.0 + 0.2 * (g - 1))))
+			PARTS[v["id"]] = v
+			ALL_PARTS.append(v["id"])
+	apply_pecking()
+
+
+## (Re)apply the Pecking Order to every graded part. Parts you own keep their health ratio.
+func apply_pecking() -> void:
+	var ratios := {}
+	for p in inventory:
+		ratios[p["uid"]] = hp_ratio(p) if PARTS.has(p["id"]) else 1.0
+	for id in PARTS:
+		var d: Dictionary = PARTS[id]
+		var g := int(d.get("grade", 0))
+		if g < 1:
+			continue
+		var base: Dictionary = PARTS[str(d.get("grade_base", id))]
+		var m := grade_mult(g)
+		d["gm"] = m
+		if g > 1:
+			d["hp"] = maxi(1, int(round(float(base["hp_base"]) * m)))
+	for p in inventory:
+		if PARTS.has(p["id"]):
+			p["hp"] = float(part_def(p["id"])["hp"]) * float(ratios.get(p["uid"], 1.0))
+
+
+func set_pecking(k: int) -> void:
+	settings["pecking"] = clampi(k, 0, PECKING.size() - 1)
+	apply_pecking()
+
+
+## A part's name with its grade ("Iron Piston Arm"). Scrap grade and junk show the plain name.
+func grade_name(g: int) -> String:
+	return I18n.t(GRADES[clampi(g, 0, GRADES.size() - 1)])
+
+
 func sized_variant(d: Dictionary, c: String) -> Dictionary:
 	var m: Dictionary = SIZE_CLASSES[c]
 	var v := d.duplicate(true)
@@ -3120,6 +3313,7 @@ func sized_variant(d: Dictionary, c: String) -> Dictionary:
 		v["speed"] = int(d["speed"]) + int(m["speed"])
 	v["draw"] = maxi(1, roundi(d["draw"] * m["draw"]))
 	v["cost"] = maxi(10, int(d["cost"] * m["cost"] / 10.0) * 10)
+	v["cost_v5"] = int(int(d.get("cost_v5", d["cost"])) * float(m["cost"]))
 	v["size"] = d["size"] * m["size"]
 	return v
 
@@ -3190,6 +3384,14 @@ func custom_def(cfg: Dictionary) -> Dictionary:
 	}
 	if d["name"] == "":
 		d["name"] = tr("Custom %s %s") % [shape.capitalize(), kind.capitalize()]
+	# made in your league's grade
+	var g := my_grade()
+	d["grade"] = g
+	d["gm"] = grade_mult(g)
+	d["hp_base"] = d["hp"]
+	d["hp"] = maxi(1, int(round(d["hp"] * grade_mult(g))))
+	if g > 1:
+		d["name"] = I18n.t("{grade} {name}").format({"grade": grade_name(g), "name": d["name"]})
 	# workshop parts are sized by the size slider: small, medium or large
 	d["size_class"] = "S" if cfg["size"] < 0.9 else ("L" if cfg["size"] > 1.1 else "M")
 	return fill_defaults(d)
@@ -3215,7 +3417,8 @@ func custom_points_used(cfg: Dictionary) -> int:
 
 
 func custom_price(cfg: Dictionary) -> int:
-	return 100 + custom_points_used(cfg) * CUSTOM_POINT_PRICE + (CUSTOM_GADGET_PRICE if cfg["gadget"] != "" else 0)
+	var base := 60 + custom_points_used(cfg) * CUSTOM_POINT_PRICE + (CUSTOM_GADGET_PRICE if cfg["gadget"] != "" else 0)
+	return int(base * pow(GRADE_PRICE, my_grade() - 1) / 10.0) * 10
 
 
 func forge_custom(cfg: Dictionary) -> String:
@@ -3382,12 +3585,12 @@ func save_game() -> bool:
 	var data := {
 		"version": SAVE_VERSION, "pilot_name": pilot_name, "robot_name": robot_name,
 		"saved_at": Time.get_datetime_string_from_system(false, true), "money": money, "inventory": inventory, "equipped": equipped,
-		"next_uid": next_uid, "paint": paint, "fight_index": fight_index, "wins": wins,
+		"next_uid": next_uid, "gantries": gantries, "paint": paint, "fight_index": fight_index, "wins": wins,
 		"losses": losses, "champion": champion, "story_seen": story_seen,
 		"owned_chips": owned_chips, "chips": chips, "circuit": circuit, "circuit_offers": circuit_offers,
 		"circuits_won": circuits_won, "pickup": pickup, "setups": setups, "custom_parts": custom_parts,
 		"year": year, "week": week, "day": day, "rank": rank, "event": {}, "leagues": leagues, "title_seeds": title_seeds, "trophies": trophies, "career_stats": career_stats,
-		"style": style, "style_locked": style_locked, "shop_stock": shop_stock, "chip_stock": chip_stock, "scout": scout, "wingmen": wingmen, "sending": sending, "pilot_look": pilot_look, "owned_controllers": owned_controllers, "tips_seen": tips_seen, "h2h": h2h, "rivals": rivals, "grudge": grudge, "pending_talk": pending_talk, "streak": streak, "pub_seen": pub_seen, "digs_left": digs_left, "bills_note": bills_note, "fight_log": fight_log, "bets": bets, "world": world,
+		"pecking_k": pecking_k(), "style": style, "style_locked": style_locked, "shop_stock": shop_stock, "chip_stock": chip_stock, "scout": scout, "wingmen": wingmen, "sending": sending, "pilot_look": pilot_look, "owned_controllers": owned_controllers, "tips_seen": tips_seen, "h2h": h2h, "rivals": rivals, "grudge": grudge, "pending_talk": pending_talk, "streak": streak, "pub_seen": pub_seen, "digs_left": digs_left, "bills_note": bills_note, "fight_log": fight_log, "bets": bets, "world": world,
 	}
 	var f := FileAccess.open(slot_path(save_slot), FileAccess.WRITE)
 	if f == null:
@@ -3425,6 +3628,21 @@ func load_game(slot: int = -1) -> String:
 			inventory.append({"uid": int(p["uid"]), "id": str(p["id"]), "hp": float(p["hp"])})
 			if bool(p.get("dug", false)):
 				inventory[inventory.size() - 1]["dug"] = true
+	var save_v := int(data.get("version", 1))
+	if save_v < 6:
+		# before grades: every part gets the grade its old price fits, and keeps its health ratio
+		for p in inventory:
+			var nid := v5_graded(str(p["id"]))
+			if nid != p["id"]:
+				p["hp"] = float(p["hp"]) * grade_mult(grade_of(nid))
+				p["id"] = nid
+	elif absf(float(data.get("pecking_k", pecking_k())) - pecking_k()) > 0.001:
+		# saved under another Pecking Order: same health ratio, new numbers
+		var old_k := float(data.get("pecking_k", pecking_k()))
+		for p in inventory:
+			var g := grade_of(str(p["id"]))
+			if g > 1:
+				p["hp"] = float(p["hp"]) * grade_mult(g) / pow(old_k, g - 1)
 	var eq: Dictionary = data.get("equipped", {})
 	for sl in SLOTS:
 		var uid := int(eq.get(sl, -1))
@@ -3489,6 +3707,12 @@ func load_game(slot: int = -1) -> String:
 				var uid := int(wm[k][ws])
 				if not inst(uid).is_empty():
 					wingmen[k][str(ws)] = uid
+	gantries = clampi(int(data.get("gantries", -1)), -1, wingmen.size())
+	if gantries < 0:   # a save from before gantries: every backup you'd built already has one
+		gantries = 0
+		for k in wingmen.size():
+			if not wingmen[k].is_empty():
+				gantries = k + 1
 	if not Catalog.STYLES.has(style):
 		style = "striker"
 	shop_stock = data.get("shop_stock", []).filter(func(id): return PARTS.has(id))
@@ -3558,6 +3782,16 @@ func load_game(slot: int = -1) -> String:
 		leagues = data.get("leagues", {})
 		for st in leagues:
 			_fix_numbers(leagues[st])
+		if save_v < 6:
+			for p in world.get("pilots", {}).values():
+				_v5_bot(p.get("bot", {}))
+			for st in leagues:
+				for e in leagues[st].get("pilots", []):
+					_v5_bot(e.get("bot", {}))
+			for e in circuit.get("pilots", []):
+				_v5_bot(e.get("bot", {}))
+			_v5_bot(pickup.get("enemy", {}))
+			roll_stock()
 		title_seeds = data.get("title_seeds", [])
 		sync_event()
 		if leagues.is_empty():
@@ -3569,6 +3803,23 @@ func load_game(slot: int = -1) -> String:
 	if champion and circuit.is_empty() and circuit_offers.is_empty():
 		make_offers()
 	return ""
+
+
+## A part id from before grades -> the same design in the grade its old price fits.
+func v5_graded(id: String) -> String:
+	var d := part_def(id)
+	if d.is_empty() or int(d.get("grade", 0)) != 1:
+		return id
+	var c := int(d.get("cost_v5", d["cost"]))
+	var g := 1 if c < 400 else (2 if c < 1200 else (3 if c < 3000 else 4))
+	return graded_id(id, g)
+
+
+func _v5_bot(bot: Dictionary) -> void:
+	for slot in bot.get("parts", {}).keys():
+		bot["parts"][slot] = v5_graded(str(bot["parts"][slot]))
+	for b in bot.get("team", []):
+		_v5_bot(b)
 
 
 ## JSON turned the world's whole numbers into floats.
@@ -3662,6 +3913,7 @@ func reset_settings() -> void:
 	settings["lang"] = lang
 	save_settings()
 	apply_performance()
+	apply_pecking()
 
 
 func set_language(lang: String) -> void:
@@ -3680,8 +3932,12 @@ func set_language(lang: String) -> void:
 			d["name"] = I18n.t(str(d.get("name_en", d["name"])))
 	for id in PARTS:
 		var d: Dictionary = PARTS[id]
-		if d.has("variant_of") and PARTS.has(d["variant_of"]):
+		if d.has("variant_of") and PARTS.has(d["variant_of"]) and not d.has("grade_base"):
 			d["name"] = "%s %s" % [I18n.t(str(d["size_prefix"])), PARTS[d["variant_of"]]["name"]]
+	for id in PARTS:
+		var d: Dictionary = PARTS[id]
+		if d.has("grade_base") and PARTS.has(d["grade_base"]):
+			d["name"] = I18n.t("{grade} {name}").format({"grade": grade_name(int(d["grade"])), "name": PARTS[d["grade_base"]]["name"]})
 
 
 func load_settings() -> void:
@@ -3697,6 +3953,7 @@ func load_settings() -> void:
 				settings[k] = data[k]
 		settings["button_size"] = int(settings["button_size"])
 		settings["difficulty"] = int(settings["difficulty"])
+		settings["pecking"] = clampi(int(settings.get("pecking", 1)), 0, PECKING.size() - 1)
 		settings["start_money"] = int(settings["start_money"])
 		settings["living_cost"] = int(settings["living_cost"])
 		settings["coaching"] = int(settings["coaching"])

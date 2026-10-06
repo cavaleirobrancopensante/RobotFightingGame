@@ -550,7 +550,7 @@ func show_last_result() -> void:
 	var r := GameData.last_result
 	var bills := ""
 	if GameData.bills_note > 0:
-		bills = tr(" End of the month: rent and food, -$%d.") % GameData.bills_note
+		bills = (tr(" End of the month: rent and food, -$%d.") if GameData.rank_index() < 2 else tr(" End of the month: rent, crew and travel, -$%d.")) % GameData.bills_note
 		GameData.bills_note = 0
 	if r.is_empty():
 		msg_label.text = bills.strip_edges()
@@ -2087,7 +2087,7 @@ func build_dealer() -> void:
 	info.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	info.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	bar.add_child(info)
-	row_button(bar, tr("Restock $%d") % GameData.REROLL_COST, _on_reroll, GameData.money >= GameData.REROLL_COST, 140)
+	row_button(bar, tr("Restock $%d") % GameData.reroll_cost(), _on_reroll, GameData.money >= GameData.reroll_cost(), 140)
 	var stock: Array = GameData.shop_stock.duplicate()
 	stock.sort_custom(func(a, b): return GameData.KINDS.find(GameData.part_def(a)["kind"]) < GameData.KINDS.find(GameData.part_def(b)["kind"]))
 	var chips: Array = GameData.chip_stock if GameData.unlocked("moves") else []
@@ -2280,7 +2280,7 @@ func build_workshop() -> void:
 		row.add_child(bar)
 		row_button(row, "+", _on_ws_stat.bind(stat, 1), left > 0 and n < GameData.CUSTOM_MAX_PER_STAT, 54)
 
-	section(tr("Gadget (+$%d)") % GameData.CUSTOM_GADGET_PRICE)
+	section(tr("Gadget (+$%d)") % int(GameData.CUSTOM_GADGET_PRICE * pow(GameData.GRADE_PRICE, GameData.my_grade() - 1)))
 	var gad := action_bar()
 	var none := row_button(gad, "None", _on_ws_set.bind("gadget", ""), true, 0)
 	none.toggle_mode = true
@@ -2369,7 +2369,7 @@ func build_cups_tab() -> void:
 				tr("8 pilots, 3 weeks. Gold $%d + a new part, silver $%d, bronze $%d.") % [int(off["prize"]), int(off["prize"] * 0.5), int(off["prize"] * 0.3)])
 		row_button(row, "Enter", _on_enter_cup.bind(k), fits, 100)
 	if GameData.champion:
-		var row := make_row(bot_preview(GameData.OPPONENTS[GameData.OPPONENTS.size() - 1]), "OVERLORD rematch",
+		var row := make_row(bot_preview(GameData.rival(GameData.OPPONENTS.size() - 1)), "OVERLORD rematch",
 				tr("Exhibition bout in the Grand Hall for $%d. Any free night.") % GameData.EXHIBITION_REWARD)
 		row_button(row, "Book it", _on_rematch, free and not GameData.exhibition, 100)
 
@@ -2622,7 +2622,10 @@ func day_events(w: int, day: int) -> Array:
 				out.append({"icon": "", "title": tr("AROUND PORT FERRUM"), "text": "\n".join(lines.slice(0, 8))})
 	if day == 6:
 		if (w - 1) % GameData.MONTH_WEEKS == GameData.MONTH_WEEKS - 1 and GameData.living_cost() > 0:
-			out.append({"icon": "rent", "title": tr("RENT & FOOD"), "text": tr("Gus takes $%d for the bay and the groceries.") % GameData.living_cost()})
+			if GameData.rank_index() < 2:
+				out.append({"icon": "rent", "title": tr("RENT & FOOD"), "text": tr("Gus takes $%d for the bay and the groceries.") % GameData.living_cost()})
+			else:
+				out.append({"icon": "rent", "title": tr("RUNNING COSTS"), "text": tr("Rent, the crew, the truck and the league fees: $%d.") % GameData.living_cost()})
 		out.append({"icon": "stock", "title": tr("NEW STOCK"), "text": tr("The dealer restocks and fresh junk lands on the scrapyard pile.")})
 	return out
 
@@ -2758,7 +2761,7 @@ func _on_cal_match(w: int, day: int, i: int, k: int) -> void:
 		bar.add_theme_constant_override("separation", 6)
 		col.add_child(bar)
 		bar.add_child(GUI.text(tr("Stake:"), 15, GUI.MUTED))
-		for st in [10, 50, 100, 250, 500]:
+		for st in GameData.stakes():
 			var sb := UI.button("$%d" % st, _on_cal_stake.bind(st, w, day, i, k), 14, Vector2(64, 36))
 			sb.toggle_mode = true
 			sb.button_pressed = st == bet_stake
@@ -2913,7 +2916,7 @@ func bet_card(on: String, ev: Dictionary) -> void:
 	section(tr("%s · %s. Odds come from the table and the robots, so a pilot nobody rates pays big. Watch a fight and its result is the real one.") % [tr(str(ev["name"])), tr(Career.round_name(ev))])
 	var bar := action_bar()
 	bar.add_child(UI.label("Stake:", 16))
-	for st in [10, 50, 100, 250, 500]:
+	for st in GameData.stakes():
 		var b := row_button(bar, "$%d" % st, _on_stake.bind(st), true, 80)
 		b.toggle_mode = true
 		b.button_pressed = st == bet_stake
@@ -2945,7 +2948,7 @@ func build_self_bets() -> void:
 	section("No league round tonight, but the bookies will still take money on your pickup fight. Bets need real cash.")
 	var bar := action_bar()
 	bar.add_child(UI.label("Stake:", 16))
-	for st in [10, 50, 100, 250, 500]:
+	for st in GameData.stakes():
 		var b := row_button(bar, "$%d" % st, _on_stake.bind(st), true, 80)
 		b.toggle_mode = true
 		b.button_pressed = st == bet_stake
@@ -3220,9 +3223,9 @@ func build_league_view() -> void:
 		"open":
 			rule = tr("The gutter: pilots with no league live on pickups and cups. On the open dates at the start of the year the best 32 fight the Open Trials: two rounds, and the 8 who win both are in the Scrap League.")
 		"title":
-			rule = tr("The Kane Championship: the top 8 of last year's Steel League, a knockout on the open dates at the start of the year. Win the final and you're the champion of Port Ferrum.")
+			rule = tr("The Titanium Championship: the top 8 of last year's Steel League, a knockout on the open dates at the start of the year. Win the final and you're the champion of Port Ferrum.")
 		"steel":
-			rule = tr("1 point a win, ties go to more parts destroyed. Top 5 go into the Kane Championship, 6th to 13th play off for 3 more places. Bottom 5 go down and %s to %s play off, 3 more go down.") % [GameData.ordinal(n - 12), GameData.ordinal(n - 5)]
+			rule = tr("1 point a win, ties go to more parts destroyed. Top 5 go into the Titanium Championship, 6th to 13th play off for 3 more places. Bottom 5 go down and %s to %s play off, 3 more go down.") % [GameData.ordinal(n - 12), GameData.ordinal(n - 5)]
 		_:
 			rule = tr("1 point a win, ties go to more parts destroyed. Top 3 win trophies and prize money, 4th gets money. Top 5 go up and 6th to 13th play off for 3 more places. Bottom 5 go down and %s to %s play off, 3 more go down.") % [GameData.ordinal(n - 12), GameData.ordinal(n - 5)]
 	section(rule)
@@ -3368,7 +3371,7 @@ func _on_skip() -> void:
 func bills_text() -> String:
 	if GameData.bills_note <= 0:
 		return ""
-	var t := tr(" Rent and food: -$%d.") % GameData.bills_note
+	var t := (tr(" Rent and food: -$%d.") if GameData.rank_index() < 2 else tr(" Rent, crew and travel: -$%d.")) % GameData.bills_note
 	GameData.bills_note = 0
 	return t
 	refresh()
@@ -3383,7 +3386,7 @@ func _on_rematch() -> void:
 
 
 func build_team_tab() -> void:
-	section("BACKUP ROBOTS are built from your spare parts and keep their damage, just like your robot. Main robot too beaten up and no cash to fix it? Use the Send button to put a backup robot in a 1-on-1 and earn some money. In cups they also fight beside you against tag teams and swarms.")
+	section("BACKUP ROBOTS are built from your spare parts and keep their damage, just like your robot. Each one needs its own gantry, and every gantry puts the rent up. Main robot too beaten up and no cash to fix it? Use the Send button to put a backup robot in a 1-on-1 and earn some money. In cups they also fight beside you against tag teams and swarms.")
 	var ms := GameData.stats()
 	section("WEIGHT CLASSES: a robot fighting alone can be as heavy as its reactor allows. A team shares one heavyweight's power (%d): 2 robots get %d each, 3 get %d. Your robot now: %s, %d power. Mini parts are light, Heavy parts drink power, and a team robot over its share gets overloaded."
 			% [int(GameData.TEAM_POWER), int(GameData.team_share(2)), int(GameData.team_share(3)), tr(GameData.weight_class(ms["power_used"])), ms["power_used"]])
@@ -3413,8 +3416,15 @@ func build_team_tab() -> void:
 			sub = tr("READY. " if GameData.wingman_ready(k) else "CAN'T FIGHT: missing a head or torso. ") + power + ", ".join(names)
 		else:
 			pv.look = {}
+		if k >= GameData.gantries:
+			var rowg := make_row(pv, name, tr("No gantry for it yet. Every backup robot needs its own gantry in the crew bay: $%d, and the rent goes up $%d a month.") % [GameData.gantry_price(), GameData.gantry_rent()])
+			if k == GameData.gantries:
+				row_button(rowg, tr("Buy gantry $%d") % GameData.gantry_price(), _on_buy_gantry, GameData.money >= GameData.gantry_price(), 170)
+			continue
 		var row := make_row(pv, name, sub)
 		row_button(row, tr("Rebuild") if not w.is_empty() else tr("Build"), _on_build_wingman.bind(k), true, 100)
+		if w.is_empty() and k == GameData.gantries - 1:
+			row_button(row, tr("Sell gantry"), _on_sell_gantry, true, 120)
 		if not w.is_empty():
 			var c := GameData.wingman_repair_cost(k)
 			row_button(row, tr("Fix $%d") % c if c > 0 else tr("OK"), _on_repair_wingman.bind(k), c > 0 and GameData.can_repair(c), 95)
@@ -3426,6 +3436,18 @@ func _on_team_controls() -> void:
 	GameData.settings["team_controls"] = "linked" if split else "split"
 	GameData.save_settings()
 	say(tr("Team controls: %s.") % ("LINKED: all your robots follow one movement pad" if split else "SPLIT: one movement pad per robot, shared attack buttons. Move the pads in Settings > Edit controls"), "click")
+	refresh()
+
+
+func _on_buy_gantry() -> void:
+	say(GameData.buy_gantry(), "buy")
+	GameData.save_game()
+	refresh()
+
+
+func _on_sell_gantry() -> void:
+	say(GameData.sell_gantry(), "click")
+	GameData.save_game()
 	refresh()
 
 
@@ -4118,7 +4140,7 @@ func prefight_bet(col: VBoxContainer) -> void:
 	var bar := HBoxContainer.new()
 	bar.add_theme_constant_override("separation", 6)
 	col.add_child(bar)
-	for st in [10, 50, 100, 250, 500]:
+	for st in GameData.stakes():
 		var b := UI.button("$%d" % st, _on_prefight_stake.bind(st), 14, Vector2(64, 42))
 		b.toggle_mode = true
 		b.button_pressed = st == bet_stake

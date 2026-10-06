@@ -22,6 +22,7 @@ var start_money_button: Button
 var coach_button: Button
 const COACH_NAMES := ["OFF", "A little", "Normal", "Lots (easier)"]
 var living_button: Button
+var pecking_button: Button
 
 
 var diff_overlay: Control
@@ -129,6 +130,8 @@ func refresh() -> void:
 		start_money_button.text = tr("Starting money: %s (new games)") % GameData.money_text(int(s.get("start_money", GameData.START_MONEY)))
 		var lc := int(s.get("living_cost", GameData.LIVING_COST))
 		living_button.text = tr("Rent & food: %s") % (tr("none") if lc == 0 else tr("$%d a month") % lc)
+		var pk: Dictionary = GameData.PECKING[clampi(int(s.get("pecking", 1)), 0, GameData.PECKING.size() - 1)]
+		pecking_button.text = tr("Pecking Order: %s (x%.1f a grade)") % [tr(pk["name"]), float(pk["k"])]
 
 
 func _on_lang(lang: String) -> void:
@@ -176,8 +179,13 @@ func _on_difficulty() -> void:
 	coach_button = UI.button("", _on_coach, 19, Vector2(560, 52))
 	start_money_button = UI.button("", _on_start_money, 19, Vector2(560, 52))
 	living_button = UI.button("", _on_living, 19, Vector2(560, 52))
-	for b in [diff_button, coach_button, start_money_button, living_button]:
+	pecking_button = UI.button("", _on_pecking, 19, Vector2(560, 52))
+	for b in [diff_button, coach_button, start_money_button, living_button, pecking_button]:
 		col.add_child(b)
+	var pnote := UI.label("Pecking Order: how much tougher and harder hitting each part grade is. Underdog lets a good pilot punch above their grade; Brutal means a robot two grades up flattens you in seconds.", 13, Color(0.65, 0.65, 0.72))
+	pnote.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	pnote.custom_minimum_size = Vector2(560, 0)
+	col.add_child(pnote)
 	col.add_child(UI.button("Done", _on_close_difficulty, 19, Vector2(560, 52)))
 	refresh()
 
@@ -308,6 +316,12 @@ func _on_start_money() -> void:
 	var opts: Array = GameData.START_MONEY_OPTIONS
 	var i := opts.find(int(GameData.settings.get("start_money", GameData.START_MONEY)))
 	GameData.settings["start_money"] = opts[(i + 1) % opts.size()]
+	GameData.save_settings()
+	refresh()
+
+
+func _on_pecking() -> void:
+	GameData.set_pecking((int(GameData.settings.get("pecking", 1)) + 1) % GameData.PECKING.size())
 	GameData.save_settings()
 	refresh()
 

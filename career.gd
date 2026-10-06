@@ -7,7 +7,7 @@ extends RefCounted
 ##   Rust League    48
 ##   Iron League    40
 ##   Steel League   32    the top. OVERLORD is in it, your last fight of a Steel year.
-##   Kane Championship    the title: a knockout for the top 8 of last year's Steel League,
+##   Titanium Championship    the title: a knockout for the top 8 of last year's Steel League,
 ##                        on the open dates at the start of the year (QF, SF, final + bronze).
 ##
 ## Each league fights a round every other Saturday, weeks 4, 6 ... 50 (24 fights a year). A win is
@@ -33,28 +33,28 @@ const UP_DOWN := 5     # straight up / down from the table each year (plus 3 thr
 const PLAYOFF_SLOTS := [[51, 2], [51, 5], [52, 5]]   # [week, day]: Wednesday and Saturday of week 51, Saturday of week 52
 const PLAYOFF_WEEKS := [51, 52]
 const TRIALS_SLOTS := [[1, 5], [2, 5]]               # the Open Trials: Saturdays of weeks 1 and 2
-const TITLE_WEEKS := [1, 2, 3]                       # the Kane Championship: Saturdays of weeks 1-3
+const TITLE_WEEKS := [1, 2, 3]                       # the Titanium Championship: Saturdays of weeks 1-3
 const LEAGUE_START := 4
 
 const STAGES := {
 	"open": {"name": "Open Trials", "short": "OPEN TRIALS", "size": 32,
-		"rivals": [], "rival_rounds": [], "reward": [180, 300], "budget": [0, 300], "level": [0.0, 0.4],
-		"prizes": [300, 200, 100], "arenas": ["scrap_ring"], "crowds": ["scrappers"]},
+		"rivals": [], "rival_rounds": [], "reward": [250, 350], "budget": [0, 300], "level": [0.0, 0.4],
+		"prizes": [900, 600, 300], "arenas": ["scrap_ring"], "crowds": ["scrappers"]},
 	"scrap": {"name": "Scrap League", "short": "SCRAP LEAGUE", "size": 64,
-		"rivals": [0, 1, 2], "rival_rounds": [1, 9, 17], "reward": [340, 560], "budget": [0, 500], "level": [0.0, 0.6],
-		"prizes": [1200, 700, 400], "arenas": ["fish_market", "docks", "cannery"], "crowds": ["fishmongers", "dockers", "punks"]},
+		"rivals": [0, 1, 2], "rival_rounds": [1, 9, 17], "reward": [600, 1000], "budget": [100, 750], "level": [0.0, 0.6],
+		"prizes": [3000, 1800, 1000], "arenas": ["fish_market", "docks", "cannery"], "crowds": ["fishmongers", "dockers", "punks"]},
 	"rust": {"name": "Rust League", "short": "RUST LEAGUE", "size": 48,
-		"rivals": [3, 4, 5], "rival_rounds": [1, 9, 17], "reward": [600, 950], "budget": [400, 1200], "level": [0.4, 1.3],
-		"prizes": [3000, 1800, 1000], "arenas": ["test_track", "harbor", "substation"], "crowds": ["suits", "families", "ravers"]},
+		"rivals": [3, 4, 5], "rival_rounds": [1, 9, 17], "reward": [1800, 3000], "budget": [750, 2250], "level": [0.4, 1.3],
+		"prizes": [9000, 5400, 3000], "arenas": ["test_track", "harbor", "substation"], "crowds": ["suits", "families", "ravers"]},
 	"iron": {"name": "Iron League", "short": "IRON LEAGUE", "size": 40,
-		"rivals": [6, 7, 8], "rival_rounds": [2, 10, 18], "reward": [1100, 1800], "budget": [1200, 2800], "level": [1.2, 2.4],
-		"prizes": [8000, 4500, 2500], "arenas": ["steelworks", "rooftop", "dry_dock"], "crowds": ["bikers", "robots", "packed"]},
+		"rivals": [6, 7, 8], "rival_rounds": [2, 10, 18], "reward": [5500, 8500], "budget": [2250, 6750], "level": [1.2, 2.4],
+		"prizes": [27000, 16000, 9000], "arenas": ["steelworks", "rooftop", "dry_dock"], "crowds": ["bikers", "robots", "packed"]},
 	"steel": {"name": "Steel League", "short": "STEEL LEAGUE", "size": 32,
-		"rivals": [], "rival_rounds": [], "boss": 9, "boss_round": 23, "reward": [2200, 3600], "budget": [2600, 5200], "level": [2.2, 3.4],
-		"prizes": [15000, 8000, 5000], "arenas": ["champ_arena"], "crowds": ["champ_fans"]},
-	"title": {"name": "Kane Championship", "short": "CHAMPIONSHIP", "size": 8,
-		"rivals": [], "rival_rounds": [], "reward": [4000, 8000], "budget": [3000, 6000], "level": [2.5, 3.5],
-		"prizes": [40000, 18000, 9000], "arenas": ["champ_gala"], "crowds": ["high_society"]},
+		"rivals": [], "rival_rounds": [], "boss": 9, "boss_round": 23, "reward": [17000, 25000], "budget": [6750, 20000], "level": [2.2, 3.4],
+		"prizes": [80000, 48000, 27000], "arenas": ["champ_arena"], "crowds": ["champ_fans"]},
+	"title": {"name": "Titanium Championship", "short": "CHAMPIONSHIP", "size": 8,
+		"rivals": [], "rival_rounds": [], "reward": [60000, 150000], "budget": [20000, 40000], "level": [2.5, 3.5],
+		"prizes": [300000, 150000, 75000], "arenas": ["champ_gala"], "crowds": ["high_society"]},
 }
 ## The pyramid, bottom to top (the gutter, then the four leagues). "title" is the Championship cup.
 const ORDER := ["open", "scrap", "rust", "iron", "steel"]
@@ -226,7 +226,7 @@ static func robot_of(ev: Dictionary, id: int) -> Dictionary:
 	var e := pilot(ev, id)
 	var o: Dictionary
 	if e.has("rival"):
-		o = GameData.OPPONENTS[int(e["rival"])].duplicate(true)
+		o = GameData.rival(int(e["rival"]))
 	elif e.has("wid") and not World.pilot(int(e["wid"])).is_empty():
 		o = World.robot(int(e["wid"]))
 		o["pilot"] = World.shown_name(int(e["wid"]), str(e.get("pilot", "")))
@@ -411,7 +411,7 @@ static func rating_of(ev: Dictionary, id: int) -> float:
 		return World.rating(spec, 0.5)
 	if e.has("rival"):
 		var idx := int(e["rival"])
-		return World.rating(GameData.OPPONENTS[idx], 0.25 + idx * 0.075)
+		return World.rating(GameData.rival(idx), 0.25 + idx * 0.075)
 	var o := robot_of(ev, id)
 	if o.is_empty():
 		return 10.0
@@ -773,7 +773,7 @@ static func new_trials(year: int, seed_value: int, with_player: bool, wids: Arra
 			"table": table, "bracket": {}, "medals": {}, "news": [], "mine": with_player, "finals": {"up": {"rounds": [first]}}}
 
 
-## The Kane Championship: the 8 who qualified from last year's Steel League (`entries`: their
+## The Titanium Championship: the 8 who qualified from last year's Steel League (`entries`: their
 ## event entries, best first; id 0 = you), a knockout on the Saturdays of weeks 1-3.
 static func new_title(year: int, seed_value: int, entries: Array) -> Dictionary:
 	var pilots: Array = []
