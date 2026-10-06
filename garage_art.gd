@@ -464,7 +464,7 @@ static func _office_back(ci: CanvasItem, size: Vector2, floor_y: float, t: float
 	ci.draw_arc(cc, 18, 0, TAU, 24, Color(0.2, 0.2, 0.2), 2.0)
 	ci.draw_line(cc, cc + Vector2(cos(t * 0.1 - PI / 2), sin(t * 0.1 - PI / 2)) * 13, Color(0.15, 0.15, 0.15), 2.0)
 	ci.draw_line(cc, cc + Vector2(cos(t * 1.2 - PI / 2), sin(t * 1.2 - PI / 2)) * 15, Color(0.8, 0.1, 0.1), 1.0)
-	_sign(ci, Vector2(size.x * 0.3, 30), I18n.t("GUS'S OFFICE"), Color(0.85, 0.9, 0.45))
+	_sign(ci, Vector2(size.x * 0.5, 30), I18n.t("GUS'S OFFICE"), Color(0.85, 0.9, 0.45))
 
 
 # ---------------------------------------------------------------- The Rusty Bolt (the Bets screen)

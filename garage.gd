@@ -29,6 +29,10 @@ var ws := {}                # workshop design in progress
 var title_label: Label
 var money_label: Label
 var stats_box: VBoxContainer
+var stats_panel: PanelContainer
+## The robot's stats panel only shows where the robot is being looked at, fixed or fitted - not
+## at the pub, in the office, on the scrapyard pile or in the crew bay.
+const STATS_SCENES := ["build", "moves", "paint", "storage", "shop", "workshop"]
 var list_box: VBoxContainer
 var scroll: ScrollContainer
 var tabs_box: HBoxContainer
@@ -252,7 +256,7 @@ func _ready() -> void:
 	sp.content_margin_right = 12
 	sp.border_color = Color(0.14, 0.19, 0.16)
 	sp.set_border_width_all(1)
-	var stats_panel := PanelContainer.new()
+	stats_panel = PanelContainer.new()
 	stats_panel.add_theme_stylebox_override("panel", sp)
 	stats_panel.add_child(stats_box)
 	left_col.add_child(stats_panel)
@@ -1961,6 +1965,7 @@ func set_scene_for_tab() -> void:
 			scene = {"cups": "cups", "bets": "pub", "jukebox": "pub"}.get(seg(), "office")
 		"Crew":
 			scene = "team"
+	stats_panel.visible = STATS_SCENES.has(scene)
 	preview.spot = GarageArt.robot_spot(scene)
 	preview.facing = 1 if scene == "paint" else -1
 	preview.front = scene == "build"   # in the bay the robot hangs on Gus's gantry, facing you
