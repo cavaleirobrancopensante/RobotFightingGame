@@ -100,6 +100,14 @@ class Backdrop extends Control:
 		for k in heads:
 			garage.heads[k] = xf * (stage.position + heads[k])
 var fight_button: Button
+var rail_buttons := {}   # section -> its rail button (the tour points at them)
+var tour_arrow: Control
+var tour_said := -1
+var tour_clock := ""   # the time when the current tour step started (the NEXT step waits for it to move)
+
+
+func clock_key() -> String:
+	return "%d/%d/%s/%d" % [GameData.year, GameData.week, GameData.day, GameData.phase]
 var body_map: BodyMap
 var rail_box: VBoxContainer
 var date_button: Button
@@ -402,20 +410,20 @@ func _ready() -> void:
 
 ## The rail's sections, as they unlock. "Parts" is shown as Get Parts.
 func tab_list() -> Array:
-	var t := ["Bay", "Storage", "Parts", "Pub"]
+	var t := ["Bay", "Storage", "Parts", "Pub", "Feed"]
 	if GameData.unlocked("season"):
 		t.append("Season")
-	if GameData.team_unlocked() or GameData.unlocked("pilot"):
+	if GameData.team_unlocked():
 		t.append("Crew")
 	return t
 
 
-const SECTION_LABELS := {"Bay": "Bay", "Storage": "Storage", "Parts": "Get Parts", "Pub": "Rusty Bolt", "Season": "Season", "Crew": "Crew"}
-const SECTION_ICONS := {"Bay": "bay", "Storage": "storage", "Parts": "parts", "Pub": "pub", "Season": "season", "Crew": "crew"}
+const SECTION_LABELS := {"Bay": "Bay", "Storage": "Storage", "Parts": "Get Parts", "Pub": "Rusty Bolt", "Feed": "BotMedia", "Season": "Season", "Crew": "Crew"}
+const SECTION_ICONS := {"Bay": "bay", "Storage": "storage", "Parts": "parts", "Pub": "pub", "Feed": "feed", "Season": "season", "Crew": "crew"}
 ## Where each feature lives now: [section, toggle]. Gus's unlock scene returns you there.
 const FEATURE_PLACE := {"scrapyard": ["Parts", "scrap"], "storage": ["Storage", ""], "style": ["Bay", "style"],
 		"shop": ["Parts", "dealer"], "season": ["Season", "calendar"], "scout": ["", "scout"], "moves": ["Bay", "chips"],
-		"cups": ["Season", "cups"], "team": ["Crew", "backups"], "workshop": ["Parts", "order"], "pilot": ["Crew", "pilot"],
+		"cups": ["Season", "cups"], "team": ["Crew", "backups"], "workshop": ["Parts", "order"], "pilot": ["Feed", "gear"],
 		"paint": ["Bay", "style"], "setups": ["Bay", "setups"], "randomize": ["Bay", "robot"]}
 
 
@@ -442,6 +450,15 @@ func segs_of(t: String) -> Array:
 			if GameData.cups_unlocked():
 				out.append(["cups", tr("Cups"), "cups"])
 			out.append(["pilots", tr("Pilots"), ""])
+		"Feed":
+			out.append(["town", tr("News"), ""])
+			out.append(["all", tr("Messages"), ""])
+			out.append(["pilots", tr("Pilots"), ""])
+			out.append(["gus", tr("Gus"), ""])
+			out.append(["story", tr("Story"), ""])
+			out.append(["profile", tr("Profile"), ""])
+			if GameData.unlocked("pilot"):
+				out.append(["gear", tr("Gear"), "pilot"])
 		"Pub":
 			# The Rusty Bolt: the scene stays the same pub while you switch between these
 			out.append(["bar", tr("Bar"), ""])
@@ -450,8 +467,7 @@ func segs_of(t: String) -> Array:
 		"Crew":
 			if GameData.team_unlocked():
 				out.append(["backups", tr("Backups"), "team"])
-			if GameData.unlocked("pilot"):
-				out.append(["pilot", tr("Pilot"), "pilot"])
+
 	return out
 
 
@@ -481,6 +497,8 @@ func seg_new(key: String, feature: String) -> bool:
 
 func section_new(t: String) -> bool:
 	match t:
+		"Feed":
+			return GameData.inbox.size() > GameData.inbox_seen
 		"Storage":
 			return GameData.is_new("storage")
 		"Season":
@@ -508,6 +526,7 @@ func build_rail() -> void:
 		b.font = GUI.head()
 		b.pressed.connect(func(): Sfx.play("click", 0.05); _on_tab(t))
 		rail_box.add_child(b)
+		rail_buttons[t] = b
 	var gap := Control.new()
 	gap.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	rail_box.add_child(gap)
@@ -617,11 +636,23 @@ func say(text: String, sound: String = "") -> void:
 		Sfx.play(sound)
 	if text == "":
 		return
-	if talk_story:
-		talk_lines.append(["GUS", text, {}])
+	GameData.log_talk("GUS", text, "gus")
+	# lines queue up behind the one on screen (nothing gets lost); the ✓ shows how many are waiting
+	if not talk_lines.is_empty() and str(talk_lines[-1][1]) == text:
 		return
-	talk_lines = [["GUS", text, {}]]
-	_talk_show()
+	talk_lines.append(["GUS", text, {}])
+	if talk_lines.size() > 40:
+		talk_lines = [talk_lines[0]] + talk_lines.slice(talk_lines.size() - 39)
+	if talk_lines.size() == 1 or not bubble.visible:
+		_talk_show()
+	else:
+		_talk_count()
+
+
+func _talk_count() -> void:
+	if bubble:
+		bubble.ok.count = maxi(0, talk_lines.size() - 1)
+		bubble.ok.queue_redraw()
 
 
 # ---------------------------------------------------------------- talking
@@ -649,10 +680,15 @@ func play_story(keys: Array, after: Callable = Callable()) -> bool:
 			GameData.mark_story_seen(k)
 	if lines.is_empty():
 		return false
-	var waiting: Array = [] if talk_story else talk_lines   # a message that was up comes back after
-	talk_lines = lines + waiting
+	for l in lines:
+		GameData.log_talk(str(l[0]), str(l[1]), "story" if str(l[2].get("place", "")) != "*" else "talk", l[2].get("look", {}))
+	if talk_story:
+		talk_lines += lines   # a scene already playing finishes first
+	else:
+		talk_lines = lines + talk_lines   # messages that were waiting come back after the scene
 	talk_story = true
-	talk_after = after
+	if after.is_valid() or not talk_after.is_valid():
+		talk_after = after
 	_talk_show()
 	GameData.request_save()
 	return true
@@ -729,7 +765,8 @@ func _talk_show() -> void:
 	var n: int = bubble.text_label.text.length()
 	talk_life = (5.0 + n * 0.07) if talk_story else (3.5 + n * 0.05)
 	talk_left = talk_life
-	bubble.bar.set_ratio(1.0)
+	bubble.bar.visible = false
+	_talk_count()
 	bubble.visible = true
 	move_child(bubble, -1)
 	_place_talk()
@@ -807,6 +844,7 @@ func _place_talk() -> void:
 
 func _process(delta: float) -> void:
 	update_jukebox()
+	update_tour()
 	if detail_panel and detail_panel.visible and left_col:
 		detail_panel.position = left_col.global_position
 		detail_panel.size = left_col.size
@@ -822,10 +860,7 @@ func _process(delta: float) -> void:
 			talk_beep = 0.07
 			Sfx.voice(str(talk_lines[0][0]))
 		return
-	talk_left -= delta
-	bubble.bar.set_ratio(talk_left / talk_life)
-	if talk_left <= 0.0:
-		_talk_next()
+	# no timer: a line stays up until you tap ✓ (the number on it says how many more are waiting)
 
 
 # ---------------------------------------------------------------- refresh
@@ -842,7 +877,7 @@ func refresh() -> void:
 	next_button.disabled = GameData.phase == 2 and not GameData.can_pass_day()
 	next_button.tooltip_text = tr("Your fight is tonight.") if next_button.disabled else tr("Let time pass: the bay works on the job board.")
 	var total := GameData.repair_all_cost()
-	repair_button.text = tr("Repair all $%d") % total if total > 0 else (tr("On the bench") if GameData.has_work("m") else tr("All repaired"))
+	repair_button.text = (tr("Repair all (free)") if GameData.tour == 0 else tr("Repair all $%d") % total) if total > 0 else (tr("On the bench") if GameData.has_work("m") else tr("All repaired"))
 	repair_button.disabled = total <= 0   # (short on cash? pressing it has Gus explain)
 	repair_button.add_theme_color_override("font_color", GUI.AMBER)
 	var mode := GameData.fight_mode()
@@ -923,6 +958,13 @@ func refresh() -> void:
 					build_scrapyard_tab()
 		"Season":
 			build_season_tab()
+		"Feed":
+			if seg() == "profile":
+				build_pilot_looks()
+			elif seg() == "gear":
+				build_controllers()
+			else:
+				build_feed()
 		"Pub":
 			match seg():
 				"bets":
@@ -1696,6 +1738,155 @@ func job_etas() -> Array:
 	return out
 
 
+# ---------------------------------------------------------------- Gus's tour (new games)
+# After the first fight Gus walks you round the bay one thing at a time, and a bouncing arrow
+# points at what to tap. Each step ends when you've done it.
+
+func tour_steps() -> Array:
+	return [
+		{"target": "repair", "text": tr("First thing: the robot's dented. Tap Repair all, this one's on the house. It goes on the job board, and the bay fixes it while time passes.")},
+		{"target": "next", "text": tr("Time only moves when you say so. Tap NEXT. The bay works a shift and the clock moves on. Fights are in the evening.")},
+		{"target": "rail:Parts", "text": tr("Get Parts, then the Scrapyard. One free dig a week, and you never know what's in the pile.")},
+		{"target": "dig", "text": tr("Go on, tap Dig anywhere. Mostly junk, but junk is free.")},
+		{"target": "rail:Pub", "text": tr("The Rusty Bolt, down the road. Whoever's at the bar will fight you for a few bucks.")},
+		{"target": "rail:Feed", "text": tr("Missed something I said? Everything anybody tells you ends up on BotMedia, with the town's news.")},
+		{"target": "fight", "text": tr("That's the tour. Saturday is the Open Trials: win two fights and we're in the Scrap League. Practice with pickups till then. FIGHT when you're ready.")},
+	]
+
+
+func tour_done(i: int) -> bool:
+	match i:
+		0:
+			return GameData.repair_all_cost() == 0
+		1:
+			return tour_clock != "" and tour_clock != clock_key()
+		2:
+			return tab == "Parts"
+		3:
+			return GameData.digs_left <= 0 or tab != "Parts"
+		4:
+			return tab == "Pub"
+		5:
+			return tab == "Feed"
+		6:
+			return GameData.wins + GameData.losses > 1
+	return true
+
+
+func tour_target(i: int) -> Control:
+	var t: String = tour_steps()[i]["target"]
+	match t:
+		"repair":
+			return repair_button
+		"next":
+			return next_button
+		"fight":
+			return fight_button
+		"dig":
+			return null
+	if t.begins_with("rail:") and rail_buttons.has(t.substr(5)) and is_instance_valid(rail_buttons[t.substr(5)]):
+		return rail_buttons[t.substr(5)]
+	return null
+
+
+func update_tour() -> void:
+	var i := GameData.tour
+	if i < 0 or not GameData.story_seen.has("first_garage") or talk_story:
+		if tour_arrow:
+			tour_arrow.visible = false
+		return
+	while i < tour_steps().size() and tour_done(i) and i != tour_said:
+		i += 1
+	if i != GameData.tour:
+		GameData.tour = i
+		GameData.request_save()
+	if i >= tour_steps().size():
+		GameData.tour = -1
+		if tour_arrow:
+			tour_arrow.visible = false
+		return
+	if tour_said != i:
+		tour_said = i
+		tour_clock = clock_key()
+		say(tour_steps()[i]["text"])
+		return
+	if tour_done(i):
+		GameData.tour = i + 1
+		GameData.request_save()
+		return
+	if tour_arrow == null:
+		tour_arrow = GUI.TourArrow.new()
+		tour_arrow.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		tour_arrow.set_anchors_preset(Control.PRESET_FULL_RECT)
+		add_child(tour_arrow)
+	var target := tour_target(i)
+	tour_arrow.visible = target != null and target.is_visible_in_tree() and overlay == null
+	if tour_arrow.visible:
+		tour_arrow.target = Rect2(target.global_position, target.size)
+		move_child(tour_arrow, -1)
+		tour_arrow.queue_redraw()
+
+
+## Messages: everything anyone ever said to you, newest first (Gus, pilots, hate mail, the
+## story), plus the town news. Nothing that pops up in a bubble is lost.
+func build_feed() -> void:
+	var view := seg()
+	GameData.inbox_seen = GameData.inbox.size()
+	if view == "town":
+		section(tr("BOTMEDIA NEWS. Who's top of the big leagues, who went up and down, who bought what, and what they're whispering at the docks."))
+		var news: Array = GameData.world.get("news", [])
+		if news.is_empty():
+			section(tr("Nothing yet. Give it a week."))
+		for i in range(news.size() - 1, -1, -1):
+			var n: Dictionary = news[i]
+			var ic := "pickup"
+			for a in n.get("args", []):
+				if str(a).begins_with("stage:"):
+					ic = str(a).substr(6)
+			if str(n["text"]).begins_with("Titanium"):
+				ic = "title"
+			make_row(GUI.EventIcon.new(ic, 40.0), tr("Year %d, week %d") % [int(n["y"]), int(n["w"])], GameData.World.news_text(n))
+		return
+	var shown := 0
+	var last_day := ""
+	for i in range(GameData.inbox.size() - 1, -1, -1):
+		var e: Dictionary = GameData.inbox[i]
+		var who := str(e["who"])
+		var kind := str(e.get("kind", "talk"))
+		match view:
+			"gus":
+				if who != "GUS":
+					continue
+			"pilots":
+				if who in ["GUS", "YOU", "NARRATOR", "ECHO"] or kind == "story":
+					continue
+			"story":
+				if kind != "story":
+					continue
+		var stamp := tr("%s · WEEK %d · YEAR %d") % [tr(DAY_FULL_UP[maxi(0, GameData.DAYS.find(str(e.get("d", "mon"))))]), int(e["w"]), int(e["y"])]
+		if stamp != last_day:
+			last_day = stamp
+			var h := GUI.text(stamp, 12, GUI.MUTED, "headb")
+			list_box.add_child(h)
+		var face = StoryScript.Portrait.new()
+		face.who = who
+		face.face_look = e.get("look", {})
+		face.robot_look = GameData.player_look()
+		var shown_name := who
+		if who == "YOU":
+			shown_name = GameData.pilot_name.to_upper()
+		elif who == "ECHO":
+			shown_name = GameData.robot_name
+		elif who == "NARRATOR":
+			shown_name = tr("NARRATOR")
+		make_row(face, shown_name, str(e["text"]), null, {"story": tr("story"), "gus": "", "talk": ""}.get(kind, ""))
+		shown += 1
+		if shown >= 150:
+			break
+	if shown == 0:
+		section(tr("Nothing here yet."))
+
+
 ## Bay > Job board: everything being fixed or bolted on, in order, with the hands that work it.
 func build_jobs_view() -> void:
 	GameData.sync_swaps()
@@ -1949,7 +2140,8 @@ func scene_info() -> Dictionary:
 			"spark": now - spark_at, "dig": now - dig_at, "found": dig_found, "bet": now - bet_at, "juke": Sfx.jukebox_index() >= 0,
 			"medals": GameData.trophies, "backup": backup, "stats": GameData.career_stats,
 			"wins": GameData.wins, "losses": GameData.losses, "champion": GameData.champion,
-			"patron": patron_info() if scene == "pub" else {}, "tv": tv_info() if scene == "pub" else {}}
+			"patron": patron_info() if scene == "pub" else {}, "tv": tv_info() if scene == "pub" else {},
+			"controllers": GameData.owned_controllers, "using": str(GameData.pilot_look.get("controller", "gamepad"))}
 
 
 ## The pilots in the pub today: the first sits at the bar, the rest stand around.
@@ -2033,16 +2225,18 @@ func _on_open_pilot() -> void:
 	go_to("Crew", "pilot")
 
 
+## Crew > Controllers: the pads and gadgets your pilot fights with.
 func build_pilot_view() -> void:
+	build_controllers()
+
+
+## BotMedia > Profile: your pilot's looks. The close-up behind the menu is the mirror.
+func build_pilot_looks() -> void:
 	var col := list_box
-	section("Your pilot stands in your corner during fights and shows up in the story.")
+	section("Your profile. This is the face Port Ferrum sees: in your corner during fights, in the story, and on BotMedia.")
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 12)
 	col.add_child(row)
-	var face = StoryScript.Portrait.new()
-	face.who = "YOU"
-	face.custom_minimum_size = Vector2(170, 210)
-	row.add_child(face)
 	var grid := GridContainer.new()
 	grid.columns = 2
 	grid.add_theme_constant_override("h_separation", 14)
@@ -2091,7 +2285,6 @@ func build_pilot_view() -> void:
 		row_button(bar, ">", _on_pilot_change.bind(l[1], 1), true, 44)
 	var last := action_bar(col)
 	row_button(last, "Random look", _on_pilot_random, true, 130)
-	build_controllers()
 
 
 func _on_pilot_change(what: String, step: int) -> void:
@@ -2153,8 +2346,60 @@ func _on_pilot_random() -> void:
 
 
 func _on_controller(id: String) -> void:
+	close_popup()
 	say(GameData.buy_controller(id), "buy")
 	refresh()
+
+
+## A controller up close: what it is, what it does to the robot in a fight, and swap to it.
+func open_controller(id: String) -> void:
+	var cinfo: Dictionary = GameData.CONTROLLER_INFO[id]
+	var col := open_popup(tr(PilotArt.CONTROLLER_NAMES[id]).to_upper())
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 16)
+	col.add_child(row)
+	var icon := ControllerIcon.new()
+	icon.kind = id
+	icon.custom_minimum_size = Vector2(220, 150)
+	row.add_child(icon)
+	var info := VBoxContainer.new()
+	info.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.add_child(info)
+	var d := GUI.text(tr(cinfo["desc"]), 16, GUI.TEXT)
+	d.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	d.custom_minimum_size = Vector2(320, 0)
+	info.add_child(d)
+	var names := {"combo": tr("Combo window +%.2fs"), "seq": tr("Special-move inputs +%.1fs"), "atk_speed": tr("Attack speed +%d%%"),
+			"gadget_cd": tr("Gadget recharge -%d%%"), "move": tr("Walking speed +%d%%"), "block": tr("Blocked hits -%d%% damage"),
+			"jump": tr("Jump height +%d%%"), "aim": tr("Aimed hits +%d%% more often"), "damage": tr("Damage +%d%%")}
+	for k in cinfo["mods"]:
+		var v: float = float(cinfo["mods"][k])
+		var txt: String = names.get(k, k)
+		if k == "gadget_cd" or k == "block":
+			v = (1.0 - v) * 100.0
+		elif k in ["atk_speed", "move", "jump", "damage"]:
+			v *= 100.0
+		info.add_child(GUI.text("• " + (txt % v if txt.contains("%.") else txt % int(round(v))), 15, GUI.GREEN))
+	if cinfo["mods"].is_empty():
+		info.add_child(GUI.text(tr("No tricks. It just works."), 15, GUI.MUTED))
+	var using: bool = GameData.pilot_look.get("controller", "gamepad") == id
+	var bar := HBoxContainer.new()
+	bar.add_theme_constant_override("separation", 10)
+	col.add_child(bar)
+	var act: Button
+	if using:
+		act = UI.button(tr("In your hands"), close_popup, 16, Vector2(0, 50))
+		act.disabled = true
+	elif GameData.owned_controllers.has(id):
+		act = UI.button(tr("Swap to it"), _on_controller.bind(id), 16, Vector2(0, 50))
+	else:
+		act = UI.button(tr("Buy $%d") % int(cinfo["cost"]), _on_controller.bind(id), 16, Vector2(0, 50))
+		act.disabled = GameData.money < int(cinfo["cost"])
+	act.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	bar.add_child(act)
+	var close := UI.button(tr("Back"), close_popup, 16, Vector2(0, 50))
+	close.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	bar.add_child(close)
 
 
 ## Health of each body part for the little damage map over the robot (-1 = should have one, doesn't).
@@ -2184,6 +2429,8 @@ func set_scene_for_tab() -> void:
 			scene = {"cups": "cups"}.get(seg(), "office")
 		"Pub":
 			scene = "pub"
+		"Feed":
+			scene = "phone"
 		"Crew":
 			scene = "team"
 	stats_panel.visible = STATS_SCENES.has(scene)
@@ -2191,7 +2438,7 @@ func set_scene_for_tab() -> void:
 	preview.spot = GarageArt.robot_spot(scene)
 	preview.facing = 1 if scene == "paint" else -1
 	preview.front = scene == "build"   # in the bay the robot hangs on Gus's gantry, facing you
-	preview.hide_robot = scene in ["pub", "office"]  # the robot stays in the bay when you're at the pub or in the office
+	preview.hide_robot = scene in ["pub", "office", "phone"]  # the robot stays in the bay when you're at the pub or in the office
 	preview.queue_redraw()
 	if scene == "pub" and not talk_story:
 		var hello := GameData.pub_greeting()
@@ -2279,7 +2526,7 @@ func build_controllers() -> void:
 		var cinfo: Dictionary = GameData.CONTROLLER_INFO[id]
 		var icon := ControllerIcon.new()
 		icon.kind = id
-		var row := make_row(icon, tr(PilotArt.CONTROLLER_NAMES[id]), tr(cinfo["desc"]))
+		var row := make_tap_row(icon, tr(PilotArt.CONTROLLER_NAMES[id]), tr(cinfo["desc"]), open_controller.bind(id), tr("in use") if GameData.pilot_look.get("controller", "gamepad") == id else (tr("yours") if GameData.owned_controllers.has(id) else ""))
 		var using: bool = GameData.pilot_look.get("controller", "gamepad") == id
 		if using:
 			row_button(row, "In use", _on_controller.bind(id), false, 110)
@@ -2348,6 +2595,47 @@ func _on_dig(kind: String = "") -> void:
 	say(res["text"], "buy" if res.has("chip") else ("break" if res["part"] != "" else "land"))
 	GameData.save_game()
 	refresh()
+	if res.has("uid"):
+		show_find(int(res["uid"]), str(res["grade"]))
+
+
+## The part you just dug up, right there in your hands: what it is, how beaten up, what next.
+func show_find(uid: int, grade: String) -> void:
+	var p := GameData.inst(uid)
+	if p.is_empty():
+		return
+	var d := GameData.part_def(p["id"])
+	var title: String = {"rare": tr("A RARE FIND!"), "good": tr("JACKPOT!"), "decent": tr("FOUND SOMETHING")}.get(grade, tr("MORE JUNK"))
+	var col := open_popup(title)
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 16)
+	col.add_child(row)
+	var icon := part_icon(d, GameData.hp_ratio(p))
+	icon.custom_minimum_size = Vector2(150, 150)
+	row.add_child(icon)
+	var info := VBoxContainer.new()
+	info.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.add_child(info)
+	info.add_child(GUI.text(str(d["name"]), 22, GUI.YELLOW, "headb"))
+	var kind_line := GUI.text(tr(GameData.KIND_NAMES.get(d["kind"], "")).to_upper() + "  ·  " + (tr("%s grade") % GameData.grade_name(int(d.get("grade", 0))) if int(d.get("grade", 0)) > 0 else tr("junk")), 13, GUI.MUTED, "headb")
+	info.add_child(kind_line)
+	var st := GUI.text(GameData.part_stat_text(d, float(p["hp"])), 14, GUI.TEXT)
+	st.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	info.add_child(st)
+	if not GameData.UNDAMAGEABLE.has(d["kind"]):
+		var hp := GUI.SegBar.new()
+		hp.setup(float(p["hp"]), float(d["hp"]), GUI.GREEN if GameData.hp_ratio(p) > 0.5 else GUI.AMBER)
+		info.add_child(hp)
+		info.add_child(GUI.text(tr("%d%% health. Fixing it costs $%d.") % [int(GameData.hp_ratio(p) * 100), GameData.repair_cost(p)], 13, GUI.MUTED))
+	var bar := HBoxContainer.new()
+	bar.add_theme_constant_override("separation", 10)
+	col.add_child(bar)
+	var look := UI.button(tr("Take a closer look"), func(): close_popup(); _on_detail({"src": "inv", "uid": uid}), 16, Vector2(0, 50))
+	look.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	bar.add_child(look)
+	var keep := UI.button(tr("Into storage"), close_popup, 16, Vector2(0, 50))
+	keep.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	bar.add_child(keep)
 
 
 # ---------------------------------------------------------------- WORKSHOP
@@ -2615,7 +2903,8 @@ func build_calendar() -> void:
 		else:
 			section("No fight of yours left this week. Take a pickup fight at the scrapyard any day for a few dollars (Fight button), enter a cup if you can, or rest till Monday.")
 		var bar := action_bar()
-		row_button(bar, "Next day", _on_skip_wednesday, true, 140)
+		var nb := row_button(bar, tr("NEXT > %s") % tr(["AFTERNOON", "EVENING", "TOMORROW"][GameData.phase]), _on_next_phase, GameData.phase < 2 or GameData.can_pass_day(), 240)
+		nb.add_theme_color_override("font_color", GUI.AMBER)
 		if GameData.my_fight_ahead():
 			row_button(bar, "Skip to fight night", _on_skip_fight_night, true, 200)
 		elif not league_sat:
@@ -2675,7 +2964,11 @@ class CalDay extends Button:
 		if tonight:
 			draw_string(GUI.headb(), Vector2(0, size.y - 4), tr("TONIGHT"), HORIZONTAL_ALIGNMENT_CENTER, size.x, 9, GUI.YELLOW)
 		if past:
-			draw_rect(r, Color(0, 0, 0, 0.0))
+			# crossed off with a red marker, like the calendar on Gus's wall
+			var red := Color(0.85, 0.16, 0.12, 0.75)
+			var m := Vector2(minf(size.x, size.y) * 0.18, minf(size.x, size.y) * 0.16)
+			draw_line(Vector2(m.x, m.y + 2), Vector2(size.x - m.x, size.y - m.y), red, 3.0, true)
+			draw_line(Vector2(size.x - m.x - 2, m.y), Vector2(m.x + 2, size.y - m.y - 1), red, 3.0, true)
 
 
 func cal_cell(w: int, row: int, day: int) -> Button:
@@ -3322,14 +3615,18 @@ func tonight_name() -> String:
 
 func _on_go_to_day(idx: int) -> void:
 	close_popup()
-	say(GameData.skip_to_day(idx), "click")
+	time_begin()
+	GameData.skip_to_day(idx)
 	refresh()
+	time_end()
 
 
 func _on_skip_fight_night() -> void:
 	close_popup()
-	say(GameData.skip_to_fight_night(), "click")
+	time_begin()
+	GameData.skip_to_fight_night()
 	refresh()
+	time_end()
 
 
 const PHASE_SHORT := ["AM", "PM", "EVE"]
@@ -3337,19 +3634,24 @@ const PHASE_SHORT := ["AM", "PM", "EVE"]
 
 func _on_next_phase() -> void:
 	close_popup()
-	var before := GameData.jobs.size()
-	var text := GameData.next_phase()
-	var done := before - GameData.jobs.size()
-	if done > 0:
-		text += " " + (tr("%d job done on the board.") % done if done == 1 else tr("%d jobs done on the board.") % done)
-	say(text + bills_text(), "click")
+	if GameData.phase == 2 and not GameData.can_pass_day():
+		say(tr("Your fight is tonight."), "error")
+		return
+	time_begin()
+	GameData.next_phase()
 	refresh()
+	time_end()
 
 
 func _on_skip_wednesday() -> void:
 	close_popup()
-	say(GameData.skip_wednesday(), "click")
+	if not GameData.can_pass_day():
+		say(tr("Your fight is tonight."), "error")
+		return
+	time_begin()
+	GameData.skip_wednesday()
 	refresh()
+	time_end()
 
 
 func _on_cal_month(step: int) -> void:
@@ -3526,12 +3828,125 @@ func table_row(cells: Array, widths: Array, col: Color, bg: Color) -> void:
 
 
 func _on_rest() -> void:
-	say(GameData.rest_week() + bills_text(), "click")
+	time_begin()
+	var t := GameData.rest_week()
 	refresh()
+	if not time_end():
+		say(t, "error")
 
 
 func _on_skip() -> void:
 	say(GameData.skip_to_next_event() + bills_text(), "click")
+
+
+# ---------------------------------------------------------------- time passing
+# Jumping ahead isn't a blink: a window shows the clock running, a bar filling one block per
+# shift that went by, and then what happened meanwhile (work done, bills, mail, the town).
+
+var tp := {}   # the world as it was when the clock started moving
+
+
+func clock_steps() -> int:
+	return ((GameData.year * 52 + GameData.week) * 7 + GameData.day_index()) * 3 + GameData.phase
+
+
+func job_label(j: Dictionary) -> String:
+	var p := GameData.inst(int(j["uid"]))
+	var n: String = GameData.part_def(p["id"])["name"] if not p.is_empty() else "?"
+	if j["kind"] == "repair":
+		return tr("%s is fixed.") % n
+	return tr("%s is bolted on (%s).") % [n, tr(GameData.SLOT_NAMES.get(j["slot"], ""))]
+
+
+func time_begin() -> void:
+	var jobs := {}
+	for j in GameData.jobs:
+		jobs["%s/%d/%s/%s" % [j["kind"], int(j["uid"]), j["robot"], j["slot"]]] = job_label(j)
+	tp = {"steps": clock_steps(), "jobs": jobs, "money": GameData.money, "bills": GameData.bills_note,
+			"pending": GameData.pending_talk.size(), "news": (GameData.world.get("news", []) as Array).size(),
+			"week": GameData.week, "label": date_label()}
+
+
+func date_label() -> String:
+	return tr("%s %s · WEEK %d") % [tr(DAY_FULL_UP[GameData.day_index()]), tr(GameData.PHASE_NAMES[GameData.phase]), GameData.week]
+
+
+## The clock has moved: the window that shows it. False if no time went by.
+func time_end() -> bool:
+	if tp.is_empty():
+		return false
+	var steps: int = clock_steps() - int(tp["steps"])
+	if steps <= 0:
+		tp = {}
+		return false
+	var lines: Array = []   # [text, colour]
+	# work on the board
+	var still := {}
+	for j in GameData.jobs:
+		still["%s/%d/%s/%s" % [j["kind"], int(j["uid"]), j["robot"], j["slot"]]] = true
+	for k in tp["jobs"]:
+		if not still.has(k):
+			lines.append([str(tp["jobs"][k]), GUI.GREEN])
+	if not GameData.jobs.is_empty():
+		lines.append([tr("Still on the board: %d jobs.") % GameData.jobs.size() if GameData.jobs.size() != 1 else tr("Still on the board: 1 job."), GUI.CYAN])
+	# money
+	if GameData.bills_note > int(tp["bills"]):
+		lines.append([(tr("Rent and food: -$%d.") if GameData.rank_index() < 2 else tr("Rent, crew and travel: -$%d.")) % (GameData.bills_note - int(tp["bills"])), GUI.RED])
+		GameData.bills_note = 0
+	if GameData.week != int(tp["week"]):
+		lines.append([tr("Sunday: the dealer restocked and fresh junk came into the scrapyard."), GUI.AMBER])
+	# mail and the town
+	var mail: int = GameData.pending_talk.size() - int(tp["pending"])
+	if mail > 0:
+		lines.append([tr("%d new messages. Gus will pass them on.") % mail if mail != 1 else tr("A new message. Gus will pass it on."), GUI.YELLOW])
+	var news: Array = GameData.world.get("news", [])
+	var fresh: int = mini(news.size() - int(tp["news"]), 4)
+	for i in range(news.size() - fresh, news.size()):
+		if i >= 0:
+			lines.append([GameData.World.news_text(news[i]), GUI.MUTED])
+	if lines.is_empty():
+		lines.append([tr("A quiet stretch. Nothing much happened."), GUI.MUTED])
+	var from_label: String = tp["label"]
+	tp = {}
+	show_time_passing(from_label, steps, lines)
+	return true
+
+
+func show_time_passing(from_label: String, steps: int, lines: Array) -> void:
+	var col := open_popup(tr("TIME PASSES"))
+	var clock := GUI.readout(from_label, 26, GUI.GREEN)
+	col.add_child(clock)
+	var bar := GUI.BlockBar.new()   # one block per shift (morning, afternoon, evening)
+	bar.block_w = 14.0 if steps <= 21 else 7.0
+	bar.setup(0.0, 1.0, float(steps), GUI.AMBER)
+	col.add_child(bar)
+	col.add_child(GUI.text(tr("1 block = one part of a day (morning, afternoon, evening)"), 11, GUI.MUTED, "headb"))
+	var list := VBoxContainer.new()
+	list.add_theme_constant_override("separation", 4)
+	list.modulate.a = 0.0
+	col.add_child(list)
+	for l in lines:
+		var t := GUI.text("• " + str(l[0]), 15, l[1])
+		t.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		t.custom_minimum_size = Vector2(560, 0)
+		list.add_child(t)
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 10)
+	col.add_child(row)
+	var msgs := UI.button(tr("BotMedia"), func(): close_popup(); _on_tab("Feed"), 16, Vector2(0, 46))
+	msgs.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.add_child(msgs)
+	var ok := UI.button(tr("OK"), close_popup, 16, Vector2(0, 46))
+	ok.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.add_child(ok)
+	var to_label := date_label()
+	var dur := clampf(0.25 * steps, 0.5, 2.5)
+	var tw := bar.create_tween()   # dies with the window if you close it early
+	tw.tween_method(bar.set_fill, 0.0, float(steps), dur)
+	tw.tween_callback(func():
+		clock.text = to_label
+		Sfx.play("time", 0.0, -8.0))
+	tw.tween_property(list, "modulate:a", 1.0, 0.3)
 
 
 func bills_text() -> String:
@@ -3676,6 +4091,14 @@ func _on_tab(t: String) -> void:
 
 ## Tapping a trophy on the bay's shelf: zoom in on it.
 func _on_backdrop_tapped(pos: Vector2) -> void:
+	if scene == "phone":
+		# the gear shelf behind your pilot: tap a controller to look at it
+		for sp in GarageArt.gear_spots(preview.size, GameData.owned_controllers):
+			if Rect2(Vector2(sp[1]) + Vector2(-22, -18), Vector2(44, 36)).has_point(pos):
+				Sfx.play("click")
+				open_controller(str(sp[0]))
+				return
+		return
 	if scene != "build":
 		return
 	for s in GarageArt.trophy_spots(preview.size, GameData.trophies.size()):
@@ -4029,7 +4452,7 @@ func _on_repair(uid: int) -> void:
 	spark_at = Time.get_ticks_msec() / 1000.0
 	var before := GameData.money
 	var text := GameData.repair(uid)
-	say(text, "repair" if GameData.money < before else "error")
+	say(text, "repair" if GameData.money < before or GameData.has_work("m") else "error")
 	refresh()
 
 

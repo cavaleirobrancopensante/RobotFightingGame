@@ -39,6 +39,13 @@ const SCENES := {
 		["GUS", "The Open Trials are on Saturday. Thirty-two nobodies, two rounds. Win both and we're in the Scrap League this year."],
 	]},
 
+	"first_fight": {"place": "THE RUSTY BOLT", "lines": [
+		["GUS", "No time like tonight. There's a scrapper at the Rusty Bolt who'll fight anybody for a hundred bucks."],
+		["GUS", "Old Pike. Slow, half blind, robot made of fence posts. Perfect for your first go."],
+		["GUS", "I'll be in your corner. When I shout, the fight stops so you can hear me. Listen."],
+		["GUS", "{PC_KEYS}"],
+	]},
+
 	"pre_0": {"place": "THE SCRAP HEAP RING", "lines": [
 		["MARGO", "Margo, TIN CAN's pilot. Cute antique, rookie. Don't cry when I knock the bolts out of it."],
 		["GUS", "{PC_KEYS}"],
@@ -282,7 +289,7 @@ const SCENES := {
 	]},
 	"unlock_pilot": {"place": "GUS'S BAY", "lines": [
 		["GUS", "People recognise you in the street now, kid. Time you looked like a pilot and not like my nephew."],
-		["GUS", "Look under Crew, Pilot. Get a jacket, a haircut, whatever. And the dealer's started carrying controllers. The fancy ones change how the robot handles."],
+		["GUS", "Your BotMedia profile, that's where you fix your look. Get a jacket, a haircut, whatever. And the dealer's started carrying controllers, under Crew. The fancy ones change how the robot handles."],
 	]},
 	"unlock_paint": {"place": "GUS'S BAY", "lines": [
 		["GUS", "We're still running ECHO in your dad's old primer. The crowd cheers for robots they can pick out from the cheap seats."],

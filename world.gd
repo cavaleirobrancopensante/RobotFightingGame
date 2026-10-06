@@ -117,7 +117,7 @@ static func active(tier: String = "") -> Array:
 static func news(text: String, args: Array = []) -> void:
 	var n: Array = w()["news"]
 	n.append({"y": GameData.year, "w": GameData.week, "text": text, "args": args})
-	if n.size() > 40:
+	if n.size() > 120:
 		n.pop_front()
 
 
@@ -627,7 +627,7 @@ static func month_passed(rng: RandomNumberGenerator, busy: Dictionary) -> void:
 				var spent := int(budget - left)
 				if spent > 0:
 					p["cash"] = int(p["cash"]) - spent   # (the price difference: the old part is traded in)
-					if spent >= 500:
+					if spent >= int(VALUE_CAP.get(tier, 3000.0) * 0.35):   # only the big spends make the news
 						news("%s spent $%s upgrading %s.", [p["name"], str(spent), p["bot"]["name"]])
 		elif int(p["cash"]) < -living * 2:
 			sell_off(rng, p)
@@ -777,6 +777,9 @@ static func busy_ids() -> Dictionary:
 static func news_text(n: Dictionary) -> String:
 	var args: Array = []
 	for a in n.get("args", []):
+		if typeof(a) == TYPE_INT or typeof(a) == TYPE_FLOAT:
+			args.append(int(a))
+			continue
 		var s := str(a)
 		if s.begins_with("part:"):
 			args.append(str(GameData.part_def(s.substr(5)).get("name", "?")))

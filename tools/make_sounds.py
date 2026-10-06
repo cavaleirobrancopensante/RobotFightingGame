@@ -161,11 +161,13 @@ save("spark", mix(env(lowpass(noise(0.05), 0.8), decay=0.01), env(osc((3000, 120
 
 # character voices (Sfx.VOICE_OF picks one per speaker, plus a pitch)
 growl = np.repeat(rng.uniform(0.4, 1.0, 8), int(RATE * 0.06) // 8 + 1)[: int(RATE * 0.06)]
-save("voice_gravel", env(mix(lowpass(osc((120, 104), 0.06, "saw"), 0.35) * growl,
-                             lowpass(noise(0.06), 0.25) * 0.35), decay=0.04), 0.4)
+# Gus: gravelly but pitched where phone speakers can play it (a 120 Hz growl was lost on phones)
+save("voice_gravel", env(mix(lowpass(osc((200, 172), 0.06, "saw"), 0.75) * growl,
+                             osc((200, 172), 0.06, "square") * 0.18 * growl,
+                             lowpass(noise(0.06), 0.4) * 0.3), decay=0.04), 0.45)
 save("voice_high", env(mix(osc((540, 500), 0.04, "tri"), osc((540, 500), 0.04) * 0.25), decay=0.025), 0.28)
 save("voice_smooth", env(mix(osc((300, 285), 0.055, "sine"), osc((600, 570), 0.055, "sine") * 0.25), decay=0.04), 0.35)
 save("voice_nasal", env(lowpass(osc((360, 340), 0.045, "saw"), 0.5), decay=0.03), 0.3)
-save("voice_boom", env(mix(lowpass(osc((170, 150), 0.07, "saw"), 0.4), osc((85, 75), 0.07) * 0.35), decay=0.05), 0.4)
+save("voice_boom", env(mix(lowpass(osc((210, 185), 0.07, "saw"), 0.7), osc((105, 92), 0.07) * 0.3), decay=0.05), 0.42)
 
 print("sounds written to", os.path.abspath(OUT))

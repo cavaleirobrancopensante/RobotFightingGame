@@ -337,6 +337,11 @@ class RailButton extends Button:
 				draw_arc(c + Vector2(7, -3), 3.0, 0, TAU, 12, col, w)
 				draw_arc(c + Vector2(-4, 11), 8.0, PI, TAU, 12, col, w)
 				draw_arc(c + Vector2(8, 11), 6.0, PI * 1.2, TAU, 10, col, w)
+			"feed":   # a phone with a speech bubble: messages
+				draw_rect(Rect2(c + Vector2(-8, -12), Vector2(16, 24)), col, false, w)
+				draw_line(c + Vector2(-3, 9), c + Vector2(3, 9), col, w)
+				draw_rect(Rect2(c + Vector2(-4, -6), Vector2(8, 6)), col, false, 1.5)
+				draw_line(c + Vector2(-2, 0), c + Vector2(-4, 3), col, 1.5)
 			"menu":
 				for k in 3:
 					draw_line(c + Vector2(-10, -7 + k * 7), c + Vector2(10, -7 + k * 7), col, w)
@@ -446,15 +451,66 @@ class TalkBox extends PanelContainer:
 			draw_colored_polygon(PackedVector2Array([Vector2(x - 9, from_y), Vector2(x + 9, from_y), tail]), c)
 
 
+## Gus's tour: a fat yellow arrow bouncing next to what you should tap, with a pulsing frame
+## round it. It sits beside the target and points at it from wherever there's room.
+class TourArrow extends Control:
+	var target := Rect2()
+
+	func _process(_d: float) -> void:
+		if visible:
+			queue_redraw()
+
+	func _draw() -> void:
+		var t := Time.get_ticks_msec() / 1000.0
+		var bob := sin(t * 6.0) * 8.0
+		var c := target.get_center()
+		var yellow := Color(0.95, 0.76, 0.19)
+		var pulse := 0.5 + 0.5 * sin(t * 6.0)
+		draw_rect(target.grow(4.0 + pulse * 3.0), Color(yellow, 0.5 + 0.5 * pulse), false, 3.0)
+		# which way to point: from the side with the most room
+		var dir := Vector2.LEFT if c.x < size.x * 0.2 else (Vector2.DOWN if c.y > size.y * 0.7 else (Vector2.UP if c.y < size.y * 0.2 else Vector2.RIGHT))
+		var tip: Vector2
+		match dir:
+			Vector2.LEFT:   # target on the left rail: arrow to its right, pointing left
+				tip = Vector2(target.end.x + 10.0 + bob, c.y)
+			Vector2.DOWN:   # target at the bottom: arrow above it, pointing down
+				tip = Vector2(c.x, target.position.y - 10.0 - bob)
+			Vector2.UP:     # target at the top: arrow below it, pointing up
+				tip = Vector2(c.x, target.end.y + 10.0 + bob)
+			_:
+				tip = Vector2(target.position.x - 10.0 - bob, c.y)
+		var back := -dir if dir != Vector2.RIGHT else Vector2.LEFT
+		if dir == Vector2.RIGHT:
+			back = Vector2.LEFT
+		var along := back   # from the tip back along the arrow's body
+		var side := along.orthogonal()
+		var head := PackedVector2Array([tip, tip + along * 26.0 + side * 20.0, tip + along * 26.0 - side * 20.0])
+		var body := PackedVector2Array([tip + along * 24.0 + side * 9.0, tip + along * 70.0 + side * 9.0, tip + along * 70.0 - side * 9.0, tip + along * 24.0 - side * 9.0])
+		for poly in [head, body]:
+			var sh := PackedVector2Array()
+			for p in poly:
+				sh.append(p + Vector2(3, 4))
+			draw_colored_polygon(sh, Color(0, 0, 0, 0.45))
+		draw_colored_polygon(body, yellow)
+		draw_colored_polygon(head, yellow)
+		draw_polyline(PackedVector2Array([head[0], head[1], head[2], head[0]]), Color(0.08, 0.08, 0.08), 2.0)
+
+
 ## The ✓ button (drawn, so it doesn't depend on the font having the glyph).
 class CheckMark extends Button:
+	var count := 0   # lines waiting behind this one
+
 	func _init() -> void:
-		custom_minimum_size = Vector2(38, 30)
+		custom_minimum_size = Vector2(56, 30)
 		focus_mode = Control.FOCUS_NONE
 
 	func _draw() -> void:
-		var c := size * 0.5
+		var c := size * 0.5 - Vector2(8 if count > 0 else 0, 0)
 		draw_polyline(PackedVector2Array([c + Vector2(-8, 0), c + Vector2(-2, 6), c + Vector2(9, -6)]), Color(0.553, 1.0, 0.651), 3.0, true)
+		if count > 0:
+			var r := Rect2(Vector2(size.x - 24, size.y * 0.5 - 10), Vector2(20, 20))
+			draw_circle(r.get_center(), 10.0, Color(0.95, 0.76, 0.19))
+			draw_string(ThemeDB.fallback_font, Vector2(r.position.x, r.end.y - 5), str(mini(count, 99)), HORIZONTAL_ALIGNMENT_CENTER, 20, 12 if count < 10 else 10, Color(0.08, 0.08, 0.1))
 
 
 ## How long a line stays up: a thin bar that runs down.

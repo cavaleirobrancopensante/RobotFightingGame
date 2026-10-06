@@ -165,6 +165,8 @@ func _ready() -> void:
 	Sfx.music("anthem" if GameData.story_key == "post_9" else "story")
 	var scene: Dictionary = Story.SCENES.get(GameData.story_key, {"place": "", "lines": []})
 	lines = build_screens(scene["lines"])
+	for l in lines:
+		GameData.log_talk(str(l[0]), str(l[1]), "story")
 	UI.background(self)
 	var m := UI.margin(self, 24)
 	var col := VBoxContainer.new()
@@ -326,6 +328,13 @@ func _finish() -> void:
 		GameData.save_game()
 		get_tree().change_scene_to_file("res://story.tscn")
 		return
+	if GameData.story_key == "intro" and GameData.wins + GameData.losses == 0 and GameData.rank == "open":
+		# a new game: a few words, then straight into a coached pickup fight. The bay comes after.
+		GameData.start_first_fight()
+		if GameData.queue_story("first_fight", "res://fight.tscn"):
+			GameData.save_game()
+			get_tree().change_scene_to_file("res://story.tscn")
+			return
 	if GameData.story_key == "intro" and GameData.wins + GameData.losses == 0 and GameData.current_opponent_index() == 0 \
 			and GameData.queue_story("pre_0", "res://fight.tscn"):
 		GameData.save_game()

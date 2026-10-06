@@ -3790,7 +3790,7 @@ var late_call := false
 
 
 func first_fight() -> bool:
-	return mode == "story" and GameData.wins + GameData.losses == 0
+	return (mode == "story" or mode == "pickup") and GameData.wins + GameData.losses == 0
 
 
 ## Gus started saying something: in your first fight, the first few stop the action.

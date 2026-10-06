@@ -55,6 +55,22 @@ static func _environment(ci: CanvasItem, screen: Vector2, floor_y: float, scene:
 		_scrap_pile(ci, Vector2(screen.x * 0.62, floor_y), screen.x * 0.3, floor_y * 0.45, t)
 		_scrap_pile(ci, Vector2(screen.x * 0.95, floor_y), screen.x * 0.2, floor_y * 0.6, t + 3.0)
 		ci.draw_rect(Rect2(0, floor_y, screen.x, screen.y - floor_y), Color(0.25, 0.2, 0.15))
+	elif scene == "phone":
+		# night, your room above the bay: dark walls, the city through the window
+		ci.draw_rect(Rect2(Vector2.ZERO, screen), Color(0.06, 0.06, 0.1))
+		var win := Rect2(screen.x * 0.03, screen.y * 0.12, screen.x * 0.22, floor_y * 0.55)
+		ci.draw_rect(win, Color(0.08, 0.1, 0.2))
+		for k in 9:
+			var bx := win.position.x + k * win.size.x / 9.0
+			var bh := win.size.y * (0.3 + 0.5 * fmod(k * 0.37, 1.0))
+			ci.draw_rect(Rect2(bx, win.end.y - bh, win.size.x / 9.0 - 2.0, bh), Color(0.12, 0.13, 0.2))
+			for j in 4:
+				if fmod(k * 7.0 + j * 3.0 + floor(t * 0.3), 5.0) < 2.0:
+					ci.draw_rect(Rect2(bx + 3.0, win.end.y - bh + 6.0 + j * 10.0, 4.0, 4.0), Color(1.0, 0.85, 0.45, 0.7))
+		ci.draw_rect(win, Color(0.25, 0.25, 0.3), false, 4.0)
+		ci.draw_line(Vector2(win.get_center().x, win.position.y), Vector2(win.get_center().x, win.end.y), Color(0.25, 0.25, 0.3), 3.0)
+		# a neon glow from the street (the Rusty Bolt's sign), pulsing
+		ci.draw_circle(Vector2(win.end.x, win.position.y), screen.x * 0.12, Color(0.9, 0.2, 0.35, 0.05 + 0.03 * sin(t * 2.0)))
 	elif SCENE_COLORS.has(scene):
 		var c: Array = SCENE_COLORS[scene]
 		if scene == "pub":
@@ -68,7 +84,7 @@ static func _environment(ci: CanvasItem, screen: Vector2, floor_y: float, scene:
 			_wall(ci, screen, floor_y, c[0], c[1], c[2])
 	else:
 		ci.draw_rect(Rect2(Vector2.ZERO, screen), Color(0.12, 0.12, 0.17))
-	if scene != "scrap":
+	if scene != "scrap" and scene != "phone":
 		ci.draw_line(Vector2(0, floor_y), Vector2(screen.x, floor_y), Color(0.4, 0.4, 0.45), 2.0)
 
 
@@ -120,7 +136,7 @@ static func _props_back(ci: CanvasItem, size: Vector2, scene: String, t: float, 
 					ci.draw_rect(Rect2(bx + 4, w.end.y - bh + 6, 3, 3), Color(1.0, 0.85, 0.4))
 			ci.draw_rect(w, Color(0.35, 0.35, 0.4), false, 3.0)
 		"workshop":
-			_sign(ci, Vector2(size.x * 0.3, 30), I18n.t("CUSTOM ORDERS"), Color(0.6, 0.85, 1.0))
+			_sign(ci, Vector2(size.x * 0.8, 30), I18n.t("CUSTOM ORDERS"), Color(0.6, 0.85, 1.0))
 			# shelves of parts
 			for row in 2:
 				var y := 50.0 + row * 34.0
@@ -173,7 +189,7 @@ static func _props_back(ci: CanvasItem, size: Vector2, scene: String, t: float, 
 			ci.draw_string(f, b.position + Vector2(8, 48), I18n.t("← → K"), HORIZONTAL_ALIGNMENT_LEFT, -1, 18, Color(0.9, 0.9, 0.85, 0.8))
 			ci.draw_rect(Rect2(size.x * 0.45, floor_y - 6, size.x * 0.4, 6), Color(0.3, 0.3, 0.35))   # practice mat
 		"team":
-			_sign(ci, Vector2(size.x * 0.5, 30), I18n.t("TEAM"), Color(0.5, 0.8, 1.0))
+			_sign(ci, Vector2(size.x * 0.8, 30), I18n.t("TEAM"), Color(0.5, 0.8, 1.0))
 			# the crew bay: a gantry for each robot - the main one, and the backup's beside it
 			var spot: Array = ROBOT_SPOT["team"]
 			var rh: float = size.y * float(spot[1]) - 10.0
@@ -183,7 +199,7 @@ static func _props_back(ci: CanvasItem, size: Vector2, scene: String, t: float, 
 			if GameData.gantries >= 2:
 				_frame(ci, size.x * 0.08, rh * 0.3, floor_y - rh * 0.72 - 26.0, floor_y)
 		"storage":
-			_sign(ci, Vector2(size.x * 0.5, 30), I18n.t("STOREROOM"), Color(0.95, 0.75, 0.4))
+			_sign(ci, Vector2(size.x * 0.8, 30), I18n.t("STOREROOM"), Color(0.95, 0.75, 0.4))
 			_lamp(ci, Vector2(size.x * 0.42, 0), size, t)
 			# crates stacked to the ceiling at the back
 			var cw := 46.0
@@ -338,6 +354,8 @@ static func _front(ci: CanvasItem, size: Vector2, scene: String, t: float, info:
 			_head(info, "GUS", Vector2(size.x * 0.84, floor_y), s * 0.95)
 		"pub":
 			_pub_front(ci, size, floor_y, s, t, info)
+		"phone":
+			_phone_closeup(ci, size, t, info)
 		"office":
 			# Gus at the desk going through the fixtures; you at the board
 			var dx := size.x * 0.62
@@ -467,7 +485,7 @@ static func _office_back(ci: CanvasItem, size: Vector2, floor_y: float, t: float
 	ci.draw_arc(cc, 18, 0, TAU, 24, Color(0.2, 0.2, 0.2), 2.0)
 	ci.draw_line(cc, cc + Vector2(cos(t * 0.1 - PI / 2), sin(t * 0.1 - PI / 2)) * 13, Color(0.15, 0.15, 0.15), 2.0)
 	ci.draw_line(cc, cc + Vector2(cos(t * 1.2 - PI / 2), sin(t * 1.2 - PI / 2)) * 15, Color(0.8, 0.1, 0.1), 1.0)
-	_sign(ci, Vector2(size.x * 0.5, 30), I18n.t("GUS'S OFFICE"), Color(0.85, 0.9, 0.45))
+	_sign(ci, Vector2(size.x * 0.8, 30), I18n.t("GUS'S OFFICE"), Color(0.85, 0.9, 0.45))
 
 
 # ---------------------------------------------------------------- The Rusty Bolt (the Bets screen)
@@ -672,6 +690,78 @@ static func _pub_front(ci: CanvasItem, size: Vector2, floor_y: float, s: float, 
 
 
 ## Remember where a person's head is (stage coordinates), so the garage can point speech bubbles at it.
+## Your gear shelf in BotMedia's room: [controller id, centre] for every controller you own.
+static func gear_spots(size: Vector2, owned: Array) -> Array:
+	var out: Array = []
+	for i in owned.size():
+		var row := i / 3
+		var col := i % 3
+		out.append([owned[i], Vector2(size.x * (0.69 + col * 0.075), size.y * (0.1 + row * 0.15))])
+	return out
+
+
+static func _gear_shelf(ci: CanvasItem, size: Vector2, t: float, info: Dictionary) -> void:
+	var owned: Array = info.get("controllers", [])
+	var using: String = str(info.get("using", ""))
+	var rows := int(ceil(owned.size() / 3.0))
+	for row in maxi(1, rows):
+		var y := size.y * (0.1 + row * 0.15) + 12.0
+		ci.draw_rect(Rect2(size.x * 0.645, y, size.x * 0.24, 5), Color(0.45, 0.32, 0.2))
+		ci.draw_rect(Rect2(size.x * 0.655, y + 5, 4, 8), Color(0.3, 0.22, 0.14))
+		ci.draw_rect(Rect2(size.x * 0.87, y + 5, 4, 8), Color(0.3, 0.22, 0.14))
+	for sp in gear_spots(size, owned):
+		var on: bool = str(sp[0]) == using
+		if on:
+			ci.draw_circle(sp[1], 20.0, Color(0.95, 0.76, 0.19, 0.18 + 0.08 * sin(t * 3.0)))
+		PilotArt.draw_controller(ci, sp[1], 0.85, str(sp[0]), on, t)
+
+
+## BotMedia: a close-up of your pilot from the front, face lit blue by the phone in both hands.
+static func _phone_closeup(ci: CanvasItem, size: Vector2, t: float, info: Dictionary) -> void:
+	_gear_shelf(ci, size, t, info)
+	var look: Dictionary = PilotArt.normalize(info.get("pilot", {}))
+	var r := size.y * 0.19
+	var c := Vector2(size.x * 0.4, size.y * 0.4)
+	var outfit := Color(look.get("outfit", "#3e5c4f"))
+	var skin := Color(look.get("skin", "#c8946e"))
+	# shoulders and chest fill the bottom of the frame
+	var body := PackedVector2Array([Vector2(c.x - r * 2.1, size.y), Vector2(c.x - r * 1.75, c.y + r * 1.35), Vector2(c.x - r * 0.5, c.y + r * 1.05),
+			Vector2(c.x + r * 0.5, c.y + r * 1.05), Vector2(c.x + r * 1.75, c.y + r * 1.35), Vector2(c.x + r * 2.1, size.y)])
+	ci.draw_colored_polygon(body, outfit)
+	ci.draw_rect(Rect2(c.x - r * 0.3, c.y + r * 0.75, r * 0.6, r * 0.4), skin.darkened(0.12))   # neck
+	if look.get("female", false):
+		for side in [-1.0, 1.0]:
+			ci.draw_arc(c + Vector2(side * r * 0.62, r * 1.85), r * 0.42, PI * 0.15, PI * 0.85, 12, outfit.darkened(0.45), maxf(1.5, r * 0.05))
+	# the head, tipped down a touch toward the screen
+	PilotArt.draw_head(ci, c, r, look, 0.0, 2.0)
+	# eyes on the screen: lids half down, pupils low
+	if str(look.get("glasses", "none")) in ["none", "round"]:
+		for side in [-1.0, 1.0]:
+			var e := c + Vector2(side * r * 0.33, -r * 0.08)
+			ci.draw_rect(Rect2(e.x - r * 0.16, e.y - r * 0.17, r * 0.32, r * 0.15), skin)
+			ci.draw_line(Vector2(e.x - r * 0.15, e.y - r * 0.02), Vector2(e.x + r * 0.15, e.y - r * 0.02), skin.darkened(0.45), maxf(1.5, r * 0.04))
+			ci.draw_circle(e + Vector2(0, r * 0.06), r * 0.075, Color(look.get("eyes", "#5b3a1e")))
+	# glow from the screen on the face
+	ci.draw_circle(c + Vector2(0, r * 0.45), r * 0.95, Color(0.45, 0.75, 1.0, 0.12 + 0.03 * sin(t * 3.0)))
+	# arms come up from the elbows to the phone held in front of the chest
+	var ph := Rect2(c.x - r * 0.62, c.y + r * 1.55, r * 1.24, r * 1.9)
+	for side in [-1.0, 1.0]:
+		var elbow := Vector2(c.x + side * r * 1.7, size.y + r * 0.2)
+		var hand := Vector2(c.x + side * r * 0.62, ph.position.y + ph.size.y * 0.62)
+		ci.draw_line(elbow, hand, outfit.darkened(0.15), r * 0.42)
+	# the back of the phone (the screen faces your pilot): plain black, a camera lens in the corner
+	ci.draw_rect(ph.grow(r * 0.04), Color(0.03, 0.03, 0.04))
+	ci.draw_rect(ph, Color(0.07, 0.07, 0.08))
+	ci.draw_circle(ph.position + Vector2(r * 0.22, r * 0.22), r * 0.09, Color(0.02, 0.02, 0.03))
+	ci.draw_circle(ph.position + Vector2(r * 0.22, r * 0.22), r * 0.05, Color(0.12, 0.14, 0.2))
+	# thumbs on the screen edge
+	for side in [-1.0, 1.0]:
+		ci.draw_circle(Vector2(c.x + side * r * 0.6, ph.position.y + ph.size.y * 0.6), r * 0.17, skin)
+	if not info.has("heads"):
+		info["heads"] = {}
+	info["heads"]["YOU"] = c + Vector2(r * 0.6, -r * 0.9)
+
+
 static func _head(info: Dictionary, who: String, feet: Vector2, s: float, sitting: bool = false) -> void:
 	if not info.has("heads"):
 		info["heads"] = {}

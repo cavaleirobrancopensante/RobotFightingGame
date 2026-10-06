@@ -2,7 +2,7 @@ extends Node
 
 # helper scripts, loaded by path so the game also runs without an editor scan
 ## The game's version, shown on the main menu. Bump it with every change (1.1, 1.2, ...).
-const VERSION := "1.28"
+const VERSION := "1.29"
 const Arena = preload("res://arena.gd")
 const I18n = preload("res://i18n.gd")
 const Catalog = preload("res://catalog.gd")
@@ -295,6 +295,10 @@ var h2h: Dictionary = {}        # world pilot wid -> [your wins, your losses] ag
 var rivals: Array = []          # wids of the pilots who've become your rivals
 var grudge: Dictionary = {}     # wid -> [how much you resent them, how much they resent you]
 var pending_talk: Array = []    # emergent lines waiting for the garage (hate mail etc.)
+var inbox: Array = []           # everything anyone said to you, oldest first: {y, w, d, ph, who, text, kind, look}
+const INBOX_MAX := 400
+var tour := -1                  # Gus's tour of the bay after the first fight: the step you're on (-1 = done / none)
+var inbox_seen := 0             # how much of the inbox you've looked at (the rail shows a star for new)
 const GRUDGE_LINE := 3.0        # past this, it's a rivalry (one-sided if only one of you is past it)
 var streak := 0                 # + wins in a row, - losses in a row
 var pub_seen := ""              # the day you last walked into The Rusty Bolt (the patron says hi once)
@@ -531,6 +535,9 @@ func new_game() -> void:
 	rivals = []
 	grudge = {}
 	pending_talk = []
+	inbox = []
+	inbox_seen = 0
+	tour = 0
 	streak = 0
 	pub_seen = ""
 	digs_left = DIGS_PER_FIGHT
@@ -842,6 +849,8 @@ func repair_all() -> String:
 	var c := repair_all_cost()
 	if c == 0:
 		return "Your robot is in perfect shape." if not has_work("m") else "Everything's already on the job board."
+	if tour == 0:
+		c = 0   # Gus's tour, first stop: this one's on the house
 	if not can_repair(c):
 		return tr("Repairing everything costs $%d. You don't have the cash. Fix the worst parts one at a time, or fight with the dents.") % c
 	var h := 0.0
@@ -850,6 +859,8 @@ func repair_all() -> String:
 		if not p.is_empty() and repair_cost(p) > 0:
 			h += queue_repair(p)
 	money -= c
+	if c == 0:
+		return tr("On the house, kid. About %s of work on the board.") % hours_text(h)
 	return tr("Everything's on the job board: $%d, about %s of work.") % [c, hours_text(h)]
 
 
@@ -1901,6 +1912,23 @@ func pub_greeting() -> Array:
 	return [pilot_line(wid, tr(Talk.pick(list, stamp)) % pilot_name)]
 
 
+## The very first fight of a new game: a coached pickup against Old Pike, the gutter's softest
+## touch (junk robot, slow hands). Monday evening at the Rusty Bolt.
+func start_first_fight() -> void:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 7
+	var bot := random_bot(rng, 0.0, 0.0)
+	for slot in bot["parts"].keys():
+		bot["parts"][slot] = {"head": "junk_head_box", "torso": "junk_torso_crate", "arm_front": "junk_arm", "arm_back": "junk_arm",
+				"leg_front": "junk_leg_thick", "leg_back": "junk_leg_thick", "reactor": "junk_reactor"}.get(slot, bot["parts"][slot])
+	bot.erase("back")
+	bot["parts"].erase("back")
+	bot.merge({"name": "FENCEPOST", "pilot": "OLD PIKE", "hp": 0.75, "damage": 0.7, "speed": 0.85, "think": 0.9, "block": 0.05, "smart": 0.0,
+			"specials": [], "style": "striker", "body": "#6b5d4c", "trim": "#3a332b", "eye": "#ffcc33"}, true)
+	pickup = {"enemy": bot, "week": week, "year": year, "tier": "open", "first": true}
+	phase = 2   # the bell's tonight
+
+
 ## There's always a pickup fight going: whoever is in the pub today.
 func start_pickup(wid: int = -1) -> void:
 	var rng := RandomNumberGenerator.new()
@@ -2014,6 +2042,21 @@ func skip_to_day(idx: int) -> String:
 const DAY_FULL := ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
 
 
+## Every line anyone says to you goes in the inbox (Messages): kind = story / talk (pilots,
+## hate mail, pub) / gus (his remarks on what you do) / news.
+func log_talk(who: String, text: String, kind: String, look: Dictionary = {}) -> void:
+	if text.strip_edges() == "":
+		return
+	if not inbox.is_empty() and inbox[-1]["text"] == text and inbox[-1]["who"] == who:
+		return
+	var e := {"y": year, "w": week, "d": day, "ph": phase, "who": who, "text": text, "kind": kind}
+	if not look.is_empty():
+		e["look"] = look
+	inbox.append(e)
+	if inbox.size() > INBOX_MAX:
+		inbox = inbox.slice(inbox.size() - INBOX_MAX)
+
+
 ## Kept for old callers: let Wednesday go.
 func skip_wednesday() -> String:
 	return pass_day()
@@ -2024,6 +2067,7 @@ func skip_wednesday() -> String:
 func advance_week(n: int = 1) -> void:
 	for k in n:
 		World.week_passed(year, week, World.busy_ids())   # the rest of Port Ferrum fights and shops too
+		weekly_rumour()
 		if week % MONTH_WEEKS == 0:
 			money -= living_cost()   # end of the month: cost of living
 			bills_note += living_cost()
@@ -2210,6 +2254,40 @@ func ensure_event() -> void:
 
 ## Every division whose league night has gone by plays its round (yours is played by your fight;
 ## if you somehow missed yours, it's a forfeit). Bets on those fights are settled.
+## BotMedia's sports desk: who's on top of the big leagues after a round.
+func league_news(stage: String, ev: Dictionary) -> void:
+	if not ["steel", "iron", "title"].has(stage) or ev.get("phase", "") == "done":
+		return
+	var order: Array = Career.standings(ev)
+	if order.is_empty():
+		return
+	var top: Dictionary = Career.pilot(ev, int(order[0]))
+	if stage == "title":
+		World.news("Titanium Championship: %s is still standing.", [str(top.get("pilot", "?"))])
+		return
+	var pts: int = int(ev["table"].get(str(order[0]), [0])[0])
+	World.news("%s, round %d: %s leads the table, %d pts.", ["stage:" + stage, int(ev["round"]), str(top.get("pilot", "?")), pts])
+
+
+## Rumours from the docks, one most weeks: who's broke, who's spending, who Kane is watching.
+const RUMOURS := [
+	"Rumour at the docks: %s was seen at the dealer's with a fat wallet.",
+	"They say %s is sleeping in the garage to save on rent.",
+	"Kane scouts were spotted in the stands watching %s.",
+	"Word is %s wants a rematch with somebody. Nobody will say who.",
+	"%s's crew walked out over unpaid wages. Or so they say.",
+	"Somebody saw %s at the scrapyard at 3 a.m., digging.",
+]
+
+
+func weekly_rumour() -> void:
+	var all := World.active()
+	if all.is_empty() or randf() > 0.6:
+		return
+	var p: Dictionary = all[randi() % all.size()]
+	World.news(RUMOURS[randi() % RUMOURS.size()], [str(p["name"])])
+
+
 func catch_up_leagues() -> Array:
 	var lines: Array = []
 	for stage in leagues:
@@ -2237,6 +2315,7 @@ func catch_up_leagues() -> Array:
 				bets = bets.filter(func(b): return b["on"] != "event")
 				continue
 			Career.play_npc_round(ev)
+			league_news(stage, ev)
 			lines += settle_bets("div:" + stage, ev)["lines"]
 	if trials_over() and not leagues.has("scrap") and not leagues.is_empty():
 		build_scrap()
@@ -2933,13 +3012,13 @@ func dig_scrap(kind: String = "") -> Dictionary:
 	var name: String = part_def(id)["name"]
 	match grade:
 		"rare":
-			return {"text": tr("Gus drops his coffee. A %s, in the gutter's scrap heap! Somebody up there lost this. Battered, but it's ours (in Storage).") % name, "part": id, "grade": "good"}
+			return {"text": tr("Gus drops his coffee. A %s, in the gutter's scrap heap! Somebody up there lost this. Battered, but it's ours (in Storage).") % name, "part": id, "grade": "rare", "uid": dug_uid}
 		"good":
-			return {"text": tr("Jackpot! A %s, buried under a dead robot. Banged up, but it's real gear (in Storage).") % name, "part": id, "grade": grade}
+			return {"text": tr("Jackpot! A %s, buried under a dead robot. Banged up, but it's real gear (in Storage).") % name, "part": id, "grade": grade, "uid": dug_uid}
 		"decent":
-			return {"text": tr("Found a %s. Dented, but decent (in Storage).") % name, "part": id, "grade": grade}
+			return {"text": tr("Found a %s. Dented, but decent (in Storage).") % name, "part": id, "grade": grade, "uid": dug_uid}
 	var meh := ["More junk: a %s. Rusty, but it bolts on.", "A %s, half eaten by rust. Better than nothing.", "Dug out a %s. Gus says he's seen worse. Not much worse."]
-	return {"text": (tr(meh[randi() % meh.size()]) % name) + tr(" (in Storage)"), "part": id, "grade": grade}
+	return {"text": (tr(meh[randi() % meh.size()]) % name) + tr(" (in Storage)"), "part": id, "grade": grade, "uid": dug_uid}
 
 
 func buy_controller(id: String) -> String:
@@ -3950,7 +4029,7 @@ func save_game() -> bool:
 		"owned_chips": owned_chips, "chips": chips, "circuit": circuit, "circuit_offers": circuit_offers,
 		"circuits_won": circuits_won, "pickup": pickup, "setups": setups, "custom_parts": custom_parts,
 		"year": year, "week": week, "day": day, "rank": rank, "event": {}, "leagues": leagues, "title_seeds": title_seeds, "trophies": trophies, "career_stats": career_stats,
-		"pecking_k": pecking_k(), "style": style, "style_locked": style_locked, "shop_stock": shop_stock, "chip_stock": chip_stock, "scout": scout, "wingmen": wingmen, "sending": sending, "pilot_look": pilot_look, "owned_controllers": owned_controllers, "tips_seen": tips_seen, "h2h": h2h, "rivals": rivals, "grudge": grudge, "pending_talk": pending_talk, "streak": streak, "pub_seen": pub_seen, "digs_left": digs_left, "bills_note": bills_note, "fight_log": fight_log, "bets": bets, "world": world,
+		"pecking_k": pecking_k(), "style": style, "style_locked": style_locked, "shop_stock": shop_stock, "chip_stock": chip_stock, "scout": scout, "wingmen": wingmen, "sending": sending, "pilot_look": pilot_look, "owned_controllers": owned_controllers, "tips_seen": tips_seen, "h2h": h2h, "rivals": rivals, "grudge": grudge, "pending_talk": pending_talk, "inbox": inbox, "inbox_seen": inbox_seen, "tour": tour, "streak": streak, "pub_seen": pub_seen, "digs_left": digs_left, "bills_note": bills_note, "fight_log": fight_log, "bets": bets, "world": world,
 	}
 	var f := FileAccess.open(slot_path(save_slot), FileAccess.WRITE)
 	if f == null:
@@ -4039,6 +4118,15 @@ func load_game(slot: int = -1) -> String:
 	rivals = data.get("rivals", []).map(func(x): return int(x))
 	grudge = data.get("grudge", {})
 	pending_talk = data.get("pending_talk", [])
+	inbox = []
+	for e in data.get("inbox", []):
+		if typeof(e) == TYPE_DICTIONARY:
+			e["y"] = int(e.get("y", 1))
+			e["w"] = int(e.get("w", 1))
+			e["ph"] = int(e.get("ph", 0))
+			inbox.append(e)
+	inbox_seen = mini(int(data.get("inbox_seen", inbox.size())), inbox.size())
+	tour = int(data.get("tour", -1))
 	streak = int(data.get("streak", 0))
 	pub_seen = str(data.get("pub_seen", ""))
 	digs_left = int(data.get("digs_left", DIGS_PER_FIGHT))
