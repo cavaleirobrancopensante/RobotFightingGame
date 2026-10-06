@@ -448,7 +448,7 @@ class TalkBar extends Control:
 ## One symbol per kind of fight night, so calendar days stay the same size:
 ## scrap = rusty gear, regional = blue shield, championship = gold crown, cup = purple trophy,
 ## pickup = a green coin, rent = red bill, stock = a crate.
-const EVENT_COLORS := {"qualifiers": Color(0.7, 0.68, 0.62), "scrap": Color(0.86, 0.48, 0.24), "regional": Color(0.35, 0.6, 1.0), "championship": YELLOW,
+const EVENT_COLORS := {"open": Color(0.6, 0.75, 0.7), "qualifiers": Color(0.7, 0.68, 0.62), "scrap": Color(0.86, 0.48, 0.24), "regional": Color(0.35, 0.6, 1.0), "championship": YELLOW,
 		"cup": Color(0.75, 0.5, 1.0), "pickup": Color(0.55, 0.78, 0.42), "exhibition": YELLOW,
 		"rent": Color(1.0, 0.42, 0.35), "stock": Color(0.62, 0.5, 0.36)}
 
@@ -456,6 +456,13 @@ static func draw_event_icon(ci: CanvasItem, kind: String, c: Vector2, r: float, 
 	var col: Color = EVENT_COLORS.get(kind, MUTED)
 	var dark := Color(0.08, 0.08, 0.1)
 	match kind:
+		"open":
+			# a torn entry ticket: the Open Trials, for pilots with no league at all
+			var tk := Rect2(c - Vector2(r * 0.95, r * 0.55), Vector2(r * 1.9, r * 1.1))
+			ci.draw_rect(tk, col)
+			ci.draw_circle(Vector2(tk.position.x, c.y), r * 0.22, dark)
+			ci.draw_circle(Vector2(tk.end.x, c.y), r * 0.22, dark)
+			ci.draw_line(Vector2(c.x + r * 0.3, tk.position.y + 2), Vector2(c.x + r * 0.3, tk.end.y - 2), dark, 1.5)
 		"qualifiers":
 			# a hex nut: where everybody starts
 			var hexp := PackedVector2Array()

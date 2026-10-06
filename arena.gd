@@ -55,15 +55,22 @@ const CAREER_CROWDS := ["scrappers", "locals", "final_night", "champ_fans", "hig
 ## (dressed up for the final), the Championship in the big arena, and its semifinals and
 ## final in the Grand Hall in front of the money.
 static func career_venue(stage: String, round_name: String) -> Array:
+	if round_name.begins_with("LAST") or round_name.ends_with("SEMIFINAL"):
+		# playoff nights get the big venue of the division
+		match stage:
+			"regional":
+				return ["regional_final", "final_night"]
+			"championship":
+				return ["champ_gala", "high_society"]
 	match stage:
-		"scrap":
+		"open", "qualifiers", "scrap":
 			return ["scrap_ring", "scrappers"]
 		"regional":
 			if round_name == "FINAL" or round_name == "BRONZE MATCH":
 				return ["regional_final", "final_night"]
 			return ["regional_hall", "locals"]
 		"championship":
-			if round_name == "SEMIFINAL" or round_name == "FINAL" or round_name == "BRONZE MATCH":
+			if round_name == "SEMIFINAL" or round_name == "FINAL" or round_name == "BRONZE MATCH" or round_name == "League round 24/24":
 				return ["champ_gala", "high_society"]
 			return ["champ_arena", "champ_fans"]
 	return ["main_event", "packed"]

@@ -190,6 +190,16 @@ const SCENES := {
 		["GUS", "Kid. You know what that means? The top table. OVERLORD's table. The whole city watches every other Saturday."],
 		["GUS", "Not long ago you were fighting for pennies behind the junkyard. Don't forget that."],
 	]},
+	"down_open": {"place": "GUS'S BAY", "lines": [
+		["GUS", "We're out of the leagues, kid. No table, no Saturday nights."],
+		["GUS", "Pickups, cups, and the Open Trials at the end of the year. That's how we get back in."],
+	]},
+	"up_qualifiers": {"place": "THE SCRAP HEAP RING", "lines": [
+		["GUS", "Through the Open Trials! We're back in the qualifiers next year, kid. Back on the ladder."],
+	]},
+	"stay_open": {"place": "GUS'S BAY", "lines": [
+		["GUS", "No league again this year. Pickups, cups, and the Open Trials when the year ends. We keep swinging."],
+	]},
 	"down": {"place": "GUS'S BAY", "lines": [
 		["GUS", "Bottom four. We're going down a league next year."],
 		["GUS", "It happens. Ironside went down twice before anyone knew his name. We fix the robot and we climb back."],

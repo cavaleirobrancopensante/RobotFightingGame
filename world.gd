@@ -12,22 +12,23 @@ extends RefCounted
 
 const I18n = preload("res://i18n.gd")
 
-const TIERS := ["qualifiers", "scrap", "regional", "championship"]
-## Each division table has 48 places; a few spare pilots hang around the scrapyard for pickups.
-const TIER_SIZE := {"qualifiers": 56, "scrap": 48, "regional": 48, "championship": 48}
+## The pyramid, bottom to top. "open" is the unranked pool: pilots with no league at all, who
+## live on pickups, cups and the Open Trials at the end of the year.
+const TIERS := ["open", "qualifiers", "scrap", "regional", "championship"]
+const TIER_SIZE := {"open": 40, "qualifiers": 64, "scrap": 48, "regional": 40, "championship": 32}
 ## Robot value (sum of part prices) when the world is made: [low, high, skew]. Skew > 1 = most
 ## pilots near the low end, a few rich ones near the top.
-const TIER_VALUE := {"qualifiers": [0.0, 900.0, 2.4], "scrap": [300.0, 2600.0, 2.0], "regional": [1500.0, 7500.0, 1.5], "championship": [5000.0, 16000.0, 1.4]}
-const TIER_SKILL := {"qualifiers": [0.0, 0.16], "scrap": [0.1, 0.32], "regional": [0.28, 0.58], "championship": [0.55, 0.95]}
+const TIER_VALUE := {"open": [0.0, 500.0, 2.6], "qualifiers": [0.0, 900.0, 2.4], "scrap": [300.0, 2600.0, 2.0], "regional": [1500.0, 7500.0, 1.5], "championship": [5000.0, 16000.0, 1.4]}
+const TIER_SKILL := {"open": [0.0, 0.1], "qualifiers": [0.0, 0.16], "scrap": [0.1, 0.32], "regional": [0.28, 0.58], "championship": [0.55, 0.95]}
 ## Per month: what living costs, and what the day job / sponsors pay.
-const LIVING := {"qualifiers": 200, "scrap": 280, "regional": 750, "championship": 1900}
-const INCOME := {"qualifiers": [190, 380], "scrap": [240, 460], "regional": [600, 1100], "championship": [1100, 2300]}
+const LIVING := {"open": 150, "qualifiers": 200, "scrap": 280, "regional": 750, "championship": 1900}
+const INCOME := {"open": [150, 320], "qualifiers": [190, 380], "scrap": [240, 460], "regional": [600, 1100], "championship": [1100, 2300]}
 ## Signing-on money from a sponsor when a pilot moves up a tier.
-const SPONSOR := {"scrap": 600, "regional": 3500, "championship": 9000}
+const SPONSOR := {"qualifiers": 200, "scrap": 600, "regional": 3500, "championship": 9000}
 ## Cash at which a pilot might cash out and retire.
-const RICH := {"qualifiers": 3000, "scrap": 6000, "regional": 18000, "championship": 60000}
+const RICH := {"open": 2000, "qualifiers": 3000, "scrap": 6000, "regional": 18000, "championship": 60000}
 ## What a league fight pays the winner.
-const FIGHT_PAY := {"qualifiers": 90, "scrap": 170, "regional": 540, "championship": 1150, "cup": 400}
+const FIGHT_PAY := {"open": 60, "qualifiers": 90, "scrap": 170, "regional": 540, "championship": 1150, "cup": 400}
 const HABITS := ["saver", "spender", "gambler"]
 const SPEND_CHANCE := {"saver": 0.3, "spender": 0.75, "gambler": 0.5}
 const UPGRADE_SLOTS := ["head", "torso", "arm_front", "arm_back", "leg_front", "leg_back", "reactor", "back"]
@@ -472,8 +473,8 @@ static func fight_pair(rng: RandomNumberGenerator, a: Dictionary, b: Dictionary,
 		after_fight(rng, b, a, stage)
 
 
-## The year is over: the division tables decide who moves. Top 4 of each division go up, bottom
-## 4 come down (the player is moved by GameData). Then every tier is topped back up to its size.
+## The year is over: the tables and the playoffs decide who moves (7 up and 7 down in each
+## division: 4 straight from the table, 3 through the playoffs) (the player is moved by GameData). Then every tier is topped back up to its size.
 static func year_end(rng: RandomNumberGenerator, leagues: Dictionary) -> void:
 	var moves: Array = []   # [pilot, tier]
 	for stage in leagues:
@@ -481,18 +482,17 @@ static func year_end(rng: RandomNumberGenerator, leagues: Dictionary) -> void:
 		var idx := TIERS.find(stage)
 		if idx == -1 or ev.get("pilots", []).is_empty():
 			continue
-		var order: Array = GameData.Career.standings(ev)
-		for pos in order.size():
-			var e: Dictionary = GameData.Career.pilot(ev, int(order[pos]))
+		var up: Array = ev.get("promoted", [])
+		var down: Array = ev.get("relegated", [])
+		for e in ev["pilots"]:
 			if not e.has("wid"):
 				continue
 			var p := pilot(int(e["wid"]))
 			if p.is_empty() or p["retired"]:
 				continue
-			var z: String = GameData.Career.zone(ev, pos)
-			if z == "up" and idx < TIERS.size() - 1:
+			if up.has(int(e["id"])) and idx < TIERS.size() - 1:
 				moves.append([p, TIERS[idx + 1]])
-			elif z == "down" and idx > 0:
+			elif down.has(int(e["id"])) and idx > 0:
 				moves.append([p, TIERS[idx - 1]])
 	for m in moves:
 		move_tier(m[0], m[1])
@@ -531,7 +531,7 @@ static func month_passed(rng: RandomNumberGenerator, busy: Dictionary) -> void:
 			p["cash"] = int(p["cash"]) - cost
 			p["wear"].erase(slot)
 		# scrap pilots dig the scrapyard like you do: now and then a usable part turns up
-		if (tier == "scrap" or tier == "qualifiers") and rng.randf() < 0.45:
+		if (tier == "scrap" or tier == "qualifiers" or tier == "open") and rng.randf() < 0.45:
 			var slot: String = UPGRADE_SLOTS[rng.randi() % 6]
 			var cur := part_cost(p["bot"]["parts"].get(slot, ""))
 			var found := best_under(GameData.SLOT_KIND[slot], rng.randf_range(80.0, 420.0), slot)
@@ -628,13 +628,13 @@ static func refill(rng: RandomNumberGenerator, rebalance: bool = false) -> void:
 				below.sort_custom(func(a, b): return rating(robot(int(a["wid"])), a["skill"]) > rating(robot(int(b["wid"])), b["skill"]))
 				move_tier(below[0], tier)
 	var guard2 := 0
-	while active("qualifiers").size() < TIER_SIZE["qualifiers"] and guard2 < 80:
+	while active("open").size() < TIER_SIZE["open"] and guard2 < 80:
 		guard2 += 1
-		var tier := "scrap" if rng.randf() < 0.08 and rebalance else "qualifiers"
+		var tier := "qualifiers" if rng.randf() < 0.08 and rebalance else "open"
 		var s: Array = TIER_SKILL[tier]
 		var r: Array = TIER_VALUE[tier]
 		var p := new_pilot(rng, tier, rng.randf_range(r[0], lerpf(r[0], r[1], 0.6)), rng.randf_range(s[0], lerpf(s[0], s[1], 0.6)))
-		p["cash"] = rng.randi_range(0, 400) if tier == "qualifiers" else rng.randi_range(1500, 4000)
+		p["cash"] = rng.randi_range(0, 300) if tier == "open" else rng.randi_range(500, 1500)
 		news("New pilot at the %s: %s, with %s.", ["stage:" + tier, p["name"], p["bot"]["name"]])
 
 
@@ -664,7 +664,7 @@ static func pick_for_league(rng: RandomNumberGenerator, tier: String, n: int) ->
 
 ## Seven cup entrants for a cup tier (1-5): scrap pilots in the small cups, champions in the big ones.
 static func pick_for_cup(rng: RandomNumberGenerator, tier: int, exclude: Array) -> Array:
-	var tiers: Array = [["qualifiers", "scrap"], ["scrap"], ["scrap", "regional"], ["regional", "championship"], ["championship"]][clampi(tier - 1, 0, 4)]
+	var tiers: Array = [["open", "qualifiers", "scrap"], ["scrap"], ["scrap", "regional"], ["regional", "championship"], ["championship"]][clampi(tier - 1, 0, 4)]
 	var pool: Array = []
 	for t in tiers:
 		pool += active(t).filter(func(p): return not exclude.has(int(p["wid"])))

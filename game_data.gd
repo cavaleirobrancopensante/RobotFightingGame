@@ -2,7 +2,7 @@ extends Node
 
 # helper scripts, loaded by path so the game also runs without an editor scan
 ## The game's version, shown on the main menu. Bump it with every change (1.1, 1.2, ...).
-const VERSION := "1.23"
+const VERSION := "1.24"
 const Arena = preload("res://arena.gd")
 const I18n = preload("res://i18n.gd")
 const Catalog = preload("res://catalog.gd")
@@ -1169,7 +1169,7 @@ func do_scout() -> String:
 ## What a defeat pays: in the scrapyard you pay the winner, in the Regional and cups you get nothing,
 ## in the Championship (and exhibitions) you still get a small purse.
 ## What a pickup against the pilot at the bar pays, by their division (stars pay more, and hit harder).
-const PICKUP_PURSE := {"qualifiers": 150, "scrap": 200, "regional": 450, "championship": 900}
+const PICKUP_PURSE := {"open": 100, "qualifiers": 150, "scrap": 200, "regional": 450, "championship": 900}
 
 
 func loss_pay(base: int) -> int:
@@ -1366,6 +1366,8 @@ func fight_stakes(ev: Dictionary, id: int, mode: String, wid: int = -1) -> float
 		"story":
 			if ev.is_empty():
 				return 1.0
+			if ev.get("phase", "") == "finals":
+				return 3.0 + float(ev.get("po_round", 0))   # a playoff: a whole year on one night
 			var order := Career.standings(ev)
 			var pos := order.find(id)
 			var n := order.size()
@@ -1411,6 +1413,7 @@ func emergent_talk(o: Dictionary, won: bool) -> void:
 		else:
 			g[0] += fight_stakes(ev, 0, mode) * (1.0 + 0.5 * maxi(0, int(rec[1]) - 1))
 			g[1] = maxf(0.0, g[1] - 0.3)
+		g = [minf(g[0], 12.0), minf(g[1], 12.0)]
 		grudge[key] = g
 		var name := str(World.pilot(wid)["name"])
 		var me := pilot_name
@@ -1450,6 +1453,8 @@ func daily_hate_mail() -> void:
 	var best := -1
 	var best_g := 0.0
 	for key in grudge:
+		if str(key).begins_with("_"):
+			continue
 		var g := grudge_of(int(key))
 		if g[1] >= GRUDGE_LINE * 0.8 and g[1] > best_g and not World.pilot(int(key)).get("retired", true):
 			best = int(key)
@@ -1457,7 +1462,11 @@ func daily_hate_mail() -> void:
 	if best < 0:
 		return
 	var roll := float(absi(hash("%d:%d:%s:mail" % [year, week, day])) % 1000) / 1000.0
-	if roll < minf(0.22, best_g / 25.0):
+	# at most one letter every three weeks, and even then only now and then
+	if week + year * 100 - int(grudge.get("_mail", -99)) < 3:
+		return
+	if roll < minf(0.06, best_g / 80.0):
+		grudge["_mail"] = week + year * 100
 		var t := tr(Talk.pick(Talk.HATE_MAIL, "%d:%d:%s" % [year, week, day]))
 		var last_w := week
 		for e in fight_log:
@@ -1630,11 +1639,17 @@ func new_year() -> void:
 	rng.seed = year * 104729
 	for stage in leagues:
 		var ev: Dictionary = leagues[stage]
-		while ev.get("phase", "") == "league" and not Career.has_player(ev):
+		var guard := 0
+		while ["league", "finals"].has(str(ev.get("phase", ""))) and guard < 40:
+			guard += 1
+			if Career.has_player(ev) and Career.player_opponent(ev) != -1:
+				Career.after_player_fight(ev, false, 0)   # (a playoff you never turned up for)
+				continue
 			Career.play_npc_round(ev)
 	World.year_end(rng, leagues)
 	for key in grudge:
-		grudge[key] = [float(grudge[key][0]) * 0.7, float(grudge[key][1]) * 0.7]   # time heals (a bit)
+		if not str(key).begins_with("_"):
+			grudge[key] = [float(grudge[key][0]) * 0.7, float(grudge[key][1]) * 0.7]   # time heals (a bit)
 	start_year()
 
 
@@ -1670,13 +1685,17 @@ func start_year() -> void:
 	for stage in Career.ORDER:
 		var mine: bool = stage == rank
 		var info: Dictionary = Career.STAGES[stage]
-		var need: int = Career.DIVISION_SIZE - (1 if mine else 0) - (info["rivals"].size() if mine else 0) - (1 if info.has("boss") else 0)
+		var need: int = int(info["size"]) - (1 if mine else 0) - (info["rivals"].size() if mine else 0) - (1 if info.has("boss") else 0)
 		var pool: Array = World.active(stage)
 		pool.sort_custom(func(a, b): return World.rating(World.robot(int(a["wid"])), a["skill"]) > World.rating(World.robot(int(b["wid"])), b["skill"]))
 		var wids: Array = []
 		for p in pool.slice(0, need):
 			wids.append(int(p["wid"]))
 		wids.shuffle()
+		if stage == "open":
+			# the unranked pool: no table, just the Open Trials at the end of the year
+			leagues[stage] = Career.new_trials(year, rng.randi(), mine, wids)
+			continue
 		leagues[stage] = Career.new_event(stage, year, rng.randi(), mine, wids)
 	event = leagues.get(rank, {})
 
@@ -1698,16 +1717,23 @@ func catch_up_leagues() -> Array:
 		while Career.round_due(ev, week, day_index()) and guard < Career.ROUNDS:
 			guard += 1
 			if Career.has_player(ev):
+				if ev["phase"] == "finals" and Career.player_opponent(ev) == -1:
+					# your year is over but the playoffs go on without you
+					Career.play_npc_round(ev)
+					lines += settle_bets("event", ev)["lines"]
+					if ev["phase"] == "done":
+						pending_talk.append({"lines": [["GUS", finish_event(ev), {}]]})
+					continue
 				var res: Dictionary = Career.after_player_fight(ev, false, 0)   # didn't turn up: a loss
 				losses += 1
+				if res["phase_changed"]:
+					league_end(ev)
 				if res["done"]:
 					finish_event(ev)
 				bets = bets.filter(func(b): return b["on"] != "event")
 				continue
 			Career.play_npc_round(ev)
 			lines += settle_bets("div:" + stage, ev)["lines"]
-			if ev["phase"] == "done":
-				Career.award_world(ev)
 	return lines
 
 
@@ -1756,7 +1782,14 @@ func week_plan(y: int, w: int, d: String = "sat") -> Dictionary:
 		if this_week:
 			return {"kind": "open", "text": "pickup fight", "stage": "pickup"}
 		return {"kind": "none", "text": ""}
-	if not event.is_empty() and event.get("phase", "") != "done" and int(event.get("year", year)) == y and event["weeks"].has(w):
+	if not event.is_empty() and int(event.get("year", year)) == y and Career.PLAYOFF_WEEKS.has(w):
+		# the playoffs: tonight if you're in one, the possible nights before the table is final
+		var short0: String = tr(Career.STAGES[event["stage"]]["short"])
+		if event["phase"] == "finals" and Career.week_of_round(event) == w and Career.player_opponent(event) != -1:
+			return {"kind": "playoff", "text": tr(Career.round_name(event)), "stage": event["stage"]}
+		if event["phase"] == "league":
+			return {"kind": "playoff", "text": tr("%s\nplayoffs (if you qualify)") % short0, "stage": event["stage"]}
+	if not event.is_empty() and event.get("phase", "") == "league" and int(event.get("year", year)) == y and event["weeks"].has(w):
 		var k: int = event["weeks"].find(w)
 		var short: String = tr(Career.STAGES[event["stage"]]["short"])
 		if k < event["schedule"].size():
@@ -1819,7 +1852,8 @@ func league_night() -> Array:
 		return out
 	for stage in Career.ORDER:
 		var ev: Dictionary = leagues.get(stage, {})
-		if ev.get("phase", "") != "league" or int(ev["round"]) >= ev["weeks"].size() or int(ev["weeks"][int(ev["round"])]) != week:
+		if not ["league", "finals"].has(str(ev.get("phase", ""))) or (ev["phase"] == "league" and int(ev["round"]) >= ev["weeks"].size()) \
+				or Career.week_of_round(ev) != week or Career.round_matches(ev).is_empty():
 			continue
 		if Career.has_player(ev):
 			if fight_mode() == "story":
@@ -1842,7 +1876,9 @@ func headline_match() -> Dictionary:
 	var ev: Dictionary = best[1]
 	var top: Array = []
 	var score := -1
-	for pr in Career.round_pairs(ev):
+	for pr in Career.round_matches(ev):
+		if int(pr[0]) == 0 or int(pr[1]) == 0:
+			continue
 		var ta: Array = ev["table"].get(str(pr[0]), [0, 0, 0, 0])
 		var tb: Array = ev["table"].get(str(pr[1]), [0, 0, 0, 0])
 		var sc := int(ta[2]) + int(tb[2])
@@ -1865,7 +1901,7 @@ func place_bet_on(on: String, pick: int, vs: int, stake: int) -> String:
 		return tr("You need $%d in cash to place that bet.") % stake
 	var o := Career.odds(ev, pick, vs)
 	money -= stake
-	bets.append({"on": on, "round": int(ev["round"]), "pick": pick, "vs": vs, "stake": stake, "odds": o})
+	bets.append({"on": on, "round": Career.round_key(ev), "pick": pick, "vs": vs, "stake": stake, "odds": o})
 	var who: String = pilot_name if pick == 0 else str(Career.pilot(ev, pick).get("pilot", "?"))
 	return tr("$%d on %s at %.2fx, pays $%d if they win.") % [stake, who, o, int(stake * o)]
 
@@ -1932,7 +1968,7 @@ func place_bet(pick: int, vs: int, stake: int) -> String:
 		return tr("You need $%d in cash to place that bet.") % stake
 	var o := Career.odds(ev, pick, vs)
 	money -= stake
-	bets.append({"on": bet_target(), "round": int(ev["round"]), "pick": pick, "vs": vs, "stake": stake, "odds": o})
+	bets.append({"on": bet_target(), "round": Career.round_key(ev), "pick": pick, "vs": vs, "stake": stake, "odds": o})
 	var who: String = pilot_name if pick == 0 else str(Career.pilot(ev, pick).get("pilot", "?"))
 	return tr("$%d on %s at %.2fx, pays $%d if they win.") % [stake, who, o, int(stake * o)]
 
@@ -1983,7 +2019,7 @@ func start_watch(a: int, b: int, on: String = "") -> void:
 	if on == "":
 		on = bet_target()
 	var ev := ev_for(on)
-	watching = {"on": on, "round": int(ev["round"]), "a": a, "b": b}
+	watching = {"on": on, "round": Career.round_key(ev), "a": a, "b": b}
 
 
 func watch_event() -> Dictionary:
@@ -2013,7 +2049,7 @@ func record_watch(a_won: bool, hp: Array, ripped: Array) -> Dictionary:
 	var l := b if a_won else a
 	if not ev.has("forced"):
 		ev["forced"] = []
-	ev["forced"].append({"round": int(ev["round"]), "a": a, "b": b, "w": w})
+	ev["forced"].append({"round": Career.round_key(ev), "a": a, "b": b, "w": w})
 	var rng := RandomNumberGenerator.new()
 	rng.randomize()
 	var stage := "cup" if watching["on"] == "cup" else str(ev["stage"])
@@ -2042,7 +2078,7 @@ func record_watch(a_won: bool, hp: Array, ripped: Array) -> Dictionary:
 
 
 func cups_unlocked() -> bool:
-	return unlocked("cups") or rank_index() >= 1 or not trophies.is_empty()
+	return unlocked("cups") or rank_index() >= 2 or not trophies.is_empty()
 
 
 # ---------------------------------------------------------------- multibot teams
@@ -2762,6 +2798,8 @@ func record_result(won: bool, part_hp: Dictionary, destroyed: int, salvage_ids: 
 		"story":
 			var res: Dictionary = Career.after_player_fight(event, won, destroyed)
 			bet_result = settle_bets("event", event)
+			if res["phase_changed"]:
+				event_done = league_end(event)
 			if res["done"]:
 				event_done = finish_event(event)
 			next_day()
@@ -2801,9 +2839,9 @@ func trophy_record(ev: Dictionary, kind: String, medal: int) -> Dictionary:
 	return {"kind": kind, "medal": medal, "name": ev["name"], "year": year, "week": week, "fights": fights}
 
 
-## Your division's year is over: medals and prize money for the top 3, and where you'll be next
-## year (top 4 up, bottom 4 down). The championship's winner is the champion of Port Ferrum.
-func finish_event(ev: Dictionary) -> String:
+## Your division's table is final (round 24): medals and prize money for the top 3 (4th gets
+## money only), and whether you're up, down, safe, or into a playoff.
+func league_end(ev: Dictionary) -> String:
 	var info: Dictionary = Career.STAGES[ev["stage"]]
 	var m := Career.medal_of(ev, 0)
 	var pos := Career.standings(ev).find(0)
@@ -2813,25 +2851,47 @@ func finish_event(ev: Dictionary) -> String:
 		money += prize
 		trophies.append(trophy_record(ev, ev["stage"], m))
 		text += tr(". Prize $%d and a trophy for the bay!") % prize
-	var idx := Career.ORDER.find(str(ev["stage"]))
+	elif pos == 3:
+		money += Career.fourth_prize(ev["stage"])
+		text += tr(". Fourth place pays $%d.") % Career.fourth_prize(ev["stage"])
 	match Career.zone(ev, pos):
 		"up":
-			rank = Career.ORDER[idx + 1]
-			text += " " + tr("Promoted to the %s!") % tr(Career.STAGES[rank]["name"])
-			pending_stories.append("up_" + rank)
-			make_offers()
+			text += " " + tr("Straight up to the %s!") % tr(Career.STAGES[Career.ORDER[Career.ORDER.find(str(ev["stage"])) + 1]]["name"])
+		"up_po":
+			text += " " + tr("Into the promotion playoff: three more go up.")
+		"down_po":
+			text += " " + tr("Into the relegation playoff: three more go down.")
 		"down":
-			rank = Career.ORDER[idx - 1]
-			text += " " + tr("Relegated to the %s.") % tr(Career.STAGES[rank]["name"])
+			text += " " + tr("Relegated.")
+	if ev["stage"] == "championship" and m == 1:
+		if not champion:
+			pending_stories.append("post_9")
+		champion = true
+		make_offers()
+	return text
+
+
+## Your division's year is over (playoffs included): where you'll be next year.
+func finish_event(ev: Dictionary) -> String:
+	var idx := Career.ORDER.find(str(ev["stage"]))
+	var text := ""
+	if ev.get("promoted", []).has(0) and idx < Career.ORDER.size() - 1:
+		rank = Career.ORDER[idx + 1]
+		text = tr("Promoted to the %s!") % tr(Career.STAGES[rank]["name"])
+		pending_stories.append("up_" + rank)
+		make_offers()
+	elif ev.get("relegated", []).has(0) and idx > 0:
+		rank = Career.ORDER[idx - 1]
+		if rank == "open":
+			text = tr("Out of the leagues. Next year it's pickups, cups, and the Open Trials.")
+			pending_stories.append("down_open")
+		else:
+			text = tr("Relegated to the %s.") % tr(Career.STAGES[rank]["name"])
 			pending_stories.append("down")
-		_:
-			if ev["stage"] == "championship" and m == 1:
-				if not champion:
-					pending_stories.append("post_9")
-				champion = true
-				make_offers()
-			else:
-				pending_stories.append("stay_" + str(ev["stage"]))
+	else:
+		text = tr("Another year in the %s.") % tr(str(ev["name"]))
+		if not (ev["stage"] == "championship" and Career.medal_of(ev, 0) == 1):
+			pending_stories.append("stay_" + str(ev["stage"]))
 	return text
 
 
@@ -2857,7 +2917,7 @@ func finish_cup() -> String:
 
 func make_offers() -> void:
 	circuit_offers = []
-	var base := clampi(1 + rank_index() + int(circuits_won / 2.0) + (1 if champion else 0), 1, 5)
+	var base := clampi(rank_index() + int(circuits_won / 2.0) + (1 if champion else 0), 1, 5)
 	for k in 3:
 		var tier := clampi(base - 1 + k, 1, 5)
 		var seed := randi()

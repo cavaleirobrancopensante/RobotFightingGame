@@ -623,7 +623,7 @@ func play_story(keys: Array, after: Callable = Callable()) -> bool:
 	for k in keys:
 		if typeof(k) == TYPE_DICTIONARY:
 			lines += talk_screens(k.get("lines", []))   # emergent talk: rivals, the pub, streaks
-		elif Story.SCENES.has(k) and (not GameData.story_seen.has(k) or str(k).begins_with("stay_") or str(k) == "down" or str(k).begins_with("up_")):
+		elif Story.SCENES.has(k) and (not GameData.story_seen.has(k) or str(k).begins_with("stay_") or str(k).begins_with("down") or str(k).begins_with("up_")):
 			lines += story_screens(k)
 			GameData.mark_story_seen(k)
 	if lines.is_empty():
@@ -2434,7 +2434,7 @@ func build_calendar() -> void:
 	var key := HFlowContainer.new()
 	key.add_theme_constant_override("h_separation", 12)
 	list_box.add_child(key)
-	for k in [["qualifiers", "Qualifiers"], ["scrap", "Scrap league"], ["regional", "Regional"], ["championship", "Championship"], ["cup", "Cup"],
+	for k in [["open", "Open Trials"], ["qualifiers", "Qualifiers"], ["scrap", "Scrap league"], ["regional", "Regional"], ["championship", "Championship"], ["cup", "Cup"],
 			["pickup", "Pickup fight"], ["rent", "Rent"], ["stock", "New stock"]]:
 		var it := HBoxContainer.new()
 		it.add_theme_constant_override("separation", 4)
@@ -3193,19 +3193,52 @@ func build_league_view() -> void:
 	var status := tr("%s, year %d: ") % [tr(str(ev["name"])), int(ev["year"])]
 	if ev["phase"] == "league":
 		status += tr(Career.round_name(ev))
+	elif ev["phase"] == "finals":
+		status += tr("FINAL TABLE · PLAYOFFS")
 	else:
 		status += tr("FINAL TABLE")
 	section(status)
+	var n: int = ev["pilots"].size()
 	var rule := ""
 	match stage:
-		"qualifiers":
-			rule = "1 point a win. Level on points? More parts destroyed is ahead. Top 4 go up to the Scrap Heap League."
+		"open":
+			rule = tr("No league here: pilots without a division live on pickups and cups. At the end of the year the best 16 fight the Open Trials. Win round 2 and you're in the Qualifiers; round 2 losers get a last chance for 2 more places.")
 		"championship":
-			rule = "1 point a win. Level on points? More parts destroyed is ahead. Top of the table is the champion of Port Ferrum. Bottom 4 go down."
+			rule = tr("1 point a win, ties go to more parts destroyed. Top of the table is the champion of Port Ferrum. Bottom 4 go down, and %s to %s play a playoff where 3 more go down.") % [GameData.ordinal(n - 11), GameData.ordinal(n - 4)]
 		_:
-			rule = "1 point a win. Level on points? More parts destroyed is ahead. Top 4 go up, bottom 4 go down."
+			rule = tr("1 point a win, ties go to more parts destroyed. Top 3 win trophies and prize money, 4th gets money. Top 4 go up and 5th to 12th play off for 3 more places. Bottom 4 go down and %s to %s play off, 3 more go down.") % [GameData.ordinal(n - 11), GameData.ordinal(n - 4)]
 	section(rule)
+	if ev.has("finals"):
+		show_finals(ev)
 	show_table(ev)
+
+
+## The promotion and relegation playoffs: every match so far, who went up, who went down.
+func show_finals(ev: Dictionary) -> void:
+	for side in ["up", "down"]:
+		if not ev["finals"].has(side):
+			continue
+		section(tr("PROMOTION PLAYOFF (3 go up)") if side == "up" else tr("RELEGATION PLAYOFF (3 go down)"))
+		var rounds: Array = ev["finals"][side]["rounds"]
+		for r in rounds.size():
+			var names: Array = ["PROMOTION QUARTERFINAL", "PROMOTION SEMIFINAL", "LAST TICKET UP"] if side == "up" else ["RELEGATION QUARTERFINAL", "SURVIVAL SEMIFINAL", "LAST CHANCE"]
+			for m in rounds[r]:
+				var a: int = m["a"]
+				var b: int = m["b"]
+				var w: int = m["w"]
+				var txt := tr(names[r]) + ":  " + tr("%s  vs  %s") % [who(ev, a), who(ev, b)]
+				if w >= 0:
+					txt += "   ->  " + (GameData.pilot_name if w == 0 else str(Career.pilot(ev, w).get("pilot", "?")))
+				var mine := a == 0 or b == 0
+				table_row([txt], [0], GUI.YELLOW if mine else (Color(0.8, 0.8, 0.85) if w >= 0 else Color(1, 1, 1)),
+						Color(1.0, 0.7, 0.2, 0.15) if mine else Color(0, 0, 0, 0))
+	if ev.has("promoted") or ev.has("relegated"):
+		var up: Array = ev.get("promoted", []).map(func(i): return str(Career.pilot(ev, int(i)).get("pilot", "?")) if int(i) != 0 else GameData.pilot_name)
+		var down: Array = ev.get("relegated", []).map(func(i): return str(Career.pilot(ev, int(i)).get("pilot", "?")) if int(i) != 0 else GameData.pilot_name)
+		if not up.is_empty():
+			section(tr("GOING UP: %s") % ", ".join(up))
+		if not down.is_empty():
+			section(tr("GOING DOWN: %s") % ", ".join(down))
 
 
 func _on_table_div(st: String) -> void:
@@ -3224,12 +3257,19 @@ func show_table(ev: Dictionary) -> void:
 		var z := Career.zone(ev, pos)
 		var col := Color(1, 1, 1)
 		var bg := Color(0, 0, 0, 0)
-		if z == "up":
-			bg = Color(0.3, 0.9, 0.4, 0.12)
-			col = Color(0.75, 1.0, 0.8)
-		elif z == "down":
-			bg = Color(1.0, 0.35, 0.3, 0.12)
-			col = Color(1.0, 0.75, 0.72)
+		match z:
+			"up":
+				bg = Color(0.3, 0.9, 0.4, 0.16)
+				col = Color(0.75, 1.0, 0.8)
+			"up_po":
+				bg = Color(0.3, 0.9, 0.4, 0.06)
+				col = Color(0.85, 1.0, 0.88)
+			"down_po":
+				bg = Color(1.0, 0.55, 0.2, 0.07)
+				col = Color(1.0, 0.86, 0.75)
+			"down":
+				bg = Color(1.0, 0.35, 0.3, 0.16)
+				col = Color(1.0, 0.75, 0.72)
 		if id == 0:
 			col = GUI.YELLOW
 			bg = Color(1.0, 0.7, 0.2, 0.2)
