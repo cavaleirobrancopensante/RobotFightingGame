@@ -899,8 +899,13 @@ func refresh_stats() -> void:
 	# core: blocks of 10 HP, like every part; power: one block per point of power
 	stat_cell(grid, "Core", _seg(s["core"], s["core_max"], 10.0, GUI.GREEN), "%d/%d" % [s["core"], s["core_max"]], GUI.GREEN)
 	stat_cell(grid, "Power", _seg(s["power_used"], s["power_output"], 1.0, GUI.RED if over else GUI.CYAN), "%d/%d" % [s["power_used"], s["power_output"]], GUI.RED if over else GUI.CYAN)
-	stat_cell(grid, "Damage", make_bar(s["damage"], 170, GUI.RED), "%d%%" % s["damage"], Color(1.0, 0.6, 0.5))
-	stat_cell(grid, "Speed", make_bar(s["speed"], 150, GUI.CYAN), "%d%%" % s["speed"], GUI.CYAN)
+	# 1 block = 10%
+	var dmg_bar := GUI.BlockBar.new()
+	dmg_bar.setup(float(s["damage"]), 10.0, maxf(170.0, float(s["damage"])), GUI.RED)
+	stat_cell(grid, "Damage", dmg_bar, "%d%%" % s["damage"], Color(1.0, 0.6, 0.5))
+	var spd_bar := GUI.BlockBar.new()
+	spd_bar.setup(float(s["speed"]), 10.0, maxf(150.0, float(s["speed"])), GUI.CYAN)
+	stat_cell(grid, "Speed", spd_bar, "%d%%" % s["speed"], GUI.CYAN)
 	if over:
 		stats_box.add_child(GUI.text(tr("OVERLOADED: %d%% performance!") % int(s["efficiency"] * 100), 11, GUI.RED, "headb"))
 	var spare: int = maxi(0, int(s["power_output"]) - int(s["power_used"]))
@@ -1966,6 +1971,7 @@ func set_scene_for_tab() -> void:
 		"Crew":
 			scene = "team"
 	stats_panel.visible = STATS_SCENES.has(scene)
+	repair_button.visible = scene == "build"   # Repair all: only in the bay, where the robot hangs on the gantry
 	preview.spot = GarageArt.robot_spot(scene)
 	preview.facing = 1 if scene == "paint" else -1
 	preview.front = scene == "build"   # in the bay the robot hangs on Gus's gantry, facing you
@@ -2196,7 +2202,11 @@ func build_workshop() -> void:
 		l.custom_minimum_size = Vector2(130, 0)
 		row.add_child(l)
 		row_button(row, "-", _on_ws_stat.bind(stat, -1), n > 0, 54)
-		var bar := make_bar(n, GameData.CUSTOM_MAX_PER_STAT, Color(0.4, 0.8, 1.0))
+		var bar := GUI.BlockBar.new()
+		bar.block_w = 22.0
+		bar.height = 18.0
+		bar.setup(float(n), 1.0, float(GameData.CUSTOM_MAX_PER_STAT), Color(0.4, 0.8, 1.0))   # 1 block = 1 point
+		bar.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 		row.add_child(bar)
 		row_button(row, "+", _on_ws_stat.bind(stat, 1), left > 0 and n < GameData.CUSTOM_MAX_PER_STAT, 54)
 
@@ -2548,7 +2558,7 @@ func _on_watch(a: int, b: int) -> void:
 ## Every pilot in Port Ferrum: who's on top, who's broke, who's moved up, who retired - and the news.
 # ---------------------------------------------------------------- the jukebox (The Rusty Bolt)
 
-var juke_bar: GUI.TalkBar
+var juke_bar: GUI.BlockBar
 var juke_time: Label
 var juke_shown := -2
 var juke_lengths := {}
@@ -2583,12 +2593,12 @@ func build_jukebox() -> void:
 	var prog := HBoxContainer.new()
 	prog.add_theme_constant_override("separation", 10)
 	col.add_child(prog)
-	juke_bar = GUI.TalkBar.new()
-	juke_bar.custom_minimum_size = Vector2(0, 6)
-	juke_bar.color = GUI.AMBER
+	juke_bar = GUI.BlockBar.new()
+	juke_bar.block_w = 4.0
+	juke_bar.height = 10.0
+	juke_bar.setup(0.0, 1.0, 40.0, GUI.AMBER)   # 40 blocks across the song
 	juke_bar.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	juke_bar.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	juke_bar.set_ratio(0.0)
 	prog.add_child(juke_bar)
 	juke_time = GUI.readout("0:00 / 0:00", 18, GUI.AMBER)
 	prog.add_child(juke_time)
@@ -2621,7 +2631,7 @@ func update_jukebox() -> void:
 		refresh()   # the song changed by itself (next in the list)
 		return
 	var pos := Sfx.music_position()
-	juke_bar.set_ratio(pos.x / pos.y if pos.y > 0.0 else 0.0)
+	juke_bar.set_fill(40.0 * pos.x / pos.y if pos.y > 0.0 else 0.0)
 	juke_time.text = "%s / %s" % [mmss(pos.x), mmss(pos.y)]
 
 

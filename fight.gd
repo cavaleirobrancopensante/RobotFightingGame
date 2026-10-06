@@ -3,6 +3,7 @@ extends Node2D
 # helper scripts, loaded by path so the game also runs without an editor scan
 const Arena = preload("res://arena.gd")
 const Scoreboard = preload("res://scoreboard.gd")
+const GUI = preload("res://garage_ui.gd")
 const PartIcon = preload("res://part_icon.gd")
 const Catalog = preload("res://catalog.gd")
 const Controls = preload("res://controls.gd")
@@ -3116,22 +3117,23 @@ func draw_team_bars(team: Array, x: float, y: float, w: float, bh: float, right:
 	for k in n:
 		var f: Fighter = team[k]
 		var by := y + k * (h + gap)
-		var fill := w * (f.ratio("torso") if f.state != "ko" else 0.0)
-		draw_rect(Rect2(x, by, w, h), Color(0.35, 0.05, 0.05))
-		draw_rect(Rect2(x + (w - fill if right else 0.0), by, fill, h), Color(0.95, 0.85, 0.2) if f.state != "ko" else Color(0.4, 0.4, 0.4))
-		var edge := Color(1.0, 0.35, 0.3) if (right and f == cpu and n > 1) else Color.WHITE
-		draw_rect(Rect2(x, by, w, h), edge, false, 2.0)
-		# power: a thin electric-blue bar along the bottom of the health bar
-		var pf := w * clampf(f.power / maxf(1.0, f.power_max), 0.0, 1.0)
+		# core health in blocks - 1 block = 10 HP, like the bars in the garage
 		var ph := maxf(4.0, h * 0.28)
-		var py := by + h - ph
-		draw_rect(Rect2(x, py, w, ph), Color(0.02, 0.06, 0.1, 0.85))
+		var hb := Rect2(x, by, w, h - ph - 2.0)
+		var max_hp: float = f.parts["torso"].get("max_hp", 100.0) if not f.parts["torso"].is_empty() else 100.0
+		var hp: float = f.parts["torso"].get("hp", 0.0) if not f.parts["torso"].is_empty() and f.state != "ko" else 0.0
+		var edge := Color(1.0, 0.35, 0.3) if (right and f == cpu and n > 1) else Color(1, 1, 1, 0.8)
+		draw_rect(hb.grow(2.0), Color(0.02, 0.02, 0.03, 0.9))
+		GUI.draw_blocks(self, hb, int(ceilf(max_hp / 10.0)), hp / 10.0, Color(0.95, 0.85, 0.2) if f.state != "ko" else Color(0.4, 0.4, 0.4), Color(0.3, 0.06, 0.06), right)
+		draw_rect(hb.grow(2.0), edge, false, 1.5)
+		# power in blocks under it - 1 block = 1 point of power
+		var pr := Rect2(x, by + h - ph, w, ph)
 		var pc := POWER_COLOR
 		if f.burn_t > 0.0:
 			pc = Color(1.0, 0.3, 0.2) if fmod(clock, 0.3) < 0.15 else Color(0.3, 0.3, 0.35)
 		elif f.power < f.power_max * 0.25:
 			pc = POWER_COLOR.lerp(Color.WHITE, 0.5 + 0.5 * sin(clock * 14.0))
-		draw_rect(Rect2(x + (w - pf if right else 0.0), py, pf, ph), pc)
+		GUI.draw_blocks(self, pr, int(ceilf(f.power_max)), clampf(f.power, 0.0, f.power_max), pc, Color(0.02, 0.06, 0.1, 0.85), right)
 		if n > 1:
 			var t := (tr("%s  ") % f.tag if f.tag != "" else "") + f.label + (tr("  - DOWN") if f.state == "ko" else "")
 			draw_string(font, Vector2(x + 6, by + h - 1), t, HORIZONTAL_ALIGNMENT_RIGHT if right else HORIZONTAL_ALIGNMENT_LEFT, w - 12, int(h * 0.95), Color(0.08, 0.08, 0.1))

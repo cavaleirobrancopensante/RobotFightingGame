@@ -356,20 +356,16 @@ func _on_load(slot: int) -> void:
 	title.anchor_bottom = 0.42
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	cover.add_child(title)
-	var bar := ProgressBar.new()
-	bar.min_value = 0.0
-	bar.max_value = 100.0
-	bar.show_percentage = false
+	var bar = load("res://garage_ui.gd").BlockBar.new()   # loading fills up in blocks, like every other bar
 	bar.anchor_left = 0.08
 	bar.anchor_right = 0.92
 	bar.anchor_top = 1.0
 	bar.anchor_bottom = 1.0
 	bar.offset_top = -70.0 * UI.SCALE
 	bar.offset_bottom = -40.0 * UI.SCALE
-	var fill := StyleBoxFlat.new()
-	fill.bg_color = Color(1.0, 0.55, 0.2)
-	fill.set_corner_radius_all(6)
-	bar.add_theme_stylebox_override("fill", fill)
+	bar.height = 24.0
+	bar.n = 25
+	bar.color = Color(1.0, 0.55, 0.2)
 	cover.add_child(bar)
 	var pct := UI.label("0%", 20, Color(0.9, 0.9, 0.95))
 	pct.anchor_left = 0.0
@@ -381,7 +377,7 @@ func _on_load(slot: int) -> void:
 	pct.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	cover.add_child(pct)
 	var show := func(v: float) -> void:
-		bar.value = v
+		bar.set_fill(v / 4.0)
 		pct.text = "%d%%" % int(v)
 	# the garage scene loads in the background while the save is read
 	ResourceLoader.load_threaded_request(GARAGE)

@@ -144,6 +144,49 @@ static func seg_style(on: bool) -> Array:
 	return [n, h]
 
 
+## Every bar in the game is drawn as blocks (health, power, damage, speed, progress...).
+## r: where; n: how many blocks; filled: how many are full (fractions fill the last one part-way);
+## from_right: fill from the right end (the enemy's bars in fights).
+static func draw_blocks(ci: CanvasItem, r: Rect2, n: int, filled: float, col: Color,
+		empty: Color = Color(0.15, 0.17, 0.155), from_right: bool = false) -> void:
+	n = maxi(1, n)
+	var gap := clampf(r.size.x / n * 0.14, 1.0, 3.0)
+	var bw := (r.size.x - gap * (n - 1)) / n
+	for i in n:
+		var x := r.end.x - (i + 1) * bw - i * gap if from_right else r.position.x + i * (bw + gap)
+		ci.draw_rect(Rect2(x, r.position.y, bw, r.size.y), empty)
+		var part := clampf(filled - i, 0.0, 1.0)
+		if part > 0.0:
+			var fw := bw * part
+			ci.draw_rect(Rect2(x + (bw - fw if from_right else 0.0), r.position.y, fw, r.size.y), col)
+
+
+## A block bar for a value: one block per `per_block` up to `max_value`.
+class BlockBar extends Control:
+	var n := 10
+	var filled := 0.0
+	var color := Color(0.553, 1.0, 0.651)
+	var block_w := 7.0
+	var height := 12.0
+
+	func setup(value: float, per_block: float, max_value: float, col: Color) -> void:
+		n = maxi(1, int(ceilf(max_value / per_block)))
+		filled = value / per_block
+		color = col
+		custom_minimum_size = Vector2(n * block_w, height)
+		queue_redraw()
+
+	func set_fill(f: float) -> void:
+		if absf(f - filled) > 0.001:
+			filled = f
+			queue_redraw()
+
+	func _draw() -> void:
+		var y := (size.y - height) * 0.5
+		var GUI = load("res://garage_ui.gd")
+		GUI.draw_blocks(self, Rect2(0, y, size.x, height), n, filled, color)
+
+
 ## Health as joined blocks: every block is 10 HP, so a tough part has a longer bar and the dark blocks
 ## are the damage.
 class SegBar extends Control:
