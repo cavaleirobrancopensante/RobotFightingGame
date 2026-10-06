@@ -47,7 +47,9 @@ class ArenaBackdrop extends Control:
 		var lc := Color(ar["light"])
 		for k in 14:
 			draw_circle(Vector2(screen.x * (k + 0.5) / 14.0, screen.y * 0.21), 5.0, Color(lc, 0.45))
-		Arena.draw_floor(self, ARENA_ID, screen, floor_y, t, Vector2.ZERO)
+		# plain ring canvas (no centre logo: the menu sits there)
+		draw_rect(Rect2(0, floor_y, screen.x, screen.y - floor_y), Color(ar["floor"]))
+		draw_line(Vector2(0, floor_y), Vector2(screen.x, floor_y), Color(ar["floor"]).lightened(0.15), 2.0)
 		# the ring: corner posts and three ropes
 		var wl := screen.x * 0.07
 		var wr := screen.x * 0.93
@@ -230,7 +232,7 @@ func _ready() -> void:
 
 	var col := VBoxContainer.new()
 	col.alignment = BoxContainer.ALIGNMENT_CENTER
-	col.add_theme_constant_override("separation", 10)
+	col.add_theme_constant_override("separation", 26)
 	col.custom_minimum_size = Vector2(460, 0)
 	row.add_child(col)
 
@@ -251,15 +253,25 @@ func _ready() -> void:
 	col.add_child(load_button)
 	col.add_child(themed("Settings", "plate", _on_settings))
 	col.add_child(themed("Quit Game", "scrap", _on_quit))
+
+	msg = UI.label("", 20, Color(1.0, 0.8, 0.4))
+	msg.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	msg.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_WIDE)
+	msg.offset_top = -54
+	msg.offset_bottom = -26
+	msg.mouse_filter = Control.MOUSE_FILTER_IGNORE
+
+	# the version sits at the very bottom of the screen
 	var ver := GUI.text("Salgadoido's version " + GameData.VERSION, 14, Color(0.75, 0.75, 0.82), "body")
 	ver.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	ver.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
 	ver.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.8))
-	col.add_child(ver)
-
-	msg = UI.label("", 22, Color(1.0, 0.8, 0.4))
-	msg.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	col.add_child(msg)
+	ver.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_WIDE)
+	ver.offset_top = -24
+	ver.offset_bottom = -4
+	ver.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(ver)
+	add_child(msg)
 
 	var r := Control.new()
 	r.size_flags_horizontal = Control.SIZE_EXPAND_FILL
