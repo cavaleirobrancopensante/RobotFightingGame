@@ -888,9 +888,10 @@ func refresh() -> void:
 	send_button.text = tr("Send: %s") % (tr("main robot") if GameData.sending < 0 else GameData.WINGMAN_NAMES[GameData.sending])
 	# one button for whatever comes next: the clock until the evening, then tonight's fight (or tomorrow)
 	if GameData.phase < 2 or mode == "open":
-		fight_button.text = tr("NEXT ▸ %s") % tr(["AFTERNOON", "EVENING", "TOMORROW"][GameData.phase])
+		# says what the tap does: the bay works this part of the day (or you call it a night)
+		fight_button.text = tr(["WORK THE MORNING ▸", "WORK THE AFTERNOON ▸", "CALL IT A NIGHT ▸"][GameData.phase])
 		if GameData.phase < 2 and mode != "open":
-			fight_button.text += tr(" · FIGHT NIGHT")
+			fight_button.text += tr(" FIGHT TONIGHT")
 		fight_button.disabled = talk_after.is_valid()
 	elif not GameData.can_send():
 		fight_button.text = tr("FIGHT NIGHT: CHECK THE ROBOT")
@@ -1699,7 +1700,7 @@ func job_etas() -> Array:
 func tour_steps() -> Array:
 	return [
 		{"target": "repair", "text": tr("First thing: the robot's dented. Repair all puts every dent on the job board, and the bay fixes it while time passes. It costs money, so check the price. Tap it.")},
-		{"target": "next", "text": tr("Time only moves when you say so. The big yellow button does whatever's next: it moves the clock through the day while the bay works, and on fight night it takes you to the fight. Tap it.")},
+		{"target": "next", "text": tr("Time only moves when you say so. The big yellow button does whatever's next: WORK THE MORNING, WORK THE AFTERNOON while the bay gets on with the jobs, then the fight in the evening, or CALL IT A NIGHT. Tap it.")},
 		{"target": "rail:Parts", "text": tr("Get Parts, then the Scrapyard. One free dig a day, and you never know what's in the pile.")},
 		{"target": "dig", "text": tr("Go on, tap Dig anywhere. Mostly junk, but junk is free.")},
 		{"target": "rail:Pub", "text": tr("The Rusty Bolt, down the road. Whoever's at the bar will fight you for a few bucks.")},
