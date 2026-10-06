@@ -636,6 +636,7 @@ func say(text: String, sound: String = "") -> void:
 func _talk_count() -> void:
 	if bubble:
 		bubble.ok.count = maxi(0, talk_lines.size() - 1)
+		GUI.mark_new(bubble.ok, bubble.ok.count > 0)   # more to hear: tap on
 		bubble.ok.queue_redraw()
 
 
@@ -870,7 +871,9 @@ func refresh() -> void:
 	for c in ["font_color", "font_hover_color", "font_pressed_color"]:
 		bell_button.add_theme_color_override(c, bc)
 	bell_button.tooltip_text = tr("How much of the robot will be fit to fight by tonight's bell. Tap for the job board.")
+	# a fight tonight and the robot won't be ready: that's something to do
 	var mode := GameData.fight_mode()   # "open": nothing booked tonight, pickups are your choice (the Rusty Bolt)
+	GUI.mark_new(bell_button, mode != "open" and ready < 0.6)
 	title_label.text = ""   # the top strip is kept free (space for ads); the date lives in the Season calendar
 	var o := GameData.current_opponent()
 	var core := GameData.equipped_inst("torso")
@@ -1102,9 +1105,7 @@ func make_tap_row(icon: Control, title: String, subtitle: String, cb: Callable, 
 	b.pressed.connect(func(): Sfx.play("click", 0.05))
 	b.pressed.connect(cb)
 	var n := GUI.box(GUI.ROW, 10, 4)
-	if sel:
-		n.border_color = GUI.YELLOW
-		n.set_border_width_all(2)
+	GUI.mark_new(b, sel)   # the open row: the same marching stripes as the part picked on the gantry
 	var h := GUI.box(GUI.ROW.lightened(0.05), 10, 4)
 	var pr := GUI.box(GUI.ROW, 10, 4)
 	pr.border_color = GUI.YELLOW
@@ -1365,7 +1366,7 @@ func tonight_strip(mode: String) -> void:
 	if o.is_empty():
 		row_button(bar, tr("Find a fight ›"), go_to.bind("Pub", "bar"), true, 150)
 	else:
-		row_button(bar, tr("Bell Check ›"), open_fight_popup, true, 150)
+		GUI.mark_new(row_button(bar, tr("Bell Check ›"), open_fight_popup, true, 150), true)
 
 
 ## Off to the scrapyard ring for a practice round (nothing that happens there sticks).
@@ -1598,6 +1599,7 @@ func build_overview() -> void:
 	repair_all_btn = UI.button((tr("Repair all $%d · %s") % [total, GameData.hours_text(GameData.repair_all_hours())]) if total > 0
 			else (tr("On the job board") if GameData.has_work("m") else tr("All repaired")), _on_repair_all, 14, Vector2(0, 38))
 	repair_all_btn.disabled = total <= 0
+	GUI.mark_new(repair_all_btn, total > 0 and GameData.can_repair(total))
 	repair_all_btn.add_theme_color_override("font_color", GUI.AMBER)
 	key.add_child(repair_all_btn)
 	var kgap := Control.new()
@@ -2554,6 +2556,7 @@ func build_scrapyard_tab() -> void:
 		row_button(bar, tr("Dug today. Back tomorrow"), _on_dig.bind(""), false, 270)
 	else:
 		dig_button = row_button(bar, tr("Dig anywhere"), _on_dig.bind(""), true, 150)
+		GUI.mark_new(dig_button, true)   # today's dig is waiting
 		var kinds := action_bar()
 		kinds.add_child(UI.label(tr("Dig for:"), 16, Color(1.0, 0.8, 0.4)))
 		for k in ["head", "torso", "arm", "leg"]:
@@ -2934,9 +2937,6 @@ class CalDay extends Button:
 			bg = bg.lightened(0.08)
 		var a := 0.5 if past else 1.0
 		var sb: StyleBoxFlat = GUI.box(Color(bg, bg.a * a), 6, 0)
-		if tonight:
-			sb.border_color = GUI.YELLOW
-			sb.set_border_width_all(3)
 		draw_style_box(sb, r)
 		draw_string(GUI.num(), Vector2(6, 16), str(date), HORIZONTAL_ALIGNMENT_LEFT, -1, 16, Color(GUI.MUTED, a))
 		if result != "":
@@ -2974,6 +2974,9 @@ func cal_cell(w: int, row: int, day: int) -> Button:
 			c.result = "W" if e["won"] else "L"
 		if e.get("tonight", false):
 			c.tonight = true
+	if c.this_week and day == GameData.day_index():
+		c.tonight = true
+	GUI.mark_new(c, c.tonight)   # today: the marching stripes, "you are here"
 	c.pressed.connect(_on_cal_day.bind(w, day))
 	return c
 
