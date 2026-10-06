@@ -429,7 +429,7 @@ func _ready() -> void:
 				f.look_dirty = true
 	player = team_p[0]
 	cpu = team_c[0]
-	var split: bool = GameData.settings.get("team_controls", "split") == "split"
+	var split: bool = GameData.settings.get("team_controls", "linked") == "split"
 	control_pads = team_p.size() if team_p.size() > 1 and split and touch_device else 1   # keyboard: every robot follows WASD
 	if team_p.size() > 1:
 		for k in team_p.size():

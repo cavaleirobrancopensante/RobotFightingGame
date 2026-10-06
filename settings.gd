@@ -80,7 +80,16 @@ func _ready() -> void:
 	var title := UI.label("SETTINGS", 30, Color(1.0, 0.45, 0.2))
 	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	head.add_child(title)
-	# (the language flags live on the main menu, where everyone sees them first)
+	# language flags (also on the main menu, where everyone sees them first)
+	for lang in ["en", "pt", "es"]:
+		var f := Flag.new()
+		f.lang = lang
+		f.selected = GameData.settings.get("lang", "en") == lang
+		f.custom_minimum_size = Vector2(66, 46)
+		f.flat = true
+		f.focus_mode = Control.FOCUS_NONE
+		f.pressed.connect(_on_lang.bind(lang))
+		head.add_child(f)
 
 	# two columns so everything fits on a phone screen
 	var grid := GridContainer.new()
@@ -116,7 +125,7 @@ func refresh() -> void:
 	var n := GameData.error_count()
 	errors_button.text = tr("Error log (%d)") % n if n > 0 else tr("Error log (no errors)")
 	battery_button.text = tr("Battery saver: %s") % tr("ON (30 fps)" if s.get("battery_saver", false) else "OFF (60 fps)")
-	team_button.text = tr("Team controls: %s") % tr("SPLIT (a pad per robot)" if s.get("team_controls", "split") == "split" else "LINKED (one pad for all)")
+	team_button.text = tr("Team controls: %s") % tr("SPLIT (a pad per robot)" if s.get("team_controls", "linked") == "split" else "LINKED (one pad for all)")
 	delete_button.text = tr("Walk-in show: %s") % tr("OFF (straight to the countdown)" if s.get("skip_intros", false) else "ON")
 	reset_button.text = tr("Sure? Tap again to reset") if reset_armed else tr("Restore default settings")
 	if diff_button:
@@ -284,7 +293,7 @@ func _on_battery() -> void:
 
 
 func _on_team() -> void:
-	GameData.settings["team_controls"] = "linked" if GameData.settings.get("team_controls", "split") == "split" else "split"
+	GameData.settings["team_controls"] = "linked" if GameData.settings.get("team_controls", "linked") == "split" else "split"
 	GameData.save_settings()
 	refresh()
 	Sfx.play("click")

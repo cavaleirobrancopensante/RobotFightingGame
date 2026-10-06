@@ -4013,7 +4013,7 @@ func build_team_tab() -> void:
 	section("WEIGHT CLASSES: a robot fighting alone can be as heavy as its reactor allows. A team shares one heavyweight's power (%d): 2 robots get %d each, 3 get %d. Your robot now: %s, %d power. Mini parts are light, Heavy parts drink power, and a team robot over its share gets overloaded."
 			% [int(GameData.TEAM_POWER), int(GameData.team_share(2)), int(GameData.team_share(3)), tr(GameData.weight_class(ms["power_used"])), ms["power_used"]])
 	var bar := action_bar()
-	var split: bool = GameData.settings.get("team_controls", "split") == "split"
+	var split: bool = GameData.settings.get("team_controls", "linked") == "split"
 	var b := row_button(bar, tr("Team controls: %s") % ("SPLIT: each robot gets its own movement pad" if split else "LINKED: every robot follows one pad"), _on_team_controls, true, 0)
 	b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	for k in GameData.wingmen.size():
@@ -4054,7 +4054,7 @@ func build_team_tab() -> void:
 
 
 func _on_team_controls() -> void:
-	var split: bool = GameData.settings.get("team_controls", "split") == "split"
+	var split: bool = GameData.settings.get("team_controls", "linked") == "split"
 	GameData.settings["team_controls"] = "linked" if split else "split"
 	GameData.save_settings()
 	say(tr("Team controls: %s.") % ("LINKED: all your robots follow one movement pad" if split else "SPLIT: one movement pad per robot, shared attack buttons. Move the pads in Settings > Edit controls"), "click")

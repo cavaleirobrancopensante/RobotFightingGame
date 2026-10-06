@@ -2,7 +2,7 @@ extends Node
 
 # helper scripts, loaded by path so the game also runs without an editor scan
 ## The game's version, shown on the main menu. Bump it with every change (1.1, 1.2, ...).
-const VERSION := "1.36"
+const VERSION := "1.37"
 const Arena = preload("res://arena.gd")
 const I18n = preload("res://i18n.gd")
 const Catalog = preload("res://catalog.gd")
@@ -369,7 +369,7 @@ var chips: Array = []         # chips installed (only the first chip_slots() of 
 var last_result := {}       # handed from the fight to the garage
 var story_key := ""         # which story scene to show next
 var story_return := ""      # scene to go to after the story
-const DEFAULT_SETTINGS := {"sound": true, "music": true, "shake": true, "button_size": 1, "difficulty": 1, "layout": {}, "team_controls": "split", "battery_saver": false,
+const DEFAULT_SETTINGS := {"sound": true, "music": true, "shake": true, "button_size": 1, "difficulty": 1, "layout": {}, "team_controls": "linked", "battery_saver": false, "rev": 2,
 		"start_money": START_MONEY, "living_cost": LIVING_COST, "coaching": 2, "lang": "en", "pecking": 1, "edges": 0}
 var settings := DEFAULT_SETTINGS.duplicate(true)
 
@@ -3303,8 +3303,13 @@ func start_quick_fight() -> void:
 	var level := rng.randf_range(0.5, 3.0)
 	quick = {"player": random_bot(rng, budget, level), "enemy": random_bot(rng, budget, level)}
 	# sometimes a team fight: tag teams and swarms, on either side (or both)
-	var formats := [[1, 1], [1, 1], [1, 1], [1, 2], [1, 3], [2, 1], [3, 1], [2, 2], [3, 3], [2, 3], [3, 2]]
-	var fmt: Array = formats[rng.randi() % formats.size()]
+	# mostly one on one: 1v1 six times in nine, two-robot fights twice, three-robot fights once
+	var r := rng.randf() * 9.0
+	var fmt: Array = [1, 1]
+	if r >= 8.0:
+		fmt = [[1, 3], [3, 1], [3, 3], [2, 3], [3, 2]][rng.randi() % 5]
+	elif r >= 6.0:
+		fmt = [[1, 2], [2, 1], [2, 2]][rng.randi() % 3]
 	if fmt[0] > 1:
 		var t := random_team(rng, budget, level, fmt[0])
 		quick["players"] = [t] + t["team"]
@@ -4539,3 +4544,7 @@ func load_settings() -> void:
 		settings["lang"] = str(settings.get("lang", "en"))
 		if typeof(settings["layout"]) != TYPE_DICTIONARY:
 			settings["layout"] = {}
+		# settings from before 1.37: team fights now start with every robot on one pad
+		if int(data.get("rev", 1)) < 2:
+			settings["team_controls"] = "linked"
+		settings["rev"] = 2
