@@ -519,6 +519,7 @@ static func _pub_back(ci: CanvasItem, size: Vector2, floor_y: float, t: float, i
 			ci.draw_rect(Rect2(x + 2 * s, y - h - 5 * s, 3 * s, 5 * s), Color.from_hsv(hue, 0.4, 0.4))
 			x += 13 * s
 			k += 1
+	_jukebox(ci, Vector2(size.x * 0.035, floor_y), s, t, bool(info.get("juke", false)))
 	# the bartender behind the counter, polishing a glass
 	var keep := {"skin": "#8d5a3b", "hair": "#2b2b2b", "hat": "none", "outfit": "#3b2a1e", "beard": "full", "beard_color": "#2b2b2b", "eyes": "#3a2a1e"}
 	PilotArt.draw_person(ci, Vector2(size.x * 0.72, floor_y - 16 * s), s, keep, -1.0, "wipe", t)   # on the raised step behind the bar
@@ -530,6 +531,85 @@ static func _pub_back(ci: CanvasItem, size: Vector2, floor_y: float, t: float, i
 		var px := cx + 14 + k * (size.x - cx - 20) / 3.0
 		ci.draw_line(Vector2(px, top + 6), Vector2(px, floor_y - 4), Color(0.25, 0.15, 0.08), 2.0)
 	ci.draw_line(Vector2(cx, floor_y - 8 * s), Vector2(size.x, floor_y - 8 * s), Color(0.7, 0.6, 0.35), 3.0)   # foot rail
+
+
+## The jukebox: knocked together from scrap - patchwork plates, pipe legs, a record spinning behind
+## a scratched window, chasing bulbs round the arch, and a brass gramophone horn on top. When it's
+## playing, the bulbs run, the record spins and notes drift out of the horn.
+static func _jukebox(ci: CanvasItem, base: Vector2, s: float, t: float, playing: bool) -> void:
+	var w := 50.0 * s
+	var h := 80.0 * s
+	var body := Rect2(base.x, base.y - h - 8 * s, w, h)
+	# pipe legs
+	for lx in [body.position.x + 6 * s, body.end.x - 9 * s]:
+		ci.draw_rect(Rect2(lx, body.end.y, 3 * s, 8 * s), Color(0.45, 0.45, 0.48))
+	# patchwork body: plates of different scrap riveted together
+	var plates := [[Rect2(body.position, Vector2(w * 0.55, h * 0.5)), Color(0.42, 0.28, 0.18)],
+			[Rect2(body.position + Vector2(w * 0.55, 0), Vector2(w * 0.45, h * 0.5)), Color(0.35, 0.38, 0.33)],
+			[Rect2(body.position + Vector2(0, h * 0.5), Vector2(w * 0.4, h * 0.5)), Color(0.38, 0.33, 0.4)],
+			[Rect2(body.position + Vector2(w * 0.4, h * 0.5), Vector2(w * 0.6, h * 0.5)), Color(0.48, 0.3, 0.16)]]
+	for p in plates:
+		ci.draw_rect(p[0], p[1])
+		ci.draw_rect(p[0], (p[1] as Color).darkened(0.4), false, 1.5)
+		var r: Rect2 = p[0]
+		for c in [r.position + Vector2(3, 3), Vector2(r.end.x - 3, r.position.y + 3), Vector2(r.position.x + 3, r.end.y - 3), r.end - Vector2(3, 3)]:
+			ci.draw_circle(c, 1.3, Color(0.75, 0.7, 0.6))
+	# rust streaks
+	for k in 3:
+		var rx := body.position.x + w * (0.2 + k * 0.28)
+		ci.draw_line(Vector2(rx, body.position.y + h * 0.3), Vector2(rx - 2, body.position.y + h * 0.55), Color(0.55, 0.25, 0.1, 0.6), 2.0)
+	# the arch on top, with bulbs that chase round when it plays
+	var arch_c := Vector2(body.get_center().x, body.position.y)
+	ci.draw_circle(arch_c, w * 0.5, Color(0.3, 0.2, 0.14))
+	ci.draw_rect(Rect2(body.position.x, arch_c.y, w, 2), Color(0.3, 0.2, 0.14))
+	for k in 9:
+		var a := PI + PI * (k + 0.5) / 9.0
+		var lit := playing and (int(t * 8.0) + k) % 3 == 0
+		var col := Color.from_hsv(fmod(k * 0.13, 1.0), 0.7, 1.0) if lit else Color.from_hsv(fmod(k * 0.13, 1.0), 0.4, 0.4)
+		ci.draw_circle(arch_c + Vector2(cos(a), sin(a)) * w * 0.42, 2.6 * s * 0.6 + 1.0, col)
+	# the window: a record on a turntable
+	var win := Rect2(body.position + Vector2(w * 0.12, h * 0.08), Vector2(w * 0.76, h * 0.36))
+	ci.draw_rect(win, Color(0.08, 0.06, 0.05))
+	var rec := win.get_center() + Vector2(0, 2)
+	var rr := win.size.y * 0.42
+	ci.draw_circle(rec, rr, Color(0.06, 0.06, 0.06))
+	for k in 3:
+		ci.draw_arc(rec, rr * (0.45 + k * 0.17), 0, TAU, 18, Color(0.18, 0.18, 0.18), 1.0)
+	ci.draw_circle(rec, rr * 0.3, Color(0.8, 0.25, 0.15))
+	var spin := t * 5.0 if playing else 0.6
+	ci.draw_line(rec, rec + Vector2(cos(spin), sin(spin)) * rr * 0.28, Color(1, 0.9, 0.7), 1.5)
+	ci.draw_line(win.position + Vector2(win.size.x * 0.85, 3), rec + Vector2(rr * 0.6, -rr * 0.3), Color(0.75, 0.75, 0.8), 1.5)   # tone arm
+	ci.draw_rect(win, Color(0.7, 0.85, 0.9, 0.12))
+	ci.draw_line(win.position + Vector2(4, win.size.y - 4), win.position + Vector2(win.size.x * 0.4, 4), Color(1, 1, 1, 0.15), 1.0)   # scratch
+	# speaker grille and the coin slot
+	var gr := Rect2(body.position + Vector2(w * 0.12, h * 0.56), Vector2(w * 0.5, h * 0.34))
+	ci.draw_rect(gr, Color(0.15, 0.12, 0.1))
+	for k in 5:
+		ci.draw_line(Vector2(gr.position.x + 2, gr.position.y + 4 + k * gr.size.y / 5.0), Vector2(gr.end.x - 2, gr.position.y + 4 + k * gr.size.y / 5.0), Color(0.5, 0.42, 0.3), 1.5)
+	ci.draw_rect(Rect2(body.position + Vector2(w * 0.72, h * 0.62), Vector2(w * 0.12, h * 0.05)), Color(0.08, 0.08, 0.08))
+	ci.draw_circle(body.position + Vector2(w * 0.78, h * 0.78), 3.0, Color(0.3, 1.0, 0.4) if playing else Color(0.5, 0.15, 0.1))
+	# the gramophone horn: a brass flower on a crooked neck
+	var neck0 := Vector2(body.end.x - w * 0.2, arch_c.y - w * 0.4)
+	var neck1 := neck0 + Vector2(6 * s, -14 * s)
+	ci.draw_line(neck0, neck1, Color(0.6, 0.45, 0.2), 3.0 * s)
+	var mouth := neck1 + Vector2(20 * s, -16 * s)
+	var dirv := (mouth - neck1).normalized()
+	var perp := dirv.orthogonal()
+	var pulse := (1.0 + 0.06 * sin(t * 10.0)) if playing else 1.0
+	ci.draw_colored_polygon(PackedVector2Array([neck1 + perp * 2 * s, mouth + perp * 15 * s * pulse, mouth - perp * 15 * s * pulse, neck1 - perp * 2 * s]), Color(0.8, 0.6, 0.22))
+	ci.draw_line(mouth + perp * 15 * s * pulse, mouth - perp * 15 * s * pulse, Color(0.95, 0.8, 0.4), 3.0)
+	for k in 3:
+		ci.draw_line(neck1, mouth + perp * (-12 + k * 12) * s * pulse, Color(0.62, 0.45, 0.15), 1.0)
+	# notes drifting out of the horn
+	if playing:
+		for k in 4:
+			var ph := fmod(t * 0.6 + k * 0.25, 1.0)
+			var np := mouth + dirv * 10 * s + Vector2(ph * 30 * s + sin(t * 3.0 + k) * 5, -ph * 46 * s)
+			var nc := Color(1.0, 0.85, 0.45, 1.0 - ph)
+			ci.draw_circle(np, 2.6 * s * 0.7 + 0.5, nc)
+			ci.draw_line(np + Vector2(2.2 * s * 0.7, 0), np + Vector2(2.2 * s * 0.7, -8 * s * 0.7), nc, 1.5)
+			if k % 2 == 0:
+				ci.draw_line(np + Vector2(2.2 * s * 0.7, -8 * s * 0.7), np + Vector2(6 * s * 0.7, -6 * s * 0.7), nc, 1.5)
 
 
 ## In front: your pilot on a stool at the bar with a beer (pushing coins over when you bet),

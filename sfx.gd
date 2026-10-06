@@ -67,6 +67,55 @@ const FIGHT_TRACKS := ["fight", "fight_pump", "fight_rush", "fight_heavy", "figh
 var playlist: Array = []
 var playlist_pos := 0
 
+## The jukebox at The Rusty Bolt: every song in the game, by name, with where you hear it.
+## [file, title, where it plays]
+const JUKEBOX := [
+	["menu", "Port Ferrum Nights", "Main menu"],
+	["garage", "Gus's Bay", "The garage"],
+	["workshop", "Sparks and Solder", "The garage"],
+	["sunset_drive", "Sunset Drive", "Menus and garage"],
+	["chiptune_cafe", "Chiptune Cafe", "Menus and garage"],
+	["lounge", "Rusty Bolt Lounge", "Menus, garage and story"],
+	["story", "The Dead Man's Robot", "Story scenes"],
+	["walkin_scrap", "Settle Down, You Lot", "Walk-in: the Scrap Heap Ring"],
+	["walkin_arena", "Fight Night Fanfare", "Walk-in: Regional and cups"],
+	["walkin_grand", "The Grand Hall", "Walk-in: the Championship"],
+	["fight", "First Bell", "Fights"],
+	["fight_pump", "Pump the Pistons", "Fights"],
+	["fight_rush", "Overclock Rush", "Fights"],
+	["fight_heavy", "Heavy Metal, Literally", "Fights"],
+	["fight_neon", "Neon Knockout", "Fights"],
+	["fight_chrome", "Chrome Fists", "Fights"],
+	["fight_scrapyard", "Scrapyard Brawl", "Fights"],
+	["fight_thunder", "Thunder Gallop", "Fights"],
+	["boss", "OVERLORD", "Boss fights and finals"],
+	["anthem", "Champion of the Docks", "The finale"],
+]
+
+
+## Jukebox: play one song, then carry on down the list (it keeps going until you press Stop).
+func jukebox(index: int) -> void:
+	var names: Array = JUKEBOX.map(func(x): return x[0])
+	playlist = names
+	playlist_pos = clampi(index, 0, names.size() - 1)
+	current_track = "jukebox"
+	if not GameData.settings.get("music", true):
+		return
+	_play_current()
+
+
+func jukebox_index() -> int:
+	if current_track != "jukebox":
+		return -1
+	return playlist_pos
+
+
+## Where the song is (seconds) and how long it is.
+func music_position() -> Vector2:
+	if not music_player.playing or music_player.stream == null:
+		return Vector2.ZERO
+	return Vector2(music_player.get_playback_position(), music_player.stream.get_length())
+
 
 ## Play a playlist ("menu", "garage", "story") or loop one track ("boss", "fight_rush"...).
 ## Asking for what's already playing does nothing, so the song doesn't restart between screens.

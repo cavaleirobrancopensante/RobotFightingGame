@@ -419,6 +419,7 @@ func segs_of(t: String) -> Array:
 			if GameData.bet_target() != "":
 				out.append(["bets", tr("Bets"), ""])
 			out.append(["pilots", tr("Pilots"), ""])
+			out.append(["jukebox", tr("Jukebox"), ""])
 		"Crew":
 			if GameData.team_unlocked():
 				out.append(["backups", tr("Backups"), "team"])
@@ -764,6 +765,7 @@ func _place_talk() -> void:
 
 
 func _process(delta: float) -> void:
+	update_jukebox()
 	if detail_panel and detail_panel.visible and left_col:
 		detail_panel.position = left_col.global_position
 		detail_panel.size = left_col.size
@@ -1753,7 +1755,7 @@ func scene_info() -> Dictionary:
 			backup = GameData.look_from_spec(GameData.player_spec(GameData.wingmen[k], GameData.wingman_name(k)))
 			break
 	return {"pilot": GameData.pilot_look, "paint": Color(GameData.PAINTS[GameData.paint]["color"]),
-			"spark": now - spark_at, "dig": now - dig_at, "found": dig_found, "bet": now - bet_at,
+			"spark": now - spark_at, "dig": now - dig_at, "found": dig_found, "bet": now - bet_at, "juke": Sfx.jukebox_index() >= 0,
 			"medals": GameData.trophies, "backup": backup, "stats": GameData.career_stats,
 			"wins": GameData.wins, "losses": GameData.losses, "champion": GameData.champion}
 
@@ -1956,7 +1958,7 @@ func set_scene_for_tab() -> void:
 		"Parts":
 			scene = {"dealer": "shop", "order": "workshop"}.get(seg(), "scrap")
 		"Season":
-			scene = {"cups": "cups", "bets": "pub"}.get(seg(), "office")
+			scene = {"cups": "cups", "bets": "pub", "jukebox": "pub"}.get(seg(), "office")
 		"Crew":
 			scene = "team"
 	preview.spot = GarageArt.robot_spot(scene)
@@ -2307,6 +2309,8 @@ func build_season_tab() -> void:
 			build_bets()
 		"pilots":
 			build_pilots_view()
+		"jukebox":
+			build_jukebox()
 		"cups":
 			build_cups_tab()
 		_:
@@ -2537,6 +2541,103 @@ func _on_watch(a: int, b: int) -> void:
 
 
 ## Every pilot in Port Ferrum: who's on top, who's broke, who's moved up, who retired - and the news.
+# ---------------------------------------------------------------- the jukebox (The Rusty Bolt)
+
+var juke_bar: GUI.TalkBar
+var juke_time: Label
+var juke_shown := -2
+var juke_lengths := {}
+
+
+func juke_length(file: String) -> float:
+	if not juke_lengths.has(file):
+		var path := "res://music/%s.ogg" % file
+		juke_lengths[file] = (load(path) as AudioStream).get_length() if ResourceLoader.exists(path) else 0.0
+	return float(juke_lengths[file])
+
+
+func mmss(t: float) -> String:
+	return "%d:%02d" % [int(t) / 60, int(t) % 60]
+
+
+## The scrap jukebox: every song in the game by name. Tap one to play it; it carries on down the list.
+func build_jukebox() -> void:
+	var cur := Sfx.jukebox_index()
+	juke_shown = cur
+	# now playing
+	var np := PanelContainer.new()
+	np.add_theme_stylebox_override("panel", GUI.box(Color(0.1, 0.06, 0.05, 0.92), 10, 12))
+	list_box.add_child(np)
+	var col := VBoxContainer.new()
+	col.add_theme_constant_override("separation", 4)
+	np.add_child(col)
+	col.add_child(GUI.text(tr("THE RUSTY BOLT JUKEBOX"), 12, GUI.AMBER, "headb"))
+	var title := tr("Pick a song") if cur < 0 else tr(Sfx.JUKEBOX[cur][1])
+	col.add_child(GUI.text(title, 22, GUI.TEXT, "headb"))
+	col.add_child(GUI.text("" if cur < 0 else tr(Sfx.JUKEBOX[cur][2]), 12, GUI.MUTED))
+	var prog := HBoxContainer.new()
+	prog.add_theme_constant_override("separation", 10)
+	col.add_child(prog)
+	juke_bar = GUI.TalkBar.new()
+	juke_bar.custom_minimum_size = Vector2(0, 6)
+	juke_bar.color = GUI.AMBER
+	juke_bar.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	juke_bar.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	juke_bar.set_ratio(0.0)
+	prog.add_child(juke_bar)
+	juke_time = GUI.readout("0:00 / 0:00", 18, GUI.AMBER)
+	prog.add_child(juke_time)
+	var ctrl := action_bar(col)
+	row_button(ctrl, "‹ Prev", _on_juke_step.bind(-1), true, 110)
+	if cur < 0:
+		row_button(ctrl, "Play", _on_juke_play.bind(0), true, 140).add_theme_color_override("font_color", GUI.YELLOW)
+	else:
+		row_button(ctrl, "Stop", _on_juke_stop, true, 140).add_theme_color_override("font_color", GUI.RED)
+	row_button(ctrl, "Next ›", _on_juke_step.bind(1), true, 110)
+	if not GameData.settings.get("music", true):
+		col.add_child(GUI.text(tr("Music is switched off in Settings."), 12, GUI.RED))
+	# the list
+	section(tr("Every song in Port Ferrum - tap one to play it:"))
+	for k in Sfx.JUKEBOX.size():
+		var e: Array = Sfx.JUKEBOX[k]
+		var num := GUI.readout("%02d" % (k + 1), 20, GUI.AMBER if k == cur else GUI.MUTED)
+		num.custom_minimum_size = Vector2(52, 0)
+		num.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		var row := make_tap_row(num, tr(e[1]), tr(e[2]), _on_juke_play.bind(k), "", k == cur)
+		var ln := GUI.readout(mmss(juke_length(e[0])), 17, GUI.MUTED)
+		ln.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		row.add_child(ln)
+
+
+func update_jukebox() -> void:
+	if juke_bar == null or not is_instance_valid(juke_bar) or not juke_bar.is_visible_in_tree():
+		return
+	if Sfx.jukebox_index() != juke_shown:
+		refresh()   # the song changed by itself (next in the list)
+		return
+	var pos := Sfx.music_position()
+	juke_bar.set_ratio(pos.x / pos.y if pos.y > 0.0 else 0.0)
+	juke_time.text = "%s / %s" % [mmss(pos.x), mmss(pos.y)]
+
+
+func _on_juke_play(k: int) -> void:
+	Sfx.jukebox(k)
+	refresh()
+
+
+func _on_juke_step(step: int) -> void:
+	var cur := Sfx.jukebox_index()
+	Sfx.jukebox(posmod((cur if cur >= 0 else 0) + step, Sfx.JUKEBOX.size()))
+	refresh()
+
+
+func _on_juke_stop() -> void:
+	Sfx.stop_music()
+	Sfx.current_track = ""
+	Sfx.music("garage")
+	refresh()
+
+
 func build_pilots_view() -> void:
 	var World = GameData.World
 	section("Port Ferrum's pilots. Between fights they earn, repair, upgrade, sell parts - and some retire.")
