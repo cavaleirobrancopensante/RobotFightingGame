@@ -797,7 +797,7 @@ func _process(delta: float) -> void:
 func refresh() -> void:
 	money_label.text = GameData.money_text(GameData.money)
 	money_label.add_theme_color_override("font_color", GUI.RED if GameData.money < 0 else GUI.AMBER)
-	date_button.text = (tr("WED · WK %d") if GameData.day == "wed" else tr("SAT · WK %d")) % GameData.week
+	date_button.text = tr("%s · WK %d") % [tr(DAY_NAMES[GameData.day_index()]), GameData.week]
 	var total := GameData.repair_all_cost()
 	repair_button.text = tr("Repair all $%d") % total if total > 0 else tr("All repaired")
 	repair_button.disabled = total <= 0   # (short on cash? pressing it has Gus explain)
@@ -1266,7 +1266,7 @@ func build_next_fight_card() -> void:
 	for c in detail_box.get_children() + detail_footer.get_children():
 		c.queue_free()
 	var o := GameData.current_opponent()
-	var night := (tr("WEDNESDAY NIGHT") if GameData.day == "wed" else tr("SATURDAY NIGHT"))
+	var night := tonight_name()
 	var t := GUI.text(night, 22, GUI.YELLOW, "stencil")
 	t.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	detail_box.add_child(t)
@@ -2302,7 +2302,7 @@ func build_cups_tab() -> void:
 		row_button(row, "Enter", _on_enter_cup.bind(k), fits, 100)
 	if GameData.champion:
 		var row := make_row(bot_preview(GameData.OPPONENTS[GameData.OPPONENTS.size() - 1]), "OVERLORD rematch",
-				tr("Exhibition bout in the Grand Hall for $%d. Takes a week.") % GameData.EXHIBITION_REWARD)
+				tr("Exhibition bout in the Grand Hall for $%d. Any free night.") % GameData.EXHIBITION_REWARD)
 		row_button(row, "Book it", _on_rematch, free and not GameData.exhibition, 100)
 
 
@@ -2390,15 +2390,16 @@ func build_calendar() -> void:
 	if mode == "pickup" or mode == "open":
 		var nxt := GameData.next_event_info()
 		var league_sat := ["league", "playoff"].has(str(GameData.week_plan(GameData.year, GameData.week, "sat")["kind"]))
-		if GameData.day == "wed":
-			section("Wednesday night, and no cup round for you. Take a pickup fight at the scrapyard for a few dollars (Fight button), enter a cup, or skip to Saturday.")
+		if GameData.my_fight_ahead():
+			section("Nothing of yours tonight. Take a pickup fight at the scrapyard for a few dollars (Fight button), let the day go, or skip straight to your fight night.")
 		else:
-			section("No league fight this week. Take a pickup fight at the scrapyard for a few dollars (Fight button), enter a cup if you can, or let the week pass.")
+			section("No fight of yours left this week. Take a pickup fight at the scrapyard any day for a few dollars (Fight button), enter a cup if you can, or rest till Monday.")
 		var bar := action_bar()
-		if GameData.day == "wed":
-			row_button(bar, "Skip to Saturday", _on_skip_wednesday, true, 190)
-		if not league_sat:
-			row_button(bar, "Rest a week", _on_rest, true, 150)
+		row_button(bar, "Next day", _on_skip_wednesday, true, 140)
+		if GameData.my_fight_ahead():
+			row_button(bar, "Skip to fight night", _on_skip_fight_night, true, 200)
+		elif not league_sat:
+			row_button(bar, "Rest till Monday", _on_rest, true, 180)
 		if str(nxt[0]) != "" and int(nxt[2]) > 1 and GameData.circuit.is_empty():
 			row_button(bar, tr("Skip to the %s") % tr(Career.STAGES[nxt[0]]["short"]).capitalize(), _on_skip, true, 0)
 
@@ -2463,7 +2464,7 @@ func cal_cell(w: int, row: int, day: int) -> Button:
 	var c := CalDay.new()
 	c.date = row * 7 + day + 1
 	c.this_week = w == GameData.week
-	c.past = w < GameData.week or (c.this_week and day < (2 if GameData.day == "wed" else 5) and day != 6)
+	c.past = w < GameData.week or (c.this_week and day < GameData.day_index())
 	c.fight_night = "sat" if day == 5 else ("wed" if day == 2 else "")
 	for e in day_events(w, day):
 		if str(e.get("icon", "")) != "":
@@ -2484,8 +2485,8 @@ func day_events(w: int, day: int) -> Array:
 	var y := GameData.year
 	var this_week := w == GameData.week
 	var mode := GameData.fight_mode()
-	if day == 2 or day == 5:
-		var d := "sat" if day == 5 else "wed"
+	if day <= 6:
+		var d: String = GameData.DAYS[day]
 		var plan := GameData.week_plan(y, w, d)
 		var kind := str(plan["kind"])
 		var stage := str(plan.get("stage", ""))
@@ -2513,7 +2514,7 @@ func day_events(w: int, day: int) -> Array:
 					e["matches"].append({"ev": GameData.event, "a": 0, "b": opp, "bet": false})
 				out.append(e)
 			"open":
-				if this_week and GameData.day == d or w > GameData.week:
+				if (this_week and GameData.day_index() <= day) or (w > GameData.week and day == 5):
 					var e := {"icon": "pickup", "tonight": tonight, "title": tr("SCRAPYARD PICKUP FIGHT"),
 							"text": tr("A few dollars down at the scrapyard, against whoever's hanging around."), "matches": []}
 					if tonight and mode == "pickup":
@@ -2528,7 +2529,7 @@ func day_events(w: int, day: int) -> Array:
 					lines.append(GameData.World.news_text(n))
 			if not lines.is_empty():
 				out.append({"icon": "", "title": tr("AROUND PORT FERRUM"), "text": "\n".join(lines.slice(0, 8))})
-	elif day == 6:
+	if day == 6:
 		if (w - 1) % GameData.MONTH_WEEKS == GameData.MONTH_WEEKS - 1 and GameData.living_cost() > 0:
 			out.append({"icon": "rent", "title": tr("RENT & FOOD"), "text": tr("Gus takes $%d for the bay and the groceries.") % GameData.living_cost()})
 		out.append({"icon": "stock", "title": tr("NEW STOCK"), "text": tr("The dealer restocks and fresh junk lands on the scrapyard pile.")})
@@ -2573,6 +2574,9 @@ func _on_cal_day(w: int, day: int) -> void:
 			b.alignment = HORIZONTAL_ALIGNMENT_LEFT
 			b.clip_text = true
 			v.add_child(b)
+	# later this week: you can jump straight to it (it stops at a night with your own fight)
+	if w == GameData.week and day > GameData.day_index() and GameData.can_pass_day():
+		col.add_child(UI.button(tr("Go to %s") % tr(GameData.DAY_FULL[day]), _on_go_to_day.bind(day), 16, Vector2(0, 44)))
 
 
 ## "ROOK · ECHO  vs  MARGO · TIN CAN" for a match button.
@@ -2946,6 +2950,23 @@ func _on_bet(pick: int, vs: int) -> void:
 	if GameData.money < before:
 		bet_at = Time.get_ticks_msec() / 1000.0
 	GameData.save_game()
+	refresh()
+
+
+## "SATURDAY NIGHT", "TUESDAY NIGHT"...
+func tonight_name() -> String:
+	return tr("%s NIGHT") % tr(GameData.DAY_FULL[GameData.day_index()]).to_upper()
+
+
+func _on_go_to_day(idx: int) -> void:
+	close_popup()
+	say(GameData.skip_to_day(idx), "click")
+	refresh()
+
+
+func _on_skip_fight_night() -> void:
+	close_popup()
+	say(GameData.skip_to_fight_night(), "click")
 	refresh()
 
 
@@ -3745,26 +3766,26 @@ func _on_fight() -> void:
 
 func open_fight_popup() -> void:
 	var o := GameData.current_opponent()
-	var col := open_popup((tr("WEDNESDAY NIGHT · CUP") if GameData.fight_mode() == "circuit" else tr("WEDNESDAY NIGHT")) if GameData.day == "wed" else tr("SATURDAY NIGHT"))
+	var col := open_popup(tonight_name() + (" · " + tr("CUP") if GameData.fight_mode() == "circuit" else ""))
 	col.custom_minimum_size = Vector2(640, 0)
 	fight_popup_open = true
 	var who := str(o.get("pilot", ""))
 	var head := UI.label(GameData.fight_title() + "\n" + (tr("%s, piloted by %s") % [o.get("name", "?"), who] if who != "" else str(o.get("name", "?"))) + "   " + tr("Purse: $%d") % GameData.current_reward(), 18, Color(1.0, 0.85, 0.4))
 	head.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	col.add_child(head)
-	if GameData.day == "wed" and ["league", "playoff"].has(str(GameData.week_plan(GameData.year, GameData.week, "sat")["kind"])):
+	if GameData.day_index() < 5 and GameData.fight_mode() != "story" and ["league", "playoff"].has(str(GameData.week_plan(GameData.year, GameData.week, "sat")["kind"])):
 		var warn := UI.label(tr("Your league fight is this Saturday. Whatever breaks tonight has to be fixed (and paid for) by then."), 15, Color(0.75, 0.85, 1.0))
 		warn.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		col.add_child(warn)
-	if GameData.day == "wed" and GameData.fight_mode() != "circuit":
+	if GameData.can_pass_day():
 		var wrow := HBoxContainer.new()
 		wrow.add_theme_constant_override("separation", 10)
 		col.add_child(wrow)
-		var wl := UI.label(tr("No cup for you this Wednesday, just a pickup fight for a few dollars. Or sit it out and save the robot for Saturday."), 15, Color(0.75, 0.85, 1.0))
+		var wl := UI.label(tr("Just a pickup fight tonight, for a few dollars. Or sit it out and save the robot for your next real fight."), 15, Color(0.75, 0.85, 1.0))
 		wl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		wl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		wrow.add_child(wl)
-		wrow.add_child(UI.button(tr("Skip to Saturday"), _on_skip_wednesday, 16, Vector2(190, 46)))
+		wrow.add_child(UI.button(tr("Next day"), _on_skip_wednesday, 16, Vector2(150, 46)))
 	# scouting: pay a kid with a camera to look at their robot first
 	if GameData.scout_key() != "" and GameData.unlocked("scout"):
 		var srow := HBoxContainer.new()

@@ -2,7 +2,7 @@ extends Node
 
 # helper scripts, loaded by path so the game also runs without an editor scan
 ## The game's version, shown on the main menu. Bump it with every change (1.1, 1.2, ...).
-const VERSION := "1.21"
+const VERSION := "1.22"
 const Arena = preload("res://arena.gd")
 const I18n = preload("res://i18n.gd")
 const Catalog = preload("res://catalog.gd")
@@ -259,7 +259,8 @@ var paint := 0
 var fight_index := 0        # (old saves) story fights won; the career now lives in year/week/event
 var year := 1
 var week := 1
-var day := "sat"            # next fight night this week: "wed" (cup rounds) or "sat" (leagues and everything else)
+var day := "mon"            # today: "mon".."sun" (cup rounds on "wed", leagues on "sat", pickups any day)
+const DAYS := ["mon", "tue", "wed", "thu", "fri", "sat", "sun"]
 var rank := "scrap"         # the highest league you've qualified for: scrap / regional / championship
 var event := {}             # the league or playoffs you're in (see career.gd)
 var trophies: Array = []    # [{kind: scrap/regional/championship/cup, medal: 1-3, name, year}]
@@ -483,7 +484,7 @@ func new_game() -> void:
 	owned_controllers = ["gamepad"]
 	tips_seen = []
 	digs_left = DIGS_PER_FIGHT
-	day = "sat"
+	day = "mon"
 	robot_name = DEFAULT_ROBOT
 	inventory = []
 	equipped = {}
@@ -1245,7 +1246,7 @@ func current_arena() -> Array:
 ## Quiet weeks: there's always a pickup fight at the scrapyard for a few dollars.
 func start_pickup() -> void:
 	var rng := RandomNumberGenerator.new()
-	rng.seed = year * 1000 + week
+	rng.seed = year * 1000 + week * 10 + day_index()
 	var lv := 0.3 + rank_index() * 0.8
 	# someone from your tier hanging around the scrapyard (not one of this week's league pilots)
 	var busy := World.busy_ids()
@@ -1267,13 +1268,75 @@ func cup_round_this_week() -> bool:
 			and Career.week_of_round(circuit) == week
 
 
-## Not in a cup (or don't fancy Wednesday's pickup)? Go straight to Saturday.
-func skip_wednesday() -> String:
+## Today as 0 (Monday) .. 6 (Sunday).
+func day_index() -> int:
+	return maxi(0, DAYS.find(day))
+
+
+## The clock moves on a day (after a fight, or when you let a free day go). After Sunday a new
+## week starts on Monday.
+func next_day() -> void:
+	if day == "sun":
+		advance_week(1)
+	else:
+		day = DAYS[day_index() + 1]
+
+
+## Is one of your own fights (a cup round, a league round) still to come this week?
+func my_fight_ahead() -> bool:
+	if cup_round_this_week() and day_index() <= 2:
+		return true
+	return not event.is_empty() and event.get("phase", "") != "done" and Career.player_opponent(event) != -1 \
+			and Career.week_of_round(event) == week and day_index() <= 5
+
+
+## Can you let today go? Not when your own cup or league fight is tonight.
+func can_pass_day() -> bool:
+	return not ["story", "circuit"].has(fight_mode())
+
+
+## Nothing for you tonight (or you skip the pickup): on to tomorrow.
+func pass_day() -> String:
+	if not can_pass_day():
+		return "Your fight is tonight. No skipping it."
 	refund_self_bets()
 	pickup = {}
-	day = "sat"
+	next_day()
 	save_game()
-	return "You sat Wednesday out. Saturday's next."
+	return tr("On to %s.") % tr(DAY_FULL[day_index()])
+
+
+## Straight to the next night with a fight of yours on it (this week), passing the free days.
+func skip_to_fight_night() -> String:
+	if not my_fight_ahead():
+		return "No fight of yours left this week."
+	refund_self_bets()
+	pickup = {}
+	var guard := 0
+	while can_pass_day() and guard < 7:
+		next_day()
+		guard += 1
+	save_game()
+	return tr("Fight night: %s.") % tr(DAY_FULL[day_index()])
+
+
+## Jump ahead to a later day this week, letting the free days in between go. Stops early at a
+## night with your own fight on it.
+func skip_to_day(idx: int) -> String:
+	refund_self_bets()
+	pickup = {}
+	while day_index() < idx and day != "sun" and can_pass_day():
+		next_day()
+	save_game()
+	return tr("It's %s.") % tr(DAY_FULL[day_index()])
+
+
+const DAY_FULL := ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+
+
+## Kept for old callers: let Wednesday go.
+func skip_wednesday() -> String:
+	return pass_day()
 
 
 ## The week moves on (after Saturday's fight, or when you rest). Sunday: the dealer restocks and the
@@ -1292,7 +1355,7 @@ func advance_week(n: int = 1) -> void:
 	if n > 0:
 		roll_stock()
 		digs_left = DIGS_PER_FIGHT
-		day = "wed"
+		day = "mon"
 
 
 func living_cost() -> int:
@@ -1353,6 +1416,8 @@ func next_event_info() -> Array:
 
 
 func rest_week() -> String:
+	if my_fight_ahead():
+		return "Your fight's still to come this week. No resting yet."
 	refund_self_bets()
 	pickup = {}
 	advance_week(1)
@@ -1388,14 +1453,16 @@ func week_plan(y: int, w: int, d: String = "sat") -> Dictionary:
 	for e in fight_log:
 		if int(e["y"]) == y and int(e["w"]) == w and str(e.get("d", "sat")) == d:
 			return {"kind": "done", "won": e["won"], "text": tr("WON vs %s" if e["won"] else "LOST vs %s") % e["opp"], "title": e["title"], "stage": log_stage(e)}
-	if y < year or (y == year and (w < week or (w == week and d == "wed" and day == "sat"))):
+	var di := DAYS.find(d)
+	if y < year or (y == year and (w < week or (w == week and di < day_index()))):
 		return {"kind": "past", "text": ""}
-	if d == "wed":
-		# Wednesday: cup night
-		if y == year and not circuit.is_empty() and circuit.get("phase", "") != "done" and circuit["weeks"].has(w) \
-				and Career.player_opponent(circuit) != -1:
-			return {"kind": "cup", "text": "%s" % circuit["name"], "stage": "cup"}
-		if y == year and w == week and day == "wed":
+	var this_week := y == year and w == week
+	if d == "wed" and y == year and not circuit.is_empty() and circuit.get("phase", "") != "done" and circuit["weeks"].has(w) \
+			and Career.player_opponent(circuit) != -1:
+		return {"kind": "cup", "text": "%s" % circuit["name"], "stage": "cup"}
+	if d != "sat":
+		# any free day this week: there's always a pickup fight down at the scrapyard
+		if this_week:
 			return {"kind": "open", "text": "pickup fight", "stage": "pickup"}
 		return {"kind": "none", "text": ""}
 	if not event.is_empty() and event.get("phase", "") != "done" and int(event.get("year", year)) == y and event["weeks"].has(w):
@@ -2343,19 +2410,16 @@ func record_result(won: bool, part_hp: Dictionary, destroyed: int, salvage_ids: 
 				pending_stories.append("regional_semis")
 			if res["done"]:
 				event_done = finish_event(event)
-			advance_week(1)
+			next_day()
 		"circuit":
 			Career.after_player_fight(circuit, won, destroyed)
 			bet_result = settle_bets("cup", circuit)
 			if circuit["phase"] == "done":
 				cup_done = finish_cup()
-			day = "sat"   # Wednesday's done: Saturday's next, same week
+			next_day()   # Wednesday's done: Thursday's next
 		"exhibition", "pickup":
 			bet_result = settle_self_bets(won)
-			if day == "wed":
-				day = "sat"   # a Wednesday pickup: Saturday's still to come this week
-			else:
-				advance_week(1)
+			next_day()
 	exhibition = false
 	pickup = {}
 	scout = {}
@@ -2452,7 +2516,7 @@ func cup_fits() -> bool:
 
 
 func cup_start_week() -> int:
-	return week if day == "wed" else week + 1
+	return week if day_index() <= 2 else week + 1
 
 
 func enter_circuit(k: int) -> void:
@@ -2460,7 +2524,7 @@ func enter_circuit(k: int) -> void:
 	circuit = Career.new_cup(off["name"], int(off["tier"]), int(off["seed"]), cup_start_week(), year, int(off["prize"]))
 	circuit_offers.remove_at(k)
 	if day == "wed":
-		# entered on a Wednesday: round one is tonight, instead of the pickup fight
+		# entered on a Wednesday: round one is tonight, instead of the pickup fight (earlier in the week: it's this Wednesday)
 		refund_self_bets()
 		pickup = {}
 
@@ -2909,7 +2973,9 @@ func load_game(slot: int = -1) -> String:
 	if data.has("event"):
 		year = int(data.get("year", 1))
 		week = int(data.get("week", 1))
-		day = str(data.get("day", "wed"))
+		day = str(data.get("day", "mon"))
+		if not DAYS.has(day):
+			day = "mon"
 		rank = str(data.get("rank", "scrap"))
 		event = data.get("event", {})
 		_fix_numbers(event)
