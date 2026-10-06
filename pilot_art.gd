@@ -268,7 +268,7 @@ static func draw_person(ci: CanvasItem, feet: Vector2, s: float, raw: Dictionary
 	var outfit := Color(look.get("outfit", "#34495e"))
 	var shirt := Color(0.55, 0.42, 0.3) if gus else outfit
 	var pants := outfit.darkened(0.35) if not gus else outfit.darkened(0.15)
-	var sitting := pose == "sit_type"
+	var sitting := pose in ["sit_type", "drink", "push"]
 	var bob := sin(t * 2.0) * 0.8 * s
 	# legs
 	if sitting:
@@ -318,6 +318,21 @@ static func draw_person(ci: CanvasItem, feet: Vector2, s: float, raw: Dictionary
 			var heave := maxf(0.0, sin(t * 2.6))
 			hf = sh_f + Vector2(18 * s * dir, (18 - 8 * heave) * s)
 			hb = sh_b + Vector2(22 * s * dir, (20 - 8 * heave) * s)
+		"drink", "push":
+			# at the bar: elbows on the counter; every few seconds the mug comes up for a sip,
+			# and "push" slides a stack of coins forward (a bet)
+			var rest := sh_f + Vector2(16 * s * dir, 8 * s)
+			var mouth := neck + Vector2(5 * s * dir, -6 * s)
+			var ph := fmod(t, 4.5)
+			var sip := 0.0
+			if ph > 3.0:
+				sip = sin((ph - 3.0) / 1.5 * PI)
+			hf = rest.lerp(mouth, clampf(sip * 1.3, 0.0, 1.0)) if pose == "drink" else rest + Vector2(fmod(t, 1.0) * 14 * s * dir, 0)
+			hb = sh_b + Vector2(20 * s * dir, 9 * s)
+		"wipe":
+			# the bartender polishes a glass, round and round
+			hf = sh_f + Vector2((12 + cos(t * 6.0) * 4) * s * dir, (10 + sin(t * 6.0) * 3) * s)
+			hb = sh_b + Vector2(16 * s * dir, 10 * s)
 		"lift":
 			var up := sin(t * 1.5) * 2.0
 			hf = sh_f + Vector2(8 * s * dir, (-14 + up) * s)
@@ -369,3 +384,16 @@ static func draw_person(ci: CanvasItem, feet: Vector2, s: float, raw: Dictionary
 	var hc := neck + Vector2(dir * 1 * s, -11 * s)
 	var talk := 2.0 * s * (1.0 + absf(sin(t * 3.1))) if pose in ["point", "cheer"] else 1.4 * s
 	draw_head(ci, hc, 10 * s, look, dir, talk)
+	match pose:
+		"drink":
+			# the beer mug (over the face when it's up for a sip)
+			var m := hf + Vector2(1 * s * dir, -4 * s)
+			ci.draw_rect(Rect2(m + Vector2(-4 * s, -5 * s), Vector2(8 * s, 10 * s)), Color(0.95, 0.68, 0.18, 0.95))
+			ci.draw_rect(Rect2(m + Vector2(-4 * s, -7 * s), Vector2(8 * s, 3 * s)), Color(1, 1, 0.95))
+			ci.draw_arc(m + Vector2(-5 * s * dir, 0), 3 * s, PI * 0.5, PI * 1.5, 6, Color(0.85, 0.85, 0.9), 1.5 * s)
+		"push":
+			for k in 3:
+				ci.draw_circle(hf + Vector2(5 * s * dir, -2 * s - k * 2 * s), 3 * s, Color(0.95, 0.78, 0.25))
+		"wipe":
+			ci.draw_rect(Rect2(hf + Vector2(-3 * s, -8 * s), Vector2(6 * s, 9 * s)), Color(0.75, 0.9, 1.0, 0.6))
+			ci.draw_rect(Rect2(hf + Vector2(-4 * s, -1 * s), Vector2(8 * s, 4 * s)), Color(0.95, 0.95, 0.92))

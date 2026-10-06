@@ -1139,7 +1139,10 @@ func build_detail() -> void:
 		d = GameData.part_def(detail["id"])
 	if d.is_empty():
 		detail = {}
-		detail_panel.visible = false
+		if tab == "Season" and seg() == "calendar":
+			build_next_fight_card()
+		else:
+			detail_panel.visible = false
 		return
 	detail_panel.visible = true
 	for c in detail_box.get_children() + detail_footer.get_children():
@@ -1239,6 +1242,76 @@ func build_detail() -> void:
 		for sl in slots:
 			add_btn.call(tr("Buy & fit: %s") % tr(GameData.SLOT_NAMES[sl]), _on_buy_fit.bind(str(d["id"]), sl), GameData.money >= cost, GUI.YELLOW)
 		add_btn.call(tr("Buy to storage $%d") % cost, _on_buy_keep.bind(str(d["id"])), GameData.money >= cost)
+
+
+## The calendar's left pane: your next fight on a little fight-night poster, with Scout, Bets and Fight.
+func build_next_fight_card() -> void:
+	detail_panel.visible = true
+	for c in detail_box.get_children() + detail_footer.get_children():
+		c.queue_free()
+	var o := GameData.current_opponent()
+	var night := (tr("WEDNESDAY NIGHT") if GameData.day == "wed" else tr("SATURDAY NIGHT"))
+	var t := GUI.text(night, 22, GUI.YELLOW, "stencil")
+	t.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	detail_box.add_child(t)
+	detail_box.add_child(GUI.HazardStrip.new())
+	var title := GUI.text(GameData.fight_title(), 14, GUI.TEXT, "headb")
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	detail_box.add_child(title)
+	# you vs them, robots facing each other
+	var vs := HBoxContainer.new()
+	vs.add_theme_constant_override("separation", 6)
+	detail_box.add_child(vs)
+	var me := RobotPreview.new()
+	me.look = GameData.player_look()
+	me.facing = 1
+	me.anim = false
+	me.custom_minimum_size = Vector2(0, 150)
+	me.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	vs.add_child(me)
+	var vl := GUI.text("VS", 26, GUI.YELLOW, "stencil")
+	vl.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	vs.add_child(vl)
+	var them := bot_preview(o)
+	them.custom_minimum_size = Vector2(0, 150)
+	them.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	vs.add_child(them)
+	var names := HBoxContainer.new()
+	detail_box.add_child(names)
+	var a := GUI.text(GameData.robot_name, 13, GUI.CYAN, "headb")
+	a.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	a.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	names.add_child(a)
+	var who := str(o.get("pilot", ""))
+	var b := GUI.text(str(o.get("name", "?")) + ("" if who == "" else "\n" + tr("piloted by %s") % who), 13, GUI.RED, "headb")
+	b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	b.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	names.add_child(b)
+	var nums := HBoxContainer.new()
+	detail_box.add_child(nums)
+	var purse := GUI.readout(tr("Purse $%d") % GameData.current_reward(), 20, GUI.AMBER)
+	purse.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	purse.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	nums.add_child(purse)
+	var mb := my_fight_bet()
+	if not mb.is_empty():
+		var od := GUI.readout(tr("odds %.2fx") % float(mb["odds"]), 20, GUI.GREEN)
+		od.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		od.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		nums.add_child(od)
+	var btn := func(text: String, cb: Callable, enabled: bool, col: Color = GUI.TEXT) -> void:
+		var bb := UI.button(text, cb, 14, Vector2(0, 46))
+		bb.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		bb.disabled = not enabled
+		bb.add_theme_color_override("font_color", col)
+		detail_footer.add_child(bb)
+	if GameData.scout_key() != "" and GameData.unlocked("scout"):
+		btn.call(tr("Scouting report") if GameData.scouted() else tr("Scout $%d") % GameData.scout_cost(), _on_open_scout,
+				GameData.scouted() or GameData.money >= GameData.scout_cost())
+	if not mb.is_empty():
+		btn.call(tr("Bets ›"), go_to.bind("Season", "bets"), true)
+	btn.call(tr("Fight night ›"), open_fight_popup, GameData.can_send(), GUI.YELLOW)
 
 
 func _on_detail_fit(uid: int, slot: String) -> void:
@@ -1668,7 +1741,7 @@ func scene_info() -> Dictionary:
 			backup = GameData.look_from_spec(GameData.player_spec(GameData.wingmen[k], GameData.wingman_name(k)))
 			break
 	return {"pilot": GameData.pilot_look, "paint": Color(GameData.PAINTS[GameData.paint]["color"]),
-			"spark": now - spark_at, "dig": now - dig_at, "found": dig_found,
+			"spark": now - spark_at, "dig": now - dig_at, "found": dig_found, "bet": now - bet_at,
 			"medals": GameData.trophies, "backup": backup, "stats": GameData.career_stats,
 			"wins": GameData.wins, "losses": GameData.losses, "champion": GameData.champion}
 
@@ -1871,12 +1944,13 @@ func set_scene_for_tab() -> void:
 		"Parts":
 			scene = {"dealer": "shop", "order": "workshop"}.get(seg(), "scrap")
 		"Season":
-			scene = "cups" if seg() == "cups" else "build"
+			scene = {"cups": "cups", "bets": "pub"}.get(seg(), "office")
 		"Crew":
 			scene = "team"
 	preview.spot = GarageArt.robot_spot(scene)
 	preview.facing = 1 if scene == "paint" else -1
 	preview.front = scene == "build"   # in the bay the robot hangs on Gus's gantry, facing you
+	preview.hide_robot = scene in ["pub", "office"]  # the robot stays in the bay when you're at the pub or in the office
 	preview.queue_redraw()
 
 
@@ -2243,43 +2317,26 @@ func build_calendar() -> void:
 	t.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	head.add_child(t)
 	head.add_child(UI.button(">", _on_cal_month.bind(1), 18, Vector2(56, 36)))
-	var grid := GridContainer.new()
-	grid.columns = 7
-	grid.add_theme_constant_override("h_separation", 3)
-	grid.add_theme_constant_override("v_separation", 3)
-	list_box.add_child(grid)
-	for d in DAY_NAMES:
-		var l := UI.label(d, 13, Color(1.0, 0.8, 0.4) if d == "SAT" else (Color(0.75, 0.5, 1.0) if d == "WED" else Color(0.7, 0.7, 0.75)))
+	# a real month page: the nights that matter (Wednesday cups, Saturday fights, Sunday restock and
+	# rent) get wide cells with room for words; the quiet days are thin strips with just the date
+	var hdr := HBoxContainer.new()
+	hdr.add_theme_constant_override("separation", 3)
+	list_box.add_child(hdr)
+	for k in 7:
+		var dn: String = DAY_NAMES[k]
+		var l := GUI.text(tr(dn), 11, GUI.YELLOW if k == 5 else (Color(0.78, 0.6, 1.0) if k == 2 else GUI.MUTED), "headb")
 		l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		grid.add_child(l)
+		l.size_flags_stretch_ratio = CAL_RATIO[k]
+		l.clip_text = true
+		hdr.add_child(l)
 	for row in GameData.MONTH_WEEKS:
 		var w: int = cal_month * GameData.MONTH_WEEKS + row + 1
-		var this_week := w == GameData.week
+		var line := HBoxContainer.new()
+		line.add_theme_constant_override("separation", 3)
+		list_box.add_child(line)
 		for day in 7:
-			var text := ""
-			var col := Color(0.85, 0.85, 0.9)
-			var bg := Color(0.14, 0.14, 0.18, 0.9)
-			var tonight := false
-			if day == 5 or day == 2:   # Saturday: fight night. Wednesday: cup night
-				var d := "sat" if day == 5 else "wed"
-				var plan := GameData.week_plan(GameData.year, w, d)
-				text = tr(str(plan["text"]))
-				if plan["kind"] == "done":
-					col = Color(0.5, 1.0, 0.6) if plan["won"] else Color(1.0, 0.45, 0.4)
-				else:
-					col = PLAN_COLORS.get(plan["kind"], col)
-				tonight = this_week and GameData.day == d and plan["kind"] != "done"
-				if tonight:
-					text = tr("TONIGHT\n") + (text if mode == "open" or mode == "pickup" else GameData.fight_title())
-				if day == 5 or plan["kind"] == "cup" or plan["kind"] == "done":
-					bg = Color(0.2, 0.18, 0.12, 0.95)
-			elif day == 6 and row == GameData.MONTH_WEEKS - 1 and GameData.living_cost() > 0:
-				text = tr("RENT & FOOD\n-$%d") % GameData.living_cost()
-				col = Color(1.0, 0.45, 0.4)
-			if this_week:
-				bg = bg.lightened(0.08)
-			grid.add_child(day_cell(row * 7 + day + 1, text, col, bg, tonight))
+			line.add_child(cal_cell(w, row, day, mode))
 	var info := tr("Record %d-%d.  Medals %d.") % [GameData.wins, GameData.losses, GameData.trophies.size()]
 	section(info)
 	if mode == "pickup" or mode == "open":
@@ -2296,6 +2353,64 @@ func build_calendar() -> void:
 			row_button(bar, "Rest a week", _on_rest, true, 150)
 		if str(nxt[0]) != "" and int(nxt[2]) > 1 and GameData.circuit.is_empty():
 			row_button(bar, tr("Skip to the %s") % tr(Career.STAGES[nxt[0]]["short"]).capitalize(), _on_skip, true, 0)
+
+
+const CAL_RATIO := [0.32, 0.32, 1.45, 0.32, 0.32, 1.7, 1.0]   # Mon..Sun cell widths
+
+
+## One day on the month page. Saturdays get a little of the fight-night poster look.
+func cal_cell(w: int, row: int, day: int, mode: String) -> PanelContainer:
+	var p := PanelContainer.new()
+	p.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	p.size_flags_stretch_ratio = CAL_RATIO[day]
+	p.custom_minimum_size = Vector2(0, 74)
+	p.clip_contents = true
+	var sb := GUI.box(Color(0.12, 0.12, 0.15, 0.9), 6, 5)
+	p.add_theme_stylebox_override("panel", sb)
+	var v := VBoxContainer.new()
+	v.add_theme_constant_override("separation", 1)
+	p.add_child(v)
+	v.add_child(GUI.text(str(row * 7 + day + 1), 11, GUI.MUTED, "num"))
+	var past := w < GameData.week
+	var this_week := w == GameData.week
+	if day == 5 or day == 2:
+		var d := "sat" if day == 5 else "wed"
+		var plan := GameData.week_plan(GameData.year, w, d)
+		var kind := str(plan["kind"])
+		var tonight: bool = this_week and GameData.day == d and kind != "done"
+		var text := tr(str(plan["text"]))
+		if tonight:
+			text = text if mode == "open" or mode == "pickup" else GameData.fight_title()
+		if day == 5:
+			sb.bg_color = Color(0.21, 0.11, 0.07, 0.95)
+			sb.border_color = Color(0.45, 0.22, 0.1)
+			sb.border_width_top = 3
+			v.add_child(GUI.text(tr("TONIGHT") if tonight else tr("FIGHT NIGHT"), 11, GUI.YELLOW, "stencil"))
+		elif kind == "cup" or kind == "done" or tonight:
+			sb.bg_color = Color(0.15, 0.12, 0.2, 0.95)
+			v.add_child(GUI.text(tr("TONIGHT") if tonight else tr("CUP NIGHT"), 11, Color(0.78, 0.6, 1.0), "stencil"))
+		if text != "":
+			var col := Color(0.95, 0.9, 0.72) if day == 5 else Color(0.82, 0.7, 1.0)
+			if kind == "done":
+				col = GUI.GREEN if plan["won"] else GUI.RED
+			var l := GUI.text(text, 12, col, "bold")
+			l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+			v.add_child(l)
+		if tonight:
+			sb.border_color = GUI.YELLOW
+			sb.set_border_width_all(3)
+	elif day == 6:
+		if row == GameData.MONTH_WEEKS - 1 and GameData.living_cost() > 0:
+			v.add_child(GUI.text(tr("RENT & FOOD"), 11, GUI.RED, "headb"))
+			v.add_child(GUI.readout("-$%d" % GameData.living_cost(), 18, GUI.RED))
+		else:
+			v.add_child(GUI.text(tr("New stock"), 11, GUI.MUTED))
+			v.add_child(GUI.text(tr("Fresh junk"), 11, GUI.MUTED))
+	if this_week and not (day == 5 or day == 2) :
+		sb.bg_color = sb.bg_color.lightened(0.06)
+	if past:
+		p.modulate.a = 0.5
+	return p
 
 
 func day_cell(n: int, text: String, col: Color, bg: Color, today: bool) -> PanelContainer:
@@ -2322,6 +2437,7 @@ func day_cell(n: int, text: String, col: Color, bg: Color, today: bool) -> Panel
 
 
 var bet_stake := 50
+var bet_at := -100.0   # when you last placed a bet (the pilot pushes coins over the bar)
 
 
 ## Bets: put money on yourself, or on anyone else's fight this round. Odds come from the table.
@@ -2445,7 +2561,10 @@ func _on_stake(st: int) -> void:
 
 
 func _on_bet(pick: int, vs: int) -> void:
+	var before := GameData.money
 	say(GameData.place_bet(pick, vs, bet_stake), "buy")
+	if GameData.money < before:
+		bet_at = Time.get_ticks_msec() / 1000.0
 	GameData.save_game()
 	refresh()
 
@@ -3366,7 +3485,10 @@ func _on_prefight_bet() -> void:
 	var mb := my_fight_bet()
 	if mb.is_empty():
 		return
+	var before := GameData.money
 	say(GameData.place_bet(0, int(mb["vs"]), bet_stake), "buy")
+	if GameData.money < before:
+		bet_at = Time.get_ticks_msec() / 1000.0
 	GameData.save_game()
 	refresh()
 	open_fight_popup()

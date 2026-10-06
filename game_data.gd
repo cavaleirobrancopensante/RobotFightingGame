@@ -2,7 +2,7 @@ extends Node
 
 # helper scripts, loaded by path so the game also runs without an editor scan
 ## The game's version, shown on the main menu. Bump it with every change (1.1, 1.2, ...).
-const VERSION := "1.6"
+const VERSION := "1.7"
 const Arena = preload("res://arena.gd")
 const I18n = preload("res://i18n.gd")
 const Catalog = preload("res://catalog.gd")
@@ -1819,6 +1819,9 @@ func story_dynamic(key: String) -> String:
 
 ## Gus's one-line garage tips (the bigger news gets a scene of its own, see unlock_scenes).
 func garage_tip() -> String:
+	# after your first loss: there's no shame in turning the difficulty down
+	if losses >= 1 and tip_once("difficulty"):
+		return tr("GUS: ") + tr("Lost one? Happens to the best of them. If the fights feel too hard, go to Menu > Settings > Difficulty and turn it down. No shame in it, kid.")
 	if repair_all_cost() > 0 and unlocked("shop") and tip_once("repair"):
 		return tr("GUS: ") + tr("Damage carries over between fights. Hit Repair all before the next one - or fix parts one by one.")
 	return ""

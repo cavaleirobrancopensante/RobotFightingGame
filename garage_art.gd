@@ -31,35 +31,43 @@ static func draw_back(ci: CanvasItem, screen: Vector2, stage: Rect2, scene: Stri
 
 
 ## Walls, sky and floor across the whole screen.
+## Places outside Gus's building have their own colour, so you know where you are at a glance.
+## Rooms inside his building share the bay's bare steel and are told apart by what's in them
+## (crates in the storeroom, the workbench, the chalkboard, the cork board, gantries...).
+## [wall, wall stripes, floor]
+const BAY_COLORS := [Color(0.19, 0.19, 0.18), Color(0.23, 0.23, 0.22), Color(0.28, 0.27, 0.27)]
+const SCENE_COLORS := {
+	"build": BAY_COLORS, "storage": BAY_COLORS, "workshop": BAY_COLORS, "moves": BAY_COLORS,
+	"paint": BAY_COLORS, "team": BAY_COLORS, "office": BAY_COLORS, "cups": BAY_COLORS,
+	"shop": [Color(0.07, 0.12, 0.27), Color(0.09, 0.15, 0.32), Color(0.17, 0.19, 0.26)],       # the dealer's: shop-window blue
+	"pub": [Color(0.25, 0.06, 0.09), Color(0.29, 0.08, 0.11), Color(0.16, 0.08, 0.07)],        # The Rusty Bolt: wine red
+	# (the scrapyard is outdoors: a sunset sky)
+}
+
+
 static func _environment(ci: CanvasItem, screen: Vector2, floor_y: float, scene: String, t: float, info: Dictionary) -> void:
-	match scene:
-		"build":
-			_wall(ci, screen, floor_y, Color(0.2, 0.19, 0.17), Color(0.24, 0.23, 0.2))
-		"shop":
-			_wall(ci, screen, floor_y, Color(0.16, 0.17, 0.22), Color(0.2, 0.21, 0.27))
-		"workshop":
-			_wall(ci, screen, floor_y, Color(0.18, 0.16, 0.14), Color(0.22, 0.19, 0.16))
-		"scrap":
-			for k in 10:
-				var c := Color(0.95, 0.55, 0.3).lerp(Color(0.15, 0.12, 0.25), k / 9.0)
-				ci.draw_rect(Rect2(0, k * floor_y / 10.0, screen.x, floor_y / 10.0 + 1), c)
-			ci.draw_circle(Vector2(screen.x * 0.72, floor_y * 0.35), 30, Color(1.0, 0.75, 0.4, 0.9))
-			# more junk mountains far away, behind the menus
-			_scrap_pile(ci, Vector2(screen.x * 0.62, floor_y), screen.x * 0.3, floor_y * 0.45, t)
-			_scrap_pile(ci, Vector2(screen.x * 0.95, floor_y), screen.x * 0.2, floor_y * 0.6, t + 3.0)
-			ci.draw_rect(Rect2(0, floor_y, screen.x, screen.y - floor_y), Color(0.25, 0.2, 0.15))
-		"paint":
-			_wall(ci, screen, floor_y, Color(0.22, 0.22, 0.24), Color(0.26, 0.26, 0.28))
-		"moves":
-			_wall(ci, screen, floor_y, Color(0.15, 0.18, 0.2), Color(0.18, 0.21, 0.24))
-		"team":
-			_wall(ci, screen, floor_y, Color(0.18, 0.18, 0.22), Color(0.22, 0.22, 0.27))
-		"cups":
-			_wall(ci, screen, floor_y, Color(0.2, 0.16, 0.2), Color(0.24, 0.2, 0.24))
-		"storage":
-			_wall(ci, screen, floor_y, Color(0.17, 0.15, 0.13), Color(0.2, 0.18, 0.15))
-		_:
-			ci.draw_rect(Rect2(Vector2.ZERO, screen), Color(0.12, 0.12, 0.17))
+	if scene == "scrap":
+		for k in 10:
+			var c := Color(0.95, 0.55, 0.3).lerp(Color(0.15, 0.12, 0.25), k / 9.0)
+			ci.draw_rect(Rect2(0, k * floor_y / 10.0, screen.x, floor_y / 10.0 + 1), c)
+		ci.draw_circle(Vector2(screen.x * 0.72, floor_y * 0.35), 30, Color(1.0, 0.75, 0.4, 0.9))
+		# more junk mountains far away, behind the menus
+		_scrap_pile(ci, Vector2(screen.x * 0.62, floor_y), screen.x * 0.3, floor_y * 0.45, t)
+		_scrap_pile(ci, Vector2(screen.x * 0.95, floor_y), screen.x * 0.2, floor_y * 0.6, t + 3.0)
+		ci.draw_rect(Rect2(0, floor_y, screen.x, screen.y - floor_y), Color(0.25, 0.2, 0.15))
+	elif SCENE_COLORS.has(scene):
+		var c: Array = SCENE_COLORS[scene]
+		if scene == "pub":
+			# wood panelling instead of corrugated metal, with a warm glow from the bar
+			ci.draw_rect(Rect2(Vector2.ZERO, screen), c[0])
+			for k in int(screen.x / 46.0) + 1:
+				ci.draw_rect(Rect2(k * 46.0, 0, 2.0, floor_y), c[1].darkened(0.3))
+			ci.draw_rect(Rect2(0, floor_y - 60, screen.x, 60), c[0].darkened(0.3))
+			ci.draw_rect(Rect2(0, floor_y, screen.x, screen.y - floor_y), c[2])
+		else:
+			_wall(ci, screen, floor_y, c[0], c[1], c[2])
+	else:
+		ci.draw_rect(Rect2(Vector2.ZERO, screen), Color(0.12, 0.12, 0.17))
 	if scene != "scrap":
 		ci.draw_line(Vector2(0, floor_y), Vector2(screen.x, floor_y), Color(0.4, 0.4, 0.45), 2.0)
 
@@ -96,6 +104,10 @@ static func _props_back(ci: CanvasItem, size: Vector2, scene: String, t: float, 
 			ci.draw_rect(Rect2(size.x * 0.56 - 50, floor_y - 6, 100, 8), Color(0.75, 0.6, 0.15))
 			for k in 6:
 				ci.draw_line(Vector2(size.x * 0.56 - 48 + k * 18, floor_y - 6), Vector2(size.x * 0.56 - 40 + k * 18, floor_y + 2), Color(0.15, 0.15, 0.15), 3.0)
+		"pub":
+			_pub_back(ci, size, floor_y, t, info)
+		"office":
+			_office_back(ci, size, floor_y, t, info)
 		"shop":
 			# window with the city at night
 			var w := Rect2(size.x * 0.58, 22, size.x * 0.36, size.y * 0.32)
@@ -131,6 +143,26 @@ static func _props_back(ci: CanvasItem, size: Vector2, scene: String, t: float, 
 				ci.draw_circle(Vector2(20 + k * (size.x - 40) / 6.0, floor_y + fmod(k * 3.7, 4.0)), 3 + k % 3, pc)
 			for k in 5:
 				ci.draw_circle(Vector2(size.x * (0.2 + k * 0.15), 40 + fmod(k * 13.0, 30.0)), 4 + k % 3, Color(pc.r, pc.g, pc.b, 0.5))
+			# the spray booth: a rail with plastic curtains pulled back at both sides, an extractor fan,
+			# and years of old paint jobs sprayed over the back wall
+			for k in 14:
+				var old_c := Color.from_hsv(fmod(k * 0.27, 1.0), 0.6, 0.7, 0.35)
+				ci.draw_circle(Vector2(size.x * (0.12 + fmod(k * 0.41, 0.8)), size.y * (0.15 + fmod(k * 0.23, 0.5))), 6 + (k * 5) % 9, old_c)
+			ci.draw_line(Vector2(0, 16), Vector2(size.x, 16), Color(0.55, 0.56, 0.6), 4.0)
+			for side in [0.0, 1.0]:
+				var x0 := 4.0 if side == 0.0 else size.x * 0.83
+				var curtain := PackedVector2Array([Vector2(x0, 18), Vector2(x0 + size.x * 0.13, 18), Vector2(x0 + size.x * 0.08, floor_y), Vector2(x0, floor_y)])
+				ci.draw_colored_polygon(curtain, Color(0.8, 0.88, 0.9, 0.22))
+				for f in 4:
+					var fx := x0 + 6 + f * size.x * 0.03
+					ci.draw_line(Vector2(fx, 18), Vector2(fx - 2, floor_y), Color(1, 1, 1, 0.12), 2.0)
+			var fan := Vector2(size.x * 0.5, 52)
+			ci.draw_circle(fan, 22, Color(0.15, 0.15, 0.17))
+			for k in 4:
+				var a := t * 9.0 + k * PI / 2.0
+				ci.draw_line(fan, fan + Vector2(cos(a), sin(a)) * 18, Color(0.5, 0.5, 0.55), 5.0)
+			ci.draw_arc(fan, 22, 0, TAU, 24, Color(0.4, 0.4, 0.45), 3.0)
+			_sign(ci, Vector2(size.x * 0.5, 96), I18n.t("PAINT BOOTH"), Color(0.95, 0.5, 0.8))
 		"moves":
 			# chalkboard of move inputs
 			var b := Rect2(12, 22, size.x * 0.5, size.y * 0.3)
@@ -142,6 +174,11 @@ static func _props_back(ci: CanvasItem, size: Vector2, scene: String, t: float, 
 			ci.draw_rect(Rect2(size.x * 0.45, floor_y - 6, size.x * 0.4, 6), Color(0.3, 0.3, 0.35))   # practice mat
 		"team":
 			_sign(ci, Vector2(size.x * 0.5, 30), I18n.t("TEAM"), Color(0.5, 0.8, 1.0))
+			# the crew bay: a gantry for each robot - the main one, and the backup's beside it
+			var spot: Array = ROBOT_SPOT["team"]
+			var rh: float = size.y * float(spot[1]) - 10.0
+			_frame(ci, size.x * float(spot[0]), rh * 0.42, floor_y - rh - 26.0, floor_y)
+			_frame(ci, size.x * 0.24, rh * 0.34, floor_y - rh * 0.8 - 26.0, floor_y)
 		"storage":
 			_sign(ci, Vector2(size.x * 0.5, 30), I18n.t("STOREROOM"), Color(0.95, 0.75, 0.4))
 			_lamp(ci, Vector2(size.x * 0.42, 0), size, t)
@@ -271,8 +308,8 @@ static func _front(ci: CanvasItem, size: Vector2, scene: String, t: float, info:
 			# training: the pilot drills inputs on the controller, Gus times it
 			PilotArt.draw_person(ci, Vector2(26 * s, floor_y), s, pilot, 1.0, "hold", t)
 			_head(info, "YOU", Vector2(26 * s, floor_y), s)
-			PilotArt.draw_person(ci, Vector2(size.x - 24 * s, floor_y), s * 0.95, gus, -1.0, "clipboard", t + 0.5)
-			_head(info, "GUS", Vector2(size.x - 24 * s, floor_y), s * 0.95)
+			PilotArt.draw_person(ci, Vector2(size.x * 0.8, floor_y), s * 0.95, gus, -1.0, "clipboard", t + 0.5)
+			_head(info, "GUS", Vector2(size.x * 0.8, floor_y), s * 0.95)
 		"team":
 			var backup: Dictionary = info.get("backup", {})
 			if not backup.is_empty():
@@ -287,15 +324,32 @@ static func _front(ci: CanvasItem, size: Vector2, scene: String, t: float, info:
 				# an empty stand waiting for a backup robot
 				ci.draw_rect(Rect2(14, floor_y - 6, 70, 6), Color(0.45, 0.45, 0.5))
 				ci.draw_string(ThemeDB.fallback_font, Vector2(10, floor_y - 14), "backup?", HORIZONTAL_ALIGNMENT_LEFT, 80, 13, Color(1, 1, 1, 0.4))
-			PilotArt.draw_person(ci, Vector2(size.x - 22 * s, floor_y), s * 0.9, pilot, -1.0, "cheer" if not backup.is_empty() else "idle", t)
-			_head(info, "YOU", Vector2(size.x - 22 * s, floor_y), s * 0.9)
+			PilotArt.draw_person(ci, Vector2(size.x * 0.84, floor_y), s * 0.9, pilot, -1.0, "cheer" if not backup.is_empty() else "idle", t)
+			_head(info, "YOU", Vector2(size.x * 0.84, floor_y), s * 0.9)
 			PilotArt.draw_person(ci, Vector2(size.x * 0.42, floor_y), s * 0.95, gus, 1.0, "clipboard", t + 0.5)
 			_head(info, "GUS", Vector2(size.x * 0.42, floor_y), s * 0.95)
 		"cups":
 			PilotArt.draw_person(ci, Vector2(28 * s, floor_y), s, pilot, 1.0, "cheer" if not info.get("medals", []).is_empty() else "point", t)
 			_head(info, "YOU", Vector2(28 * s, floor_y), s)
-			PilotArt.draw_person(ci, Vector2(size.x - 26 * s, floor_y), s * 0.95, gus, -1.0, "point", t + 0.6)
-			_head(info, "GUS", Vector2(size.x - 26 * s, floor_y), s * 0.95)
+			PilotArt.draw_person(ci, Vector2(size.x * 0.84, floor_y), s * 0.95, gus, -1.0, "point", t + 0.6)
+			_head(info, "GUS", Vector2(size.x * 0.84, floor_y), s * 0.95)
+		"pub":
+			_pub_front(ci, size, floor_y, s, t, info)
+		"office":
+			# Gus at the desk going through the fixtures; you at the board
+			var dx := size.x * 0.62
+			ci.draw_rect(Rect2(dx - 70 * s, floor_y - 40 * s, 150 * s, 8 * s), Color(0.42, 0.3, 0.18))
+			ci.draw_rect(Rect2(dx - 64 * s, floor_y - 32 * s, 6 * s, 32 * s), Color(0.3, 0.2, 0.12))
+			ci.draw_rect(Rect2(dx + 68 * s, floor_y - 32 * s, 6 * s, 32 * s), Color(0.3, 0.2, 0.12))
+			# desk lamp and a coffee
+			ci.draw_line(Vector2(dx + 50 * s, floor_y - 40 * s), Vector2(dx + 40 * s, floor_y - 70 * s), Color(0.2, 0.2, 0.22), 3.0)
+			ci.draw_colored_polygon(PackedVector2Array([Vector2(dx + 28 * s, floor_y - 66 * s), Vector2(dx + 50 * s, floor_y - 76 * s), Vector2(dx + 48 * s, floor_y - 64 * s)]), Color(0.75, 0.7, 0.2))
+			ci.draw_colored_polygon(PackedVector2Array([Vector2(dx + 36 * s, floor_y - 66 * s), Vector2(dx + 22 * s, floor_y - 41 * s), Vector2(dx + 60 * s, floor_y - 41 * s), Vector2(dx + 48 * s, floor_y - 66 * s)]), Color(1.0, 0.9, 0.5, 0.12))
+			ci.draw_rect(Rect2(dx - 40 * s, floor_y - 48 * s, 8 * s, 8 * s), Color(0.9, 0.9, 0.85))
+			PilotArt.draw_person(ci, Vector2(dx + 8 * s, floor_y), s, PilotArt.GUS_LOOK, -1.0, "sit_type", t)
+			_head(info, "GUS", Vector2(dx + 8 * s, floor_y), s, true)
+			PilotArt.draw_person(ci, Vector2(size.x * 0.3, floor_y), s, info.get("pilot", {}), -1.0, "point", t + 0.4)
+			_head(info, "YOU", Vector2(size.x * 0.3, floor_y), s)
 		"storage":
 			# two crates being opened: one lid already off with parts sticking out, Gus prying the other
 			var a := Rect2(size.x * 0.1, floor_y - 40 * s, 70 * s, 40 * s)
@@ -325,6 +379,23 @@ static func _front(ci: CanvasItem, size: Vector2, scene: String, t: float, info:
 
 
 # ---------------------------------------------------------------- bits
+
+## A plain work gantry (crew bay): two posts, a hazard-striped beam and a hook hanging in the middle.
+static func _frame(ci: CanvasItem, cx: float, half: float, top: float, floor_y: float) -> void:
+	var steel := Color(0.36, 0.38, 0.43)
+	for x in [cx - half, cx + half]:
+		ci.draw_rect(Rect2(x - 4, top, 8, floor_y - top), steel)
+		ci.draw_rect(Rect2(x - 10, floor_y - 5, 20, 5), steel.darkened(0.3))
+	var beam := Rect2(cx - half - 6, top - 5, half * 2 + 12, 11)
+	ci.draw_rect(beam, Color(0.1, 0.1, 0.1))
+	var x := beam.position.x + 2.0
+	while x < beam.end.x - 10.0:
+		ci.draw_colored_polygon(PackedVector2Array([Vector2(x, beam.end.y - 2), Vector2(x + 5, beam.end.y - 2),
+				Vector2(x + 10, beam.position.y + 2), Vector2(x + 5, beam.position.y + 2)]), Color(0.95, 0.76, 0.19))
+		x += 12.0
+	ci.draw_line(Vector2(cx, beam.end.y), Vector2(cx, beam.end.y + 18), Color(0.55, 0.56, 0.6), 2.0)
+	ci.draw_arc(Vector2(cx, beam.end.y + 23), 5.0, -PI * 0.3, PI * 1.1, 8, Color(0.7, 0.7, 0.74), 2.5)
+
 
 ## Gus's gantry: two steel posts, a hazard-striped beam over the robot's head, and chains down to
 ## its shoulders, so it hangs there arms open while he works on it.
@@ -367,6 +438,126 @@ static func _gantry(ci: CanvasItem, g: Dictionary, floor_y: float) -> void:
 		ci.draw_arc(Vector2(sh.x, sh.y - 6.0), 5.0, PI * 0.1, PI * 1.2, 8, Color(0.7, 0.7, 0.74), 2.5)
 
 
+# ---------------------------------------------------------------- Gus's office (the Season screens)
+
+## A cork board full of fixtures, results and pilot photos, with red string between them.
+static func _office_back(ci: CanvasItem, size: Vector2, floor_y: float, t: float, info: Dictionary) -> void:
+	var board := Rect2(size.x * 0.05, size.y * 0.24, size.x * 0.5, size.y * 0.38)
+	ci.draw_rect(board.grow(5), Color(0.38, 0.25, 0.13))
+	ci.draw_rect(board, Color(0.62, 0.45, 0.28))
+	var pins: Array = []
+	for k in 7:
+		var r := Rect2(board.position + Vector2(10 + (k % 4) * board.size.x / 4.2, 10 + int(k / 4.0) * board.size.y / 2.1),
+				Vector2(board.size.x / 5.5, board.size.y / 2.8))
+		var paper := Color(0.95, 0.94, 0.88) if k % 3 else Color(0.98, 0.9, 0.55)
+		ci.draw_rect(r, paper)
+		for ln in 4:
+			ci.draw_line(r.position + Vector2(4, 8 + ln * 7), r.position + Vector2(r.size.x - 4 - (ln % 2) * 8, 8 + ln * 7), Color(0.4, 0.4, 0.45), 1.0)
+		var pin := r.position + Vector2(r.size.x * 0.5, 2)
+		ci.draw_circle(pin, 3.0, Color(0.85, 0.15, 0.15))
+		pins.append(pin)
+	ci.draw_line(pins[0], pins[5], Color(0.85, 0.1, 0.1), 1.5)
+	ci.draw_line(pins[2], pins[6], Color(0.85, 0.1, 0.1), 1.5)
+	# a wall clock
+	var cc := Vector2(size.x * 0.68, size.y * 0.24)
+	ci.draw_circle(cc, 18, Color(0.92, 0.92, 0.88))
+	ci.draw_arc(cc, 18, 0, TAU, 24, Color(0.2, 0.2, 0.2), 2.0)
+	ci.draw_line(cc, cc + Vector2(cos(t * 0.1 - PI / 2), sin(t * 0.1 - PI / 2)) * 13, Color(0.15, 0.15, 0.15), 2.0)
+	ci.draw_line(cc, cc + Vector2(cos(t * 1.2 - PI / 2), sin(t * 1.2 - PI / 2)) * 15, Color(0.8, 0.1, 0.1), 1.0)
+	_sign(ci, Vector2(size.x * 0.3, 30), I18n.t("GUS'S OFFICE"), Color(0.85, 0.9, 0.45))
+
+
+# ---------------------------------------------------------------- The Rusty Bolt (the Bets screen)
+
+static func _pub_counter_x(size: Vector2) -> float:
+	return size.x * 0.52
+
+
+## Behind the bar: the neon sign, bottles, the TV with tonight's fights, the bartender and the counter.
+static func _pub_back(ci: CanvasItem, size: Vector2, floor_y: float, t: float, info: Dictionary) -> void:
+	var s := clampf(size.y / 300.0, 0.6, 1.3)
+	# neon sign, flickering now and then
+	var on := fmod(t, 7.0) > 0.12 and not (fmod(t, 7.0) > 0.3 and fmod(t, 7.0) < 0.38)
+	var neon := Color(1.0, 0.45, 0.2) if on else Color(0.35, 0.18, 0.12)
+	var sign_r := Rect2(size.x * 0.06, size.y * 0.06, size.x * 0.44, 34 * s)
+	ci.draw_rect(sign_r.grow(6), Color(neon.r, neon.g, neon.b, 0.12 if on else 0.0))
+	ci.draw_rect(sign_r, Color(0.08, 0.05, 0.05))
+	ci.draw_rect(sign_r, neon, false, 2.0)
+	ci.draw_string(ThemeDB.fallback_font, sign_r.position + Vector2(0, sign_r.size.y * 0.72), I18n.t("THE RUSTY BOLT"),
+			HORIZONTAL_ALIGNMENT_CENTER, sign_r.size.x, int(14 * s), neon)
+	# the TV: two little robots slugging it out
+	var tv := Rect2(size.x * 0.56, size.y * 0.05, size.x * 0.27, size.y * 0.19)
+	ci.draw_rect(tv.grow(4), Color(0.1, 0.1, 0.11))
+	ci.draw_rect(tv, Color(0.06, 0.12, 0.16))
+	ci.draw_line(Vector2(tv.get_center().x, tv.position.y - 4), Vector2(tv.get_center().x, 0), Color(0.2, 0.2, 0.22), 3.0)
+	var ring_y := tv.end.y - 8
+	ci.draw_line(Vector2(tv.position.x + 4, ring_y), Vector2(tv.end.x - 4, ring_y), Color(0.5, 0.5, 0.55), 2.0)
+	var gap := 18.0 + 10.0 * absf(sin(t * 1.3))
+	var mid := tv.get_center().x + sin(t * 0.7) * 10.0
+	for k in 2:
+		var dirk := -1.0 if k == 0 else 1.0
+		var bx := mid + dirk * gap
+		var c := Color(0.9, 0.55, 0.25) if k == 0 else Color(0.4, 0.7, 1.0)
+		ci.draw_rect(Rect2(bx - 5, ring_y - 26, 10, 16), c)
+		ci.draw_rect(Rect2(bx - 4, ring_y - 34, 8, 7), c.lightened(0.2))
+		ci.draw_line(Vector2(bx - 3, ring_y - 10), Vector2(bx - 3, ring_y), c, 2.0)
+		ci.draw_line(Vector2(bx + 3, ring_y - 10), Vector2(bx + 3, ring_y), c, 2.0)
+		var jab := maxf(0.0, sin(t * 5.0 + k * 1.7)) * 9.0
+		ci.draw_line(Vector2(bx, ring_y - 22), Vector2(bx - dirk * (8 + jab), ring_y - 22), c, 3.0)
+	ci.draw_string(ThemeDB.fallback_font, tv.position + Vector2(4, 11), "LIVE", HORIZONTAL_ALIGNMENT_LEFT, -1, 10, Color(1, 0.3, 0.3) if fmod(t, 1.0) < 0.6 else Color(0.5, 0.2, 0.2))
+	# shelves of bottles behind the bar
+	var cx := _pub_counter_x(size)
+	for row in 2:
+		var y := size.y * (0.36 + row * 0.13)
+		ci.draw_rect(Rect2(cx, y, size.x - cx, 4), Color(0.35, 0.22, 0.12))
+		var k := 0
+		var x := cx + 8.0
+		while x < size.x - 10:
+			var hue := fmod(k * 0.37 + row * 0.2, 1.0)
+			var h := (16 + (k * 7) % 9) * s
+			ci.draw_rect(Rect2(x, y - h, 7 * s, h), Color.from_hsv(hue, 0.55, 0.55, 0.9))
+			ci.draw_rect(Rect2(x + 2 * s, y - h - 5 * s, 3 * s, 5 * s), Color.from_hsv(hue, 0.4, 0.4))
+			x += 13 * s
+			k += 1
+	# the bartender behind the counter, polishing a glass
+	var keep := {"skin": "#8d5a3b", "hair": "#2b2b2b", "hat": "none", "outfit": "#3b2a1e", "beard": "full", "beard_color": "#2b2b2b", "eyes": "#3a2a1e"}
+	PilotArt.draw_person(ci, Vector2(size.x * 0.72, floor_y - 16 * s), s, keep, -1.0, "wipe", t)   # on the raised step behind the bar
+	# the counter (covers the bartender's legs)
+	var top := floor_y - 44 * s
+	ci.draw_rect(Rect2(cx, top, size.x - cx, floor_y - top), Color(0.32, 0.19, 0.1))
+	ci.draw_rect(Rect2(cx - 6, top - 6 * s, size.x - cx + 6, 7 * s), Color(0.5, 0.31, 0.16))
+	for k in 4:
+		var px := cx + 14 + k * (size.x - cx - 20) / 3.0
+		ci.draw_line(Vector2(px, top + 6), Vector2(px, floor_y - 4), Color(0.25, 0.15, 0.08), 2.0)
+	ci.draw_line(Vector2(cx, floor_y - 8 * s), Vector2(size.x, floor_y - 8 * s), Color(0.7, 0.6, 0.35), 3.0)   # foot rail
+
+
+## In front: your pilot on a stool at the bar with a beer (pushing coins over when you bet),
+## and Gus at a little table with his coffee.
+static func _pub_front(ci: CanvasItem, size: Vector2, floor_y: float, s: float, t: float, info: Dictionary) -> void:
+	var cx := _pub_counter_x(size)
+	var top := floor_y - 44 * s
+	var pilot: Dictionary = info.get("pilot", {})
+	var bet_age: float = info.get("bet", 99.0)
+	# coins sliding down the bar towards the bartender after a bet
+	if bet_age < 1.6:
+		var f := clampf(bet_age / 1.2, 0.0, 1.0)
+		var at := Vector2(lerpf(cx + 6, size.x * 0.74, f), top - 7 * s)
+		for k in 4:
+			ci.draw_circle(at + Vector2(k * 3, -k * 2.5 * s), 3.2 * s, Color(0.95, 0.78, 0.25, 1.0 - maxf(0.0, bet_age - 1.2) * 2.5))
+	# stools
+	var px := cx - 26 * s
+	for x in [px, px - 60 * s]:
+		ci.draw_rect(Rect2(x - 10 * s, floor_y - 27 * s, 20 * s, 4 * s), Color(0.55, 0.15, 0.12))
+		ci.draw_line(Vector2(x - 6 * s, floor_y - 23 * s), Vector2(x - 9 * s, floor_y), Color(0.45, 0.45, 0.5), 2.0)
+		ci.draw_line(Vector2(x + 6 * s, floor_y - 23 * s), Vector2(x + 9 * s, floor_y), Color(0.45, 0.45, 0.5), 2.0)
+	PilotArt.draw_person(ci, Vector2(px - 4 * s, floor_y), s, pilot, 1.0, "push" if bet_age < 1.2 else "drink", t)
+	_head(info, "YOU", Vector2(px - 4 * s, floor_y), s, true)
+	# Gus on the next stool, nursing a coffee
+	PilotArt.draw_person(ci, Vector2(px - 64 * s, floor_y), s, PilotArt.GUS_LOOK, 1.0, "drink", t + 2.2)
+	_head(info, "GUS", Vector2(px - 64 * s, floor_y), s, true)
+
+
 ## Remember where a person's head is (stage coordinates), so the garage can point speech bubbles at it.
 static func _head(info: Dictionary, who: String, feet: Vector2, s: float, sitting: bool = false) -> void:
 	if not info.has("heads"):
@@ -384,11 +575,11 @@ static func _crate(ci: CanvasItem, r: Rect2, shade: float) -> void:
 	ci.draw_line(r.position, r.end, wood.darkened(0.3), 2.0)
 	ci.draw_rect(Rect2(r.get_center() + Vector2(-r.size.x * 0.18, -4), Vector2(r.size.x * 0.36, 8)), Color(0.15, 0.12, 0.1, 0.45))
 
-static func _wall(ci: CanvasItem, size: Vector2, floor_y: float, c1: Color, c2: Color) -> void:
+static func _wall(ci: CanvasItem, size: Vector2, floor_y: float, c1: Color, c2: Color, floor_c: Color = Color(0.28, 0.27, 0.27)) -> void:
 	ci.draw_rect(Rect2(Vector2.ZERO, size), c1)
 	for k in int(size.x / 18.0) + 1:   # corrugated metal
 		ci.draw_rect(Rect2(k * 18.0, 0, 9.0, floor_y), c2)
-	ci.draw_rect(Rect2(0, floor_y, size.x, size.y - floor_y), Color(0.28, 0.27, 0.27))
+	ci.draw_rect(Rect2(0, floor_y, size.x, size.y - floor_y), floor_c)
 
 
 static func _sign(ci: CanvasItem, center: Vector2, text: String, c: Color) -> void:

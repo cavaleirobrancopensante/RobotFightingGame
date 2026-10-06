@@ -13,6 +13,7 @@ var facing := 1
 ## The bay: the robot faces you, hanging on Gus's gantry. Tapped parts get a hazard-stripe outline,
 ## and callouts (short notes about the selected part) are drawn off to the side with a line to it.
 var front := false
+var hide_robot := false   # scenes without the robot (the pub)
 var callouts: Array = []
 var callout_font: Font
 var show_floor := true
@@ -54,7 +55,7 @@ func _process(delta: float) -> void:
 
 
 func _draw() -> void:
-	if look.is_empty():
+	if look.is_empty() or hide_robot:
 		return
 	var floor_y := size.y - 20.0
 	if show_floor and spot.is_empty():
@@ -107,7 +108,7 @@ func _regions() -> Array:
 
 
 func _gui_input(event: InputEvent) -> void:
-	if not interactive:
+	if not interactive or hide_robot:
 		return
 	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
 		var k: float = _sc * look.get("scale", 1.0)
