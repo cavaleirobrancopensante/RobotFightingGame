@@ -269,7 +269,7 @@ func _process(delta: float) -> void:
 			talk_timer = 0.07
 			var who: String = lines[index][0]
 			if who != "NARRATOR":
-				Sfx.play("talk_robot" if Story.SPEAKERS.get(who, {}).get("robot", false) else "talk", 0.15, -6.0)
+				Sfx.voice(who)
 	else:
 		portrait.talking = false
 	hint_label.modulate.a = 0.5 + 0.5 * sin(Time.get_ticks_msec() / 300.0)

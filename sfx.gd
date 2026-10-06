@@ -6,7 +6,8 @@ extends Node
 const NAMES := ["click", "buy", "equip", "error", "swing", "uppercut", "hit", "hit_big",
 		"block", "jump", "land", "step", "ko", "round", "fight", "victory", "defeat",
 		"crowd_cheer", "crowd_ooh", "break", "repair", "sell", "target", "untarget",
-		"talk", "talk_robot", "time", "spark"]
+		"talk", "talk_robot", "time", "spark",
+		"voice_gravel", "voice_high", "voice_smooth", "voice_nasal", "voice_boom"]
 const VOICES := 12
 const MUSIC_DB := -9.0
 const FIGHT_MUSIC_DB := -13.5   # fight songs are mixed hot: play them quieter so they don't blast
@@ -37,10 +38,38 @@ func _ready() -> void:
 
 ## pitch_jitter: random pitch variation (0.1 = +/-10%) so repeated sounds don't get boring.
 var quiet := 0   # > 0 while a move showcase plays in the garage: only menu sounds get through
-const MENU_SOUNDS := ["click", "buy", "equip", "error", "sell", "repair", "talk", "talk_robot"]
+const MENU_SOUNDS := ["click", "buy", "equip", "error", "sell", "repair", "talk", "talk_robot", "voice_gravel", "voice_high", "voice_smooth", "voice_nasal", "voice_boom"]
 
 
-func play(sound: String, pitch_jitter: float = 0.0, volume_db: float = 0.0) -> void:
+## Everyone who talks has their own blip: [sound, pitch]. Gus growls, Margo chirps, the
+## announcers boom. Unknown speakers get the plain "talk" blip.
+const VOICE_OF := {
+	"GUS": ["voice_gravel", 1.0],
+	"YOU": ["talk", 1.08],
+	"ECHO": ["talk_robot", 1.0],
+	"MARGO": ["voice_high", 1.18],
+	"BRUNO": ["talk", 0.78],
+	"SKAR": ["voice_high", 0.88],
+	"DR. VOSS": ["voice_nasal", 1.0],
+	"KANE": ["voice_smooth", 1.15],
+	"ROSA": ["talk", 1.25],
+	"NIK & NAT": ["voice_high", 1.4],
+	"BULL": ["voice_gravel", 0.82],
+	"IRONSIDE": ["voice_gravel", 1.2],
+	"ANNOUNCER": ["voice_boom", 1.0],          # regional / cups, red jacket
+	"ANNOUNCER_SCRAP": ["voice_gravel", 1.45],  # the scrap heap's rough guy with the megaphone
+	"ANNOUNCER_GRAND": ["voice_smooth", 0.8],   # the Championship's man in the tux
+}
+const VOICE_DB := -10.0   # blips sit well under the music
+
+
+## One talking blip for `who` (call it every ~0.07s while their line types out).
+func voice(who: String) -> void:
+	var v: Array = VOICE_OF.get(who, ["talk", 1.0])
+	play(v[0], 0.06, VOICE_DB, float(v[1]))
+
+
+func play(sound: String, pitch_jitter: float = 0.0, volume_db: float = 0.0, pitch: float = 1.0) -> void:
 	if not GameData.settings.get("sound", true):
 		return
 	if quiet > 0 and not MENU_SOUNDS.has(sound):
@@ -50,7 +79,7 @@ func play(sound: String, pitch_jitter: float = 0.0, volume_db: float = 0.0) -> v
 	var p: AudioStreamPlayer = players[next]
 	next = (next + 1) % VOICES
 	p.stream = streams[sound]
-	p.pitch_scale = 1.0 + randf_range(-pitch_jitter, pitch_jitter)
+	p.pitch_scale = pitch * (1.0 + randf_range(-pitch_jitter, pitch_jitter))
 	p.volume_db = volume_db + SFX_DB
 	p.play()
 

@@ -784,7 +784,7 @@ func _process(delta: float) -> void:
 		# every line that types out talks, not just story scenes (narrator captions stay silent)
 		if talk_beep <= 0.0 and not talk_lines.is_empty() and talk_lines[0][0] != "NARRATOR":
 			talk_beep = 0.07
-			Sfx.play("talk_robot" if talk_lines[0][0] == "ECHO" else "talk", 0.15, -6.0)
+			Sfx.voice(str(talk_lines[0][0]))
 		return
 	talk_left -= delta
 	bubble.bar.set_ratio(talk_left / talk_life)

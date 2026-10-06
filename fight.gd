@@ -310,6 +310,7 @@ var fight_called := false
 var intro_step := "show"      # "show" = the announcer's cutscene, "count" = 3, 2, 1
 var beat := 0                 # which part of the show
 var beat_t := 0.0
+var talk_beep := 0.0
 var count_t := 0.0
 var count_shown := -1
 var barrier_kind := "crate"   # crate (scrap), podium (regional, cups), gate (championship)
@@ -4133,6 +4134,12 @@ func update_walk_in(delta: float) -> void:
 		card_t += delta
 		if show_paused:
 			return
+		# the announcer's caption types out with his own voice
+		if int(card_t * 45.0) < announcer_line().length():
+			talk_beep -= delta
+			if talk_beep <= 0.0:
+				talk_beep = 0.07
+				Sfx.voice({"crate": "ANNOUNCER_SCRAP", "gate": "ANNOUNCER_GRAND"}.get(barrier_kind, "ANNOUNCER"))
 		beat_t += delta
 		if beat_t >= float(SHOW_BEATS[beat][1]):
 			beat += 1

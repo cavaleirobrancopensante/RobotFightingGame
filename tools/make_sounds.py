@@ -159,4 +159,13 @@ save("talk_robot", seq(env(mix(osc(420, 0.035, "tri"), osc(420, 0.035) * 0.2), d
 save("time", env(osc(220, 0.6), decay=0.5), 0.5)
 save("spark", mix(env(lowpass(noise(0.05), 0.8), decay=0.01), env(osc((3000, 1200), 0.05, "square"), decay=0.02) * 0.4), 0.3)
 
+# character voices (Sfx.VOICE_OF picks one per speaker, plus a pitch)
+growl = np.repeat(rng.uniform(0.4, 1.0, 8), int(RATE * 0.06) // 8 + 1)[: int(RATE * 0.06)]
+save("voice_gravel", env(mix(lowpass(osc((120, 104), 0.06, "saw"), 0.35) * growl,
+                             lowpass(noise(0.06), 0.25) * 0.35), decay=0.04), 0.4)
+save("voice_high", env(mix(osc((540, 500), 0.04, "tri"), osc((540, 500), 0.04) * 0.25), decay=0.025), 0.28)
+save("voice_smooth", env(mix(osc((300, 285), 0.055, "sine"), osc((600, 570), 0.055, "sine") * 0.25), decay=0.04), 0.35)
+save("voice_nasal", env(lowpass(osc((360, 340), 0.045, "saw"), 0.5), decay=0.03), 0.3)
+save("voice_boom", env(mix(lowpass(osc((170, 150), 0.07, "saw"), 0.4), osc((85, 75), 0.07) * 0.35), decay=0.05), 0.4)
+
 print("sounds written to", os.path.abspath(OUT))
