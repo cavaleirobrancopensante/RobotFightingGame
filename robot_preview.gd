@@ -140,24 +140,39 @@ func draw_body_map(at: Vector2, k: float) -> void:
 
 
 
-## A yellow-and-black dashed outline that crawls around the part.
+## A yellow-and-black striped outline that keeps running round and round the part (clockwise),
+## one continuous loop: the stripes flow round the corners, and the stripe length is tuned so the
+## pattern meets itself exactly where it starts.
 func _hazard_rect(r: Rect2) -> void:
-	var pts := [r.position, Vector2(r.end.x, r.position.y), r.end, Vector2(r.position.x, r.end.y), r.position]
-	var dash := 7.0
-	var shift := fmod(t * 18.0, dash * 2.0)
+	var corners := [r.position, Vector2(r.end.x, r.position.y), r.end, Vector2(r.position.x, r.end.y)]
+	var lengths: Array = []
+	var perimeter := 0.0
 	for i in 4:
-		var a: Vector2 = pts[i]
-		var b: Vector2 = pts[i + 1]
-		var length := a.distance_to(b)
-		var dir := (b - a) / maxf(length, 0.001)
-		draw_line(a, b, Color(0.08, 0.08, 0.08), 4.0)
-		var d := -shift
-		while d < length:
-			var d0 := maxf(d, 0.0)
-			var d1 := minf(d + dash, length)
-			if d1 > d0:
-				draw_line(a + dir * d0, a + dir * d1, Color(0.95, 0.76, 0.19), 4.0)
-			d += dash * 2.0
+		var l: float = (corners[i] as Vector2).distance_to(corners[(i + 1) % 4])
+		lengths.append(l)
+		perimeter += l
+	var pairs := maxi(4, int(round(perimeter / 16.0)))   # one yellow + one black stripe = a pair
+	var stripe := perimeter / (pairs * 2.0)
+	var offset := fmod(t * 34.0, stripe * 2.0)            # how far the loop has run
+	draw_polyline(PackedVector2Array(corners + [corners[0]]), Color(0.08, 0.08, 0.08), 4.0)
+	for k in pairs:
+		var a := fmod(offset + k * stripe * 2.0, perimeter)
+		_perimeter_line(corners, lengths, a, a + stripe, Color(0.95, 0.76, 0.19))
+
+
+## Draws the stretch of a rectangle's outline between two distances along it (wrapping past the start).
+func _perimeter_line(corners: Array, lengths: Array, from: float, to: float, c: Color) -> void:
+	var pos := 0.0
+	for lap in 2:   # a stripe can run past the start corner into the next lap
+		for i in 4:
+			var l: float = lengths[i]
+			var s0 := maxf(from, pos)
+			var s1 := minf(to, pos + l)
+			if s1 > s0:
+				var a: Vector2 = corners[i]
+				var dir: Vector2 = ((corners[(i + 1) % 4] as Vector2) - a) / maxf(l, 0.001)
+				draw_line(a + dir * (s0 - pos), a + dir * (s1 - pos), c, 4.0)
+			pos += l
 
 
 ## Diagnostic callouts: a line from the part, an elbow, and a little dark label with the notes.
