@@ -1528,9 +1528,11 @@ func leave_after_results() -> void:
 		keys.append("post_%d" % fight_idx)
 	keys += GameData.pending_stories   # league results: medals, qualifying, going out
 	GameData.pending_stories = []
-	if GameData.queue_stories(keys, "res://garage.tscn"):
+	# the finale gets the big story screen; everything else plays in the garage when you get back
+	if keys.has("post_9") and GameData.queue_stories(keys, "res://garage.tscn"):
 		get_tree().change_scene_to_file("res://story.tscn")
 		return
+	GameData.bay_stories = keys
 	get_tree().change_scene_to_file("res://garage.tscn")
 
 

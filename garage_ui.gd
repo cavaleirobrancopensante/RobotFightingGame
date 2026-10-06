@@ -266,34 +266,135 @@ class RailButton extends Button:
 
 
 ## Gus talking: a paper speech bubble over the scene. Tap it to make it go away.
-class GusBubble extends PanelContainer:
-	var label: Label
+## Everything people say in the garage: Gus and you in speech bubbles pointing at your heads,
+## rivals, Kane and the announcer on a video call, the narrator in a caption strip.
+## A ✓ closes it (or moves the story on to the next line), a bar shows how long it stays up.
+class TalkBox extends PanelContainer:
+	signal tapped
+	signal checked
+	var mode := "bubble"
+	var name_label: Label
+	var text_label: Label
+	var face_slot: Control
+	var ok: Button
+	var bar: TalkBar
+	var tail := Vector2.INF    # where the tail points, in local coordinates (bubbles only)
+	var _style := StyleBoxFlat.new()
 
 	func _init() -> void:
-		var s := StyleBoxFlat.new()
-		s.bg_color = Color(0.957, 0.945, 0.902)
-		s.set_corner_radius_all(14)
-		s.set_content_margin_all(10)
-		s.content_margin_left = 14
-		s.content_margin_right = 14
-		add_theme_stylebox_override("panel", s)
-		label = Label.new()
-		label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		label.add_theme_color_override("font_color", Color(0.125, 0.125, 0.153))
-		label.add_theme_font_size_override("font_size", 17)
-		label.custom_minimum_size = Vector2(300, 0)
-		add_child(label)
 		mouse_filter = Control.MOUSE_FILTER_STOP
+		_style.set_corner_radius_all(14)
+		_style.set_content_margin_all(10)
+		_style.content_margin_left = 14
+		add_theme_stylebox_override("panel", _style)
+		var row := HBoxContainer.new()
+		row.add_theme_constant_override("separation", 10)
+		row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		add_child(row)
+		face_slot = Control.new()
+		face_slot.custom_minimum_size = Vector2(92, 92)
+		face_slot.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		face_slot.clip_contents = true
+		row.add_child(face_slot)
+		var col := VBoxContainer.new()
+		col.add_theme_constant_override("separation", 3)
+		col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		col.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		row.add_child(col)
+		var head := HBoxContainer.new()
+		head.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		col.add_child(head)
+		name_label = Label.new()
+		name_label.add_theme_font_size_override("font_size", 14)
+		name_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		name_label.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		head.add_child(name_label)
+		ok = CheckMark.new()
+		ok.pressed.connect(func(): checked.emit())
+		head.add_child(ok)
+		text_label = Label.new()
+		text_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		text_label.visible_characters_behavior = TextServer.VC_CHARS_AFTER_SHAPING   # full size from the start
+		text_label.add_theme_font_size_override("font_size", 17)
+		text_label.custom_minimum_size = Vector2(290, 0)
+		text_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		col.add_child(text_label)
+		bar = TalkBar.new()
+		col.add_child(bar)
 		gui_input.connect(func(e):
-			if (e is InputEventMouseButton or e is InputEventScreenTouch) and e.pressed:
-				visible = false)
+			if (e is InputEventMouseButton and e.pressed and e.button_index == MOUSE_BUTTON_LEFT) or (e is InputEventScreenTouch and e.pressed):
+				tapped.emit())
 
-	func say(t: String) -> void:
-		label.text = t
-		visible = t.strip_edges() != ""
-		reset_size()
+	## bubble (paper), call (a dark monitor with a coloured frame) or caption (a dark strip).
+	func set_mode(m: String, accent: Color) -> void:
+		mode = m
+		tail = Vector2.INF
+		face_slot.visible = m == "call"
+		_style.set_border_width_all(0)
+		match m:
+			"bubble":
+				_style.bg_color = Color(0.957, 0.945, 0.902)
+				_style.set_corner_radius_all(14)
+				text_label.add_theme_color_override("font_color", Color(0.125, 0.125, 0.153))
+				name_label.add_theme_color_override("font_color", accent.darkened(0.45))
+				bar.color = Color(0.3, 0.3, 0.33, 0.5)
+			"call":
+				_style.bg_color = Color(0.05, 0.06, 0.08, 0.96)
+				_style.set_corner_radius_all(12)
+				_style.border_color = accent
+				_style.set_border_width_all(3)
+				text_label.add_theme_color_override("font_color", Color(0.93, 0.93, 0.95))
+				name_label.add_theme_color_override("font_color", accent)
+				bar.color = accent
+			_:
+				_style.bg_color = Color(0, 0, 0, 0.8)
+				_style.set_corner_radius_all(8)
+				text_label.add_theme_color_override("font_color", accent)
+				name_label.add_theme_color_override("font_color", accent)
+				bar.color = Color(accent, 0.6)
+		queue_redraw()
 
 	func _draw() -> void:
-		# the tail, pointing down at the scene
-		var x := 34.0
-		draw_colored_polygon(PackedVector2Array([Vector2(x, size.y - 1), Vector2(x + 16, size.y - 1), Vector2(x + 4, size.y + 12)]), Color(0.957, 0.945, 0.902))
+		if mode != "bubble" or tail == Vector2.INF:
+			return
+		# the tail runs from the nearest edge of the bubble to the speaker's head
+		var c := Color(0.957, 0.945, 0.902)
+		var x := clampf(tail.x, 22.0, size.x - 22.0)
+		var from_y := size.y - 2.0 if tail.y > size.y * 0.5 else 2.0
+		if tail.x > size.x + 10.0 or tail.x < -10.0:
+			var y := clampf(tail.y, 18.0, size.y - 18.0)
+			var fx := size.x - 2.0 if tail.x > size.x else 2.0
+			draw_colored_polygon(PackedVector2Array([Vector2(fx, y - 9), Vector2(fx, y + 9), tail]), c)
+		else:
+			draw_colored_polygon(PackedVector2Array([Vector2(x - 9, from_y), Vector2(x + 9, from_y), tail]), c)
+
+
+## The ✓ button (drawn, so it doesn't depend on the font having the glyph).
+class CheckMark extends Button:
+	func _init() -> void:
+		custom_minimum_size = Vector2(38, 30)
+		focus_mode = Control.FOCUS_NONE
+
+	func _draw() -> void:
+		var c := size * 0.5
+		draw_polyline(PackedVector2Array([c + Vector2(-8, 0), c + Vector2(-2, 6), c + Vector2(9, -6)]), Color(0.553, 1.0, 0.651), 3.0, true)
+
+
+## How long a line stays up: a thin bar that runs down.
+class TalkBar extends Control:
+	var ratio := 1.0
+	var color := Color(0.3, 0.3, 0.33, 0.5)
+
+	func _init() -> void:
+		custom_minimum_size = Vector2(0, 4)
+		mouse_filter = Control.MOUSE_FILTER_IGNORE
+
+	func set_ratio(r: float) -> void:
+		if absf(r - ratio) > 0.002:
+			ratio = r
+			queue_redraw()
+
+	func _draw() -> void:
+		draw_rect(Rect2(0, 0, size.x * clampf(ratio, 0.0, 1.0), size.y), color)
+
+

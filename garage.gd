@@ -81,6 +81,12 @@ class Backdrop extends Control:
 		var info: Dictionary = garage.scene_info()
 		GarageArt.draw_back(self, size, stage, garage.scene, t, info)
 		GarageArt.draw_front(self, stage, garage.scene, t, info, pv._base, pv.robot_height)
+		# where everyone's head is on screen, for the speech bubbles
+		var xf := get_global_transform()
+		var heads: Dictionary = info.get("heads", {})
+		garage.heads = {}
+		for k in heads:
+			garage.heads[k] = xf * (stage.position + heads[k])
 var fight_button: Button
 var body_map: BodyMap
 var rail_box: VBoxContainer
@@ -150,9 +156,6 @@ class ChipIcon extends Control:
 func _ready() -> void:
 	# first time in the bay after a fight: Gus explains how things work around here.
 	# Everything else that opens up waits with a star; Gus explains it when you first tap it.
-	if GameData.wins + GameData.losses > 0 and GameData.queue_story("first_garage", "res://garage.tscn"):
-		get_tree().change_scene_to_file.call_deferred("res://story.tscn")
-		return
 	if GameData.open_tab != "" and tab_list().has(GameData.open_tab):
 		tab = GameData.open_tab
 	GameData.open_tab = ""
@@ -268,12 +271,15 @@ func _ready() -> void:
 	list_box.add_theme_constant_override("separation", 5)
 	scroll.add_child(list_box)
 
-	# Gus talks in a speech bubble over the scene (results, tips, what just happened)
-	bubble = GUI.GusBubble.new()
-	bubble.label.add_theme_font_override("font", GUI.bold())
+	# people talk over the scene: Gus and you in bubbles, rivals on a video call, the narrator in a caption
+	bubble = GUI.TalkBox.new()
+	bubble.text_label.add_theme_font_override("font", GUI.bold())
+	bubble.name_label.add_theme_font_override("font", GUI.headb())
 	bubble.visible = false
+	bubble.tapped.connect(_on_talk_tap)
+	bubble.checked.connect(_talk_next)
 	add_child(bubble)
-	msg_label = bubble.label
+	msg_label = bubble.text_label
 
 	# bottom: repair, which robot goes in, the damage map and the FIGHT button
 	var bottom := HBoxContainer.new()
@@ -313,7 +319,13 @@ func _ready() -> void:
 		msg_label.text = tip if msg_label.text == "" else msg_label.text + "\n" + tip
 	say(msg_label.text.replace("\n" + tr("GUS: "), "\n"))
 	refresh()
-	# back from Gus explaining something: open it for you
+	# story moments play right here: what happened at the fight, and Gus's first welcome to the bay
+	var keys: Array = GameData.bay_stories
+	GameData.bay_stories = []
+	if GameData.wins + GameData.losses > 0:
+		keys.append("first_garage")
+	play_story(keys)
+	# back from Gus explaining something (older saves): open it for you
 	var act := GameData.open_action
 	GameData.open_action = ""
 	match act:
@@ -533,17 +545,203 @@ func show_last_result() -> void:
 	GameData.last_result = {}
 
 
+## Gus says something (results, tips, what just happened). During a story scene it waits its turn.
 func say(text: String, sound: String = "") -> void:
-	bubble.say(text.trim_prefix(tr("GUS: ")).trim_prefix("GUS: "))
+	text = text.trim_prefix(tr("GUS: ")).trim_prefix("GUS: ").strip_edges()
 	if sound != "":
 		Sfx.play(sound)
+	if text == "":
+		return
+	if talk_story:
+		talk_lines.append(["GUS", text, {}])
+		return
+	talk_lines = [["GUS", text, {}]]
+	_talk_show()
 
 
-## Gus's bubble sits over the top of the scene, next to the robot.
-func _process(_delta: float) -> void:
-	if bubble and bubble.visible and left_col:
-		bubble.position = left_col.global_position + Vector2(14, 10)
-		bubble.size.x = 0
+# ---------------------------------------------------------------- talking
+
+const Story = preload("res://story_data.gd")
+const TALK_CPS := 55.0
+var heads := {}              # who -> where their head is on screen (filled in by the backdrop)
+var talk_lines: Array = []   # [who, text, extra] still to show; the first one is on screen
+var talk_story := false      # a story scene is playing (lines stay up longer, Skip shows)
+var talk_after := Callable() # what happens when the scene is over (pre-fight talk: start the fight)
+var talk_shown := 0.0
+var talk_left := 0.0
+var talk_life := 1.0
+var talk_beep := 0.0
+
+
+## Plays story scenes right here in the garage. Scenes already seen are skipped. False if nothing to play.
+func play_story(keys: Array, after: Callable = Callable()) -> bool:
+	var lines: Array = []
+	for k in keys:
+		if Story.SCENES.has(k) and not GameData.story_seen.has(k):
+			lines += story_screens(k)
+			GameData.mark_story_seen(k)
+	if lines.is_empty():
+		return false
+	var waiting: Array = [] if talk_story else talk_lines   # a message that was up comes back after
+	talk_lines = lines + waiting
+	talk_story = true
+	talk_after = after
+	_talk_show()
+	GameData.request_save()
+	return true
+
+
+## A scene's lines, translated, with the lines that depend on your game filled in.
+func story_screens(key: String) -> Array:
+	var out: Array = []
+	var place: String = Story.SCENES[key].get("place", "")
+	for l in Story.SCENES[key]["lines"]:
+		var who: String = l[0]
+		var text := str(l[1])
+		text = GameData.story_dynamic(text.substr(1, text.length() - 2)) if text.begins_with("{") else tr(text)
+		text = text.replace("ECHO", GameData.robot_name)
+		if text == "":
+			continue
+		if not out.is_empty() and out[-1][0] == who and str(out[-1][1]).length() + text.length() < 170:
+			out[-1][1] = str(out[-1][1]) + " " + text
+		else:
+			out.append([who, text, {"place": place}])
+	return out
+
+
+func talk_mode(who: String) -> String:
+	if who in ["GUS", "YOU"]:
+		return "bubble"
+	if who in ["NARRATOR", "ECHO"]:
+		return "caption"
+	return "call"
+
+
+func _talk_show() -> void:
+	if talk_lines.is_empty():
+		_talk_end()
+		return
+	var who: String = talk_lines[0][0]
+	var mode := talk_mode(who)
+	var accent := Color(Story.SPEAKERS.get(who, {"color": "#ffffff"})["color"])
+	bubble.set_mode(mode, accent)
+	var shown_name := who
+	if who == "YOU":
+		shown_name = GameData.pilot_name.to_upper()
+	elif who == "ECHO":
+		shown_name = GameData.robot_name
+	bubble.name_label.text = "" if who == "NARRATOR" else ("● " + shown_name if mode == "call" else shown_name)
+	bubble.text_label.add_theme_font_override("font", GUI.num() if who == "ECHO" else GUI.bold())
+	bubble.text_label.add_theme_font_size_override("font_size", 21 if who == "ECHO" else 17)
+	bubble.text_label.text = str(talk_lines[0][1])
+	bubble.text_label.visible_characters = 0
+	for c in bubble.face_slot.get_children():
+		c.queue_free()
+	if mode == "call":
+		var face = StoryScript.Portrait.new()
+		face.who = who
+		face.place = str(talk_lines[0][2].get("place", ""))
+		face.robot_look = GameData.player_look()
+		face.talking = true
+		face.set_anchors_preset(Control.PRESET_FULL_RECT)
+		face.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		bubble.face_slot.add_child(face)
+	talk_shown = 0.0
+	var n: int = bubble.text_label.text.length()
+	talk_life = (5.0 + n * 0.07) if talk_story else (3.5 + n * 0.05)
+	talk_left = talk_life
+	bubble.bar.set_ratio(1.0)
+	bubble.visible = true
+	move_child(bubble, -1)
+	_place_talk()
+
+
+func _talk_typing() -> bool:
+	return bubble.text_label.visible_characters >= 0 and bubble.text_label.visible_characters < bubble.text_label.text.length()
+
+
+## Tapping the box: show the whole line first, then move on.
+func _on_talk_tap() -> void:
+	if _talk_typing():
+		bubble.text_label.visible_characters = -1
+	else:
+		_talk_next()
+
+
+func _talk_next() -> void:
+	if not talk_lines.is_empty():
+		talk_lines.pop_front()
+	_talk_show()
+
+
+## Skip the rest of the story scene (any message that was waiting still shows).
+func _talk_skip() -> void:
+	talk_lines = talk_lines.filter(func(l): return l[2].has("place") == false)
+	talk_story = false
+	_talk_end_story()
+	_talk_show()
+
+
+func _talk_end() -> void:
+	bubble.visible = false
+	_talk_end_story()
+
+
+func _talk_end_story() -> void:
+	talk_story = false
+	if talk_after.is_valid():
+		var after := talk_after
+		talk_after = Callable()
+		after.call()
+
+
+## Bubbles sit above the speaker's head with the tail pointing at it; calls and captions go
+## across the top of the scene.
+func _place_talk() -> void:
+	if left_col == null or preview == null:
+		return
+	var area := Rect2(left_col.global_position, Vector2(left_col.size.x, preview.size.y))
+	var who: String = talk_lines[0][0] if not talk_lines.is_empty() else "GUS"
+	if bubble.mode != "bubble":
+		bubble.size = Vector2(area.size.x - 20.0, 0)
+		bubble.size = bubble.get_combined_minimum_size().max(Vector2(area.size.x - 20.0, 0))
+		bubble.position = area.position + Vector2(10, 10)
+		return
+	bubble.size = bubble.get_combined_minimum_size()
+	var sz: Vector2 = bubble.size
+	if not heads.has(who):
+		bubble.position = area.position + Vector2(14, 10)
+		bubble.tail = Vector2.INF
+		bubble.queue_redraw()
+		return
+	var head: Vector2 = heads[who]
+	var pos := Vector2(head.x - sz.x * 0.3, head.y - sz.y - 34.0)
+	if pos.y < area.position.y + 6.0:
+		# no room above: sit beside the head instead, on whichever side has more room
+		pos.y = clampf(head.y - sz.y * 0.5, area.position.y + 6.0, area.end.y - sz.y - 6.0)
+		pos.x = head.x + 40.0 if head.x < area.get_center().x else head.x - 40.0 - sz.x
+	pos.x = clampf(pos.x, area.position.x + 6.0, maxf(area.position.x + 6.0, area.end.x - sz.x - 6.0))
+	bubble.position = pos
+	bubble.tail = head - pos
+	bubble.queue_redraw()
+
+
+func _process(delta: float) -> void:
+	if bubble == null or not bubble.visible:
+		return
+	_place_talk()
+	if _talk_typing():
+		talk_shown += delta * TALK_CPS
+		bubble.text_label.visible_characters = int(talk_shown)
+		talk_beep -= delta
+		if talk_beep <= 0.0 and talk_story and not talk_lines.is_empty() and talk_lines[0][0] != "NARRATOR":
+			talk_beep = 0.07
+			Sfx.play("talk_robot" if talk_lines[0][0] == "ECHO" else "talk", 0.15, -6.0)
+		return
+	talk_left -= delta
+	bubble.bar.set_ratio(talk_left / talk_life)
+	if talk_left <= 0.0:
+		_talk_next()
 
 
 # ---------------------------------------------------------------- refresh
@@ -576,7 +774,7 @@ func refresh() -> void:
 		fight_button.text = "Need a head and a torso"
 		fight_button.disabled = true
 	else:
-		fight_button.disabled = false
+		fight_button.disabled = talk_after.is_valid()   # the rival's still talking; the fight starts after
 		var label: String = {"story": "FIGHT: %s ($%d)", "circuit": "CUP FIGHT: %s ($%d)", "exhibition": "REMATCH: %s ($%d)",
 				"pickup": "PICKUP FIGHT: %s ($%d)"}.get(mode, "FIGHT: %s ($%d)")
 		fight_button.text = tr(label) % [o["name"], GameData.current_reward()]
@@ -1122,6 +1320,8 @@ func open_popup(title: String) -> VBoxContainer:
 	overlay.set_anchors_preset(Control.PRESET_FULL_RECT)
 	overlay.mouse_filter = Control.MOUSE_FILTER_STOP
 	add_child(overlay)
+	if bubble:
+		move_child(bubble, -1)   # people keep talking over windows
 	var center := CenterContainer.new()
 	center.set_anchors_preset(Control.PRESET_FULL_RECT)
 	overlay.add_child(center)
@@ -2152,18 +2352,13 @@ func bot_preview(o: Dictionary) -> RobotPreview:
 # ---------------------------------------------------------------- actions
 
 ## New things carry a star: the first tap has Gus explain them (a short scene), then opens them.
-func gus_explains(feature: String, _tab_name: String = "") -> bool:
+## The first time you open something new, Gus explains it in his bubble while you look at it.
+## Returns true only when the caller should wait (block = true) instead of going ahead.
+func gus_explains(feature: String, block: bool = false) -> bool:
 	if not GameData.is_new(feature):
 		return false
-	var place: Array = FEATURE_PLACE.get(feature, ["", ""])
-	GameData.open_tab = place[0]
-	GameData.open_action = place[1]
-	if GameData.queue_story("unlock_" + feature, "res://garage.tscn"):
-		Sfx.play("click")
-		GameData.flush_save()
-		get_tree().change_scene_to_file("res://story.tscn")
-		return true
-	return false
+	play_story(["unlock_" + feature])
+	return block
 
 
 func star(text: String, feature: String) -> String:
@@ -2403,7 +2598,7 @@ func _on_pick_style(id: String) -> void:
 
 
 func _on_open_scout() -> void:
-	if gus_explains("scout"):
+	if gus_explains("scout", true):
 		return
 	var msg := ""
 	if not GameData.scouted():
@@ -2816,7 +3011,13 @@ func _start_fight() -> void:
 	close_popup()
 	GameData.save_game()
 	var idx := GameData.current_opponent_index()
-	if idx >= 0 and GameData.queue_story("pre_%d" % idx, "res://fight.tscn"):
-		get_tree().change_scene_to_file("res://story.tscn")
-	else:
-		get_tree().change_scene_to_file("res://fight.tscn")
+	# the rival calls in to talk trash first, then it's fight time
+	if idx >= 0 and play_story(["pre_%d" % idx], _go_fight):
+		fight_button.disabled = true
+		return
+	_go_fight()
+
+
+func _go_fight() -> void:
+	GameData.flush_save()
+	get_tree().change_scene_to_file("res://fight.tscn")

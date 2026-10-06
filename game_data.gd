@@ -2,7 +2,7 @@ extends Node
 
 # helper scripts, loaded by path so the game also runs without an editor scan
 ## The game's version, shown on the main menu. Bump it with every change (1.1, 1.2, ...).
-const VERSION := "1.2"
+const VERSION := "1.3"
 const Arena = preload("res://arena.gd")
 const I18n = preload("res://i18n.gd")
 const Catalog = preload("res://catalog.gd")
@@ -265,6 +265,7 @@ var event := {}             # the league or playoffs you're in (see career.gd)
 var trophies: Array = []    # [{kind: scrap/regional/championship/cup, medal: 1-3, name, year}]
 var career_stats := {"heads": 0, "arms": 0, "legs": 0, "cores": 0, "parts": 0}
 var story_queue: Array = [] # more story scenes to show after the current one
+var bay_stories: Array = [] # story scenes the garage plays when you get back (post-fight talk, medals)
 var pending_stories: Array = []   # scenes the last result unlocked (shown after the fight)
 var last_ko := ""
 var bills_note := 0         # living costs charged since the garage last showed them

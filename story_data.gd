@@ -254,7 +254,7 @@ const SCENES := {
 	]},
 	"unlock_paint": {"place": "GUS'S BAY", "lines": [
 		["GUS", "We're still running ECHO in your dad's old primer. The crowd cheers for robots they can pick out from the cheap seats."],
-		["GUS", "I got some paint off a Kane shipping container. Don't ask. It's under the Paint button."],
+		["GUS", "I got some paint off a Kane shipping container. Don't ask. It's in the Bay, under Style & paint."],
 	]},
 	"unlock_setups": {"place": "GUS'S BAY", "lines": [
 		["GUS", "You keep swapping the same parts back and forth before every fight. I'm getting old watching you."],

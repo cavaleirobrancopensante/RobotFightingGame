@@ -89,6 +89,7 @@ static func _props_back(ci: CanvasItem, size: Vector2, scene: String, t: float, 
 				ci.draw_line(Vector2(lerpf(lx - rh * 0.07, lx, f), ry), Vector2(lerpf(lx + rh * 0.1, lx + rh * 0.02, f), ry), wood, 3.0)
 			var ps := clampf(size.y / 300.0, 0.6, 1.3)
 			PilotArt.draw_person(ci, Vector2(lx + 4.0, lerpf(floor_y, top_y, 0.68)), ps, info.get("pilot", {}), -1.0, "point", t + 1.3)
+			_head(info, "YOU", Vector2(lx + 4.0, lerpf(floor_y, top_y, 0.68)), ps)
 			# lift platform
 			ci.draw_rect(Rect2(size.x * 0.56 - 50, floor_y - 6, 100, 8), Color(0.75, 0.6, 0.15))
 			for k in 6:
@@ -181,6 +182,7 @@ static func _front(ci: CanvasItem, size: Vector2, scene: String, t: float, info:
 		"build":
 			# Gus works on the robot's leg with a wrench, sparks fly (the pilot is up the ladder behind)
 			PilotArt.draw_person(ci, Vector2(robot_base.x - 52 * s, floor_y), s, gus, 1.0, "wrench", t)
+			_head(info, "GUS", Vector2(robot_base.x - 52 * s, floor_y), s)
 			var spark_age: float = info.get("spark", 99.0)
 			if fmod(t, 2.4) < 0.25 or spark_age < 0.6:
 				_sparks(ci, Vector2(robot_base.x - 22 * s, floor_y - robot_h * 0.25), t, 1.5 if spark_age < 0.6 else 1.0)
@@ -207,7 +209,9 @@ static func _front(ci: CanvasItem, size: Vector2, scene: String, t: float, info:
 			# the pilot types, Gus leans in and points at the screen
 			ci.draw_rect(Rect2(mon.position.x - 2 * s, floor_y - 30 * s, 22 * s, 4 * s), Color(0.25, 0.25, 0.3))   # chair
 			PilotArt.draw_person(ci, Vector2(mon.position.x + 8 * s, floor_y), s, pilot, 1.0, "sit_type", t)
+			_head(info, "YOU", Vector2(mon.position.x + 8 * s, floor_y), s, true)
 			PilotArt.draw_person(ci, Vector2(mon.end.x + 22 * s, floor_y), s, gus, -1.0, "point", t + 0.7)
+			_head(info, "GUS", Vector2(mon.end.x + 22 * s, floor_y), s)
 		"workshop":
 			# workbench with a vise and a spinning grinder; both of them hard at work
 			var bench := Rect2(10, floor_y - 40 * s, size.x * 0.62, 8 * s)
@@ -224,9 +228,11 @@ static func _front(ci: CanvasItem, size: Vector2, scene: String, t: float, info:
 				ci.draw_line(gr, gr + Vector2(cos(a), sin(a)) * 8 * s, Color(0.6, 0.6, 0.62), 2.0)
 			_sparks(ci, gr + Vector2(-8 * s, 4 * s), t * 1.7, 0.8)
 			PilotArt.draw_person(ci, Vector2(vise.x - 22 * s, floor_y), s, gus, 1.0, "hammer", t)
+			_head(info, "GUS", Vector2(vise.x - 22 * s, floor_y), s)
 			var goggled: Dictionary = pilot.duplicate()
 			goggled["glasses"] = "goggles"
 			PilotArt.draw_person(ci, Vector2(gr.x + 24 * s, floor_y), s, goggled, -1.0, "hold", t + 0.4)
+			_head(info, "YOU", Vector2(gr.x + 24 * s, floor_y), s)
 			if fmod(t, 1.0) < 0.12:
 				_sparks(ci, vise + Vector2(0, -20 * s), t, 1.0)
 		"scrap":
@@ -234,7 +240,9 @@ static func _front(ci: CanvasItem, size: Vector2, scene: String, t: float, info:
 			var dig_age: float = info.get("dig", 99.0)
 			var pile_x := size.x * 0.38
 			PilotArt.draw_person(ci, Vector2(pile_x + 44 * s, floor_y), s, pilot, -1.0, "dig", t * (2.0 if dig_age < 1.0 else 0.6))
+			_head(info, "YOU", Vector2(pile_x + 44 * s, floor_y), s)
 			PilotArt.draw_person(ci, Vector2(18 * s, floor_y), s * 0.95, gus, 1.0, "point", t + 0.3)
+			_head(info, "GUS", Vector2(18 * s, floor_y), s * 0.95)
 			if dig_age < 1.2:
 				for k in 8:
 					var a := -PI * (0.2 + 0.6 * k / 7.0)
@@ -254,11 +262,15 @@ static func _front(ci: CanvasItem, size: Vector2, scene: String, t: float, info:
 				ci.draw_rect(Rect2(cx, floor_y - 12, 16, 8), pc if k == 0 else Color.from_hsv(fmod(k * 0.33 + 0.1, 1.0), 0.7, 0.8))
 				ci.draw_rect(Rect2(cx - 1, floor_y - 20, 18, 3), Color(0.5, 0.5, 0.52))
 			PilotArt.draw_person(ci, Vector2(robot_base.x - 60 * s, floor_y), s, pilot, 1.0, "spray", t, pc)
+			_head(info, "YOU", Vector2(robot_base.x - 60 * s, floor_y), s)
 			PilotArt.draw_person(ci, Vector2(robot_base.x + 62 * s, floor_y), s, gus, -1.0, "spray", t + 0.9, pc)
+			_head(info, "GUS", Vector2(robot_base.x + 62 * s, floor_y), s)
 		"moves":
 			# training: the pilot drills inputs on the controller, Gus times it
 			PilotArt.draw_person(ci, Vector2(26 * s, floor_y), s, pilot, 1.0, "hold", t)
+			_head(info, "YOU", Vector2(26 * s, floor_y), s)
 			PilotArt.draw_person(ci, Vector2(size.x - 24 * s, floor_y), s * 0.95, gus, -1.0, "clipboard", t + 0.5)
+			_head(info, "GUS", Vector2(size.x - 24 * s, floor_y), s * 0.95)
 		"team":
 			var backup: Dictionary = info.get("backup", {})
 			if not backup.is_empty():
@@ -274,8 +286,14 @@ static func _front(ci: CanvasItem, size: Vector2, scene: String, t: float, info:
 				ci.draw_rect(Rect2(14, floor_y - 6, 70, 6), Color(0.45, 0.45, 0.5))
 				ci.draw_string(ThemeDB.fallback_font, Vector2(10, floor_y - 14), "backup?", HORIZONTAL_ALIGNMENT_LEFT, 80, 13, Color(1, 1, 1, 0.4))
 			PilotArt.draw_person(ci, Vector2(size.x - 22 * s, floor_y), s * 0.9, pilot, -1.0, "cheer" if not backup.is_empty() else "idle", t)
+			_head(info, "YOU", Vector2(size.x - 22 * s, floor_y), s * 0.9)
+			PilotArt.draw_person(ci, Vector2(size.x * 0.42, floor_y), s * 0.95, gus, 1.0, "clipboard", t + 0.5)
+			_head(info, "GUS", Vector2(size.x * 0.42, floor_y), s * 0.95)
 		"cups":
 			PilotArt.draw_person(ci, Vector2(28 * s, floor_y), s, pilot, 1.0, "cheer" if not info.get("medals", []).is_empty() else "point", t)
+			_head(info, "YOU", Vector2(28 * s, floor_y), s)
+			PilotArt.draw_person(ci, Vector2(size.x - 26 * s, floor_y), s * 0.95, gus, -1.0, "point", t + 0.6)
+			_head(info, "GUS", Vector2(size.x - 26 * s, floor_y), s * 0.95)
 		"storage":
 			# two crates being opened: one lid already off with parts sticking out, Gus prying the other
 			var a := Rect2(size.x * 0.1, floor_y - 40 * s, 70 * s, 40 * s)
@@ -298,11 +316,19 @@ static func _front(ci: CanvasItem, size: Vector2, scene: String, t: float, info:
 			_crate(ci, b, 0.8)
 			ci.draw_rect(Rect2(b.position + Vector2(-2 * s, -6 * s - heave), Vector2(b.size.x + 4 * s, 6 * s)), Color(0.6, 0.45, 0.28))
 			PilotArt.draw_person(ci, Vector2(b.position.x - 14 * s, floor_y), s, gus, 1.0, "pry", t)
+			_head(info, "GUS", Vector2(b.position.x - 14 * s, floor_y), s)
 			# the pilot holds up a find and looks it over
 			PilotArt.draw_person(ci, Vector2(a.end.x + 30 * s, floor_y), s, pilot, -1.0, "lift", t + 0.5, Color(0.55, 0.58, 0.62))
+			_head(info, "YOU", Vector2(a.end.x + 30 * s, floor_y), s)
 
 
 # ---------------------------------------------------------------- bits
+
+## Remember where a person's head is (stage coordinates), so the garage can point speech bubbles at it.
+static func _head(info: Dictionary, who: String, feet: Vector2, s: float, sitting: bool = false) -> void:
+	if not info.has("heads"):
+		info["heads"] = {}
+	info["heads"][who] = feet + Vector2(0, (-80.0 if sitting else -78.0) * s)
 
 ## A wooden crate with planks and a stencil mark. shade darkens or lightens the wood.
 static func _crate(ci: CanvasItem, r: Rect2, shade: float) -> void:
