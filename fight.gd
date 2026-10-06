@@ -318,18 +318,24 @@ var cam_z := 1.0
 var cam_c := Vector2.ZERO
 var intro_layer: CanvasLayer
 var skip_rect := Rect2()
-const SHOW_BEATS := [["a_call", 2.6], ["a_zoom", 3.0], ["b_call", 2.2], ["b_zoom", 3.0]]
+# the enemy first (that's what you want to know before you skip), then you
+const SHOW_BEATS := [["b_call", 2.6], ["b_zoom", 3.4], ["a_call", 2.2], ["a_zoom", 3.0]]
+const WALKIN_MUSIC := {"crate": "walkin_scrap", "podium": "walkin_arena", "gate": "walkin_grand"}
+var show_paused := false
+var card_t := 0.0   # how long the current card/caption has been up (keeps running while paused)
+var pause_rect := Rect2()
+var fight_track := ""
 const COUNT_STEP := 0.8
 # the same three announcers as in the story scenes: the scrap heap's rough fellow (sunburnt, stubble,
 # red bandana, olive vest, a dented megaphone), the Regional / cups' ordinary fellow (red jacket, a
 # plain mic) and the Championship's man in a tuxedo (silver slicked hair, bow tie, gold mic)
 const ANNOUNCERS := {
 	"crate": {"skin": "#b87a56", "hair": "#bf2a20", "hat": "headband", "outfit": "#5c5e38", "beard": "stubble",
-		"eyes": "#3a2a1e", "glasses": "none", "scar": true},
+		"eyes": "#3a2a1e", "glasses": "none", "scar": true, "prop": "megaphone"},
 	"podium": {"skin": "#d9a07a", "hair": "#1a1a1a", "hat": "", "outfit": "#9a1a26", "beard": "none",
-		"eyes": "#3a2a1e", "glasses": "none"},
+		"eyes": "#3a2a1e", "glasses": "none", "prop": "mic"},
 	"gate": {"skin": "#ebc7a8", "hair": "#c8ccd4", "hat": "", "outfit": "#121216", "beard": "none",
-		"eyes": "#2a2a35", "glasses": "none"},
+		"eyes": "#2a2a35", "glasses": "none", "prop": "gold_mic"},
 }
 
 
@@ -486,7 +492,8 @@ func _ready() -> void:
 	# boss music for OVERLORD and for any final
 	var boss: bool = fight_idx == GameData.OPPONENTS.size() - 1 or GameData.fight_is_final()
 	var pick: int = fight_idx if fight_idx >= 0 else randi() % 97
-	Sfx.music("boss" if boss else Sfx.FIGHT_TRACKS[pick % Sfx.FIGHT_TRACKS.size()])
+	fight_track = "boss" if boss else Sfx.FIGHT_TRACKS[pick % Sfx.FIGHT_TRACKS.size()]
+	Sfx.music(WALKIN_MUSIC.get(barrier_kind, "walkin_arena") if intro_step == "show" else fight_track)
 	Sfx.play("crowd_cheer", 0.0, -9.0)   # the crowd warms up quietly; it gets loud on big moments
 	cheer = 3.0
 
@@ -597,9 +604,13 @@ func _input(event: InputEvent) -> void:
 		if not handle_tap(event.position):
 			tap_pending = true
 	elif event is InputEventKey and event.pressed and not event.echo:
-		if phase == "intro" and intro_step == "show" and event.physical_keycode in [KEY_ENTER, KEY_SPACE, KEY_ESCAPE]:
-			skip_show()   # computers: any of these skips the announcer's show
-			return
+		if phase == "intro" and intro_step == "show":
+			if event.physical_keycode in [KEY_ENTER, KEY_SPACE, KEY_ESCAPE]:
+				skip_show()   # computers: any of these skips the announcer's show
+				return
+			if event.physical_keycode == KEY_P:
+				show_paused = not show_paused
+				return
 		match event.physical_keycode:
 			KEY_ENTER, KEY_SPACE:
 				if paused:
@@ -650,6 +661,22 @@ func handle_tap(p: Vector2) -> bool:
 	if phase == "intro" and intro_step == "show":
 		if skip_rect.has_point(p):
 			skip_show()
+		elif pause_rect.has_point(p):
+			show_paused = not show_paused
+			Sfx.play("click")
+		else:
+			# tap a robot: straight to its specs (the camera is zoomed, so undo that first)
+			var wp := (p - position) / scale
+			for pair in [[cpu, "b_zoom"], [player, "a_zoom"]]:
+				var f: Fighter = pair[0]
+				if part_at(f, wp) != "" or (absf(wp.x - f.pos.x) < 130.0 * f.scale and wp.y > floor_y - 340.0 * f.scale and wp.y < floor_y + 10.0):
+					for k in SHOW_BEATS.size():
+						if SHOW_BEATS[k][0] == pair[1]:
+							beat = k
+							beat_t = 0.001
+							card_t = 0.0
+					Sfx.play("target")
+					break
 		return true
 	if mode == "test" and reset_rect.has_point(p):
 		Sfx.play("click")
@@ -4095,10 +4122,14 @@ func update_walk_in(delta: float) -> void:
 	if intro_step == "show":
 		if beat_t == 0.0 and beat == 0:
 			Sfx.play("crowd_cheer", 0.0, -6.0)
+		card_t += delta
+		if show_paused:
+			return
 		beat_t += delta
 		if beat_t >= float(SHOW_BEATS[beat][1]):
 			beat += 1
 			beat_t = 0.001
+			card_t = 0.0
 			if beat >= SHOW_BEATS.size():
 				start_count()
 		return
@@ -4121,6 +4152,9 @@ func update_walk_in(delta: float) -> void:
 
 func start_count() -> void:
 	intro_step = "count"
+	show_paused = false
+	if fight_track != "":
+		Sfx.music(fight_track)
 	count_t = 0.0
 	count_shown = -1
 
@@ -4166,14 +4200,14 @@ func draw_walk_in(off: Vector2) -> void:
 	var t := count_t if intro_step == "count" else 0.0
 	if phase != "intro":
 		t = 99.0
-	var pose := "cheer"
+	var pose := "announce_up"
 	var pdir := 1.0
 	match show_beat():
 		"a_call", "a_zoom":
-			pose = "point"
+			pose = "announce"
 			pdir = -1.0
 		"b_call", "b_zoom":
-			pose = "point"
+			pose = "announce"
 	match barrier_kind:
 		"crate", "podium":
 			var bh := 58.0 * s * 0.6 if barrier_kind == "crate" else 74.0 * s * 0.6
@@ -4194,7 +4228,7 @@ func draw_walk_in(off: Vector2) -> void:
 				# the crate goes with him once he's picked it up
 				var lift := clampf((t - 0.35) / 0.25, 0.0, 1.0)
 				if lift > 0.0:
-					var held := feet + Vector2(-bw * 0.5 * ps / s, -82.0 * ps - bh * ps / s)   # carried over his head
+					var held := feet + Vector2(-bw * 0.5 * ps / s, -76.0 * ps - bh * ps / s)   # carried over his head, both hands on it
 					box_r = Rect2(Vector2(mid - bw * 0.5, floor_y - bh).lerp(held, lift), Vector2(bw, bh) * (ps / s))
 				if alpha > 0.0:
 					var c := Color(0.55, 0.38, 0.2, alpha)
@@ -4215,8 +4249,10 @@ func draw_walk_in(off: Vector2) -> void:
 						draw_line(Vector2(pr.position.x, sy) + off, Vector2(pr.end.x, sy) + off, Color(0.3, 0.32, 0.38), 2.0)
 					draw_rect(Rect2(Vector2(mid - bw * 0.5 - 6, floor_y - 3) + off, Vector2(bw + 12, 3)), Color(0.1, 0.1, 0.1))
 			if alpha > 0.0 and t < 99.0:
-				PilotArt.draw_person(self, feet + off, ps, ANNOUNCERS[barrier_kind], pdir, pose if t <= 0.0 else ("cheer" if barrier_kind == "crate" and t > 0.35 else "idle"), clock)
-				if t <= 0.35:
+				var look: Dictionary = ANNOUNCERS[barrier_kind]
+				var p2 := pose if t <= 0.0 else ("carry_up" if barrier_kind == "crate" and t > 0.35 else "walk_mic")
+				PilotArt.draw_person(self, feet + off, ps, look, pdir if t <= 0.0 else 1.0, p2, clock)
+				if barrier_kind == "gate":
 					draw_announcer_prop(feet + off, ps, pdir)
 		"gate":
 			# the machined gate: two steel leaves with warning lights; they drop into the floor at the bell
@@ -4235,7 +4271,7 @@ func draw_walk_in(off: Vector2) -> void:
 			var bx := Vector2(mid, floor_y - screen.y * 0.3) + off * 0.5
 			var booth := Rect2(bx + Vector2(-46, 0), Vector2(92, 34))
 			var bs := clampf(s * 0.75, 1.0, 1.6)
-			PilotArt.draw_person(self, bx + Vector2(0, 2), bs, ANNOUNCERS["gate"], pdir, pose if phase == "intro" else "cheer" if phase == "ko" else "idle", clock)
+			PilotArt.draw_person(self, bx + Vector2(0, 2), bs, ANNOUNCERS["gate"], pdir, pose if phase == "intro" or phase == "ko" else "walk_mic", clock)
 			draw_announcer_prop(bx + Vector2(0, 2), bs, pdir)
 			draw_rect(booth, Color(0.45, 0.08, 0.12))
 			draw_rect(booth, Color(0.88, 0.7, 0.25), false, 3.0)
@@ -4248,23 +4284,13 @@ func draw_walk_in(off: Vector2) -> void:
 
 ## What each announcer holds up to his mouth (and the tux's bow tie).
 func draw_announcer_prop(feet: Vector2, s: float, dir: float) -> void:
-	var mouth := feet + Vector2(7.0 * s * dir, -60.0 * s)
-	match barrier_kind:
-		"crate":
-			# the dented megaphone
-			var m := mouth + Vector2(2.0 * s * dir, 0)
-			draw_colored_polygon(PackedVector2Array([m, m + Vector2(12.0 * s * dir, -6.0 * s), m + Vector2(12.0 * s * dir, 7.0 * s), m + Vector2(0, 2.5 * s)]), Color(0.85, 0.7, 0.2))
-			draw_line(m + Vector2(6.0 * s * dir, -2.0 * s), m + Vector2(7.0 * s * dir, 1.0 * s), Color(0.55, 0.42, 0.1), 1.5)
-		"podium":
-			draw_line(mouth + Vector2(1.0 * s * dir, 2.0 * s), mouth + Vector2(3.0 * s * dir, 10.0 * s), Color(0.15, 0.15, 0.15), 2.0 * s)
-			draw_circle(mouth + Vector2(1.0 * s * dir, 1.0 * s), 2.6 * s, Color(0.55, 0.55, 0.6))
-		"gate":
-			draw_line(mouth + Vector2(1.0 * s * dir, 2.0 * s), mouth + Vector2(3.0 * s * dir, 10.0 * s), Color(0.75, 0.6, 0.2), 2.0 * s)
-			draw_circle(mouth + Vector2(1.0 * s * dir, 1.0 * s), 2.8 * s, Color(0.95, 0.8, 0.3))
-			var neck := feet + Vector2(0, -53.0 * s)
-			draw_colored_polygon(PackedVector2Array([neck + Vector2(-4 * s, 2 * s), neck + Vector2(4 * s, 2 * s), neck + Vector2(0, 12 * s)]), Color(0.95, 0.95, 0.95))
-			draw_colored_polygon(PackedVector2Array([neck + Vector2(-4 * s, 0), neck, neck + Vector2(-4 * s, 3 * s)]), Color(0.6, 0.05, 0.1))
-			draw_colored_polygon(PackedVector2Array([neck + Vector2(4 * s, 0), neck, neck + Vector2(4 * s, 3 * s)]), Color(0.6, 0.05, 0.1))
+	# the tuxedo's shirt front and bow tie (the mic itself is in his hand - see PilotArt "announce")
+	if barrier_kind != "gate":
+		return
+	var neck := feet + Vector2(0, -53.0 * s)
+	draw_colored_polygon(PackedVector2Array([neck + Vector2(-4 * s, 2 * s), neck + Vector2(4 * s, 2 * s), neck + Vector2(0, 12 * s)]), Color(0.95, 0.95, 0.95))
+	draw_colored_polygon(PackedVector2Array([neck + Vector2(-4 * s, 0), neck, neck + Vector2(-4 * s, 3 * s)]), Color(0.6, 0.05, 0.1))
+	draw_colored_polygon(PackedVector2Array([neck + Vector2(4 * s, 0), neck, neck + Vector2(4 * s, 3 * s)]), Color(0.6, 0.05, 0.1))
 
 
 ## Robots' special parts and moves get pulsing rings while the camera is on them.
@@ -4315,15 +4341,15 @@ func announcer_line() -> String:
 	var opener: String = {"crate": tr("Alright, you lot, settle down!"), "podium": tr("Ladies and gentlemen, welcome to fight night!"),
 			"gate": tr("LADIES AND GENTLEMEN... THIS... IS... THE CHAMPIONSHIP!")}[barrier_kind]
 	match b:
-		"a_call":
-			return opener + " " + (tr("In the left corner, piloted by %s...") % who if who != "" else tr("In the left corner..."))
-		"a_zoom":
-			return tr("...%s!") % name
 		"b_call":
 			if who == "" or who == "KANE DYNAMICS":
-				return tr("And in the right corner - no pilot, just Kane Dynamics' fight program...")
-			return tr("And in the right corner, piloted by %s...") % who
+				return opener + " " + tr("In the right corner - no pilot, just Kane Dynamics' fight program...")
+			return opener + " " + tr("In the right corner, piloted by %s...") % who
 		"b_zoom":
+			return tr("...%s!") % name
+		"a_call":
+			return tr("And in the left corner, piloted by %s...") % who if who != "" else tr("And in the left corner...")
+		"a_zoom":
 			return tr("...%s!") % name
 	return ""
 
@@ -4338,14 +4364,21 @@ func draw_intro_overlay(ci: CanvasItem) -> void:
 	# letterbox bars, cinema style
 	ci.draw_rect(Rect2(0, 0, w, h * 0.09), Color(0, 0, 0, 0.85))
 	ci.draw_rect(Rect2(0, h * 0.91, w, h * 0.09), Color(0, 0, 0, 0.85))
-	ci.draw_string(font, Vector2(24, h * 0.065), title_text + "   ·   " + tr(Arena.ARENAS[arena_id]["name"]).to_upper(), HORIZONTAL_ALIGNMENT_LEFT, w - 260, fs(18), Color(1.0, 0.85, 0.3))
+	ci.draw_string(font, Vector2(24, h * 0.065), title_text + "   ·   " + tr(Arena.ARENAS[arena_id]["name"]).to_upper(), HORIZONTAL_ALIGNMENT_LEFT, w - 430, fs(18), Color(1.0, 0.85, 0.3))
 	skip_rect = Rect2(w - 190, h * 0.012, 170, h * 0.07)
+	pause_rect = Rect2(w - 380, h * 0.012, 170, h * 0.07)
+	ci.draw_rect(pause_rect, Color(1, 1, 1, 0.22 if show_paused else 0.12))
+	ci.draw_rect(pause_rect, Color(1, 1, 1, 0.6), false, 2.0)
+	ci.draw_string(font, pause_rect.position + Vector2(0, pause_rect.size.y * 0.68), tr("PLAY") if show_paused else tr("PAUSE"), HORIZONTAL_ALIGNMENT_CENTER, pause_rect.size.x, fs(18), Color.WHITE)
+	ci.draw_string(font, Vector2(24, h * 0.965), tr("PAUSED - ") if show_paused else "", HORIZONTAL_ALIGNMENT_LEFT, -1, fs(15), Color(1.0, 0.85, 0.3))
+	ci.draw_string(font, Vector2(24 + (font.get_string_size(tr("PAUSED - "), HORIZONTAL_ALIGNMENT_LEFT, -1, fs(15)).x if show_paused else 0.0), h * 0.965),
+			tr("Tap a robot to see its specs"), HORIZONTAL_ALIGNMENT_LEFT, -1, fs(15), Color(0.8, 0.8, 0.85))
 	ci.draw_rect(skip_rect, Color(1, 1, 1, 0.12))
 	ci.draw_rect(skip_rect, Color(1, 1, 1, 0.6), false, 2.0)
 	ci.draw_string(font, skip_rect.position + Vector2(0, skip_rect.size.y * 0.68), tr("SKIP ›"), HORIZONTAL_ALIGNMENT_CENTER, skip_rect.size.x, fs(20), Color.WHITE)
 	# the announcer's caption, typed out
 	var line := announcer_line()
-	var shown := mini(line.length(), int(beat_t * 45.0))
+	var shown := mini(line.length(), int(card_t * 45.0))
 	var cap := Rect2(w * 0.18, h * 0.74, w * 0.64, h * 0.14)
 	ci.draw_rect(cap, Color(0.05, 0.05, 0.08, 0.88))
 	ci.draw_rect(Rect2(cap.position, Vector2(4, cap.size.y)), Color(1.0, 0.85, 0.2))
@@ -4357,7 +4390,7 @@ func draw_intro_overlay(ci: CanvasItem) -> void:
 		var f: Fighter = player if b == "a_zoom" else cpu
 		var left := b == "b_zoom"
 		var card := Rect2(w * 0.05 if left else w * 0.6, h * 0.14, w * 0.35, h * 0.56)
-		var a := clampf(beat_t * 3.0, 0.0, 1.0)
+		var a := clampf(card_t * 3.0, 0.0, 1.0)
 		ci.draw_rect(card, Color(0.04, 0.04, 0.07, 0.82 * a))
 		ci.draw_rect(Rect2(card.position, Vector2(card.size.x, 5)), Color(1.0, 0.85, 0.2, a))
 		var y := card.position.y + 44

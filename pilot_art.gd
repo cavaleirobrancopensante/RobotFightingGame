@@ -329,6 +329,22 @@ static func draw_person(ci: CanvasItem, feet: Vector2, s: float, raw: Dictionary
 				sip = sin((ph - 3.0) / 1.5 * PI)
 			hf = rest.lerp(mouth, clampf(sip * 1.3, 0.0, 1.0)) if pose == "drink" else rest + Vector2(fmod(t, 1.0) * 14 * s * dir, 0)
 			hb = sh_b + Vector2(20 * s * dir, 9 * s)
+		"announce", "announce_up":
+			# the announcer: one hand points at the corner he's calling (or punches the air),
+			# the other holds the mic / megaphone up to his mouth
+			if pose == "announce":
+				hf = sh_f + Vector2(24 * s * dir, -10 * s + sin(t * 5.0) * 2 * s)
+			else:
+				hf = sh_f + Vector2(6 * s * dir, -24 * s + absf(sin(t * 4.0)) * 3 * s)
+			hb = neck + Vector2(9 * s * dir, -3 * s)
+		"carry_up":
+			# both hands up, holding something over his head (the announcer's crate)
+			hf = sh_f + Vector2(5 * s * dir, -24 * s)
+			hb = sh_b + Vector2(-3 * s * dir, -24 * s)
+		"walk_mic":
+			# walking off with the mic (or megaphone) in one hand, the other arm swinging
+			hf = sh_f + Vector2((6 + swing * 3) * s * dir, 18 * s)
+			hb = sh_b + Vector2((-2 - swing * 3) * s * dir, 22 * s)
 		"wipe":
 			# the bartender polishes a glass, round and round
 			hf = sh_f + Vector2((12 + cos(t * 6.0) * 4) * s * dir, (10 + sin(t * 6.0) * 3) * s)
@@ -383,8 +399,30 @@ static func draw_person(ci: CanvasItem, feet: Vector2, s: float, raw: Dictionary
 	# head
 	var hc := neck + Vector2(dir * 1 * s, -11 * s)
 	var talk := 2.0 * s * (1.0 + absf(sin(t * 3.1))) if pose in ["point", "cheer"] else 1.4 * s
-	draw_head(ci, hc, 10 * s, look, dir, talk)
+	draw_head(ci, hc, 10 * s, look, dir, talk if not pose.begins_with("announce") else 2.0 * s * (1.0 + absf(sin(t * 9.0))))
 	match pose:
+		"walk_mic":
+			var prop := str(look.get("prop", "mic"))
+			if prop == "megaphone":
+				ci.draw_colored_polygon(PackedVector2Array([hf + Vector2(0, -2 * s), hf + Vector2(10 * s * dir, -6 * s), hf + Vector2(10 * s * dir, 6 * s), hf + Vector2(0, 2 * s)]), Color(0.85, 0.7, 0.2))
+			else:
+				ci.draw_line(hf, hf + Vector2(2 * s * dir, -9 * s), Color(0.75, 0.6, 0.2) if prop == "gold_mic" else Color(0.15, 0.15, 0.15), 2.2 * s)
+				ci.draw_circle(hf + Vector2(2 * s * dir, -10 * s), 2.6 * s, Color(0.95, 0.8, 0.3) if prop == "gold_mic" else Color(0.55, 0.55, 0.6))
+			ci.draw_circle(hf, 2.6 * s, Color(look.get("skin", "#c8946e")))
+		"announce", "announce_up":
+			# drawn after the head so it sits in front of his face; the hand is wrapped round it
+			var prop := str(look.get("prop", "mic"))
+			var mouth := hc + Vector2(7 * s * dir, 4 * s)
+			if prop == "megaphone":
+				var m := mouth + Vector2(2 * s * dir, 0)
+				ci.draw_colored_polygon(PackedVector2Array([m + Vector2(0, -2 * s), m + Vector2(13 * s * dir, -7 * s), m + Vector2(13 * s * dir, 7 * s), m + Vector2(0, 2 * s)]), Color(0.85, 0.7, 0.2))
+				ci.draw_line(m + Vector2(7 * s * dir, -3 * s), m + Vector2(8 * s * dir, 1 * s), Color(0.55, 0.42, 0.1), 1.5)   # the dent
+				ci.draw_line(m + Vector2(3 * s * dir, 2 * s), hb + Vector2(0, 1 * s), Color(0.3, 0.3, 0.32), 2.5 * s)   # handle into the hand
+			else:
+				var gold := prop == "gold_mic"
+				ci.draw_line(hb + Vector2(0, 3 * s), mouth + Vector2(0, 2 * s), Color(0.75, 0.6, 0.2) if gold else Color(0.15, 0.15, 0.15), 2.2 * s)
+				ci.draw_circle(mouth, 2.8 * s, Color(0.95, 0.8, 0.3) if gold else Color(0.55, 0.55, 0.6))
+			ci.draw_circle(hb, 2.6 * s, Color(look.get("skin", "#c8946e")))   # fingers round the handle
 		"drink":
 			# the beer mug (over the face when it's up for a sip)
 			var m := hf + Vector2(1 * s * dir, -4 * s)
