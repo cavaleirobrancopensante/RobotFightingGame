@@ -2604,6 +2604,7 @@ func _on_dig(kind: String = "") -> void:
 	dig_at = Time.get_ticks_msec() / 1000.0
 	dig_found = tr("Found something!") if res["part"] != "" else ""
 	say(res["text"], "buy" if res.has("chip") else ("break" if res["part"] != "" else "land"))
+	GameData.log_day(str(res["text"]), "good" if str(res.get("grade", "")) in ["rare", "good", "chip"] else "info")
 	GameData.save_game()
 	refresh()
 	if res.has("uid"):
@@ -2641,10 +2642,15 @@ func show_find(uid: int, grade: String) -> void:
 	var bar := HBoxContainer.new()
 	bar.add_theme_constant_override("separation", 10)
 	col.add_child(bar)
-	var look := UI.button(tr("Take a closer look"), func(): close_popup(); _on_detail({"src": "inv", "uid": uid}), 16, Vector2(0, 50))
+	var look := UI.button(tr("Take a closer look"), func(): plan_after_find = false; close_popup(); _on_detail({"src": "inv", "uid": uid}), 16, Vector2(0, 50))
 	look.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	bar.add_child(look)
-	var keep := UI.button(tr("Into storage"), func(): close_popup(); _on_keep_find(uid), 16, Vector2(0, 50))
+	var keep := UI.button(tr("Into storage"), func():
+		close_popup()
+		_on_keep_find(uid)
+		if plan_after_find:
+			plan_after_find = false
+			open_day_plan(), 16, Vector2(0, 50))
 	keep.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	bar.add_child(keep)
 
@@ -3075,7 +3081,17 @@ func _on_cal_day(w: int, day: int) -> void:
 	var col := open_popup(tr("%s %d  ·  WEEK %d") % [tr(["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY", "SUNDAY"][day]),
 			((w - 1) % GameData.MONTH_WEEKS) * 7 + day + 1, w])
 	var events := day_events(w, day)
-	if events.is_empty():
+	# the day book: what happened that day (jobs finished, digs, fights, bills, mail)
+	var logged: Array = GameData.day_log.get(GameData.day_key(GameData.year, w, day), [])
+	if not logged.is_empty():
+		col.add_child(GUI.text(tr("WHAT HAPPENED"), 15, GUI.YELLOW, "headb"))
+		for le in logged:
+			var lc: Color = {"good": GUI.GREEN, "bad": GUI.RED}.get(str(le.get("c", "info")), GUI.TEXT)
+			var ll := GUI.text(tr(PHASE_SHORT[clampi(int(le.get("ph", 0)), 0, 2)]) + "  " + str(le["text"]), 14, lc)
+			ll.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+			col.add_child(ll)
+		col.add_child(GUI.HazardStrip.new())
+	if events.is_empty() and logged.is_empty():
 		col.add_child(GUI.text(tr("Nothing on. A quiet day in the bay."), 16, GUI.MUTED))
 	# league nights have a lot on: the list scrolls
 	var n_rows := 0
@@ -3677,7 +3693,259 @@ func _on_go_to_day(idx: int) -> void:
 const PHASE_SHORT := ["AM", "PM", "EVE"]
 
 
+# ---------------------------------------------------------------- the day plan
+# Before the clock moves: one window that shows what the bay will get done (a ruler of hours, one
+# block per hour, with the bell on it), tonight, the things you can still do before the time goes
+# (done right there), and the next few days. The big button in it moves the clock; the same window
+# then turns into the report of what happened (TIME PASSES), which also goes in the day book.
+
+class DayRuler extends Control:
+	var hours := 8            # slots on the ruler (1 = one hour)
+	var bell := -1            # slot where the bell rings (-1: no bell on this ruler)
+	var night_from := 8       # first night (overtime) slot
+	var overtime := false
+	var shifts: Array = []    # [[label, from, to], ...]
+	var rows: Array = []      # [{"label", "color", "fill": [0..1 per slot], "done": slot it finishes or -1}]
+	var font: Font
+
+	func _ready() -> void:
+		custom_minimum_size = Vector2(560, 44 + rows.size() * 24 + 8)
+
+	func _draw() -> void:
+		var lw := 150.0
+		var sw := (size.x - lw - 6.0) / maxf(1.0, float(hours))
+		var f: Font = font if font else ThemeDB.fallback_font
+		# the shifts along the top
+		for sh in shifts:
+			var x0: float = lw + float(sh[1]) * sw
+			var x1: float = lw + float(sh[2]) * sw
+			var night: bool = int(sh[1]) >= night_from
+			draw_rect(Rect2(x0 + 1, 4, x1 - x0 - 2, 22), Color(0.2, 0.2, 0.26) if not night else Color(0.12, 0.12, 0.2))
+			draw_string(f, Vector2(x0, 20), str(sh[0]), HORIZONTAL_ALIGNMENT_CENTER, x1 - x0, 11, Color(0.85, 0.85, 0.9) if not night or overtime else Color(0.5, 0.5, 0.6))
+		# an hour tick per slot
+		for k in hours + 1:
+			draw_line(Vector2(lw + k * sw, 30), Vector2(lw + k * sw, 34), Color(0.4, 0.4, 0.45), 1.0)
+		var y := 40.0
+		for r in rows:
+			draw_string(f, Vector2(0, y + 15), str(r["label"]), HORIZONTAL_ALIGNMENT_LEFT, lw - 8, 12, Color(0.85, 0.85, 0.9))
+			var fill: Array = r["fill"]
+			for k in hours:
+				var cell := Rect2(lw + k * sw + 1, y + 2, sw - 2, 16)
+				var a: float = float(fill[k]) if k < fill.size() else 0.0
+				var night: bool = k >= night_from
+				draw_rect(cell, Color(0.16, 0.16, 0.2))
+				if a > 0.0:
+					var c: Color = r["color"]
+					if night and not overtime:
+						c = Color(c, 0.3)   # only with overtime
+					draw_rect(Rect2(cell.position, Vector2(cell.size.x * clampf(a, 0.15, 1.0), cell.size.y)), c)
+			var dk: int = int(r["done"])
+			if dk >= 0:
+				var tx := lw + (dk + 1) * sw - 2
+				draw_polyline(PackedVector2Array([Vector2(tx - 11, y + 10), Vector2(tx - 7, y + 15), Vector2(tx - 1, y + 4)]), Color(0.553, 1.0, 0.651), 2.5)
+			y += 24.0
+		# the bell
+		if bell >= 0:
+			var bx := lw + bell * sw
+			draw_line(Vector2(bx, 2), Vector2(bx, size.y - 2), Color(1.0, 0.35, 0.3), 3.0)
+			draw_string(f, Vector2(bx + 4, size.y - 4), tr("BELL"), HORIZONTAL_ALIGNMENT_LEFT, -1, 11, Color(1.0, 0.45, 0.4))
+
+
+var plan_open := false
+
+
+## The big button: the day plan (in the evening with your fight booked, the Bell Check instead).
+func open_day_plan() -> void:
+	var evening := GameData.phase == 2
+	if evening and not GameData.can_pass_day():
+		open_fight_popup()
+		return
+	plan_open = true
+	var col := open_popup(tr("%s %s") % [tr(DAY_FULL_UP[GameData.day_index()]), tr(GameData.PHASE_NAMES[GameData.phase])])
+	col.custom_minimum_size = Vector2(720, 0)
+	var mode := GameData.fight_mode()
+	var to_bell := GameData.hours_to_bell()
+	# 1. the bay: a ruler of hours, the job board laid out on it
+	var lead := tr("The bay puts in %d hours, then it's %s.") % [int(GameData.SHIFT_HOURS), tr(["the afternoon", "the evening", "tomorrow morning"][GameData.phase])]
+	if evening:
+		lead = tr("The day's done. The bay only works tonight if you pay for overtime.")
+	col.add_child(GUI.text(lead, 14, GUI.CYAN))
+	GameData.sync_swaps()
+	if GameData.jobs.is_empty():
+		col.add_child(GUI.text(tr("Nothing on the job board: the bay has nothing to do."), 14, GUI.MUTED))
+	else:
+		var ruler := DayRuler.new()
+		ruler.font = GUI.headb()
+		ruler.hours = int(to_bell + GameData.NIGHT_HOURS)
+		ruler.night_from = int(to_bell)
+		ruler.bell = int(to_bell) if (not evening and mode != "open") else -1
+		ruler.overtime = GameData.overtime
+		var sh: Array = []
+		var at := 0
+		for ph in range(GameData.phase, 2):
+			sh.append([tr(GameData.PHASE_NAMES[ph]), at, at + int(GameData.SHIFT_HOURS)])
+			at += int(GameData.SHIFT_HOURS)
+		sh.append([tr("NIGHT (OVERTIME)") if not GameData.overtime else tr("NIGHT · OVERTIME BOOKED"), at, at + int(GameData.NIGHT_HOURS)])
+		ruler.shifts = sh
+		# each job's progress hour by hour (projected; night hours assume overtime)
+		var proj: Array = [GameData.jobs.duplicate(true)]
+		for k in ruler.hours:
+			proj.append(GameData.work(float(k + 1), false))
+		for i in mini(GameData.jobs.size(), 7):
+			var j: Dictionary = GameData.jobs[i]
+			var p := GameData.inst(int(j["uid"]))
+			var nm: String = GameData.part_def(p["id"])["name"] if not p.is_empty() else "?"
+			var fill: Array = []
+			var done_at := -1
+			for k in ruler.hours:
+				var a: float = float(proj[k][i]["done"])
+				var b: float = float(proj[k + 1][i]["done"])
+				fill.append(clampf(b - a, 0.0, 1.0))
+				if done_at < 0 and b >= float(j["total"]) - 0.001 and a < float(j["total"]) - 0.001:
+					done_at = k
+			ruler.rows.append({"label": (tr("Fix %s") if j["kind"] == "repair" else tr("Bolt on %s")) % nm, "color": GUI.GREEN if j["kind"] == "repair" else GUI.CYAN, "fill": fill, "done": done_at})
+		col.add_child(ruler)
+		col.add_child(GUI.text(tr("1 block = 1 hour of work · ✓ = finished"), 11, GUI.MUTED, "headb"))
+	# 2. tonight (or tomorrow, at night)
+	col.add_child(GUI.HazardStrip.new())
+	if not evening:
+		var o := GameData.current_opponent()
+		if o.is_empty():
+			var n := GameData.patrons_today().size()
+			var trow := action_bar(col)
+			var tl := GUI.text(tr("TONIGHT: nothing booked. %d pilots at the Rusty Bolt will take you on.") % n, 15, GUI.YELLOW, "headb")
+			tl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			tl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+			trow.add_child(tl)
+			row_button(trow, tr("Find a fight ›"), func(): close_popup(); go_to("Pub", "bar"), true, 150)
+		else:
+			col.add_child(GUI.text(tr("TONIGHT: %s · %s · purse $%d") % [GameData.fight_title(), str(o.get("name", "?")), GameData.current_reward()], 15, GUI.YELLOW, "headb"))
+			var now := bell_readiness(0.0)
+			var after := bell_readiness(GameData.SHIFT_HOURS)
+			var bell_r := bell_readiness()
+			var rl := GUI.text(tr("Robot ready: now %d%% · after this shift %d%% · at the bell %d%%") % [roundi(now * 100), roundi(after * 100), roundi(bell_r * 100)], 14,
+					GUI.GREEN if bell_r >= 0.9 else (GUI.AMBER if bell_r >= 0.6 else GUI.RED))
+			col.add_child(rl)
+	else:
+		var tom := (GameData.day_index() + 1) % 7
+		var tw := GameData.week + (1 if tom == 0 else 0)
+		var bits: Array = []
+		for e in day_events(tw, tom):
+			bits.append(str(e.get("title", "")))
+		col.add_child(GUI.text(tr("TOMORROW: %s") % (", ".join(bits) if not bits.is_empty() else tr("nothing on")), 15, GUI.YELLOW, "headb"))
+	# 3. before you go: what you can still do, done right here
+	var todo := VBoxContainer.new()
+	todo.add_theme_constant_override("separation", 6)
+	var cost := GameData.repair_all_cost()
+	if cost > 0:
+		var r := action_bar(todo)
+		var rt := GUI.text(tr("The robot's damaged: fix it all for $%d, about %s of work.") % [cost, GameData.hours_text(GameData.repair_all_hours())], 14, GUI.TEXT)
+		rt.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		rt.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		r.add_child(rt)
+		GUI.mark_new(row_button(r, tr("Repair all $%d") % cost, _plan_do.bind("repair"), GameData.can_repair(cost), 170), GameData.can_repair(cost))
+	if not GameData.jobs.is_empty() and not GameData.overtime:
+		var r2 := action_bar(todo)
+		var ot := GUI.text(tr("Overtime: the crew works through tonight, 8 more hours for every pair of hands."), 14, GUI.TEXT)
+		ot.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		ot.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		r2.add_child(ot)
+		row_button(r2, tr("Overtime $%d") % GameData.overtime_cost(), _plan_do.bind("overtime"), GameData.money >= GameData.overtime_cost(), 170)
+	if GameData.digs_left > 0:
+		var r3 := action_bar(todo)
+		var dt := GUI.text(tr("Today's dig at the scrapyard is still there. Rare find: %d%%. Leave it and tomorrow it's %d%%.") % [roundi(GameData.dig_luck * 100), roundi(minf(GameData.DIG_LUCK_MAX, GameData.dig_luck + GameData.DIG_LUCK_STEP) * 100)], 14, GUI.TEXT)
+		dt.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		dt.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		r3.add_child(dt)
+		GUI.mark_new(row_button(r3, tr("Dig now"), _plan_do.bind("dig"), true, 170), true)
+	var unread := GameData.inbox.size() - GameData.inbox_seen
+	if unread > 0:
+		var r4 := action_bar(todo)
+		var ut := GUI.text(tr("%d messages you haven't read.") % unread, 14, GUI.TEXT)
+		ut.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		r4.add_child(ut)
+		row_button(r4, tr("Read them ›"), func(): close_popup(); go_to("Feed", "all"), true, 170)
+	if not GameData.league_night().is_empty() and not evening:
+		var r5 := action_bar(todo)
+		var bt := GUI.text(tr("League night: the bookies close when the bell rings."), 14, GUI.TEXT)
+		bt.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		r5.add_child(bt)
+		row_button(r5, tr("Bets ›"), func(): close_popup(); go_to("Pub", "bets"), true, 170)
+	if GameData.day_index() == 6:
+		var r6 := action_bar(todo)
+		var st := GUI.text(tr("The dealer restocks tomorrow: last chance for this week's stock."), 14, GUI.TEXT)
+		st.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		r6.add_child(st)
+		row_button(r6, tr("Dealer ›"), func(): close_popup(); go_to("Parts", "dealer"), GameData.unlocked("shop"), 170)
+	if todo.get_child_count() > 0:
+		col.add_child(GUI.HazardStrip.new())
+		col.add_child(GUI.text(tr("BEFORE THE TIME GOES"), 15, GUI.YELLOW, "headb"))
+		col.add_child(todo)
+	# 4. coming up: the next three days in one line each
+	var soon: Array = []
+	for k in range(1, 4):
+		var di := GameData.day_index() + k
+		var w := GameData.week + di / 7
+		var d := di % 7
+		var bits2: Array = []
+		for e in day_events(w, d):
+			var t := str(e.get("title", ""))
+			if str(e.get("icon", "")) == "rent" and GameData.money < GameData.living_cost():
+				t += " " + tr("(you're short!)")
+			bits2.append(t)
+		if not bits2.is_empty():
+			soon.append(tr(DAY_NAMES[d]) + ": " + ", ".join(bits2))
+	if not soon.is_empty():
+		col.add_child(GUI.HazardStrip.new())
+		col.add_child(GUI.text(tr("COMING UP"), 15, GUI.YELLOW, "headb"))
+		for line in soon:
+			var sl := GUI.text(str(line), 13, GUI.TEXT)
+			sl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+			col.add_child(sl)
+	# the decision
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 10)
+	popup_footer.add_child(row)
+	var no := UI.button(tr("Not yet"), close_popup, 17, Vector2(0, 52))
+	no.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.add_child(no)
+	var go := UI.button(fight_button.text, _on_next_phase, 18, Vector2(0, 52))
+	go.add_theme_font_override("font", GUI.stencil())
+	var fs := GUI.box(GUI.YELLOW, 8, 4)
+	for st2 in ["normal", "hover", "pressed", "hover_pressed"]:
+		go.add_theme_stylebox_override(st2, fs)
+	for c in ["font_color", "font_hover_color", "font_pressed_color", "font_hover_pressed_color"]:
+		go.add_theme_color_override(c, Color(0.08, 0.08, 0.08))
+	go.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	go.size_flags_stretch_ratio = 2.0
+	row.add_child(go)
+
+
+## Things done right inside the day plan; the plan comes back afterwards (a dig shows its find first).
+func _plan_do(what: String) -> void:
+	match what:
+		"repair":
+			_on_repair_all()
+		"overtime":
+			say(GameData.buy_overtime(), "buy")
+			GameData.save_game()
+		"dig":
+			close_popup()
+			plan_after_find = true
+			_on_dig("")
+			if overlay == null:
+				plan_after_find = false
+				open_day_plan()
+			return
+	refresh()
+	open_day_plan()
+
+
+var plan_after_find := false
+
+
 func _on_next_phase() -> void:
+	plan_open = false
 	close_popup()
 	if GameData.phase == 2 and not GameData.can_pass_day():
 		say(tr("Your fight is tonight."), "error")
@@ -3897,7 +4165,7 @@ func time_begin() -> void:
 		jobs["%s/%d/%s/%s" % [j["kind"], int(j["uid"]), j["robot"], j["slot"]]] = job_label(j)
 	tp = {"steps": clock_steps(), "jobs": jobs, "money": GameData.money, "bills": GameData.bills_note,
 			"pending": GameData.pending_talk.size(), "news": (GameData.world.get("news", []) as Array).size(),
-			"week": GameData.week, "label": date_label()}
+			"week": GameData.week, "label": date_label(), "y": GameData.year, "d": GameData.day_index(), "ph": GameData.phase}
 
 
 func date_label() -> String:
@@ -3939,14 +4207,12 @@ func time_end() -> bool:
 	for i in range(news.size() - fresh, news.size()):
 		if i >= 0:
 			lines.append([GameData.World.news_text(news[i]), GUI.MUTED])
-	# one shift with nothing to report: no window, just the clock moving on
-	if steps == 1 and done_lines == 0 and lines.size() == before_money:
-		tp = {}
-		Sfx.play("time")
-		say(tr("%s. The bay put in its shift.") % tr(GameData.PHASE_NAMES[GameData.phase]).capitalize() if GameData.phase > 0 else tr("A new day: %s.") % tr(GameData.DAY_FULL[GameData.day_index()]))
-		return true
 	if lines.is_empty():
 		lines.append([tr("A quiet stretch. Nothing much happened."), GUI.MUTED])
+	# into the day book (the calendar's day pop-up), under the day it started
+	for l in lines:
+		if l[1] != GUI.MUTED and l[1] != GUI.CYAN:
+			GameData.log_day(str(l[0]), "good" if l[1] == GUI.GREEN else ("bad" if l[1] == GUI.RED else "info"), int(tp["y"]), int(tp["week"]), int(tp["d"]), int(tp["ph"]))
 	var from_label: String = tp["label"]
 	tp = {}
 	show_time_passing(from_label, steps, lines)
@@ -4749,7 +5015,7 @@ func damage_report() -> Array:
 func _on_fight() -> void:
 	# the one button: time moves on until the evening; then tonight's fight, or on to tomorrow
 	if GameData.phase < 2 or GameData.fight_mode() == "open":
-		_on_next_phase()
+		open_day_plan()
 		return
 	open_fight_popup()
 
@@ -4762,14 +5028,14 @@ func _on_bell() -> void:
 
 ## How fit to fight the robot going in tonight will be at the bell, 0..1: each body part's HP by
 ## the bell against its full HP (a limb less than half bolted on counts as gone, a loose one half).
-func bell_readiness() -> float:
+func bell_readiness(h: float = -1.0) -> float:
 	var robot := "m"
 	var eq: Dictionary = GameData.equipped
 	if GameData.sending >= 0 and not GameData.is_team_fight() and GameData.sending < GameData.wingmen.size():
 		robot = "w%d" % GameData.sending
 		eq = GameData.wingmen[GameData.sending]
 	var swaps := {}
-	for e in GameData.at_the_bell():
+	for e in GameData.at_the_bell(h):
 		var j: Dictionary = e["job"]
 		if j["kind"] == "swap" and j["robot"] == robot:
 			swaps[j["slot"]] = float(e["progress"])
@@ -4782,7 +5048,7 @@ func bell_readiness() -> float:
 			continue
 		var mx := float(GameData.part_def(p["id"])["hp"])
 		full += mx
-		var hp := GameData.bell_hp_ratio(p) * mx
+		var hp := GameData.bell_hp_ratio(p, h) * mx
 		if swaps.has(slot):
 			hp *= 0.0 if (float(swaps[slot]) < 0.5 and not (slot == "torso" or slot == "head")) else 0.5
 		have += hp

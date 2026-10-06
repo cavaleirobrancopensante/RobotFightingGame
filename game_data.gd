@@ -2,7 +2,7 @@ extends Node
 
 # helper scripts, loaded by path so the game also runs without an editor scan
 ## The game's version, shown on the main menu. Bump it with every change (1.1, 1.2, ...).
-const VERSION := "1.37"
+const VERSION := "1.38"
 const Arena = preload("res://arena.gd")
 const I18n = preload("res://i18n.gd")
 const Catalog = preload("res://catalog.gd")
@@ -548,6 +548,7 @@ func new_game() -> void:
 	grudge = {}
 	pending_talk = []
 	inbox = []
+	day_log = {}
 	inbox_seen = 0
 	tour = 0
 	streak = 0
@@ -1126,12 +1127,15 @@ func _apply_jobs() -> void:
 
 
 ## What the board looks like when the bell rings tonight: [{job, progress}] for unfinished work.
-func at_the_bell() -> Array:
-	var h := 0.0
-	if phase == 0:
-		h = SHIFT_HOURS * 2.0
-	elif phase == 1:
-		h = SHIFT_HOURS
+## Hours of bay work left before tonight's bell.
+func hours_to_bell() -> float:
+	return SHIFT_HOURS * float(maxi(0, 2 - phase))
+
+
+## Jobs still unfinished after `h` more hours of work (default: at the bell), with their progress.
+func at_the_bell(h: float = -1.0) -> Array:
+	if h < 0.0:
+		h = hours_to_bell()
 	var list := work(h, false)
 	var out: Array = []
 	for j in list:
@@ -1141,15 +1145,12 @@ func at_the_bell() -> Array:
 
 
 ## A part's health when the bell rings tonight (its repair job worked up to then).
-func bell_hp_ratio(p: Dictionary) -> float:
+func bell_hp_ratio(p: Dictionary, h: float = -1.0) -> float:
 	var j := repair_job(int(p["uid"]))
 	if j.is_empty():
 		return hp_ratio(p)
-	var h := 0.0
-	if phase == 0:
-		h = SHIFT_HOURS * 2.0
-	elif phase == 1:
-		h = SHIFT_HOURS
+	if h < 0.0:
+		h = hours_to_bell()
 	for x in work(h, false):
 		if x["kind"] == "repair" and int(x["uid"]) == int(p["uid"]):
 			var per_h := (float(x["to"]) - float(x["start"])) / maxf(0.01, float(x["total"]))
@@ -2107,6 +2108,34 @@ const DAY_FULL := ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Satu
 
 ## Every line anyone says to you goes in the inbox (Messages): kind = story / talk (pilots,
 ## hate mail, pub) / gus (his remarks on what you do) / news.
+## The day book: everything that happened, day by day (the calendar's day pop-up reads it back).
+## "y/w/d" -> [{"ph": phase, "text": ..., "c": "good"/"bad"/"info"}]. The last DAY_LOG_DAYS days are kept.
+const DAY_LOG_DAYS := 120
+var day_log := {}
+
+
+func day_key(y: int, w: int, d: int) -> String:
+	return "%d/%d/%d" % [y, w, d]
+
+
+func log_day(text: String, c: String = "info", y: int = -1, w: int = -1, d: int = -1, ph: int = -1) -> void:
+	if text.strip_edges() == "":
+		return
+	var k := day_key(year if y < 0 else y, week if w < 0 else w, day_index() if d < 0 else d)
+	if not day_log.has(k):
+		day_log[k] = []
+		if day_log.size() > DAY_LOG_DAYS:
+			var keys: Array = day_log.keys()
+			keys.sort_custom(func(a, b): return _day_num(a) < _day_num(b))
+			day_log.erase(keys[0])
+	day_log[k].append({"ph": phase if ph < 0 else ph, "text": text, "c": c})
+
+
+static func _day_num(k: String) -> int:
+	var p := k.split("/")
+	return (int(p[0]) * 52 + int(p[1])) * 7 + int(p[2])
+
+
 func log_talk(who: String, text: String, kind: String, look: Dictionary = {}, wid: int = -1) -> void:
 	if text.strip_edges() == "":
 		return
@@ -3423,9 +3452,12 @@ func record_result(won: bool, part_hp: Dictionary, destroyed: int, salvage_ids: 
 	var o := current_opponent()
 	var base: int = current_reward()
 	var reward: int = base if won else loss_pay(base)
+	var forfeited := forfeit
 	if forfeit:
 		reward = 0   # threw in the towel: no pay
 		forfeit = false
+	log_day((tr("Threw in the towel against %s.") if forfeited else (tr("Beat %s. $%d.") if won else tr("Lost to %s. $%d."))) % ([str(o.get("name", "?"))] if forfeited else [str(o.get("name", "?")), reward]),
+			"good" if won else "bad")
 	# dismantle bonus: every part you tore off pays $50, plus a tenth of what that part is worth
 	var bonus := 0
 	for sv in salvage_ids:
@@ -4146,7 +4178,7 @@ func save_game() -> bool:
 		"owned_chips": owned_chips, "chips": chips, "circuit": circuit, "circuit_offers": circuit_offers,
 		"circuits_won": circuits_won, "pickup": pickup, "setups": setups, "custom_parts": custom_parts,
 		"year": year, "week": week, "day": day, "rank": rank, "event": {}, "leagues": leagues, "title_seeds": title_seeds, "trophies": trophies, "career_stats": career_stats,
-		"pecking_k": pecking_k(), "style": style, "style_locked": style_locked, "shop_stock": shop_stock, "chip_stock": chip_stock, "scout": scout, "wingmen": wingmen, "sending": sending, "pilot_look": pilot_look, "owned_controllers": owned_controllers, "tips_seen": tips_seen, "h2h": h2h, "rivals": rivals, "grudge": grudge, "pending_talk": pending_talk, "inbox": inbox, "inbox_seen": inbox_seen, "tour": tour, "streak": streak, "pub_seen": pub_seen, "digs_left": digs_left, "dig_luck": dig_luck, "bills_note": bills_note, "fight_log": fight_log, "bets": bets, "world": world,
+		"pecking_k": pecking_k(), "style": style, "style_locked": style_locked, "shop_stock": shop_stock, "chip_stock": chip_stock, "scout": scout, "wingmen": wingmen, "sending": sending, "pilot_look": pilot_look, "owned_controllers": owned_controllers, "tips_seen": tips_seen, "h2h": h2h, "rivals": rivals, "grudge": grudge, "pending_talk": pending_talk, "inbox": inbox, "inbox_seen": inbox_seen, "day_log": day_log, "tour": tour, "streak": streak, "pub_seen": pub_seen, "digs_left": digs_left, "dig_luck": dig_luck, "bills_note": bills_note, "fight_log": fight_log, "bets": bets, "world": world,
 	}
 	var f := FileAccess.open(slot_path(save_slot), FileAccess.WRITE)
 	if f == null:
@@ -4235,6 +4267,7 @@ func load_game(slot: int = -1) -> String:
 	rivals = data.get("rivals", []).map(func(x): return int(x))
 	grudge = data.get("grudge", {})
 	pending_talk = data.get("pending_talk", [])
+	day_log = data.get("day_log", {})
 	inbox = []
 	for e in data.get("inbox", []):
 		if typeof(e) == TYPE_DICTIONARY:
