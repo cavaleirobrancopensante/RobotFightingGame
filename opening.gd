@@ -23,25 +23,32 @@ const I18n = preload("res://i18n.gd")
 const SHOTS := [
 	["city", 8.0, [0.5, 0.5, 1.0], [0.62, 0.6, 1.18]],
 	["stadium", 7.0, [0.5, 0.5, 1.0], [0.5, 0.66, 1.9]],
-	["dad", 12.0, [0.5, 0.52, 1.05], [0.46, 0.56, 1.18]],
+	# your dad's night: hard cuts, like a fight broadcast
+	["dad_face", 2.6, [0.5, 0.5, 1.0], [0.5, 0.48, 1.12]],
+	["dad_clash", 1.8, [0.5, 0.5, 1.15], [0.5, 0.5, 1.3]],
+	["dad_uppercut", 2.0, [0.55, 0.5, 1.1], [0.6, 0.42, 1.25]],
+	["dad_head", 2.2, [0.5, 0.6, 1.0], [0.5, 0.35, 1.15]],
+	["dad_win", 3.4, [0.5, 0.52, 1.18], [0.46, 0.56, 1.05]],
 	["overlord", 10.0, [0.5, 0.5, 1.0], [0.6, 0.55, 1.3]],
 	["fall", 10.0, [0.5, 0.3, 1.5], [0.5, 0.72, 1.5]],
 	["scrap", 13.0, [0.5, 0.5, 1.0], [0.5, 0.64, 1.55]],
 	["road", 10.0, [0.3, 0.68, 1.7], [0.5, 0.5, 1.0]],
 	["bell", 8.0, [0.5, 0.5, 1.0], [0.6, 0.58, 1.25]],
 ]
-## [shot, seconds in, speaker, text]
+## [shot id, seconds in, speaker, text]
 const LINES := [
-	[0, 0.8, "NARRATOR", "Port Ferrum, 2047. Kane Dynamics owns the city."],
-	[1, 0.6, "NARRATOR", "And on Saturday nights, the whole city comes here."],
-	[2, 1.0, "NARRATOR", "Pilots ran the ring. Your father was one of the best."],
-	[3, 2.4, "NARRATOR", "Then Kane built a fighter that needs nobody."],
-	[4, 1.0, "NARRATOR", "The pilots were sent home. Your father was the first."],
-	[5, 6.0, "GUS", "Your dad's. Still yours, if it still works."],
-	[5, 9.6, "ECHO", "[ HANDLER LINK FOUND ]"],
-	[6, 1.0, "NARRATOR", "From the gutter to the Titanium Championship. One rung a year."],
-	[7, 1.2, "GUS", "Old Pike fights anybody for a hundred bucks. Let's see what you've got."],
+	["city", 0.8, "NARRATOR", "Port Ferrum, 2047. Kane Dynamics owns the city."],
+	["stadium", 0.6, "NARRATOR", "And on Saturday nights, the whole city comes here."],
+	["dad_face", 0.3, "NARRATOR", "Pilots ran the ring. Your father was one of the best."],
+	["overlord", 2.4, "NARRATOR", "Then Kane built a fighter that needs nobody."],
+	["fall", 1.0, "NARRATOR", "The pilots were sent home. Your father was the first."],
+	["scrap", 6.0, "GUS", "Your dad's. Still yours, if it still works."],
+	["scrap", 9.6, "ECHO", "[ HANDLER LINK FOUND ]"],
+	["road", 1.0, "NARRATOR", "From the gutter to the Titanium Championship. One rung a year."],
+	["bell", 1.2, "GUS", "Old Pike fights anybody for a hundred bucks. Let's see what you've got."],
 ]
+## Shots that cut straight to the next one (no fade between them)
+const CUTS := ["dad_face", "dad_clash", "dad_uppercut", "dad_head"]
 const FADE := 0.45
 const CPS := 40.0   # letters a second as a line types out
 
@@ -121,11 +128,22 @@ func rival_look(i: int) -> Dictionary:
 func _start_shot(i: int) -> void:
 	shot = i
 	t = 0.0
-	line_i = -1
-	if i == 2:
+	if line_i >= 0 and not line_shot(line_i):
+		line_i = -1
+	if sid() == "dad_face":
 		Sfx.play("crowd_cheer", 0.0, -8.0)
-	if i == 7:
+	if sid() == "bell":
 		Sfx.play("crowd_ooh", 0.0, -14.0)
+
+
+func sid() -> String:
+	return str(SHOTS[shot][0])
+
+
+## A line belongs to the shot it names; the narrator's line over the fight stays up through the cuts.
+func line_shot(k: int) -> bool:
+	var ls := str(LINES[k][0])
+	return ls == sid() or (ls == "dad_face" and sid().begins_with("dad_"))
 
 
 func shot_start_time(i: int) -> float:
@@ -142,10 +160,10 @@ func _process(delta: float) -> void:
 	clock += delta
 	# the line for this moment of the shot
 	for k in LINES.size():
-		if int(LINES[k][0]) == shot and t >= float(LINES[k][1]) and k > line_i:
+		if str(LINES[k][0]) == sid() and t >= float(LINES[k][1]) and k > line_i:
 			line_i = k
 			shown = 0.0
-	if line_i >= 0 and int(LINES[line_i][0]) == shot:
+	if line_i >= 0 and line_shot(line_i):
 		var full := line_text(line_i).length()
 		if shown < full:
 			shown += delta * CPS
@@ -167,16 +185,15 @@ func _process(delta: float) -> void:
 ## Sounds that land on a beat of the picture.
 var _fired := {}
 func _events() -> void:
-	var cues := {"dad_ko": [2, 8.0, "ko"], "dad_bell": [2, 0.2, "round"], "ol_hit1": [3, 5.0, "hit_big"], "ol_hit2": [3, 6.6, "break"],
-			"tarp": [5, 3.0, "swing"], "eye": [5, 8.0, "target"], "bell": [7, 6.8, "round"]}
+	var cues := {"dad_bell": ["dad_face", 0.1, "round"], "clash": ["dad_clash", 0.75, "hit_big"], "upper": ["dad_uppercut", 0.7, "uppercut"],
+			"upper2": ["dad_uppercut", 0.75, "hit_big"], "pop": ["dad_head", 0.25, "break"], "ko": ["dad_head", 0.3, "ko"],
+			"roar": ["dad_win", 0.0, "crowd_cheer"], "ol_hit1": ["overlord", 5.0, "hit_big"], "ol_hit2": ["overlord", 6.6, "break"],
+			"tarp": ["scrap", 3.0, "swing"], "eye": ["scrap", 8.0, "target"], "bell": ["bell", 6.8, "round"]}
 	for k in cues:
 		var c: Array = cues[k]
-		if shot == int(c[0]) and t >= float(c[1]) and not _fired.has(k):
+		if sid() == str(c[0]) and t >= float(c[1]) and not _fired.has(k):
 			_fired[k] = true
 			Sfx.play(str(c[2]), 0.0, -4.0)
-	var punch_t := fmod(t, 0.8)
-	if shot == 2 and t < 8.0 and punch_t < 0.03 and t > 1.0:
-		Sfx.play("hit", 0.15, -10.0)
 
 
 func line_text(k: int) -> String:
@@ -226,7 +243,7 @@ func _unhandled_input(event: InputEvent) -> void:
 
 ## A tap: finish the line that's typing, otherwise on to the next shot (the music follows).
 func next() -> void:
-	if line_i >= 0 and int(LINES[line_i][0]) == shot and shown < line_text(line_i).length():
+	if line_i >= 0 and line_shot(line_i) and shown < line_text(line_i).length():
 		shown = 9999.0
 		return
 	if shot + 1 >= SHOTS.size():
@@ -268,8 +285,16 @@ class Stage extends Control:
 				op.draw_city(self, W, H, op.t)
 			"stadium":
 				op.draw_stadium(self, W, H, op.t)
-			"dad":
-				op.draw_dad(self, W, H, op.t)
+			"dad_face":
+				op.draw_dad_face(self, W, H, op.t)
+			"dad_clash":
+				op.draw_dad_clash(self, W, H, op.t)
+			"dad_uppercut":
+				op.draw_dad_uppercut(self, W, H, op.t)
+			"dad_head":
+				op.draw_dad_head(self, W, H, op.t)
+			"dad_win":
+				op.draw_dad_win(self, W, H, op.t)
 			"overlord":
 				op.draw_overlord(self, W, H, op.t)
 			"fall":
@@ -473,7 +498,7 @@ func draw_stadium(ci: CanvasItem, W: float, H: float, tt: float) -> void:
 		ci.draw_circle(Vector2(x, y - 20 * s), 5 * s, Color(0.1, 0.08, 0.08))
 
 
-# ---------------------------------------------------------------- 3 your dad's night
+# ---------------------------------------------------------------- the arena (dad's night, OVERLORD)
 
 func arena_bg(ci: CanvasItem, W: float, H: float, floor_y: float, tt: float, cheer: float) -> void:
 	var screen := Vector2(W, H)
@@ -499,45 +524,248 @@ func robot_scale(look: Dictionary, tall_px: float) -> float:
 	return tall_px / tall / float(look.get("scale", 1.0))
 
 
-func draw_dad(ci: CanvasItem, W: float, H: float, tt: float) -> void:
+# ---------------------------------------------------------------- 3 your dad's night (five cuts)
+# Like a fight on TV: his face in the corner, fists meeting, the uppercut, the head popping off,
+# then the win and his three trophies.
+
+## A dark arena with the crowd as soft lights (bokeh), camera flashes going off.
+func bokeh(ci: CanvasItem, W: float, H: float, tt: float, tint: Color) -> void:
+	ci.draw_rect(Rect2(0, 0, W, H), Color(0.04, 0.04, 0.08))
+	for k in 46:
+		var p := Vector2(hsh(k + 3000) * W, hsh(k + 3100) * H * 0.85)
+		var r := 10.0 + hsh(k + 3200) * 34.0
+		var c := Color.from_hsv(hsh(k + 3300), 0.5, 1.0).lerp(tint, 0.5)
+		ci.draw_circle(p + Vector2(sin(tt * 0.6 + k) * 6.0, 0), r, Color(c, 0.07 + 0.05 * hsh(k)))
+	for k in 6:
+		var at := fmod(tt * 1.7 + hsh(k + 3400) * 3.0, 3.0)
+		if at < 0.08:
+			var p := Vector2(hsh(k + 3500 + int(tt)) * W, hsh(k + 3600) * H * 0.6)
+			ci.draw_circle(p, 26.0, Color(1, 1, 1, 0.35))
+			ci.draw_circle(p, 6.0, Color(1, 1, 1, 0.9))
+
+
+func speed_lines(ci: CanvasItem, c: Vector2, W: float, H: float, tt: float, alpha: float) -> void:
+	for k in 40:
+		var a := hsh(k + 3700) * TAU
+		var r0 := W * (0.18 + 0.1 * hsh(k + 3800))
+		var r1 := W * 0.9
+		var d := Vector2(cos(a), sin(a))
+		var flick := 0.5 + 0.5 * sin(tt * 30.0 + k * 1.7)
+		ci.draw_line(c + d * r0, c + d * r1, Color(1, 1, 1, alpha * 0.18 * flick), 2.0 + hsh(k) * 3.0)
+
+
+func starburst(ci: CanvasItem, c: Vector2, r: float, k: float, col: Color) -> void:
+	if k <= 0.0:
+		return
+	var pts := PackedVector2Array()
+	for i in 24:
+		var a := TAU * i / 24.0 + 0.13
+		var rr := r * (1.0 if i % 2 == 0 else 0.42) * (0.6 + 0.4 * hsh(i + 3900))
+		pts.append(c + Vector2(cos(a), sin(a)) * rr * k)
+	ci.draw_colored_polygon(pts, Color(col, minf(1.0, k * 1.2)))
+	ci.draw_circle(c, r * 0.28 * k, Color(1, 1, 1, minf(1.0, k * 1.4)))
+
+
+func sparks(ci: CanvasItem, c: Vector2, age: float, n: int, speed: float, seed: int) -> void:
+	if age < 0.0 or age > 1.2:
+		return
+	for i in n:
+		var a := -PI + hsh(seed + i) * TAU
+		var v := Vector2(cos(a), sin(a)) * speed * (0.4 + hsh(seed + i + 50))
+		var p := c + v * age + Vector2(0, 900.0 * age * age)
+		var tail := p - v.normalized() * 14.0
+		ci.draw_line(tail, p, Color(1.0, 0.8, 0.3, 1.0 - age / 1.2), 3.0)
+
+
+func shake_off(tt: float, at: float, amount: float) -> Vector2:
+	var k := 1.0 - clampf((tt - at) / 0.35, 0.0, 1.0)
+	if tt < at or k <= 0.0:
+		return Vector2.ZERO
+	return Vector2(sin(tt * 90.0), cos(tt * 77.0)) * amount * k
+
+
+## SLEDGE's TV head, on its own: the box, the screen (static once it's dead), the antennae.
+func tv_head(ci: CanvasItem, c: Vector2, sz: float, rot: float, tt: float, dead: bool) -> void:
+	var col: Color = looks["foe_a"]["parts"]["head"].get("color", Color(0.5, 0.2, 0.2))
+	ci.draw_set_transform(c, rot, Vector2.ONE)
+	ci.draw_line(Vector2(-sz * 0.2, -sz * 0.45), Vector2(-sz * 0.45, -sz * 0.95), Color(0.7, 0.7, 0.72), 3.0)
+	ci.draw_line(Vector2(sz * 0.2, -sz * 0.45), Vector2(sz * 0.4, -sz * 0.95), Color(0.7, 0.7, 0.72), 3.0)
+	ci.draw_rect(Rect2(-sz * 0.6, -sz * 0.45, sz * 1.2, sz * 0.9), col)
+	ci.draw_rect(Rect2(-sz * 0.6, -sz * 0.45, sz * 1.2, sz * 0.9), col.darkened(0.4), false, 3.0)
+	var scr := Rect2(-sz * 0.45, -sz * 0.32, sz * 0.9, sz * 0.62)
+	ci.draw_rect(scr, Color(0.05, 0.06, 0.05))
+	if dead:
+		for i in 18:
+			var y := scr.position.y + hsh(i + int(tt * 20.0) * 31) * scr.size.y
+			ci.draw_rect(Rect2(scr.position.x, y, scr.size.x, 2.0), Color(0.8, 0.8, 0.8, 0.5))
+	else:
+		ci.draw_rect(Rect2(-sz * 0.25, -sz * 0.12, sz * 0.14, sz * 0.12), Color(1.0, 0.9, 0.3))
+		ci.draw_rect(Rect2(sz * 0.11, -sz * 0.12, sz * 0.14, sz * 0.12), Color(1.0, 0.9, 0.3))
+	# torn wires out of the neck
+	for i in 3:
+		ci.draw_line(Vector2(-sz * 0.2 + i * sz * 0.2, sz * 0.45), Vector2(-sz * 0.25 + i * sz * 0.22, sz * 0.7 + i * 4.0), [Color(0.9, 0.2, 0.2), Color(0.2, 0.5, 0.9), Color(0.9, 0.8, 0.2)][i], 2.5)
+	ci.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+
+
+## Where a robot's punching hand ends up, in screen space, for a robot drawn at base with a scale.
+func hand_at(look: Dictionary, slot: String, pose: String, base: Vector2, sc: float, facing: int) -> Vector2:
+	var st := RobotArt.limb_strike(look, slot, pose)
+	var b: Vector2 = st["b"]
+	return base + Vector2(b.x * facing, b.y) * sc * float(look.get("scale", 1.0))
+
+
+func draw_dad_face(ci: CanvasItem, W: float, H: float, tt: float) -> void:
+	bokeh(ci, W, H, tt, Color(0.4, 0.5, 1.0))
+	# a spotlight from above on him
+	ci.draw_colored_polygon(PackedVector2Array([Vector2(W * 0.36, 0), Vector2(W * 0.2, H), Vector2(W * 0.72, H), Vector2(W * 0.5, 0)]), Color(1.0, 0.95, 0.8, 0.06))
+	var c := Vector2(W * 0.42, H * 0.42)
+	var r := H * 0.2
+	# shoulders in the leather jacket, the collar up
+	var jacket := Color(str(dad.get("outfit", "#5a3a22")))
+	ci.draw_rect(Rect2(c.x - r * 1.9, c.y + r * 1.05, r * 3.8, H), jacket)
+	ci.draw_colored_polygon(PackedVector2Array([c + Vector2(-r * 0.7, r * 0.95), c + Vector2(-r * 0.15, r * 1.5), c + Vector2(-r * 0.9, r * 1.6)]), jacket.lightened(0.15))
+	ci.draw_colored_polygon(PackedVector2Array([c + Vector2(r * 0.7, r * 0.95), c + Vector2(r * 0.15, r * 1.5), c + Vector2(r * 0.9, r * 1.6)]), jacket.lightened(0.15))
+	ci.draw_rect(Rect2(c.x - r * 0.35, c.y + r * 0.75, r * 0.7, r * 0.4), Color(str(dad.get("skin", "#b07a52"))).darkened(0.1))
+	# his face: eyes on the ring, jaw set, the light of the ring on one side
+	var mouth := 1.5 if tt < 1.6 else 4.0 + 3.0 * absf(sin(tt * 10.0))
+	PilotArt.draw_head(ci, c, r, dad, 1.0, mouth)
+	ci.draw_rect(Rect2(c + Vector2(-r * 0.3, r * 0.22), Vector2(r * 0.6, r * 0.12)), Color(str(dad.get("beard_color", "#3a2e28"))))   # the moustache
+	ci.draw_arc(c, r * 1.02, -PI * 0.45, PI * 0.35, 24, Color(1.0, 0.85, 0.55, 0.45), r * 0.08)
+	# a drop of sweat running down
+	var sy := fmod(tt * 0.5, 1.0)
+	ci.draw_circle(c + Vector2(-r * 0.75, -r * 0.2 + sy * r * 0.8), r * 0.04, Color(0.8, 0.9, 1.0, 0.7))
+	# the stick in his hands, its light magenta
+	var stick := Vector2(W * 0.68, H * 0.8)
+	var s := H / 75.0
+	PilotArt.draw_controller(ci, stick, s, str(dad.get("controller", "arcade")), true, tt)
+	var skin := Color(str(dad.get("skin", "#b07a52")))
+	var jab := sin(tt * 22.0) * 4.0 * s if tt > 1.4 else 0.0
+	ci.draw_circle(stick + Vector2(-14 * s, -6 * s + jab), 3.6 * s, skin)
+	ci.draw_circle(stick + Vector2(12 * s, -5 * s - jab), 3.6 * s, skin)
+	ci.draw_circle(stick + Vector2(-6 * s, 2 * s), 3 * s, Color("#ff00aa", 0.25 + 0.15 * sin(tt * 6.0)))
+	ci.draw_circle(stick + Vector2(-6 * s, 2 * s), 1.2 * s, Color("#ff00aa"))
+
+
+func draw_dad_clash(ci: CanvasItem, W: float, H: float, tt: float) -> void:
+	var hit := 0.75
+	var sh := shake_off(tt, hit, 14.0)
+	bokeh(ci, W, H, tt, Color(1.0, 0.6, 0.3))
+	var mid := Vector2(W * 0.5, H * 0.45) + sh
+	speed_lines(ci, mid, W, H, tt, 1.0 if tt > hit else tt / hit)
+	var echo: Dictionary = looks["echo_dad"]
+	var foe: Dictionary = looks["foe_a"]
+	var tall := H * 1.3
+	var se := robot_scale(echo, tall)
+	var sf := robot_scale(foe, tall)
+	# they lunge in from the sides, fists meeting in the middle at the hit, then bounce apart
+	var k := clampf(tt / hit, 0.0, 1.0)
+	var apart := (1.0 - k * k) * W * 0.25 + maxf(0.0, tt - hit) * W * 0.12
+	var ext := tt > hit - 0.12
+	var pose := "punch" if ext else "guard"
+	var he := hand_at(echo, "arm_front", "punch", Vector2.ZERO, se, 1)
+	var hf := hand_at(foe, "arm_front", "punch", Vector2.ZERO, sf, -1)
+	var be := mid - he - Vector2(apart, 0)
+	var bf := mid - hf + Vector2(apart, 0)
+	RobotArt.draw(ci, bf, foe, {"scale": sf, "facing": -1, "time": tt, "state": "punch", "attack_limb": "arm_front", "extended": ext})
+	RobotArt.draw(ci, be, echo, {"scale": se, "facing": 1, "time": tt, "state": "punch", "attack_limb": "arm_front", "extended": ext})
+	var f := 1.0 - clampf((tt - hit) / 0.5, 0.0, 1.0)
+	if tt >= hit:
+		starburst(ci, mid, H * 0.42, f, Color(1.0, 0.85, 0.4))
+		sparks(ci, mid, tt - hit, 26, 900.0, 4000)
+		ci.draw_rect(Rect2(0, 0, W, H), Color(1, 1, 1, 0.5 * maxf(0.0, f - 0.5)))
+
+
+func draw_dad_uppercut(ci: CanvasItem, W: float, H: float, tt: float) -> void:
+	var hit := 0.7
+	var sh := shake_off(tt, hit, 18.0)
+	var floor_y := H * 1.05
+	bokeh(ci, W, H, tt, Color(0.9, 0.4, 1.0))
+	if tt > hit:
+		speed_lines(ci, Vector2(W * 0.62, H * 0.3), W, H, tt, 1.0 - clampf((tt - hit) / 1.0, 0.0, 0.7))
+	var echo: Dictionary = looks["echo_dad"]
+	var foe: Dictionary = looks["foe_a"]
+	var tall := H * 1.0
+	# ECHO dips, then drives the uppercut up through SLEDGE's chin; SLEDGE leaves the floor
+	var dip := clampf(tt / 0.5, 0.0, 1.0) * (1.0 - clampf((tt - 0.55) / 0.15, 0.0, 1.0))
+	var ext := tt > hit - 0.1
+	RobotArt.draw(ci, Vector2(W * 0.4, floor_y + dip * 30.0) + sh, echo, {"scale": robot_scale(echo, tall), "facing": 1, "time": tt,
+			"state": "uppercut", "attack_limb": "arm_back", "extended": ext, "crouch": dip > 0.5 and not ext})
+	var lift := maxf(0.0, tt - hit)
+	RobotArt.draw(ci, Vector2(W * 0.66 + lift * 60.0, floor_y - lift * 420.0 + lift * lift * 300.0) + sh, foe, {"scale": robot_scale(foe, tall), "facing": -1, "time": tt,
+			"state": "hit" if tt > hit else "idle", "rot": -minf(0.6, lift * 1.2)})
+	if tt >= hit:
+		var chin := hand_at(echo, "arm_back", "uppercut", Vector2(W * 0.4, floor_y) + sh, robot_scale(echo, tall), 1)
+		var f := 1.0 - clampf((tt - hit) / 0.45, 0.0, 1.0)
+		starburst(ci, chin, H * 0.3, f, Color(1.0, 0.75, 0.3))
+		sparks(ci, chin, tt - hit, 22, 800.0, 4100)
+
+
+func draw_dad_head(ci: CanvasItem, W: float, H: float, tt: float) -> void:
+	var floor_y := H * 0.86
+	arena_bg(ci, W, H, floor_y, tt, 1.0)
+	var foe: Dictionary = looks["foe_a"].duplicate(true)
+	foe["parts"]["head"]["alive"] = false
+	var tall := H * 0.62
+	var sc := robot_scale(foe, tall)
+	var sag := clampf(tt / 1.6, 0.0, 1.0)
+	var base := Vector2(W * 0.56, floor_y + 6)
+	RobotArt.draw(ci, base, foe, {"scale": sc, "facing": -1, "time": tt, "state": "hit", "rot": sag * 0.25, "eye_off": true})
+	# the neck spits sparks and smoke
+	var g := RobotArt.geom(foe)
+	var neck := base + Vector2(0, float(g["top"]) * sc * float(foe.get("scale", 1.0)))
+	for i in 3:
+		sparks(ci, neck, fmod(tt * 1.5 + i * 0.33, 1.0), 8, 400.0, 4200 + i * 40)
+	for i in 5:
+		var a := fmod(tt * 0.8 + i * 0.2, 1.0)
+		ci.draw_circle(neck + Vector2(sin(i * 2.0 + tt) * 20.0, -a * H * 0.3), 14.0 + a * 30.0, Color(0.2, 0.2, 0.22, 0.4 * (1.0 - a)))
+	# the head, in slow motion: up, spinning, over the ropes, into the lights
+	var ht := tt * 0.45
+	var hp := neck + Vector2(-W * 0.15 * ht, -H * 0.9 * ht + H * 0.7 * ht * ht)
+	var hs := (g["head"] as Rect2).size.x * sc * float(foe.get("scale", 1.0)) * 1.7
+	# a trail of where it's been
+	for i in 6:
+		var pt := maxf(0.0, ht - i * 0.04)
+		var p := neck + Vector2(-W * 0.15 * pt, -H * 0.9 * pt + H * 0.7 * pt * pt)
+		ci.draw_circle(p, hs * 0.3 * (1.0 - i / 6.0), Color(1.0, 0.8, 0.4, 0.15))
+	tv_head(ci, hp, hs, tt * 5.0, tt, true)
+	ci.draw_rect(Rect2(0, 0, W, H), Color(1, 1, 1, 0.4 * (1.0 - clampf(tt / 0.25, 0.0, 1.0))))
+
+
+func draw_dad_win(ci: CanvasItem, W: float, H: float, tt: float) -> void:
 	var floor_y := H * 0.8
-	arena_bg(ci, W, H, floor_y, tt, 1.0 if tt > 8.0 else 0.6 + 0.3 * sin(tt * 3.0))
-	# the board: your robot's name in red dots; at the KO, a WIN
+	arena_bg(ci, W, H, floor_y, tt, 1.0)
 	var br := Rect2(W * 0.4, H * 0.19, W * 0.2, H * 0.08)
 	ci.draw_rect(br.grow(3), Color(0.1, 0.1, 0.11))
 	ci.draw_rect(br, Color(0.05, 0.01, 0.01))
-	var word: String = GameData.robot_name.to_upper() if tt < 8.2 else I18n.t("WINNER")
+	var word: String = I18n.t("WINNER") if fmod(tt, 0.8) < 0.55 else GameData.robot_name.to_upper()
 	var p := br.size.y / 9.0
 	var tw: float = (word.length() * 6 - 1) * p
 	Scoreboard.dot_text(ci, word, br.get_center().x - tw * 0.5, br.position.y + p, p, br.position.x, br.end.x, Color(1.0, 0.3, 0.2))
-	# the fight: your dad's robot keeps punching, the other one backs off and goes down
 	var tall := H * 0.42
-	var cycle := fmod(tt, 0.8)
-	var punching := tt > 1.0 and tt < 8.0 and cycle < 0.28
-	var limb := "arm_front" if int(tt / 0.8) % 2 == 0 else "arm_back"
-	var ex := W * 0.36 + minf(tt, 8.0) * W * 0.012
-	RobotArt.draw(ci, Vector2(ex, floor_y + 6), looks["echo_dad"], {"scale": robot_scale(looks["echo_dad"], tall), "facing": 1, "time": tt,
-			"state": "punch" if punching else "idle", "attack_limb": limb, "extended": punching})
-	var fx := W * 0.62 + minf(tt, 8.0) * W * 0.012
-	var down := clampf((tt - 8.0) / 0.5, 0.0, 1.0)
-	RobotArt.draw(ci, Vector2(fx + down * 30.0, floor_y + 6 - down * 10.0), looks["foe_a"], {"scale": robot_scale(looks["foe_a"], tall), "facing": -1, "time": tt,
-			"state": "hit" if (punching and cycle > 0.12) or tt > 8.0 else "idle", "rot": down * 1.35})
-	if punching and cycle > 0.12 and cycle < 0.2:
-		ci.draw_circle(Vector2(fx - W * 0.05, floor_y - tall * 0.62), 14.0, Color(1.0, 0.9, 0.5, 0.8))
-	# your dad in the corner, on the pad (its light is the colour OVERLORD's eye will be)
+	# SLEDGE flat on its back without a head; the TV lies by the ropes, still fizzing
+	var foe: Dictionary = looks["foe_a"].duplicate(true)
+	foe["parts"]["head"]["alive"] = false
+	RobotArt.draw(ci, Vector2(W * 0.68, floor_y - 6), foe, {"scale": robot_scale(foe, tall), "facing": -1, "time": tt, "state": "ko", "rot": 1.4, "eye_off": true})
+	tv_head(ci, Vector2(W * 0.86, floor_y - 18), 34.0, 0.4, tt, true)
+	# ECHO, the fist up
+	RobotArt.draw(ci, Vector2(W * 0.42, floor_y + 6), looks["echo_dad"], {"scale": robot_scale(looks["echo_dad"], tall), "facing": 1, "time": tt,
+			"state": "uppercut", "attack_limb": "arm_back", "extended": true})
+	# your dad in the corner, both arms up
 	var df := Vector2(W * 0.12, floor_y + H * 0.17)
 	var ds := H / 260.0
-	PilotArt.draw_person(ci, df, ds, dad, 1.0, "cheer" if tt > 8.3 else "hold", tt)
-	if tt <= 8.3:
-		PilotArt.draw_controller(ci, df + Vector2(10 * ds, -42 * ds), ds, str(dad.get("controller", "arcade")), true, tt)
-		ci.draw_circle(df + Vector2(18 * ds, -46 * ds), 2.5 * ds, Color("#ff00aa"))
-	# three trophies rise into the frame, one after another
+	PilotArt.draw_person(ci, df, ds, dad, 1.0, "cheer", tt)
+	# confetti
+	for i in 60:
+		var x := fmod(hsh(i + 4400) * W + sin(tt * 2.0 + i) * 20.0, W)
+		var y := fmod(hsh(i + 4500) * H + tt * (120.0 + 80.0 * hsh(i)), H)
+		ci.draw_rect(Rect2(x, y, 5, 3), Color.from_hsv(hsh(i + 4600), 0.7, 1.0, 0.8))
+	# his three trophies rise, one after another
 	for k in 3:
-		var at := 8.6 + k * 0.7
+		var at := 0.8 + k * 0.5
 		if tt < at:
 			continue
-		var rise := clampf((tt - at) / 0.4, 0.0, 1.0)
-		var base := Vector2(W * (0.39 + k * 0.11), H * 0.5 + (1.0 - rise) * 30.0)
+		var rise := clampf((tt - at) / 0.35, 0.0, 1.0)
+		var base := Vector2(W * (0.39 + k * 0.11), H * 0.52 + (1.0 - rise) * 30.0)
 		ci.draw_circle(base + Vector2(0, -36), 52.0, Color(1.0, 0.9, 0.5, 0.12 * rise))
 		GarageArt.draw_trophy(ci, base, ["scrap", "rust", "iron"][k], [1, 1, 2][k], 3.2)
 
@@ -812,9 +1040,11 @@ class Overlay extends Control:
 		draw_rect(Rect2(0, H - bar, W, bar), Color.BLACK)
 		# fade in and out of every shot (OVERLORD's cut comes in hard)
 		var a := 0.0
-		if tt < FADE and op.shot != 3:
+		var id: String = op.sid()
+		var prev_cut: bool = op.shot > 0 and CUTS.has(str(SHOTS[op.shot - 1][0]))
+		if tt < FADE and id != "overlord" and not prev_cut:
 			a = 1.0 - tt / FADE
-		if tt > dur - FADE and op.shot != 2:
+		if tt > dur - FADE and not CUTS.has(id) and id != "dad_win":
 			a = maxf(a, (tt - (dur - FADE)) / FADE)
 		if a > 0.0:
 			draw_rect(Rect2(0, 0, W, H), Color(0, 0, 0, clampf(a, 0.0, 1.0)))
@@ -827,7 +1057,7 @@ class Overlay extends Control:
 		draw_string(GUI.headb(), Vector2(skip_rect.position.x, skip_rect.end.y - (skip_rect.size.y - fs) * 0.5 - 3.0), tr("SKIP ▸▸"), HORIZONTAL_ALIGNMENT_CENTER, sw, fs, Color(1, 1, 1, 0.85))
 		# the line
 		var li: int = op.line_i
-		if li < 0 or int(LINES[li][0]) != op.shot:
+		if li < 0 or not op.line_shot(li):
 			return
 		var who: String = LINES[li][2]
 		var full: String = op.line_text(li)

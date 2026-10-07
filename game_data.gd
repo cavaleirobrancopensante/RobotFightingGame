@@ -2,7 +2,7 @@ extends Node
 
 # helper scripts, loaded by path so the game also runs without an editor scan
 ## The game's version, shown on the main menu. Bump it with every change (1.1, 1.2, ...).
-const VERSION := "1.46"
+const VERSION := "1.47"
 const Arena = preload("res://arena.gd")
 const I18n = preload("res://i18n.gd")
 const Catalog = preload("res://catalog.gd")
@@ -3051,7 +3051,7 @@ func migrate_unlock_scenes() -> void:
 ## Your dad, as the opening and the trophy wall show him: a rugged old pilot with your skin.
 func dad_look() -> Dictionary:
 	return {"skin": str(pilot_look.get("skin", "#b07a52")), "eyes": str(pilot_look.get("eyes", "#5b3a1e")), "hair": "#2a1d14",
-			"hat": "headband", "beard": "full", "beard_color": "#5a4a40", "scar": true, "outfit": "#5a3a22",
+			"hat": "headband", "beard": "chinstrap", "beard_color": "#3a2e28", "scar": true, "outfit": "#5a3a22",
 			"glasses": "none", "controller": "arcade", "long_hair": false}
 
 
