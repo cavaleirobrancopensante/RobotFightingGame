@@ -152,8 +152,10 @@ save("sell", seq(env(osc(1320, 0.06), decay=0.04), env(osc(880, 0.06), decay=0.0
                  env(osc(660, 0.12), decay=0.08), gap=0.02), 0.5)
 save("target", seq(env(osc(1500, 0.04), decay=0.03), env(osc(2000, 0.06), decay=0.04), gap=0.02), 0.4)
 save("untarget", env(osc((1500, 700), 0.08), decay=0.05), 0.35)
-# dialogue blips: low, soft (triangle wave with a touch of square for character)
-save("talk", env(mix(osc((250, 225), 0.045, "tri"), osc((250, 225), 0.045) * 0.15), decay=0.03), 0.3)
+# dialogue blips: the pilot (YOU) and anyone without a voice of their own. Built like Gus's voice
+# (saw + square, as loud, so phone speakers carry it) but clean, no growl, and a brighter tone.
+save("talk", env(mix(lowpass(osc((420, 380), 0.055, "saw"), 0.7),
+                     osc((420, 380), 0.055, "square") * 0.25), decay=0.04), 0.7)
 save("talk_robot", seq(env(mix(osc(420, 0.035, "tri"), osc(420, 0.035) * 0.2), decay=0.025),
                        env(mix(osc(330, 0.035, "tri"), osc(330, 0.035) * 0.2), decay=0.025), gap=0.0), 0.3)
 save("time", env(osc(220, 0.6), decay=0.5), 0.5)
