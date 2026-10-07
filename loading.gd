@@ -73,6 +73,24 @@ func apply_edges() -> void:
 	root.content_scale_size = Vector2i(int(w), base_size.y)
 
 
+## Cover the screen while something slow runs right here (a new game builds the whole world):
+## LOADING... shows first, then the work runs, then the cover goes. await Loading.run(work)
+func run(work: Callable) -> void:
+	if busy:
+		return
+	busy = true
+	(cover.get_node("Title") as Label).text = I18n.t("LOADING...")
+	bar.set_fill(6.0)
+	cover.visible = true
+	await get_tree().process_frame
+	await get_tree().process_frame
+	work.call()
+	bar.set_fill(25.0)
+	await get_tree().process_frame
+	cover.visible = false
+	busy = false
+
+
 func go(path: String) -> void:
 	if busy:
 		return

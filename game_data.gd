@@ -2,7 +2,7 @@ extends Node
 
 # helper scripts, loaded by path so the game also runs without an editor scan
 ## The game's version, shown on the main menu. Bump it with every change (1.1, 1.2, ...).
-const VERSION := "1.41"
+const VERSION := "1.42"
 const Arena = preload("res://arena.gd")
 const I18n = preload("res://i18n.gd")
 const Catalog = preload("res://catalog.gd")
@@ -16,7 +16,7 @@ const UI = preload("res://ui.gd")
 ## championship progress, money, story progress, save/load, settings.
 
 const OLD_SAVE_PATH := "user://savegame.json"   # single save from earlier versions -> becomes slot 1
-const SAVE_SLOTS := 3
+const SAVE_SLOTS := 8
 const SETTINGS_PATH := "user://settings.json"
 const SAVE_VERSION := 7   # 7: part HP x3 torso, x2 head/arms/legs. 6: part grades. 5: Scrap/Rust/Iron/Steel + the Championship cup (older saves are converted on load)
 const START_MONEY := -1000   # default: you start in debt (back rent to Gus) and climb out

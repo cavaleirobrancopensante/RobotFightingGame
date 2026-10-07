@@ -48,10 +48,19 @@ func title(text: String) -> void:
 func show_slots() -> void:
 	clear()
 	title("NEW GAME: pick a save slot" if mode == "new" else "LOAD GAME")
+	# eight slots: they scroll
+	var scroll := ScrollContainer.new()
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	scroll.custom_minimum_size = Vector2(900, minf(get_viewport_rect().size.y - 190.0 * UI.SCALE, 8 * 74.0 * UI.SCALE))
+	col.add_child(scroll)
+	var list := VBoxContainer.new()
+	list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	list.add_theme_constant_override("separation", 8)
+	scroll.add_child(list)
 	for slot in range(1, GameData.SAVE_SLOTS + 1):
 		var info := GameData.slot_info(slot)
 		var panel := PanelContainer.new()
-		col.add_child(panel)
+		list.add_child(panel)
 		var row := HBoxContainer.new()
 		row.add_theme_constant_override("separation", 10)
 		panel.add_child(row)
@@ -418,7 +427,8 @@ func name_row(label: String, value: String, random_cb: Callable, parent: Control
 
 func _on_pick(slot: int) -> void:
 	chosen_slot = slot
-	show_names()
+	# a new game builds the whole world (hundreds of pilots and their robots): cover the wait
+	await Loading.run(show_names)
 
 
 func _on_overwrite(slot: int) -> void:
