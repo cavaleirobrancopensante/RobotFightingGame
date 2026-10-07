@@ -12,8 +12,8 @@
 
 ## Web build (iPhone / any browser)
 - `export_presets.cfg` preset "Web": single-threaded (`variant/thread_support=false`) so it runs in iOS Safari without special headers; PWA on, so it can be added to the home screen.
-- Export: `godot --headless --path . --export-release "Web" build/web/index.html`, then copy `build/web/*` plus an empty `.nojekyll` to the orphan `gh-pages` branch (replace its contents each release).
-- Served by GitHub Pages at https://cavaleirobrancopensante.github.io/RobotFightingGame/ (Pages must be enabled once in repo Settings > Pages > branch gh-pages, root).
+- Export: `godot --headless --path . --export-release "Web" build/web/index.html`, then the build goes in its own folder `v<VERSION>/` on the orphan `gh-pages` branch (only the newest folder is kept), with an empty `.nojekyll` and a root `index.html` that forwards to it and clears the old offline copies (service workers / caches) so browsers stop showing an old version.
+- Served by GitHub Pages at https://cavaleirobrancopensante.github.io/RobotFightingGame/v<VERSION>/ (the plain .../RobotFightingGame/ forwards to the newest). Give the user the versioned link after each release.
 
 ## Agreed garage redesign (Oct 2026) - build in this order
 Design references: "Garage Menu Blueprint" artifact (layout, option E) and "Garage Art Styles" canvas (style = **Mix B · Clean Diagnostic**).
