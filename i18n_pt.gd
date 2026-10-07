@@ -1519,6 +1519,7 @@ const T := {
 	"Your head's scan found its weakest part: the yellow diamond. Hits there do extra damage.": "A varredura da sua cabeça achou a peça mais fraca dele: o losango amarelo. Golpes ali causam dano extra.",
 	"AIM: tap an enemy part to put the crosshair on it. Your head decides how long before you can aim again (the crosshair icon under your body map). Its scan hunts for their weakest part (the radar icon): once it's found, hits there do extra damage.": "MIRA: toque numa peça do inimigo para pôr a mira nela. Sua cabeça decide quanto tempo até poder mirar de novo (o ícone de mira sob o seu mapa do corpo). A varredura procura a peça mais fraca dele (o ícone de radar): depois de achada, golpes ali causam dano extra.",
 	"STANCE: double-tap BLOCK to switch which side leads. The lead arm and leg take most of the hits. Turning an aimed limb away knocks their crosshair off it.": "GUARDA: toque duas vezes em DEFESA para trocar o lado da frente. O braço e a perna da frente levam a maioria dos golpes. Virar um membro mirado tira a mira dele.",
+	"IN THE AIR: KICK = flying kick, diving at them feet first. PUNCH = hammer, both fists smashed down: block it standing, not crouching.": "NO AR: CHUTE = voadora, mergulhando nele com os pés. SOCO = martelo, os dois punhos descendo juntos: defenda em pé, não agachado.",
 	"Tap MOVES to see your special moves and how to do them.": "Toque em GOLPES para ver seus golpes especiais e como fazer.",
 	"Burned out! Hang on...": "Pane! Aguenta aí...",
 	"Watch your power! Back off!": "Olha a energia! Recua!",

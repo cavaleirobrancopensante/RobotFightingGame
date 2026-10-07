@@ -146,8 +146,15 @@ static func limb_poses(look: Dictionary, pose: Dictionary) -> Dictionary:
 	var blocking: bool = pose.get("blocking", false)
 	var arm_pose := {"arm_front": "guard", "arm_back": "guard", "arm_front2": "guard", "arm_back2": "guard"}
 	var leg_pose := {"leg_front": "stand", "leg_back": "stand"}
-	if state == "hit" or state == "ko":
+	if pose.get("dazed", false):
+		# guard smashed open: arms flung up and out
+		arm_pose = {"arm_front": "flung", "arm_back": "flung", "arm_front2": "flung", "arm_back2": "flung"}
+	elif state == "hit" or state == "ko" or state == "down":
 		arm_pose = {"arm_front": "limp", "arm_back": "limp", "arm_front2": "limp", "arm_back2": "limp"}
+	elif state == "hammer":
+		# both fists together: raised overhead, then smashed down in front
+		var hp := "hammer" if extended else "hammer_up"
+		arm_pose = {"arm_front": hp, "arm_back": hp, "arm_front2": hp, "arm_back2": hp}
 	elif blocking:
 		arm_pose = {"arm_front": "block", "arm_back": "block", "arm_front2": "block", "arm_back2": "block"}
 	if extended and limb != "":
@@ -157,6 +164,11 @@ static func limb_poses(look: Dictionary, pose: Dictionary) -> Dictionary:
 			leg_pose[limb] = state
 	elif state == "charge" and limb != "" and limb.begins_with("arm"):
 		arm_pose[limb] = "charge"   # winding up a charged hit: the arm drawn back
+	if state == "fly_kick":
+		# both legs together, pointing down and forward
+		leg_pose = {"leg_front": "fly_kick", "leg_back": "fly_kick"}
+	elif pose.get("tuck", false):
+		leg_pose = {"leg_front": "tuck", "leg_back": "tuck"}
 	# crawling with no legs: the arms that are left claw at the floor in turn and drag the robot
 	var crawl: float = pose.get("crawl", -1.0)
 	if crawl >= 0.0:
@@ -189,7 +201,7 @@ static func hit_shapes(look: Dictionary, pose: Dictionary) -> Array:
 		var sz: float = p.get("size", 1.0)
 		var s := shoulder_of(g, slot)
 		var ap: String = lp["arms"][slot]
-		var pts := arm_pose_points(s, ap, is_rear(look, slot), punch_reach_x(g) if ap in ["punch", "low_punch", "uppercut"] else 0.0, aim if slot == limb else 0.0)
+		var pts := arm_pose_points(s, ap, is_rear(look, slot), punch_reach_x(g) if ap in ["punch", "low_punch", "uppercut", "hammer"] else 0.0, aim if slot == limb else 0.0)
 		out.append([slot, "cap", s, pts[0], dims[0] * sz * 0.55])
 		out.append([slot, "cap", pts[0], pts[1], maxf(dims[0] * sz * 0.5, dims[1] * sz)])
 	for slot in ["leg_front", "leg_back"]:
@@ -253,19 +265,28 @@ static func draw(ci: CanvasItem, base: Vector2, look: Dictionary, pose: Dictiona
 	var la2 := "arm_back2" if sw else "arm_front2"
 	var rl := "leg_front" if sw else "leg_back"
 	var ll := "leg_back" if sw else "leg_front"
+	var bob_l: Vector2 = pose.get("bob_l", Vector2.ZERO)   # lead fist
+	var bob_r: Vector2 = pose.get("bob_r", Vector2.ZERO)   # rear fist (out of step with the lead one)
 	_draw_back(ci, look, g, pose, flash, trim, t)
 	if look["parts"].has(ra2) and look["parts"][ra2].has("shape"):
-		_draw_arm(ci, look, ra2, shoulder_of(g, ra2), arm_pose[ra2], true, flash, trim, t, fist_out.has(ra2), aim if limb == ra2 else 0.0)
-	_draw_arm(ci, look, ra, shoulder_of(g, ra), arm_pose[ra], true, flash, trim, t, fist_out.has(ra), aim if limb == ra else 0.0)
+		_draw_arm(ci, look, ra2, shoulder_of(g, ra2), arm_pose[ra2], true, flash, trim, t, fist_out.has(ra2), aim if limb == ra2 else 0.0, bob_r)
+	_draw_arm(ci, look, ra, shoulder_of(g, ra), arm_pose[ra], true, flash, trim, t, fist_out.has(ra), aim if limb == ra else 0.0, bob_r)
 	_draw_leg(ci, look, rl, g["hip_back"], g["L"], leg_pose[rl], -swing, true, flash, trim, aim if limb == rl else 0.0)
 	_draw_torso(ci, look, g, flash, trim, eye, t)
 	_draw_leg(ci, look, ll, g["hip_front"], g["L"], leg_pose[ll], swing, false, flash, trim, aim if limb == ll else 0.0)
+	# the head pans a little while it waits (pose "head_dx")
+	var gh := g
+	var hdx: float = pose.get("head_dx", 0.0)
+	if hdx != 0.0:
+		gh = g.duplicate()
+		gh["head"] = (g["head"] as Rect2).grow_individual(-hdx, 0, hdx, 0)
+		gh["head2"] = (g["head2"] as Rect2).grow_individual(-hdx, 0, hdx, 0)
 	if look["parts"].has("head2") and look["parts"]["head2"].has("shape"):
-		_draw_head(ci, look, g, flash, trim, eye, t, "head2")
-	_draw_head(ci, look, g, flash, trim, eye, t, "head")
+		_draw_head(ci, look, gh, flash, trim, eye, t, "head2")
+	_draw_head(ci, look, gh, flash, trim, eye, t, "head")
 	if look["parts"].has(la2) and look["parts"][la2].has("shape"):
-		_draw_arm(ci, look, la2, shoulder_of(g, la2), arm_pose[la2], false, flash, trim, t, fist_out.has(la2), aim if limb == la2 else 0.0)
-	_draw_arm(ci, look, la, shoulder_of(g, la), arm_pose[la], false, flash, trim, t, fist_out.has(la), aim if limb == la else 0.0)
+		_draw_arm(ci, look, la2, shoulder_of(g, la2), arm_pose[la2], false, flash, trim, t, fist_out.has(la2), aim if limb == la2 else 0.0, bob_l)
+	_draw_arm(ci, look, la, shoulder_of(g, la), arm_pose[la], false, flash, trim, t, fist_out.has(la), aim if limb == la else 0.0, bob_l)
 
 	if pose.get("shield", false):
 		var c := Vector2(0, -(g["L"] + g["th"] + 40.0) * 0.55)
@@ -389,7 +410,7 @@ static func _stump(ci: CanvasItem, at: Vector2, t: float) -> void:
 ## hit test both use this, so a fist lands exactly where it's drawn.
 ## reach_x: where a punching hand ends up (the rear hand crosses over to land about as far as the lead one).
 ## aim: the punch tilts this many radians toward its target (negative = up).
-static func arm_pose_points(s: Vector2, pose: String, back: bool, reach_x: float = 0.0, aim: float = 0.0) -> Array:
+static func arm_pose_points(s: Vector2, pose: String, back: bool, reach_x: float = 0.0, aim: float = 0.0, bob: Vector2 = Vector2.ZERO) -> Array:
 	var e := s
 	var h := s
 	var tilt := false
@@ -414,6 +435,18 @@ static func arm_pose_points(s: Vector2, pose: String, back: bool, reach_x: float
 			# drawn back, ready to let go
 			e = s + Vector2(-26 if not back else -18, 14)
 			h = s + Vector2(-10 if not back else -4, -14)
+		"hammer_up":
+			# both fists raised overhead (the rear one reaches over the head too)
+			e = s + Vector2(6 if not back else 20, -34)
+			h = s + Vector2(14 if not back else 30, -76)
+		"hammer":
+			# smashed down in front, both fists meeting
+			var hx := 64.0 if reach_x <= 0.0 or not back else maxf(64.0, reach_x - PUNCH_LEN + 56.0 - s.x)
+			e = s + Vector2(hx * 0.55, -22)
+			h = s + Vector2(hx, 30)
+		"flung":
+			e = s + Vector2(-14 if not back else -20, -22)
+			h = s + Vector2(-20 if not back else -30, -52)
 		"block":
 			e = s + Vector2(20 if not back else 26, 20)
 			h = s + Vector2(24 if not back else 30, -26)
@@ -438,6 +471,9 @@ static func arm_pose_points(s: Vector2, pose: String, back: bool, reach_x: float
 		_:
 			e = s + Vector2(6 if not back else -8, 26)
 			h = s + Vector2(36 if not back else 30, 18 if not back else 24)
+			# the guard bobs and twitches while the robot waits (fight.body_pose sends "bob")
+			e += bob * 0.5
+			h += bob
 	if tilt and aim != 0.0:
 		e = s + (e - s).rotated(aim)
 		h = s + (h - s).rotated(aim)
@@ -507,11 +543,15 @@ static func leg_pose_foot(hip: Vector2, pose: String, swing: float = 0.0, aim: f
 			return hip + (hv.rotated(aim) if aim != 0.0 else hv)
 		"sweep":
 			return Vector2(maxf(hip.x + 112.0, 124.0), -10.0)
+		"tuck":
+			return hip + Vector2(16.0, 34.0)   # knees up at the top of a jump
+		"fly_kick":
+			return Vector2(maxf(hip.x + 70.0, 84.0), hip.y + 58.0)
 	return Vector2(hip.x + swing, 0.0)
 
 
 static func _draw_arm(ci: CanvasItem, look: Dictionary, slot: String, s: Vector2, pose: String,
-		back: bool, flash: bool, trim: Color, t: float, fist_gone: bool = false, aim: float = 0.0) -> void:
+		back: bool, flash: bool, trim: Color, t: float, fist_gone: bool = false, aim: float = 0.0, bob: Vector2 = Vector2.ZERO) -> void:
 	var p := _part(look, slot)
 	if not p.get("alive", false):
 		_stump(ci, s, -1.0 if look.get("icon", false) else t)
@@ -520,8 +560,8 @@ static func _draw_arm(ci: CanvasItem, look: Dictionary, slot: String, s: Vector2
 	var sz: float = p["size"]
 	var th: float = dims[0] * sz
 	var fr: float = dims[1] * sz
-	var reach_x := punch_reach_x(geom(look)) if pose in ["punch", "low_punch", "uppercut"] else 0.0
-	var ph := arm_pose_points(s, pose, back, reach_x, aim)
+	var reach_x := punch_reach_x(geom(look)) if pose in ["punch", "low_punch", "uppercut", "hammer"] else 0.0
+	var ph := arm_pose_points(s, pose, back, reach_x, aim, bob)
 	var e: Vector2 = ph[0]
 	var h: Vector2 = ph[1]
 	var c := _col(p, flash, back)
@@ -791,7 +831,7 @@ static func _draw_leg(ci: CanvasItem, look: Dictionary, slot: String, hip: Vecto
 		ci.draw_line(foot, foot + Vector2(-6, 4), tc, 4.0)
 	elif p["shape"] == "blade":
 		ci.draw_line(foot + Vector2(-4, 0), foot + Vector2(18, 0), tc, 4.0)
-	elif pose == "kick" or pose == "sweep" or pose == "high_kick":
+	elif pose == "kick" or pose == "sweep" or pose == "high_kick" or pose == "fly_kick":
 		ci.draw_rect(Rect2(foot.x - 2.0, foot.y - 12.0, 12.0, 22.0), tc)
 	elif p["shape"] == "reverse":
 		ci.draw_colored_polygon(PackedVector2Array([foot + Vector2(-8, 0), foot + Vector2(22, 0), foot + Vector2(-2, -10)]), tc)
