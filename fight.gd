@@ -4691,7 +4691,7 @@ func update_coach(delta: float) -> void:
 # A new game's first fight is a lesson against Old Pike's junk FENCEPOST, in five steps. Each step
 # is one line from Gus, a goal on screen with a counter, and stripes round what to press. Pike does
 # only what the step needs (stands still, then swings slowly), the clock waits, and nobody can be
-# knocked out until the last step.
+# knocked out until the last step. Then it's a real fight against a weakened Pike: hard to lose, not impossible.
 
 const COURSE := ["move", "hit", "block", "rip", "finish"]
 const COURSE_NEED := {"move": 2, "hit": 3, "block": 2, "rip": 1, "finish": 1}
@@ -4818,11 +4818,11 @@ func update_course(delta: float) -> void:
 	if k == "finish" and cpu.state == "ko":
 		course_count = 1
 	# nobody gets knocked out while learning; in the last step Pike can go down, you still can't
+	# (the last step is a real fight against a tired old man: hard to lose, but you can)
 	var learning := k != "finish"
 	for slot in player.parts:
-		var keep := 0.5 if learning else (0.2 if slot in ["torso", "head", "head2"] else 0.0)
-		if keep > 0.0 and player.alive(slot) and player.parts[slot]["hp"] < player.parts[slot]["max_hp"] * keep:
-			player.parts[slot]["hp"] = player.parts[slot]["max_hp"] * keep
+		if learning and player.alive(slot) and player.parts[slot]["hp"] < player.parts[slot]["max_hp"] * 0.5:
+			player.parts[slot]["hp"] = player.parts[slot]["max_hp"] * 0.5
 	if learning:
 		for slot in ["torso", "head", "head2"]:
 			if cpu.alive(slot) and cpu.parts[slot]["hp"] < cpu.parts[slot]["max_hp"] * 0.5:

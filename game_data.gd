@@ -269,6 +269,7 @@ const CONTROLLER_INFO := {
 var pilot_look := DEFAULT_PILOT_LOOK.duplicate()   # how your pilot looks in the corner and in the story
 var owned_controllers: Array = ["gamepad"]
 var tips_seen: Array = []
+var opening_replay := false   # the opening cutscene was asked for again (BotMedia): back to the bay after it
 var tips_log: Array = []   # Gus's fight tips as he said them ({"id", "text"}, oldest first): the pause screen lists them
 const DIGS_PER_FIGHT := 1
 ## Scrapyard digs: [grade, chance] (cumulative, checked rarest first): anything can turn up, rarely.
@@ -3047,6 +3048,13 @@ func migrate_unlock_scenes() -> void:
 
 ## Lines in the story that depend on your game: {RENT_INTRO} and {RENT_GARAGE} follow the
 ## starting money and rent settings.
+## Your dad, as the opening and the trophy wall show him: a rugged old pilot with your skin.
+func dad_look() -> Dictionary:
+	return {"skin": str(pilot_look.get("skin", "#b07a52")), "eyes": str(pilot_look.get("eyes", "#5b3a1e")), "hair": "#2a1d14",
+			"hat": "headband", "beard": "full", "beard_color": "#5a4a40", "scar": true, "outfit": "#5a3a22",
+			"glasses": "none", "controller": "arcade", "long_hair": false}
+
+
 func story_dynamic(key: String) -> String:
 	var living := living_cost()
 	match key:

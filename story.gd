@@ -162,8 +162,10 @@ class Portrait extends Control:
 
 
 func _ready() -> void:
-	Sfx.music("anthem" if GameData.story_key == "post_9" else "story")
 	var scene: Dictionary = Story.SCENES.get(GameData.story_key, {"place": "", "lines": []})
+	# Kane gets her own cold theme; the finale gets the anthem
+	var kane: bool = scene["lines"].any(func(l): return str(l[0]) == "KANE")
+	Sfx.music("anthem" if GameData.story_key == "post_9" else ("kane_tower" if kane else "story"))
 	lines = build_screens(scene["lines"])
 	for l in lines:
 		GameData.log_talk(str(l[0]), str(l[1]), "story")

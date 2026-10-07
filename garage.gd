@@ -1864,6 +1864,10 @@ func build_feed() -> void:
 		fb.toggle_mode = true
 		fb.button_pressed = msg_filter == str(f[0])
 	view = msg_filter
+	if view == "story":
+		# the opening cutscene, any time you want to see it again
+		var ob := action_bar()
+		row_button(ob, tr("Watch the opening ▸"), _on_watch_opening, true, 0)
 	var shown := 0
 	var last_day := ""
 	for i in range(GameData.inbox.size() - 1, -1, -1):
@@ -1908,6 +1912,12 @@ func build_feed() -> void:
 
 
 var msg_filter := "all"
+
+
+func _on_watch_opening() -> void:
+	GameData.opening_replay = true
+	GameData.save_game()
+	Loading.go("res://opening.tscn")
 
 
 func _on_msg_filter(f: String) -> void:

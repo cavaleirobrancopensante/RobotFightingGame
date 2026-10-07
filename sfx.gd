@@ -92,8 +92,8 @@ func play(sound: String, pitch_jitter: float = 0.0, volume_db: float = 0.0, pitc
 
 ## Playlists rotate through their songs; a single track name just loops that track.
 const PLAYLISTS := {
-	"menu": ["menu", "chiptune_cafe", "lounge", "workshop", "sunset_drive", "anthem", "garage"],
-	"garage": ["garage", "sunset_drive", "workshop", "chiptune_cafe", "lounge", "menu"],
+	"menu": ["menu", "rain_docks", "chiptune_cafe", "harbour_waltz", "night_shift", "lounge", "bossa", "workshop", "rust_shuffle", "sunset_drive", "gamelan", "anthem", "garage"],
+	"garage": ["garage", "rust_shuffle", "sunset_drive", "rain_docks", "workshop", "bossa", "chiptune_cafe", "gamelan", "lounge", "night_shift", "harbour_waltz", "menu"],
 	"story": ["story", "lounge"],
 }
 ## Fight themes, picked per opponent (boss gets its own).
@@ -112,6 +112,14 @@ const JUKEBOX := [
 	["chiptune_cafe", "Chiptune Cafe", "Menus and garage"],
 	["lounge", "Rusty Bolt Lounge", "Menus, garage and story"],
 	["story", "The Dead Man's Robot", "Story scenes"],
+	["overture", "Port Ferrum Overture", "The opening"],
+	["rain_docks", "Rain on the Docks", "Menus and garage"],
+	["harbour_waltz", "Harbour Waltz", "Menus and garage"],
+	["rust_shuffle", "Rust Belt Shuffle", "Menus and garage"],
+	["bossa", "Dockside Bossa", "Menus and garage"],
+	["gamelan", "Junkyard Gamelan", "Menus and garage"],
+	["night_shift", "Night Shift", "Menus and garage"],
+	["kane_tower", "Kane Tower", "Kane's scenes"],
 	["walkin_scrap", "Settle Down, You Lot", "Walk-in: the Scrap Heap Ring"],
 	["walkin_arena", "Fight Night Fanfare", "Walk-in: Regional and cups"],
 	["walkin_grand", "The Grand Hall", "Walk-in: the Championship"],

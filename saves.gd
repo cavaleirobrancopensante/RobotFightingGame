@@ -539,8 +539,9 @@ func _on_start() -> void:
 	GameData.pilot_name = pilot if pilot != "" else GameData.random_pilot_name()
 	GameData.robot_name = robot if robot != "" else GameData.DEFAULT_ROBOT
 	GameData.save_game()
-	GameData.queue_story("intro", "res://garage.tscn")
-	Loading.go("res://story.tscn")
+	# the opening cutscene, then straight into Old Pike's course
+	GameData.opening_replay = false
+	Loading.go("res://opening.tscn")
 
 
 func _on_back() -> void:
