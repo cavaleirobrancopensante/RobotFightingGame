@@ -14,6 +14,7 @@
 - `export_presets.cfg` preset "Web": single-threaded (`variant/thread_support=false`) so it runs in iOS Safari without special headers; PWA on, so it can be added to the home screen.
 - Export: `godot --headless --path . --export-release "Web" build/web/index.html`, then the build goes in its own folder `v<VERSION>/` on the orphan `gh-pages` branch (only the newest folder is kept), with an empty `.nojekyll` and a root `index.html` that forwards to it and clears the old offline copies (service workers / caches) so browsers stop showing an old version.
 - Served by GitHub Pages at https://cavaleirobrancopensante.github.io/RobotFightingGame/v<VERSION>/ (the plain .../RobotFightingGame/ forwards to the newest). Give the user the versioned link after each release.
+- The root also carries a kill-switch `index.service.worker.js`: builds before 1.42 registered a cache-first service worker at the root that kept serving 1.38; browsers re-check that file, and this one clears all caches, unregisters itself and reloads, so the plain link always reaches the newest build. Keep it in every deploy (webdeploy.sh writes it).
 
 ## Agreed garage redesign (Oct 2026) - build in this order
 Design references: "Garage Menu Blueprint" artifact (layout, option E) and "Garage Art Styles" canvas (style = **Mix B · Clean Diagnostic**).
