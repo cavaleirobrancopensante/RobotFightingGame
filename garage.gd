@@ -2137,7 +2137,8 @@ func post_row(p: Dictionary, parent: Control = null) -> void:
 	lh.add_child(lg)
 	var lc := GUI.text(S.fol_text(S.grown(p, "likes")), 13, GUI.RED if liked else GUI.MUTED)
 	lh.add_child(lc)
-	lb.custom_minimum_size = Vector2(70, 26)
+	lb.custom_minimum_size = Vector2(84, 40)   # a finger-sized target
+	lh.position = Vector2(4, 10)
 	lb.pressed.connect(func():
 		S.toggle_like(id)
 		var on: bool = S.st()["liked"].has(str(id))
@@ -2669,18 +2670,18 @@ func _on_offer_sign(id: int) -> void:
 func build_jobs_view() -> void:
 	GameData.sync_swaps()
 	var hands := GameData.hands()
-	section(tr("THE JOB BOARD. Every repair and every part you bolt on takes hours. The bay works 4 hours in the morning and 4 in the afternoon, and the bell rings in the evening: whatever isn't finished goes in as it is. Gus works one job at a time; each mechanic works one more at once."))
-	var bar := action_bar()
+	section(tr("THE JOB BOARD. Repairs and new parts take hours, and whatever isn't done by the bell goes in as it is. Gus works one job at a time, each mechanic one more."))
+	# rows wrap onto a second line on narrow screens / big text (a wide row pushed the whole layout off screen)
 	var hl := GUI.text(tr("HANDS: %d (Gus + %d mechanic%s)") % [hands, GameData.mechanics, "" if GameData.mechanics == 1 else "s"], 15, GUI.YELLOW, "headb")
-	hl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	bar.add_child(hl)
+	hl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	list_box.add_child(hl)
+	var bar := flow_bar()
 	row_button(bar, tr("Hire $%d/mo") % GameData.mechanic_wage(), _on_hire_mechanic, GameData.mechanics < GameData.max_mechanics(), 150)
 	row_button(bar, tr("Let one go"), _on_fire_mechanic, GameData.mechanics > 0, 130)
-	var bar2 := action_bar()
 	var ot := GUI.text(tr("Tonight the crew stays on: 8 more hours.") if GameData.overtime else tr("Overtime: work through tonight, 8 more hours for every pair of hands."), 13, GUI.MUTED)
-	ot.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	ot.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	bar2.add_child(ot)
+	list_box.add_child(ot)
+	var bar2 := flow_bar()
 	row_button(bar2, tr("Overtime $%d") % GameData.overtime_cost() if not GameData.overtime else tr("Booked"), _on_overtime, not GameData.overtime and GameData.money >= GameData.overtime_cost(), 150)
 	if GameData.jobs.is_empty():
 		section(tr("Nothing on the board. Everything's fixed and bolted on."))
@@ -2706,17 +2707,19 @@ func build_jobs_view() -> void:
 			sub += "  ·  " + tr("being worked on")
 		if j["rush"]:
 			sub += "  ·  " + tr("RUSH")
-		var row := make_tap_row(part_icon(d, GameData.hp_ratio(p)), title, sub, _on_detail.bind({"src": "inv", "uid": int(j["uid"])}), tr("#%d") % (i + 1))
+		make_tap_row(part_icon(d, GameData.hp_ratio(p)), title, sub, _on_detail.bind({"src": "inv", "uid": int(j["uid"])}), tr("#%d") % (i + 1))
+		# second line: the hours as blocks, then the buttons (wraps when it doesn't fit)
+		var line := flow_bar()
 		var bb := GUI.BlockBar.new()   # 1 block = 1 hour of work
 		bb.block_w = 14.0
 		bb.setup(float(j["done"]), 1.0, maxf(1.0, ceilf(float(j["total"]))), GUI.CYAN if j["kind"] == "swap" else GUI.GREEN)
 		bb.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-		row.add_child(bb)
+		line.add_child(bb)
 		var rc := GameData.rush_cost(j)
-		row_button(row, tr("Rush $%d") % rc if not j["rush"] else tr("Rushed"), _on_rush.bind(i), not j["rush"] and GameData.money >= rc, 110)
-		row_button(row, tr("Up"), _on_job_up.bind(i), i > 0, 60)
+		row_button(line, tr("Rush $%d") % rc if not j["rush"] else tr("Rushed"), _on_rush.bind(i), not j["rush"] and GameData.money >= rc, 110)
+		row_button(line, tr("Up"), _on_job_up.bind(i), i > 0, 60)
 		if j["kind"] == "repair":
-			row_button(row, tr("Cancel +$%d") % GameData.job_refund(j), _on_cancel_job.bind(i), true, 120)
+			row_button(line, tr("Cancel +$%d") % GameData.job_refund(j), _on_cancel_job.bind(i), true, 120)
 
 
 func _on_cancel_job(i: int) -> void:

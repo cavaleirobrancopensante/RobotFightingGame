@@ -26,8 +26,7 @@ const SHOTS := [
 	# your dad's night: hard cuts, like a fight broadcast
 	["dad_face", 2.6, [0.5, 0.5, 1.0], [0.5, 0.48, 1.12]],
 	["dad_clash", 1.8, [0.5, 0.5, 1.15], [0.5, 0.5, 1.3]],
-	["dad_uppercut", 2.0, [0.55, 0.5, 1.1], [0.6, 0.42, 1.25]],
-	["dad_head", 2.2, [0.5, 0.6, 1.0], [0.5, 0.35, 1.15]],
+	["dad_uppercut", 4.2, [0.5, 0.56, 1.12], [0.56, 0.42, 1.2]],   # one shot: the uppercut takes SLEDGE's head off
 	["dad_win", 3.4, [0.5, 0.52, 1.18], [0.46, 0.56, 1.05]],
 	["overlord", 10.0, [0.5, 0.5, 1.0], [0.6, 0.55, 1.3]],
 	["fall", 10.0, [0.5, 0.3, 1.5], [0.5, 0.72, 1.5]],
@@ -48,7 +47,7 @@ const LINES := [
 	["bell", 1.2, "GUS", "Old Pike fights anybody for a hundred bucks. Let's see what you've got."],
 ]
 ## Shots that cut straight to the next one (no fade between them)
-const CUTS := ["dad_face", "dad_clash", "dad_uppercut", "dad_head"]
+const CUTS := ["dad_face", "dad_clash", "dad_uppercut"]
 const FADE := 0.45
 const CPS := 40.0   # letters a second as a line types out
 
@@ -186,8 +185,8 @@ func _process(delta: float) -> void:
 ## Sounds that land on a beat of the picture.
 var _fired := {}
 func _events() -> void:
-	var cues := {"dad_bell": ["dad_face", 0.1, "round"], "clash": ["dad_clash", 0.75, "hit_big"], "upper": ["dad_uppercut", 0.7, "uppercut"],
-			"upper2": ["dad_uppercut", 0.75, "hit_big"], "pop": ["dad_head", 0.25, "break"], "ko": ["dad_head", 0.3, "ko"],
+	var cues := {"dad_bell": ["dad_face", 0.1, "round"], "clash": ["dad_clash", 0.75, "hit_big"], "upper": ["dad_uppercut", 0.85, "uppercut"],
+			"upper2": ["dad_uppercut", 0.9, "hit_big"], "pop": ["dad_uppercut", 0.95, "break"], "ko": ["dad_uppercut", 1.2, "ko"],
 			"roar": ["dad_win", 0.0, "crowd_cheer"], "ol_hit1": ["overlord", 5.0, "hit_big"], "ol_hit2": ["overlord", 6.6, "break"],
 			"tarp": ["scrap", 3.0, "swing"], "eye": ["scrap", 8.0, "target"], "bell": ["bell", 6.8, "round"]}
 	for k in cues:
@@ -292,8 +291,6 @@ class Stage extends Control:
 				op.draw_dad_clash(self, W, H, op.t)
 			"dad_uppercut":
 				op.draw_dad_uppercut(self, W, H, op.t)
-			"dad_head":
-				op.draw_dad_head(self, W, H, op.t)
 			"dad_win":
 				op.draw_dad_win(self, W, H, op.t)
 			"overlord":
@@ -677,59 +674,61 @@ func draw_dad_clash(ci: CanvasItem, W: float, H: float, tt: float) -> void:
 
 
 func draw_dad_uppercut(ci: CanvasItem, W: float, H: float, tt: float) -> void:
-	var hit := 0.7
-	var sh := shake_off(tt, hit, 18.0)
-	var floor_y := H * 1.05
-	bokeh(ci, W, H, tt, Color(0.9, 0.4, 1.0))
-	if tt > hit:
-		speed_lines(ci, Vector2(W * 0.62, H * 0.3), W, H, tt, 1.0 - clampf((tt - hit) / 1.0, 0.0, 0.7))
-	var echo: Dictionary = looks["echo_dad"]
-	var foe: Dictionary = looks["foe_a"]
-	var tall := H * 1.0
-	# ECHO dips, then drives the uppercut up through SLEDGE's chin; SLEDGE leaves the floor
-	var dip := clampf(tt / 0.5, 0.0, 1.0) * (1.0 - clampf((tt - 0.55) / 0.15, 0.0, 1.0))
-	var ext := tt > hit - 0.1
-	RobotArt.draw(ci, Vector2(W * 0.4, floor_y + dip * 30.0) + sh, echo, {"scale": robot_scale(echo, tall), "facing": 1, "time": tt,
-			"state": "uppercut", "attack_limb": "arm_back", "extended": ext, "crouch": dip > 0.5 and not ext})
-	var lift := maxf(0.0, tt - hit)
-	RobotArt.draw(ci, Vector2(W * 0.66 + lift * 60.0, floor_y - lift * 420.0 + lift * lift * 300.0) + sh, foe, {"scale": robot_scale(foe, tall), "facing": -1, "time": tt,
-			"state": "hit" if tt > hit else "idle", "rot": -minf(0.6, lift * 1.2)})
-	if tt >= hit:
-		var chin := hand_at(echo, "arm_back", "uppercut", Vector2(W * 0.4, floor_y) + sh, robot_scale(echo, tall), 1)
-		var f := 1.0 - clampf((tt - hit) / 0.45, 0.0, 1.0)
-		starburst(ci, chin, H * 0.3, f, Color(1.0, 0.75, 0.3))
-		sparks(ci, chin, tt - hit, 22, 800.0, 4100)
-
-
-func draw_dad_head(ci: CanvasItem, W: float, H: float, tt: float) -> void:
+	# one continuous shot: ECHO dips, drives the uppercut through SLEDGE's chin, the TV head pops off
+	# and spins up into the lights in slow motion while the headless body staggers back
+	var hit := 0.9
+	var sh := shake_off(tt, hit, 16.0)
 	var floor_y := H * 0.86
 	arena_bg(ci, W, H, floor_y, tt, 1.0)
+	var echo: Dictionary = looks["echo_dad"]
 	var foe: Dictionary = looks["foe_a"].duplicate(true)
-	foe["parts"]["head"]["alive"] = false
-	var tall := H * 0.62
-	var sc := robot_scale(foe, tall)
-	var sag := clampf(tt / 1.6, 0.0, 1.0)
-	var base := Vector2(W * 0.56, floor_y + 6)
-	RobotArt.draw(ci, base, foe, {"scale": sc, "facing": -1, "time": tt, "state": "hit", "rot": sag * 0.25, "eye_off": true})
-	# the neck spits sparks and smoke
+	var tall := H * 0.6
+	var se := robot_scale(echo, tall)
+	var sf := robot_scale(foe, tall)
+	var fk := sf * float(foe.get("scale", 1.0))
+	var after := maxf(0.0, tt - hit)
+	var dip := clampf(tt / 0.6, 0.0, 1.0) * (1.0 - clampf((tt - 0.72) / 0.14, 0.0, 1.0))
+	var ext := tt > hit - 0.12 and tt < hit + 2.4
+	var eb := Vector2(W * 0.4, floor_y + 6.0 + dip * 12.0) + sh
+	if tt > hit:
+		speed_lines(ci, Vector2(W * 0.55, H * 0.25), W, H, tt, 1.0 - clampf(after / 1.2, 0.0, 0.8))
+	# SLEDGE stands where the fist comes up under its chin
+	var fist := hand_at(echo, "arm_back", "uppercut", Vector2(W * 0.4, floor_y + 6.0), se, 1)
 	var g := RobotArt.geom(foe)
-	var neck := base + Vector2(0, float(g["top"]) * sc * float(foe.get("scale", 1.0)))
+	var hr: Rect2 = g["head"]
+	var fb := Vector2(fist.x + hr.get_center().x * fk + 6.0, floor_y + 6.0)
+	var stagger := minf(1.0, after * 0.8)
+	fb += Vector2(stagger * W * 0.06, 0) + sh
+	var neck := fb + Vector2(-hr.get_center().x * fk, (hr.end.y) * fk)
+	if tt < hit:
+		RobotArt.draw(ci, fb, foe, {"scale": sf, "facing": -1, "time": tt, "state": "punch", "attack_limb": "arm_front", "extended": tt > 0.45 and tt < 0.75})
+	else:
+		foe["parts"]["head"]["alive"] = false
+		RobotArt.draw(ci, fb, foe, {"scale": sf, "facing": -1, "time": tt, "state": "hit", "rot": stagger * 0.3, "eye_off": true})
+	RobotArt.draw(ci, eb, echo, {"scale": se, "facing": 1, "time": tt, "state": "uppercut" if ext else "idle", "attack_limb": "arm_back",
+			"extended": ext, "crouch": dip > 0.5 and not ext})
+	if tt < hit:
+		return
+	# the neck spits sparks and smoke
 	for i in 3:
-		sparks(ci, neck, fmod(tt * 1.5 + i * 0.33, 1.0), 8, 400.0, 4200 + i * 40)
+		sparks(ci, neck, fmod(after * 1.5 + i * 0.33, 1.0), 8, 400.0, 4200 + i * 40)
 	for i in 5:
-		var a := fmod(tt * 0.8 + i * 0.2, 1.0)
-		ci.draw_circle(neck + Vector2(sin(i * 2.0 + tt) * 20.0, -a * H * 0.3), 14.0 + a * 30.0, Color(0.2, 0.2, 0.22, 0.4 * (1.0 - a)))
-	# the head, in slow motion: up, spinning, over the ropes, into the lights
-	var ht := tt * 0.45
-	var hp := neck + Vector2(-W * 0.15 * ht, -H * 0.9 * ht + H * 0.7 * ht * ht)
-	var hs := (g["head"] as Rect2).size.x * sc * float(foe.get("scale", 1.0)) * 1.7
-	# a trail of where it's been
-	for i in 6:
-		var pt := maxf(0.0, ht - i * 0.04)
-		var p := neck + Vector2(-W * 0.15 * pt, -H * 0.9 * pt + H * 0.7 * pt * pt)
-		ci.draw_circle(p, hs * 0.3 * (1.0 - i / 6.0), Color(1.0, 0.8, 0.4, 0.15))
-	tv_head(ci, hp, hs, tt * 5.0, tt, true)
-	ci.draw_rect(Rect2(0, 0, W, H), Color(1, 1, 1, 0.4 * (1.0 - clampf(tt / 0.25, 0.0, 1.0))))
+		var a := fmod(after * 0.8 + i * 0.2, 1.0)
+		ci.draw_circle(neck + Vector2(sin(i * 2.0 + tt) * 20.0, -a * H * 0.25), 12.0 + a * 26.0, Color(0.2, 0.2, 0.22, 0.4 * (1.0 - a)))
+	# the head: fast off the fist, then slow motion up into the lights, spinning, with a trail
+	var ht := minf(after, 0.12) * 1.2 + maxf(0.0, after - 0.12) * 0.3
+	var start := Vector2(fist.x + 4.0, neck.y - hr.size.y * fk * 0.5)
+	var hpos := func(u: float) -> Vector2: return start + Vector2(W * 0.2 * u, -H * 0.8 * u + H * 0.6 * u * u)
+	var hs := hr.size.x * fk * 1.7
+	for i in 7:
+		var pt := maxf(0.0, ht - i * 0.035)
+		ci.draw_circle(hpos.call(pt), hs * 0.3 * (1.0 - i / 7.0), Color(1.0, 0.8, 0.4, 0.15))
+	tv_head(ci, hpos.call(ht), hs, after * 4.5, tt, true)
+	# the impact: a starburst at the chin, sparks, a white flash
+	var f := 1.0 - clampf(after / 0.45, 0.0, 1.0)
+	starburst(ci, start, H * 0.3, f, Color(1.0, 0.75, 0.3))
+	sparks(ci, start, after, 24, 820.0, 4100)
+	ci.draw_rect(Rect2(0, 0, W, H), Color(1, 1, 1, 0.45 * maxf(0.0, f - 0.4)))
 
 
 func draw_dad_win(ci: CanvasItem, W: float, H: float, tt: float) -> void:
@@ -973,8 +972,7 @@ func draw_road(ci: CanvasItem, W: float, H: float, tt: float) -> void:
 	# you, controller in hand, and the robot beside you
 	var s := H / 220.0
 	var you_at := Vector2(W * 0.22, floor_y + H * 0.02)
-	PilotArt.draw_person(ci, you_at, s, you, 1.0, "hold", tt)
-	PilotArt.draw_controller(ci, you_at + Vector2(10 * s, -42 * s), s, str(you.get("controller", "gamepad")), true, tt)
+	PilotArt.draw_person(ci, you_at, s, you, 1.0, "hold", tt)   # "hold" draws the controller in your hands
 	var look: Dictionary = looks["echo_rust"]
 	RobotArt.draw(ci, Vector2(W * 0.34, floor_y + 4), look, {"scale": robot_scale(look, H * 0.36), "facing": 1, "time": tt})
 

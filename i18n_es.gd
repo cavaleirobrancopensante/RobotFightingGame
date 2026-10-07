@@ -1845,6 +1845,7 @@ const T := {
 	"Contracts ›": "Contratos ›",
 	"The fans are waiting for your post about the fight.": "Los fans esperan tu publicación sobre la pelea.",
 	"Post ›": "Publicar ›",
+	"THE JOB BOARD. Repairs and new parts take hours, and whatever isn't done by the bell goes in as it is. Gus works one job at a time, each mechanic one more.": "EL TABLÓN DE TRABAJOS. Las reparaciones y las piezas nuevas llevan horas, y lo que no esté listo en la campana entra tal cual. Gus hace un trabajo a la vez, cada mecánico uno más.",
 	"Tap MOVES to see your special moves and how to do them.": "Toca GOLPES para ver tus golpes especiales y cómo hacerlos.",
 	"Burned out! Hang on...": "¡Apagón! Aguanta...",
 	"Watch your power! Back off!": "¡Ojo con la energía! ¡Retrocede!",
