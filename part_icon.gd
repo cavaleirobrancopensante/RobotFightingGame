@@ -64,7 +64,7 @@ static func draw_part(ci: CanvasItem, box: Rect2, part: Dictionary, health: floa
 	for s in ["head", "torso", "arm_front", "arm_back", "leg_front", "leg_back"]:
 		parts[s] = {"alive": false}
 	parts[slot] = {"alive": true, "shape": part["shape"], "size": part["size"],
-			"color": Color(part["color"]), "health": health}
+			"color": Color(part["color"]), "health": health, "grade": int(part.get("grade", 3))}
 	var look := {"parts": parts, "trim": trim, "eye": Color(1.0, 0.35, 0.2), "scale": 1.0, "icon": true}
 	var rect := _bounds(look, slot)
 	var sc := minf((size.x - 8.0) / rect.size.x, (size.y - 8.0) / rect.size.y)
@@ -83,7 +83,7 @@ static func draw_part_at(ci: CanvasItem, center: Vector2, span: float, part: Dic
 	var parts := {}
 	for s in ["head", "torso", "arm_front", "arm_back", "leg_front", "leg_back"]:
 		parts[s] = {"alive": false}
-	parts[slot] = {"alive": true, "shape": part["shape"], "size": part["size"], "color": Color(part["color"]), "health": health}
+	parts[slot] = {"alive": true, "shape": part["shape"], "size": part["size"], "color": Color(part["color"]), "health": health, "grade": int(part.get("grade", 3))}
 	var look := {"parts": parts, "trim": trim, "eye": Color(0.25, 0.1, 0.08), "scale": 1.0, "icon": true}
 	var rect := _bounds(look, slot)
 	var sc := span / maxf(rect.size.x, rect.size.y)

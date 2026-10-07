@@ -2,7 +2,7 @@ extends Node
 
 # helper scripts, loaded by path so the game also runs without an editor scan
 ## The game's version, shown on the main menu. Bump it with every change (1.1, 1.2, ...).
-const VERSION := "1.49"
+const VERSION := "1.50"
 const Arena = preload("res://arena.gd")
 const I18n = preload("res://i18n.gd")
 const Catalog = preload("res://catalog.gd")
@@ -3538,7 +3538,8 @@ static func look_from_spec(spec: Dictionary) -> Dictionary:
 			parts[slot] = {"alive": false}
 		else:
 			parts[slot] = {"alive": p["hp"] > 0.0 or slot == "torso", "shape": p["shape"], "size": p["size"],
-					"color": p["color"], "health": clampf(p["hp"] / p["max_hp"], 0.0, 1.0)}
+					"color": p["color"], "health": clampf(p["hp"] / p["max_hp"], 0.0, 1.0),
+					"grade": GameData.grade_of(str(p["id"])) if p.has("id") else 3}
 	return {"parts": parts, "trim": spec["trim"], "eye": spec["eye"], "scale": spec["scale"],
 			"back": spec.get("back", {}), "stickers": spec.get("stickers", {})}
 
@@ -4682,8 +4683,14 @@ func reset_settings() -> void:
 	settings["lang"] = lang
 	save_settings()
 	UI.set_text_level(int(settings["text"]))
+	apply_look()
 	apply_performance()
 	apply_pecking()
+
+
+## Settings > Robot look: the new lit style or the old flat one (only while the restyle is under way).
+func apply_look() -> void:
+	RobotArt.classic = bool(settings.get("classic_look", false))
 
 
 func set_language(lang: String) -> void:
@@ -4730,6 +4737,7 @@ func load_settings() -> void:
 		settings["lang"] = str(settings.get("lang", "en"))
 		settings["text"] = clampi(int(settings.get("text", UI.TEXT_DEFAULT)), 0, UI.TEXT_LEVELS.size() - 1)
 		UI.set_text_level(settings["text"])
+		apply_look()
 		if typeof(settings["layout"]) != TYPE_DICTIONARY:
 			settings["layout"] = {}
 		# settings from before 1.37: team fights now start with every robot on one pad

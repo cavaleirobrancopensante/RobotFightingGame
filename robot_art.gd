@@ -8,6 +8,19 @@ extends RefCounted
 ## Local coordinates: origin = between the feet on the floor, +x = the way the robot faces, -y = up.
 
 const Logos = preload("res://logos.gd")
+const Light = preload("res://light.gd")
+
+## Diagnostic Noir (1.50, see the Art Study): every plate gets two tones (the paint, and a shadow face away
+## from the light), one dark outline, a light edge where the key light hits and a rim on the far side.
+## classic = the old flat look (Settings > Classic look, only while the restyle is under way).
+static var classic := false
+static var _L: Dictionary = {}       # the light set the robot being drawn stands in
+static var _from := -0.55            # where the key light comes from, in the part's own coordinates
+static var _flash := false           # hit flash: plain white, no shading
+static var _grade := 3               # the grade of the part being drawn (its finish)
+const OUTLINE := Color(0.035, 0.035, 0.045)
+## How strong the light edge is by grade: scrap and rust are dull, steel and titanium catch the light.
+const GRADE_EDGE := [0.35, 0.45, 0.6, 0.8, 1.0, 1.0]
 
 # [length, thickness] at size 1.0
 const LEGS := {"rod": [60.0, 11.0], "piston": [62.0, 15.0], "spring": [66.0, 12.0],
@@ -244,6 +257,8 @@ static func draw(ci: CanvasItem, base: Vector2, look: Dictionary, pose: Dictiona
 	var sx: float = pose.get("sx", 1.0)
 	var sy: float = pose.get("sy", 1.0)
 	ci.draw_set_transform(base, rot, Vector2(facing * sc * sx, (0.7 if crouch else 1.0) * sc * sy))
+	_set_light(str(pose.get("light", "neutral" if look.get("icon", false) else "fight")), float(facing))
+	_flash = flash
 	var g := geom(look)
 	var trim: Color = Color.WHITE if flash else look["trim"]
 	var eye: Color = look["eye"] if not pose.get("eye_off", false) else Color(0.12, 0.1, 0.1)
@@ -340,23 +355,30 @@ static func draw_front(ci: CanvasItem, base: Vector2, look: Dictionary, pose: Di
 	var eye: Color = look["eye"]
 	var right := Transform2D(0.0, Vector2(sc, sc), 0.0, base)
 	var left := right * Transform2D(0.0, Vector2(-1.0, 1.0), 0.0, Vector2.ZERO)
+	_set_light(str(pose.get("light", "neutral")), 1.0)
+	_flash = false
+	var lf := _from   # the left side is drawn mirrored, so its light comes from the other way
 	ci.draw_set_transform_matrix(right)
 	_draw_back(ci, look, g, pose, false, trim, t)   # back gear peeks out from behind
 	ci.draw_set_transform_matrix(left)
+	_from = -lf
 	_draw_leg(ci, look, "leg_front", g["hip"], g["L"], "stand", 0.0, false, false, trim)
 	_sticker(ci, look, "leg_front", g["hip"] + Vector2(0, 16), 8.0)
 	ci.draw_set_transform_matrix(right)
+	_from = lf
 	_draw_leg(ci, look, "leg_back", g["hip"], g["L"], "stand", 0.0, false, false, trim)
 	_sticker(ci, look, "leg_back", g["hip"] + Vector2(0, 16), 8.0)
 	_draw_torso(ci, look, g, false, trim, eye, t, true)
 	_sticker(ci, look, "torso", (g["torso"] as Rect2).get_center() + Vector2(0, g["th"] * 0.14), minf(g["tw"], g["th"]) * 0.2)
 	for side in [["arm_front", left], ["arm_back", right]]:
 		ci.draw_set_transform_matrix(side[1])
+		_from = -lf if side[0] == "arm_front" else lf
 		if look["parts"].has(side[0] + "2") and look["parts"][side[0] + "2"].has("shape"):
 			_draw_arm(ci, look, side[0] + "2", g["shoulder2"], "open", false, false, trim, t)
 		_draw_arm(ci, look, side[0], g["shoulder"], "open", false, false, trim, t)
 		_sticker(ci, look, side[0], g["shoulder"] + Vector2(4, 4), 8.0)
 	ci.draw_set_transform_matrix(right)
+	_from = lf
 	if look["parts"].has("head2") and look["parts"]["head2"].has("shape"):
 		_draw_head(ci, look, g, false, trim, eye, t, "head2", true)
 	_draw_head(ci, look, g, false, trim, eye, t, "head", true)
@@ -423,6 +445,173 @@ static func _stump(ci: CanvasItem, at: Vector2, t: float) -> void:
 	ci.draw_circle(at, 6.0, Color(0.15, 0.15, 0.15))
 	if fmod(t * 7.0, 1.0) < 0.5:
 		ci.draw_circle(at + Vector2(4, 2), 3.0, Color(1.0, 0.8, 0.3))
+
+
+# ---------------------------------------------------------------- Diagnostic Noir: painting tools
+
+## Light the robot about to be drawn: a light set by name, mirrored for a robot facing left.
+static func _set_light(name: String, facing: float) -> void:
+	_L = Light.get_set(name)
+	_from = float(_L.get("from", -0.55)) * facing
+
+
+static func _lit() -> bool:
+	return not classic and not _flash and not _L.is_empty()
+
+
+static func _shadow_col(c: Color) -> Color:
+	return c.darkened(float(_L.get("amb", 0.3)))
+
+
+static func _key_col(alpha: float = 1.0) -> Color:
+	var k: Color = _L.get("key", Color(1.0, 0.96, 0.88))
+	return Color(k.r, k.g, k.b, alpha * float(GRADE_EDGE[clampi(_grade, 0, 5)]))
+
+
+## Which way the key light is, from a part (local, unit length).
+static func _toward() -> Vector2:
+	return Vector2(_from * 0.7, -1.0).normalized()
+
+
+static func _bounds_of(pts: PackedVector2Array) -> Rect2:
+	var r := Rect2(pts[0], Vector2.ZERO)
+	for q in pts:
+		r = r.expand(q)
+	return r
+
+
+## A rectangle with its corners cut off (machined plates).
+static func _chamfer(r: Rect2, k: float = -1.0) -> PackedVector2Array:
+	if k < 0.0:
+		k = minf(r.size.x, r.size.y) * 0.14
+	k = minf(k, minf(r.size.x, r.size.y) * 0.45)
+	var x0 := r.position.x
+	var y0 := r.position.y
+	var x1 := r.end.x
+	var y1 := r.end.y
+	return PackedVector2Array([Vector2(x0 + k, y0), Vector2(x1 - k, y0), Vector2(x1, y0 + k), Vector2(x1, y1 - k),
+			Vector2(x1 - k, y1), Vector2(x0 + k, y1), Vector2(x0, y1 - k), Vector2(x0, y0 + k)])
+
+
+## A flat-sided plate: the paint, a shadow face on the side away from the light, one dark outline,
+## a light edge on the edges that face up, a rim on the edges that face away.
+static func _plate(ci: CanvasItem, pts: PackedVector2Array, c: Color) -> void:
+	ci.draw_colored_polygon(pts, c)
+	if not _lit() or pts.size() < 3:
+		return
+	var bb := _bounds_of(pts)
+	var cut: PackedVector2Array
+	if absf(_from) < 0.2:
+		var bh := bb.size.y * 0.3   # light from above: the shadow is the bottom of the plate
+		cut = PackedVector2Array([Vector2(bb.position.x - 2, bb.end.y - bh), Vector2(bb.end.x + 2, bb.end.y - bh), Vector2(bb.end.x + 2, bb.end.y + 2), Vector2(bb.position.x - 2, bb.end.y + 2)])
+	else:
+		var sw := bb.size.x * 0.34
+		var x := bb.position.x - 2.0 if _from > 0.0 else bb.end.x - sw
+		cut = PackedVector2Array([Vector2(x, bb.position.y - 2), Vector2(x + sw + 2, bb.position.y - 2), Vector2(x + sw + 2, bb.end.y + 2), Vector2(x, bb.end.y + 2)])
+	var shade := _shadow_col(c)
+	for poly in Geometry2D.intersect_polygons(pts, cut):
+		if (poly as PackedVector2Array).size() >= 3:
+			ci.draw_colored_polygon(poly, shade)
+	var closed := pts.duplicate()
+	closed.append(pts[0])
+	ci.draw_polyline(closed, OUTLINE, 2.5)
+	var cen := bb.get_center()
+	var rim: Color = _L.get("rim", Color(0, 0, 0, 0))
+	var n_pts := pts.size()
+	for i in n_pts:
+		var a: Vector2 = pts[i]
+		var b: Vector2 = pts[(i + 1) % n_pts]
+		var d := b - a
+		if d.length() < 5.0:
+			continue
+		var n := d.orthogonal().normalized()
+		if n.dot((a + b) * 0.5 - cen) < 0.0:
+			n = -n
+		var a2 := a.lerp(b, 0.1) - n * 2.6
+		var b2 := a.lerp(b, 0.9) - n * 2.6
+		if n.y < -0.5:
+			ci.draw_line(a2, b2, _key_col(0.95), 2.2 if _grade < 5 else 2.8)
+		elif rim.a > 0.0 and absf(_from) >= 0.2 and n.x * _from < -0.6:
+			ci.draw_line(a2, b2, rim, 1.6)
+	if _grade >= 5 and bb.size.x > 20.0:
+		# titanium: a brushed sheen across the plate
+		ci.draw_line(Vector2(bb.position.x + bb.size.x * 0.2, bb.position.y + bb.size.y * 0.55), Vector2(bb.position.x + bb.size.x * 0.55, bb.position.y + bb.size.y * 0.3), Color(1, 1, 1, 0.22), 2.0)
+
+
+## A round part (orbs, domes, barrels seen end on): a crescent of shadow away from the light, an arc of light.
+static func _round(ci: CanvasItem, cen: Vector2, r: float, c: Color) -> void:
+	if not _lit():
+		ci.draw_circle(cen, r, c)
+		return
+	ci.draw_circle(cen, r + 1.25, OUTLINE)
+	ci.draw_circle(cen, r, _shadow_col(c))
+	var tw := _toward()
+	ci.draw_circle(cen + tw * r * 0.2, r * 0.8, c)
+	if r < 5.0:
+		return
+	var ang := tw.angle()
+	ci.draw_arc(cen, r - 2.4, ang - 0.75, ang + 0.75, 10, _key_col(0.95), 2.0)
+	var rim: Color = _L.get("rim", Color(0, 0, 0, 0))
+	if rim.a > 0.0 and absf(_from) >= 0.2:
+		ci.draw_arc(cen, r - 2.0, ang + PI - 0.55, ang + PI + 0.55, 8, rim, 1.5)
+
+
+## An arm or leg segment: a dark outline, the paint, a shadow down the side away from the light,
+## a thin light edge down the other side.
+static func _limb(ci: CanvasItem, a: Vector2, b: Vector2, c: Color, w: float) -> void:
+	if not _lit():
+		ci.draw_line(a, b, c, w)
+		return
+	ci.draw_line(a, b, OUTLINE, w + 3.0)
+	ci.draw_line(a, b, c, w)
+	var d := b - a
+	if d.length() < 1.0 or w < 4.0:
+		return
+	var p := d.orthogonal().normalized()
+	if p.dot(_toward()) > 0.0:
+		p = -p   # p points away from the light
+	ci.draw_line(a + p * w * 0.25, b + p * w * 0.25, _shadow_col(c), w * 0.5)
+	ci.draw_line(a.lerp(b, 0.12) - p * w * 0.3, a.lerp(b, 0.88) - p * w * 0.3, _key_col(0.85), maxf(1.4, w * 0.13))
+
+
+## A joint, a knuckle or a bolt head: outlined, with a speck of light.
+static func _joint(ci: CanvasItem, at: Vector2, r: float, c: Color) -> void:
+	if not _lit():
+		ci.draw_circle(at, r, c)
+		return
+	ci.draw_circle(at, r + 1.2, OUTLINE)
+	ci.draw_circle(at, r, c)
+	if r >= 4.0:
+		ci.draw_circle(at + _toward() * r * 0.45, r * 0.22, _key_col(0.8))
+
+
+## Four bolts in the corners of a plate.
+static func _bolts(ci: CanvasItem, r: Rect2) -> void:
+	if not _lit() or r.size.x < 30.0 or r.size.y < 30.0:
+		return
+	var k := minf(r.size.x, r.size.y) * 0.16
+	for q in [Vector2(r.position.x + k, r.position.y + k), Vector2(r.end.x - k, r.position.y + k),
+			Vector2(r.position.x + k, r.end.y - k), Vector2(r.end.x - k, r.end.y - k)]:
+		ci.draw_circle(q, 2.4, OUTLINE)
+		ci.draw_circle(q, 1.6, Color(0.62, 0.64, 0.7))
+
+
+## Scrap and junk grade: a few rust spots (always in the same places on the same part).
+static func _rust(ci: CanvasItem, r: Rect2, seed: int) -> void:
+	if not _lit() or _grade > 1:
+		return
+	for i in 3:
+		var hx := float(absi(hash(seed * 31 + i * 7)) % 1000) / 1000.0
+		var hy := float(absi(hash(seed * 17 + i * 13)) % 1000) / 1000.0
+		ci.draw_circle(r.position + Vector2(r.size.x * (0.2 + hx * 0.6), r.size.y * (0.2 + hy * 0.6)), 2.0 + hx * 2.0, Color(0.55, 0.28, 0.12, 0.7))
+
+
+## A light that glows (eyes, cores, screens): a soft halo behind it. No blur, two see-through circles.
+static func _glow(ci: CanvasItem, at: Vector2, r: float, col: Color) -> void:
+	if not _lit():
+		return
+	ci.draw_circle(at, r * 2.2, Color(col.r, col.g, col.b, 0.12))
+	ci.draw_circle(at, r * 1.5, Color(col.r, col.g, col.b, 0.2))
 
 
 # ---- arms
@@ -588,20 +777,21 @@ static func _draw_arm(ci: CanvasItem, look: Dictionary, slot: String, s: Vector2
 	var tc := trim.darkened(0.35) if back else trim
 	var dir := (h - e).normalized()
 	var perp := dir.orthogonal()
+	_grade = int(p.get("grade", 3))
 
 	if p["shape"] == "bulky":
-		ci.draw_circle(s, th * 0.8, c.darkened(0.1))
-	ci.draw_line(s, e, c, th)
-	ci.draw_line(e, h, c, th * 0.9)
-	ci.draw_circle(s, th * 0.55, c.darkened(0.25))
-	ci.draw_circle(e, th * 0.5, c.darkened(0.25))
+		_round(ci, s, th * 0.8, c.darkened(0.1))
+	_limb(ci, s, e, c, th)
+	_limb(ci, e, h, c, th * 0.9)
+	_joint(ci, s, th * 0.55, c.darkened(0.25))
+	_joint(ci, e, th * 0.5, c.darkened(0.25))
 	match p["shape"]:
 		"piston":
 			ci.draw_line(e + dir * 4.0, e.lerp(h, 0.6), c.darkened(0.3), th * 1.4)
 			ci.draw_line(e.lerp(h, 0.6), h, tc, th * 0.45)
-			ci.draw_circle(h, fr, tc)
+			_round(ci, h, fr, tc)
 		"spike":
-			ci.draw_circle(h, fr, c.darkened(0.15))
+			_round(ci, h, fr, c.darkened(0.15))
 			ci.draw_colored_polygon(PackedVector2Array([h + dir * (fr + 16.0), h + perp * fr * 0.6, h - perp * fr * 0.6]), tc)
 			ci.draw_colored_polygon(PackedVector2Array([h + perp * (fr + 8.0), h + dir * fr * 0.5, h - dir * fr * 0.5]), tc)
 		"claw":
@@ -616,7 +806,7 @@ static func _draw_arm(ci: CanvasItem, look: Dictionary, slot: String, s: Vector2
 			var cen := h + dir * 10.0
 			var a := dir * 16.0 * sz
 			var b := perp * 14.0 * sz
-			ci.draw_colored_polygon(PackedVector2Array([cen - a - b, cen + a - b, cen + a + b, cen - a + b]), tc)
+			_plate(ci, PackedVector2Array([cen - a - b, cen + a - b, cen + a + b, cen - a + b]), tc)
 			ci.draw_line(cen - b * 0.9, cen + b * 0.9, c.darkened(0.3), 3.0)
 		"drill":
 			var cone := PackedVector2Array([h + perp * 11.0 * sz, h + dir * 34.0 * sz, h - perp * 11.0 * sz])
@@ -628,7 +818,7 @@ static func _draw_arm(ci: CanvasItem, look: Dictionary, slot: String, s: Vector2
 				var w := 11.0 * sz * (1.0 - f)
 				ci.draw_line(q + perp * w, q - perp * w + dir * 4.0, c.darkened(0.4), 2.0)
 		"bulky":
-			ci.draw_circle(h, fr, tc)
+			_round(ci, h, fr, tc)
 			ci.draw_circle(h + dir * 3.0, fr * 0.55, tc.darkened(0.15))
 		"blade":
 			var tip := h + dir * 44.0 * sz
@@ -679,7 +869,7 @@ static func _draw_arm(ci: CanvasItem, look: Dictionary, slot: String, s: Vector2
 				ci.draw_colored_polygon(PackedVector2Array([cen + o * rr, cen + o.rotated(0.35) * (rr + 6.0), cen + o.rotated(0.5) * rr]), tc.darkened(0.2))
 			ci.draw_circle(cen, rr * 0.3, c.darkened(0.4))
 		_:
-			ci.draw_circle(h, fr, tc)
+			_round(ci, h, fr, tc)
 	_damage_marks(ci, s, h, p.get("health", 1.0), t)
 
 
@@ -760,6 +950,7 @@ static func _draw_leg(ci: CanvasItem, look: Dictionary, slot: String, hip: Vecto
 	var dir := (foot - hip).normalized()
 	var perp := dir.orthogonal()
 	var knee := hip.lerp(foot, 0.5) - perp * 6.0
+	_grade = int(p.get("grade", 3))
 	match p["shape"]:
 		"spring":
 			ci.draw_line(hip, foot, c.darkened(0.3), 3.0)
@@ -772,42 +963,42 @@ static func _draw_leg(ci: CanvasItem, look: Dictionary, slot: String, hip: Vecto
 		"reverse":
 			var k1 := hip.lerp(foot, 0.35) - perp * 14.0
 			var k2 := hip.lerp(foot, 0.75) + perp * 14.0
-			ci.draw_line(hip, k1, c, th * 1.2)
-			ci.draw_line(k1, k2, c, th * 0.9)
-			ci.draw_line(k2, foot, c, th * 0.7)
-			ci.draw_circle(k1, th * 0.6, c.darkened(0.25))
-			ci.draw_circle(k2, th * 0.45, c.darkened(0.25))
+			_limb(ci, hip, k1, c, th * 1.2)
+			_limb(ci, k1, k2, c, th * 0.9)
+			_limb(ci, k2, foot, c, th * 0.7)
+			_joint(ci, k1, th * 0.6, c.darkened(0.25))
+			_joint(ci, k2, th * 0.45, c.darkened(0.25))
 		"pillar":
-			ci.draw_line(hip, foot, c, th)
+			_limb(ci, hip, foot, c, th)
 			ci.draw_line(hip.lerp(foot, 0.3) - perp * th * 0.5, hip.lerp(foot, 0.3) + perp * th * 0.5, c.darkened(0.3), 3.0)
 			ci.draw_line(hip.lerp(foot, 0.7) - perp * th * 0.5, hip.lerp(foot, 0.7) + perp * th * 0.5, c.darkened(0.3), 3.0)
 		"piston":
-			ci.draw_line(hip, knee, c, th * 1.2)
-			ci.draw_line(knee, foot, c.darkened(0.2), th * 0.6)
-			ci.draw_line(knee, knee.lerp(foot, 0.6), c, th)
-			ci.draw_circle(knee, th * 0.55, c.darkened(0.3))
+			_limb(ci, hip, knee, c, th * 1.2)
+			_limb(ci, knee, foot, c.darkened(0.2), th * 0.6)
+			_limb(ci, knee, knee.lerp(foot, 0.6), c, th)
+			_joint(ci, knee, th * 0.55, c.darkened(0.3))
 		"thick":
-			ci.draw_line(hip, knee, c, th)
-			ci.draw_line(knee, foot, c, th * 0.9)
-			ci.draw_circle(knee, th * 0.6, tc)
+			_limb(ci, hip, knee, c, th)
+			_limb(ci, knee, foot, c, th * 0.9)
+			_joint(ci, knee, th * 0.6, tc)
 		"blade":
-			ci.draw_line(hip, knee, c, th * 1.2)
+			_limb(ci, hip, knee, c, th * 1.2)
 			var pts := PackedVector2Array()
 			for k in 8:
 				var f := k / 7.0
 				pts.append(knee.lerp(foot, f) + perp * sin(f * PI) * 14.0)
 			ci.draw_polyline(pts, tc.darkened(0.15), 6.0)
 		"hover":
-			ci.draw_line(hip, foot + Vector2(0, -14), c, th)
-			ci.draw_rect(Rect2(foot.x - 12.0, foot.y - 20.0, 24.0, 10.0), c.darkened(0.3))
+			_limb(ci, hip, foot + Vector2(0, -14), c, th)
+			_plate(ci, _chamfer(Rect2(foot.x - 12.0, foot.y - 20.0, 24.0, 10.0), 3.0), c.darkened(0.3))
 		"spider":
 			var up := hip + Vector2(16.0, -22.0) if pose == "stand" else hip.lerp(foot, 0.4) - perp * 20.0
-			ci.draw_line(hip, up, c, th)
-			ci.draw_line(up, foot, c, th * 0.8)
-			ci.draw_circle(up, th * 0.6, c.darkened(0.3))
+			_limb(ci, hip, up, c, th)
+			_limb(ci, up, foot, c, th * 0.8)
+			_joint(ci, up, th * 0.6, c.darkened(0.3))
 		"pogo":
 			var mid := hip.lerp(foot, 0.45)
-			ci.draw_line(hip, mid, c, th * 1.3)
+			_limb(ci, hip, mid, c, th * 1.3)
 			var pts := PackedVector2Array()
 			for k in 9:
 				var f := k / 8.0
@@ -815,23 +1006,24 @@ static func _draw_leg(ci: CanvasItem, look: Dictionary, slot: String, hip: Vecto
 			ci.draw_polyline(pts, tc, 3.0)
 			ci.draw_line(mid, foot, c.darkened(0.3), 3.0)
 		"wheel":
-			ci.draw_line(hip, knee, c, th)
-			ci.draw_line(knee, foot + Vector2(0, -12), c, th * 0.8)
+			_limb(ci, hip, knee, c, th)
+			_limb(ci, knee, foot + Vector2(0, -12), c, th * 0.8)
 		"tread":
-			ci.draw_line(hip, foot + Vector2(0, -10), c, th)
+			_limb(ci, hip, foot + Vector2(0, -10), c, th)
 		_:
-			ci.draw_line(hip, knee, c, th)
-			ci.draw_line(knee, foot, c, th * 0.85)
-			ci.draw_circle(knee, th * 0.5, c.darkened(0.25))
-	ci.draw_circle(hip, th * 0.5, c.darkened(0.3))
+			_limb(ci, hip, knee, c, th)
+			_limb(ci, knee, foot, c, th * 0.85)
+			_joint(ci, knee, th * 0.5, c.darkened(0.25))
+	_joint(ci, hip, th * 0.5, c.darkened(0.3))
 	# foot
 	var fw := 26.0 * maxf(sz, 0.8)
 	if p["shape"] == "pillar":
 		fw = 36.0
 	if p["shape"] == "wheel":
 		var wc := foot + Vector2(0, -12)
+		ci.draw_circle(wc, 14.0 if _lit() else 13.0, OUTLINE if _lit() else Color(0.12, 0.12, 0.14))
 		ci.draw_circle(wc, 13.0, Color(0.12, 0.12, 0.14))
-		ci.draw_circle(wc, 6.0, tc)
+		_round(ci, wc, 6.0, tc)
 		var a := -foot.x * 0.15
 		ci.draw_line(wc + Vector2(cos(a), sin(a)) * 11.0, wc - Vector2(cos(a), sin(a)) * 11.0, tc.darkened(0.3), 2.0)
 	elif p["shape"] == "tread":
@@ -852,11 +1044,11 @@ static func _draw_leg(ci: CanvasItem, look: Dictionary, slot: String, hip: Vecto
 	elif p["shape"] == "blade":
 		ci.draw_line(foot + Vector2(-4, 0), foot + Vector2(18, 0), tc, 4.0)
 	elif pose == "kick" or pose == "sweep" or pose == "high_kick" or pose == "fly_kick":
-		ci.draw_rect(Rect2(foot.x - 2.0, foot.y - 12.0, 12.0, 22.0), tc)
+		_plate(ci, _chamfer(Rect2(foot.x - 2.0, foot.y - 12.0, 12.0, 22.0), 3.0), tc)
 	elif p["shape"] == "reverse":
-		ci.draw_colored_polygon(PackedVector2Array([foot + Vector2(-8, 0), foot + Vector2(22, 0), foot + Vector2(-2, -10)]), tc)
+		_plate(ci, PackedVector2Array([foot + Vector2(-8, 0), foot + Vector2(22, 0), foot + Vector2(-2, -10)]), tc)
 	else:
-		ci.draw_rect(Rect2(foot.x - fw * 0.3, -8.0, fw, 8.0), tc)
+		_plate(ci, _chamfer(Rect2(foot.x - fw * 0.3, -8.0, fw, 8.0), 3.0), tc)
 	_damage_marks(ci, hip, foot, p.get("health", 1.0), 0.0)
 
 
@@ -884,31 +1076,34 @@ static func _draw_torso(ci: CanvasItem, look: Dictionary, g: Dictionary, flash: 
 	var y1 := r.end.y
 	var w := r.size.x
 	var chest := Vector2(r.get_center().x + (0.0 if front else w * 0.1), y0 + r.size.y * 0.38)
+	_grade = int(p.get("grade", 3))
+	var plate := _chamfer(r)   # machined plates: the corners cut off
 	match p["shape"]:
 		"barrel":
-			ci.draw_colored_polygon(_rounded(r, w * 0.3), c)
+			_plate(ci, _rounded(r, w * 0.3), c)
 			ci.draw_line(Vector2(x0 + 4, y0 + r.size.y * 0.25), Vector2(x1 - 4, y0 + r.size.y * 0.25), trim, 4.0)
 			ci.draw_line(Vector2(x0 + 4, y0 + r.size.y * 0.75), Vector2(x1 - 4, y0 + r.size.y * 0.75), trim, 4.0)
 		"vee":
-			ci.draw_colored_polygon(PackedVector2Array([Vector2(x0, y0), Vector2(x1, y0), Vector2(x1 - w * 0.2, y1), Vector2(x0 + w * 0.2, y1)]), c)
-			ci.draw_rect(Rect2(x0 - 4, y0 - 2, w + 8, 12), trim)
+			_plate(ci, PackedVector2Array([Vector2(x0, y0), Vector2(x1, y0), Vector2(x1 - w * 0.2, y1), Vector2(x0 + w * 0.2, y1)]), c)
+			_plate(ci, _chamfer(Rect2(x0 - 4, y0 - 2, w + 8, 12), 3.0), trim)
 			ci.draw_line(Vector2(x0 + w * 0.2, y1 - 6), Vector2(x1 - w * 0.2, y1 - 6), trim, 6.0)
 		"tank":
-			ci.draw_rect(r, c)
-			ci.draw_rect(Rect2(x0 - 6, y0 - 4, w + 12, 16), trim)
+			_plate(ci, plate, c)
+			_plate(ci, _chamfer(Rect2(x0 - 6, y0 - 4, w + 12, 16), 3.0), trim)
 			for row in 3:
 				for col in 4:
 					ci.draw_circle(Vector2(x0 + 10 + col * (w - 20) / 3.0, y0 + 24 + row * (r.size.y - 34) / 2.0), 2.5, c.darkened(0.4))
 			ci.draw_line(Vector2(x0, y0 + r.size.y * 0.55), Vector2(x1, y0 + r.size.y * 0.55), c.darkened(0.3), 3.0)
 		"crate":
-			ci.draw_rect(r, c)
+			_plate(ci, plate, c)
 			ci.draw_rect(r, c.darkened(0.4), false, 3.0)
 			ci.draw_line(r.position, r.end, c.darkened(0.3), 4.0)
 			ci.draw_line(Vector2(x1, y0), Vector2(x0, y1), c.darkened(0.3), 4.0)
-			ci.draw_rect(Rect2(x0 + w * 0.3, y0 + 8, w * 0.4, 10), trim)
+			_plate(ci, _chamfer(Rect2(x0 + w * 0.3, y0 + 8, w * 0.4, 10), 3.0), trim)
 		"furnace":
-			ci.draw_rect(r, c)
-			ci.draw_rect(Rect2(x0 - 4, y0 - 2, w + 8, 10), trim)
+			_plate(ci, plate, c)
+			_bolts(ci, r)
+			_plate(ci, _chamfer(Rect2(x0 - 4, y0 - 2, w + 8, 10), 3.0), trim)
 			var grill := Rect2(x0 + w * 0.2, y0 + r.size.y * 0.45, w * 0.6, r.size.y * 0.35)
 			ci.draw_rect(grill, Color(0.08, 0.05, 0.03))
 			var fire := 0.6 + 0.4 * sin(t * 15.0)
@@ -918,38 +1113,40 @@ static func _draw_torso(ci: CanvasItem, look: Dictionary, g: Dictionary, flash: 
 			ci.draw_rect(Rect2(x1 - 14, y0 - 22, 10, 22), c.darkened(0.3))   # chimney
 		"orb":
 			var oc := r.get_center()
-			ci.draw_circle(oc, minf(w, r.size.y) * 0.5, c)
+			_round(ci, oc, minf(w, r.size.y) * 0.5, c)
 			ci.draw_arc(oc, minf(w, r.size.y) * 0.5, PI * 1.1, PI * 1.9, 14, trim, 5.0)
 			ci.draw_line(Vector2(oc.x - w * 0.45, oc.y), Vector2(oc.x + w * 0.45, oc.y), c.darkened(0.3), 3.0)
 		"yoke", "quad", "monster":
-			ci.draw_rect(r, c)
-			ci.draw_rect(Rect2(x0 - 8, y0 - 4, w + 16, 16), trim)
-			ci.draw_rect(Rect2(x0 + 6, y1 - 16, w - 12, 12), trim.darkened(0.2))
+			_plate(ci, plate, c)
+			_bolts(ci, r)
+			_plate(ci, _chamfer(Rect2(x0 - 8, y0 - 4, w + 16, 16), 3.0), trim)
+			_plate(ci, _chamfer(Rect2(x0 + 6, y1 - 16, w - 12, 12), 3.0), trim.darkened(0.2))
 			ci.draw_rect(Rect2(x0 + w * 0.3, y0 + 20, w * 0.4, r.size.y * 0.45), c.darkened(0.25))
 			if p["shape"] != "yoke":
-				ci.draw_rect(Rect2(x0 - 6, y0 + r.size.y * 0.5, w + 12, 10), trim.darkened(0.1))   # second shoulder bar
+				_plate(ci, _chamfer(Rect2(x0 - 6, y0 + r.size.y * 0.5, w + 12, 10), 3.0), trim.darkened(0.1))   # second shoulder bar
 			if p["shape"] == "monster":
 				for k in 4:
 					ci.draw_colored_polygon(PackedVector2Array([Vector2(x0 + 8 + k * (w - 16) / 3.0 - 6, y0 - 4), Vector2(x0 + 8 + k * (w - 16) / 3.0, y0 - 18), Vector2(x0 + 8 + k * (w - 16) / 3.0 + 6, y0 - 4)]), trim)
 		"ribcage":
-			ci.draw_rect(Rect2(x0 + w * 0.42, y0, w * 0.16, r.size.y), c.darkened(0.2))
+			_plate(ci, _chamfer(Rect2(x0 + w * 0.42, y0, w * 0.16, r.size.y), 3.0), c.darkened(0.2))
 			for k in 5:
 				var y := y0 + 8 + k * (r.size.y - 16) / 4.0
-				ci.draw_line(Vector2(x0, y), Vector2(x1, y), c, 7.0)
-			ci.draw_rect(Rect2(x0 - 4, y0 - 2, w + 8, 10), trim)
+				_limb(ci, Vector2(x0, y), Vector2(x1, y), c, 7.0)
+			_plate(ci, _chamfer(Rect2(x0 - 4, y0 - 2, w + 8, 10), 3.0), trim)
 		"hex":
 			var hc := r.get_center()
 			var hp_pts := PackedVector2Array()
 			for k in 6:
 				var a := PI / 6.0 + k * TAU / 6.0
 				hp_pts.append(hc + Vector2(cos(a) * w * 0.55, sin(a) * r.size.y * 0.55))
-			ci.draw_colored_polygon(hp_pts, c)
+			_plate(ci, hp_pts, c)
 			hp_pts.append(hp_pts[0])
 			ci.draw_polyline(hp_pts, trim, 4.0)
 			ci.draw_line(hc - Vector2(w * 0.3, 0), hc + Vector2(w * 0.3, 0), c.darkened(0.35), 3.0)
 		"cannon":
-			ci.draw_rect(r, c)
-			ci.draw_rect(Rect2(x0 - 4, y0 - 2, w + 8, 12), trim)
+			_plate(ci, plate, c)
+			_bolts(ci, r)
+			_plate(ci, _chamfer(Rect2(x0 - 4, y0 - 2, w + 8, 12), 3.0), trim)
 			if front:
 				# the cannon's muzzle, looking straight at you
 				var m := Vector2(r.get_center().x, y0 + r.size.y * 0.66)
@@ -962,24 +1159,28 @@ static func _draw_torso(ci: CanvasItem, look: Dictionary, g: Dictionary, flash: 
 				ci.draw_circle(mouth + Vector2(16, 0), 10.0, Color(0.08, 0.08, 0.08))
 				ci.draw_arc(mouth + Vector2(16, 0), 10.0, 0, TAU, 16, trim, 3.0)
 		"slim":
-			ci.draw_rect(r, c)
+			_plate(ci, plate, c)
 			ci.draw_line(Vector2(x0, y1 - 10), Vector2(x1, y0 + 20), trim, 5.0)
-			ci.draw_rect(Rect2(x0 - 3, y0, w + 6, 8), trim)
+			_plate(ci, _chamfer(Rect2(x0 - 3, y0, w + 6, 8), 3.0), trim)
 		"core":
-			ci.draw_rect(r, c)
-			ci.draw_rect(Rect2(x0 - 4, y0 - 2, w + 8, 12), trim)
-			ci.draw_rect(Rect2(x0, y1 - 12, w, 10), trim)
+			_plate(ci, plate, c)
+			_plate(ci, _chamfer(Rect2(x0 - 4, y0 - 2, w + 8, 12), 3.0), trim)
+			_plate(ci, _chamfer(Rect2(x0, y1 - 12, w, 10), 3.0), trim)
 			var pulse := 0.85 + 0.15 * sin(t * 4.0)
 			ci.draw_circle(chest + Vector2(0, 6), w * 0.27, c.darkened(0.45))
+			_glow(ci, chest + Vector2(0, 6), w * 0.2, eye)
 			ci.draw_circle(chest + Vector2(0, 6), w * 0.2 * pulse, eye)
 			ci.draw_circle(chest + Vector2(0, 6), w * 0.09, Color(1, 1, 1, 0.8))
 		_:
-			ci.draw_rect(r, c)
-			ci.draw_rect(Rect2(x0 - 4, y0 - 2, w + 8, 12), trim)
-			ci.draw_rect(Rect2(x0, y1 - 14, w, 10), trim)
+			_plate(ci, plate, c)
+			_bolts(ci, r)
+			_plate(ci, _chamfer(Rect2(x0 - 4, y0 - 2, w + 8, 12), 3.0), trim)
+			_plate(ci, _chamfer(Rect2(x0, y1 - 14, w, 10), 3.0), trim)
 	if p["shape"] != "core":
 		ci.draw_circle(chest, 9.0, eye.darkened(0.45))
+		_glow(ci, chest, 6.0, eye)
 		ci.draw_circle(chest, 6.0, eye)
+	_rust(ci, r, hash(str(p.get("shape", ""))))
 	# damage
 	var hp: float = p.get("health", 1.0)
 	if hp < 0.7:
@@ -1004,11 +1205,13 @@ static func _draw_head(ci: CanvasItem, look: Dictionary, g: Dictionary, flash: b
 	var w := r.size.x
 	var h := r.size.y
 	var cen := r.get_center()
+	_grade = int(p.get("grade", 3))
+	var plate := _chamfer(r, minf(w, h) * 0.12)
 	if not look.get("icon", false):
 		ci.draw_rect(Rect2(r.get_center().x - 6.0, g["top"] - 8.0, 12, 10), c.darkened(0.35))   # neck
 	match p["shape"]:
 		"bucket":
-			ci.draw_colored_polygon(PackedVector2Array([Vector2(x0 + 5, y0), Vector2(x0 + w - 5, y0), Vector2(x0 + w + 2, y0 + h), Vector2(x0 - 2, y0 + h)]), c)
+			_plate(ci, PackedVector2Array([Vector2(x0 + 5, y0), Vector2(x0 + w - 5, y0), Vector2(x0 + w + 2, y0 + h), Vector2(x0 - 2, y0 + h)]), c)
 			ci.draw_arc(Vector2(cen.x, y0), w * 0.35, PI, TAU, 10, trim, 2.0)
 			var bx := -w * 0.21 if front else 0.0
 			ci.draw_circle(Vector2(cen.x + w * 0.1 + bx, y0 + h * 0.45), 3.5, eye)
@@ -1020,29 +1223,29 @@ static func _draw_head(ci: CanvasItem, look: Dictionary, g: Dictionary, flash: b
 				pts.append(Vector2(cen.x, y0 + h * 0.6) + Vector2(cos(a) * w * 0.5, sin(a) * h * 0.6))
 			pts.append(Vector2(x0 + w, y0 + h))
 			pts.append(Vector2(x0, y0 + h))
-			ci.draw_colored_polygon(pts, c)
+			_plate(ci, pts, c)
 			ci.draw_rect(Rect2(cen.x - (w * 0.3 if front else w * 0.1), y0 + h * 0.5, w * 0.6 if front else w * 0.55, 6), eye)
 			ci.draw_circle(Vector2(cen.x - w * 0.15, y0 + h * 0.25), 4.0, Color(1, 1, 1, 0.35))
 		"cyclops":
 			var rad := minf(w, h) * 0.5
-			ci.draw_circle(cen, rad, c)
+			_round(ci, cen, rad, c)
 			var cx := 0.0 if front else 1.0
 			ci.draw_circle(cen + Vector2(rad * 0.25 * cx, 0), rad * 0.55, trim)
 			ci.draw_circle(cen + Vector2(rad * 0.3 * cx, 0), rad * 0.42, eye)
 			ci.draw_circle(cen + Vector2(rad * 0.4 * cx, 0), rad * 0.15, Color(0.05, 0.05, 0.05))
 		"visor":
-			ci.draw_rect(r, c)
+			_plate(ci, plate, c)
 			ci.draw_rect(Rect2(x0 + 2, y0 + h * 0.35, w - 2, h * 0.3), eye)
 			for k in 3:
 				ci.draw_line(Vector2(x0 + 5 + k * 5, y0 + h * 0.75), Vector2(x0 + 5 + k * 5, y0 + h - 3), c.darkened(0.4), 2.0)
 		"horned":
-			ci.draw_rect(r, c)
+			_plate(ci, plate, c)
 			ci.draw_colored_polygon(PackedVector2Array([Vector2(x0, y0 + 4), Vector2(x0 + 10, y0), Vector2(x0 - 8, y0 - 18)]), trim)
 			ci.draw_colored_polygon(PackedVector2Array([Vector2(x0 + w, y0 + 4), Vector2(x0 + w - 10, y0), Vector2(x0 + w + 8, y0 - 18)]), trim)
 			ci.draw_rect(Rect2(cen.x - (w * 0.25 if front else 2.0), y0 + h * 0.38, w * 0.5 if front else w * 0.45, 6), eye)
 		"skull":
-			ci.draw_rect(Rect2(x0, y0, w, h * 0.62), c)
-			ci.draw_rect(Rect2(x0 + 2, y0 + h * 0.68, w - 2, h * 0.32), c.darkened(0.15))
+			_plate(ci, _chamfer(Rect2(x0, y0, w, h * 0.62)), c)
+			_plate(ci, _chamfer(Rect2(x0 + 2, y0 + h * 0.68, w - 2, h * 0.32), 3.0), c.darkened(0.15))
 			for k in 5:
 				var tx := x0 + 6 + k * (w - 10) / 4.0
 				ci.draw_colored_polygon(PackedVector2Array([Vector2(tx - 3, y0 + h * 0.62), Vector2(tx + 3, y0 + h * 0.62), Vector2(tx, y0 + h * 0.75)]), Color(0.9, 0.9, 0.85))
@@ -1052,16 +1255,16 @@ static func _draw_head(ci: CanvasItem, look: Dictionary, g: Dictionary, flash: b
 		"wedge":
 			if front:
 				# a wedge seen nose-on: a shield shape with a fin on top and a V of an eye
-				ci.draw_colored_polygon(PackedVector2Array([Vector2(x0, y0), Vector2(x0 + w, y0), Vector2(x0 + w, y0 + h * 0.6), Vector2(cen.x, y0 + h + 4), Vector2(x0, y0 + h * 0.6)]), c)
+				_plate(ci, PackedVector2Array([Vector2(x0, y0), Vector2(x0 + w, y0), Vector2(x0 + w, y0 + h * 0.6), Vector2(cen.x, y0 + h + 4), Vector2(x0, y0 + h * 0.6)]), c)
 				ci.draw_colored_polygon(PackedVector2Array([Vector2(cen.x - 4, y0), Vector2(cen.x, y0 - 14), Vector2(cen.x + 4, y0)]), trim)
 				ci.draw_line(Vector2(x0 + w * 0.2, y0 + h * 0.4), Vector2(cen.x, y0 + h * 0.55), eye, 4.0)
 				ci.draw_line(Vector2(x0 + w * 0.8, y0 + h * 0.4), Vector2(cen.x, y0 + h * 0.55), eye, 4.0)
 			else:
-				ci.draw_colored_polygon(PackedVector2Array([Vector2(x0, y0), Vector2(x0 + w * 0.55, y0), Vector2(x0 + w + 8, y0 + h * 0.7), Vector2(x0 + w, y0 + h), Vector2(x0, y0 + h)]), c)
+				_plate(ci, PackedVector2Array([Vector2(x0, y0), Vector2(x0 + w * 0.55, y0), Vector2(x0 + w + 8, y0 + h * 0.7), Vector2(x0 + w, y0 + h), Vector2(x0, y0 + h)]), c)
 				ci.draw_colored_polygon(PackedVector2Array([Vector2(x0 + w * 0.2, y0), Vector2(x0 + w * 0.35, y0 - 14), Vector2(x0 + w * 0.5, y0)]), trim)
 				ci.draw_line(Vector2(x0 + w * 0.5, y0 + h * 0.45), Vector2(x0 + w + 2, y0 + h * 0.62), eye, 4.0)
 		"tall":
-			ci.draw_rect(r, c)
+			_plate(ci, plate, c)
 			ci.draw_rect(Rect2(x0 + 4, y0 + 8, w - 4, 6), eye)
 			ci.draw_line(Vector2(cen.x, y0), Vector2(cen.x, y0 - 22), trim, 3.0)
 			ci.draw_line(Vector2(cen.x - 10, y0 - 12), Vector2(cen.x + 10, y0 - 12), trim, 2.0)
@@ -1070,12 +1273,13 @@ static func _draw_head(ci: CanvasItem, look: Dictionary, g: Dictionary, flash: b
 			for k in 3:
 				ci.draw_line(Vector2(x0 + 3, y0 + 22 + k * 8), Vector2(x0 + w - 3, y0 + 22 + k * 8), c.darkened(0.35), 2.0)
 		"knight":
-			ci.draw_rect(Rect2(x0, y0 + h * 0.15, w, h * 0.85), c)
 			var dome := PackedVector2Array()
 			for k in 9:
 				var a := PI + PI * k / 8.0
 				dome.append(Vector2(cen.x, y0 + h * 0.2) + Vector2(cos(a) * w * 0.5, sin(a) * h * 0.22))
-			ci.draw_colored_polygon(dome, c)
+			dome.append(Vector2(x0 + w, y0 + h))
+			dome.append(Vector2(x0, y0 + h))
+			_plate(ci, dome, c)   # the helmet: a dome on a box, one plate
 			ci.draw_rect(Rect2(x0 + (w * 0.15 if front else w * 0.35), y0 + h * 0.38, w * (0.7 if front else 0.62), 5), Color(0.05, 0.05, 0.05))
 			ci.draw_rect(Rect2(x0 + (w * 0.3 if front else w * 0.45), y0 + h * 0.38, w * 0.4, 5), eye)
 			for k in 3:
@@ -1084,7 +1288,7 @@ static func _draw_head(ci: CanvasItem, look: Dictionary, g: Dictionary, flash: b
 			ci.draw_line(Vector2(cen.x - 10, y0 - 4), Vector2(cen.x - 22, y0 - 12), trim.darkened(0.2), 5.0)
 		"orb":
 			var rad := minf(w, h) * 0.5
-			ci.draw_circle(cen, rad, c)
+			_round(ci, cen, rad, c)
 			if front:
 				ci.draw_arc(cen + Vector2(0, rad * 0.1), rad * 0.55, 0.5, PI - 0.5, 12, eye, 3.0)
 				ci.draw_circle(cen + Vector2(0, -rad * 0.1), rad * 0.22, eye)
@@ -1093,7 +1297,7 @@ static func _draw_head(ci: CanvasItem, look: Dictionary, g: Dictionary, flash: b
 				ci.draw_circle(cen + Vector2(rad * 0.45, -rad * 0.1), rad * 0.22, eye)
 			ci.draw_circle(cen + Vector2(-rad * 0.35, -rad * 0.4), rad * 0.18, Color(1, 1, 1, 0.3))
 		"speaker":
-			ci.draw_rect(r, c)
+			_plate(ci, plate, c)
 			var sc2 := Vector2(cen.x + (0.0 if front else w * 0.12), cen.y + h * 0.05)
 			for k in 3:
 				ci.draw_arc(sc2, h * (0.12 + k * 0.1), 0, TAU, 16, c.darkened(0.35 + k * 0.1), 3.0)
@@ -1102,7 +1306,7 @@ static func _draw_head(ci: CanvasItem, look: Dictionary, g: Dictionary, flash: b
 			ci.draw_arc(sc2, h * 0.48 * pulse, -0.5, 0.5, 8, Color(eye.r, eye.g, eye.b, 0.5), 2.0)
 			ci.draw_rect(Rect2(x0 + 3, y0 + 3, w * 0.25, 5), eye)
 		"tv":
-			ci.draw_rect(r, c)
+			_plate(ci, plate, c)
 			var scr := Rect2(x0 + 5, y0 + 5, w - 14, h - 10)
 			ci.draw_rect(scr, Color(0.05, 0.12, 0.08))
 			var face_y := scr.position.y + scr.size.y * 0.4
@@ -1115,7 +1319,7 @@ static func _draw_head(ci: CanvasItem, look: Dictionary, g: Dictionary, flash: b
 			ci.draw_line(Vector2(cen.x - 6, y0), Vector2(cen.x - 14, y0 - 14), trim, 2.0)
 			ci.draw_line(Vector2(cen.x + 2, y0), Vector2(cen.x + 10, y0 - 14), trim, 2.0)
 		"dish":
-			ci.draw_rect(Rect2(x0 + w * 0.2, y0 + h * 0.45, w * 0.6, h * 0.55), c)
+			_plate(ci, _chamfer(Rect2(x0 + w * 0.2, y0 + h * 0.45, w * 0.6, h * 0.55), 3.0), c)
 			ci.draw_rect(Rect2(cen.x - (w * 0.16 if front else 0.0), y0 + h * 0.6, w * 0.32, 6), eye)
 			var dc := Vector2(cen.x - 2, y0 + h * 0.2)
 			var wob := sin(t * 2.0) * 0.4
@@ -1123,7 +1327,7 @@ static func _draw_head(ci: CanvasItem, look: Dictionary, g: Dictionary, flash: b
 			ci.draw_line(dc, dc + Vector2(sin(wob) * 4.0, -w * 0.3), trim, 2.0)
 			ci.draw_circle(dc + Vector2(sin(wob) * 4.0, -w * 0.3), 3.0, eye)
 		"laser":
-			ci.draw_rect(r, c)
+			_plate(ci, plate, c)
 			var lz := Vector2(cen.x, cen.y + 2) if front else Vector2(x0 + w + 10, cen.y)
 			if front:
 				ci.draw_circle(lz, 10.0, c.darkened(0.3))
@@ -1133,7 +1337,7 @@ static func _draw_head(ci: CanvasItem, look: Dictionary, g: Dictionary, flash: b
 			ci.draw_circle(lz, 3.0, Color(1, 1, 1, 0.9))
 			ci.draw_line(Vector2(x0 + 3, y0 + 6), Vector2(x0 + w - 6, y0 + 6), c.darkened(0.4), 2.0)
 		"bulb":
-			ci.draw_rect(Rect2(cen.x - w * 0.3, y0 + h * 0.75, w * 0.6, h * 0.25), trim)
+			_plate(ci, _chamfer(Rect2(cen.x - w * 0.3, y0 + h * 0.75, w * 0.6, h * 0.25), 3.0), trim)
 			ci.draw_circle(Vector2(cen.x, y0 + h * 0.42), w * 0.45, Color(c.r, c.g, c.b, 0.45))
 			ci.draw_arc(Vector2(cen.x, y0 + h * 0.42), w * 0.45, 0, TAU, 24, c, 2.0)
 			var fil := PackedVector2Array()
@@ -1141,10 +1345,11 @@ static func _draw_head(ci: CanvasItem, look: Dictionary, g: Dictionary, flash: b
 				fil.append(Vector2(cen.x - 10 + k * 3.3, y0 + h * 0.5 + (-6.0 if k % 2 else 0.0) + sin(t * 20.0 + k) * 1.5))
 			ci.draw_polyline(fil, eye, 2.0)
 		_:
-			ci.draw_rect(r, c)
+			_plate(ci, plate, c)
 			ci.draw_rect(Rect2(cen.x - (w * 0.25 if front else -2.0), y0 + h * 0.36, w * (0.5 if front else 0.42), 7), eye)
 			ci.draw_line(Vector2(x0 + 8, y0), Vector2(x0 + 4, y0 - 14), trim, 3.0)
 			ci.draw_circle(Vector2(x0 + 4, y0 - 15), 3.0, eye)
+	_rust(ci, r, hash(str(p.get("shape", ""))) + 5)
 	var hp: float = p.get("health", 1.0)
 	if hp < 0.6:
 		ci.draw_line(Vector2(x0 + w * 0.2, y0 + 3), Vector2(x0 + w * 0.35, y0 + h * 0.5), Color(0.05, 0.05, 0.05), 2.0)

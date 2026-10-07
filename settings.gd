@@ -24,6 +24,7 @@ const COACH_NAMES := ["OFF", "A little", "Normal", "Lots (easier)"]
 var living_button: Button
 var pecking_button: Button
 var edges_button: Button
+var look_button: Button
 var text_label: Label
 const EDGE_NAMES := ["OFF", "Small", "Medium", "Large"]   # dark bars down the sides, for phone buttons that never hide
 
@@ -108,6 +109,7 @@ func _ready() -> void:
 	errors_button = UI.button("", _on_errors, 19, Vector2(470, 50))
 	reset_button = UI.button("", _on_reset, 19, Vector2(470, 50))
 	edges_button = UI.button("", _on_edges, 19, Vector2(470, 50))
+	look_button = UI.button("", _on_look, 19, Vector2(470, 50))   # the restyle (1.50 to 1.55): old and new side by side
 	# text size: smaller / bigger, the whole game follows (the screen rebuilds so you see it at once)
 	var text_row := HBoxContainer.new()
 	text_row.custom_minimum_size = Vector2(470, 50) * UI.SCALE
@@ -123,7 +125,7 @@ func _ready() -> void:
 	plus.disabled = lv >= UI.TEXT_LEVELS.size() - 1
 	for c in [minus, text_label, plus]:
 		text_row.add_child(c)
-	for b in [text_row, sound_button, music_button, shake_button, battery_button, size_button, edges_button,
+	for b in [text_row, sound_button, music_button, shake_button, battery_button, size_button, edges_button, look_button,
 			UI.button("Edit controls (move & resize)", _on_controls, 19, Vector2(470, 50)), team_button,
 			UI.button("Difficulty...", _on_difficulty, 19, Vector2(470, 50)), delete_button, errors_button, reset_button]:
 		grid.add_child(b)
@@ -145,6 +147,7 @@ func refresh() -> void:
 	team_button.text = tr("Team controls: %s") % tr("SPLIT (a pad per robot)" if s.get("team_controls", "linked") == "split" else "LINKED (one pad for all)")
 	delete_button.text = tr("Walk-in show: %s") % tr("OFF (straight to the countdown)" if s.get("skip_intros", false) else "ON")
 	reset_button.text = tr("Sure? Tap again to reset") if reset_armed else tr("Restore default settings")
+	look_button.text = tr("Robot look: %s") % (tr("CLASSIC (flat)") if s.get("classic_look", false) else tr("NEW (lit)"))
 	if diff_button:
 		diff_button.text = tr("CPU difficulty: %s") % tr(DIFF_NAMES[s["difficulty"]])
 		coach_button.text = tr("Gus's coaching: %s") % tr(COACH_NAMES[clampi(int(s.get("coaching", 2)), 0, 3)])
@@ -367,6 +370,13 @@ func _on_living() -> void:
 	var opts: Array = GameData.LIVING_COST_OPTIONS
 	var i := opts.find(int(GameData.settings.get("living_cost", GameData.LIVING_COST)))
 	GameData.settings["living_cost"] = opts[(i + 1) % opts.size()]
+	GameData.save_settings()
+	refresh()
+
+
+func _on_look() -> void:
+	GameData.settings["classic_look"] = not GameData.settings.get("classic_look", false)
+	GameData.apply_look()
 	GameData.save_settings()
 	refresh()
 

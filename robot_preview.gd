@@ -13,6 +13,7 @@ var facing := 1
 ## The bay: the robot faces you, hanging on Gus's gantry. Tapped parts get a hazard-stripe outline,
 ## and callouts (short notes about the selected part) are drawn off to the side with a line to it.
 var front := false
+var light := "neutral"   # the light set of the room the robot stands in (light.gd)
 var hide_robot := false   # scenes without the robot (the pub)
 var callouts: Array = []
 var callout_font: Font
@@ -70,9 +71,9 @@ func _draw() -> void:
 		_base = Vector2(size.x * float(spot[0]), floor_y)
 	robot_height = tall * _sc * look.get("scale", 1.0)
 	if front:
-		RobotArt.draw_front(self, _base, look, {"scale": _sc, "time": t})
+		RobotArt.draw_front(self, _base, look, {"scale": _sc, "time": t, "light": light})
 	else:
-		RobotArt.draw(self, _base, look, {"scale": _sc, "facing": facing, "time": t})
+		RobotArt.draw(self, _base, look, {"scale": _sc, "facing": facing, "time": t, "light": light})
 	if interactive and highlight != "":
 		for r in _regions():
 			if r[0] == highlight:
