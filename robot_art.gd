@@ -216,8 +216,8 @@ static func hit_shapes(look: Dictionary, pose: Dictionary) -> Array:
 		var sz: float = p.get("size", 1.0)
 		var s := shoulder_of(g, slot)
 		var ap: String = lp["arms"][slot]
-		var pts := arm_pose_points(s, ap, is_rear(look, slot), punch_reach_x(g) if ap in ["punch", "low_punch", "uppercut", "hammer"] else 0.0, aim if slot == limb else 0.0)
-		out.append([slot, "cap", s, pts[0], dims[0] * sz * 0.55])
+		var pts := arm_pose_points(s, ap, is_rear(look, slot), punch_reach_x(g) if ap in ["punch", "low_punch", "uppercut", "hammer"] else 0.0, aim if slot == limb else 0.0, Vector2.ZERO, arm_len_of(look, slot))
+		out.append([slot, "cap", pts[2], pts[0], dims[0] * sz * 0.55])
 		out.append([slot, "cap", pts[0], pts[1], maxf(dims[0] * sz * 0.5, dims[1] * sz)])
 	for slot in ["leg_front", "leg_back"]:
 		if not _alive(look, slot):
@@ -225,7 +225,7 @@ static func hit_shapes(look: Dictionary, pose: Dictionary) -> Array:
 		var p2 := _part(look, slot)
 		var ld: Array = LEGS.get(p2.get("shape", "rod"), LEGS["rod"])
 		var hip: Vector2 = g["hip_front"] if slot == "leg_front" else g["hip_back"]
-		var foot := leg_pose_foot(hip, lp["legs"][slot], 0.0, aim if slot == limb else 0.0)
+		var foot := leg_pose_foot(hip, lp["legs"][slot], 0.0, aim if slot == limb else 0.0, leg_len_of(look, slot), float(pose.get("drop", 0.0)))
 		out.append([slot, "cap", hip, foot, maxf(8.0, ld[1] * float(p2.get("size", 1.0)) * 0.6)])
 	if _alive(look, "torso"):
 		out.append(["torso", "rect", g["torso"]])
@@ -288,11 +288,12 @@ static func draw(ci: CanvasItem, base: Vector2, look: Dictionary, pose: Dictiona
 	if look["parts"].has(ra2) and look["parts"][ra2].has("shape"):
 		_draw_arm(ci, look, ra2, shoulder_of(g, ra2), arm_pose[ra2], true, flash, trim, t, fist_out.has(ra2), aim if limb == ra2 else 0.0, bob_r)
 	_draw_arm(ci, look, ra, shoulder_of(g, ra), arm_pose[ra], true, flash, trim, t, fist_out.has(ra), aim if limb == ra else 0.0, bob_r)
-	_draw_leg(ci, look, rl, g["hip_back"], g["L"], leg_pose[rl], -swing, true, flash, trim, aim if limb == rl else 0.0)
+	var drop: float = pose.get("drop", 0.0)   # a sweep sinks the body; the standing leg bends to stay on the floor
+	_draw_leg(ci, look, rl, g["hip_back"], g["L"], leg_pose[rl], -swing, true, flash, trim, aim if limb == rl else 0.0, drop)
 	_draw_torso(ci, look, g, flash, trim, eye, t)
 	_sticker(ci, look, rl, g["hip_back"] + Vector2(0, 14), 7.0)
 	_sticker(ci, look, "torso", (g["torso"] as Rect2).get_center() + Vector2(0, g["th"] * 0.14), minf(g["tw"], g["th"]) * 0.2)
-	_draw_leg(ci, look, ll, g["hip_front"], g["L"], leg_pose[ll], swing, false, flash, trim, aim if limb == ll else 0.0)
+	_draw_leg(ci, look, ll, g["hip_front"], g["L"], leg_pose[ll], swing, false, flash, trim, aim if limb == ll else 0.0, drop)
 	_sticker(ci, look, ll, g["hip_front"] + Vector2(0, 14), 8.0)
 	# the head pans a little while it waits (pose "head_dx")
 	var gh := g
@@ -619,7 +620,10 @@ static func _glow(ci: CanvasItem, at: Vector2, r: float, col: Color) -> void:
 ## hit test both use this, so a fist lands exactly where it's drawn.
 ## reach_x: where a punching hand ends up (the rear hand crosses over to land about as far as the lead one).
 ## aim: the punch tilts this many radians toward its target (negative = up).
-static func arm_pose_points(s: Vector2, pose: String, back: bool, reach_x: float = 0.0, aim: float = 0.0, bob: Vector2 = Vector2.ZERO) -> Array:
+## arm_len > 0 (1.51): the arm keeps its length. The pose's hand position is the goal; the shoulder
+## turns forward into punches (the rear one across the chest), the hand stops where the arm runs out
+## and the elbow bends to fit (two-bone IK). Returns [elbow, hand, shoulder].
+static func arm_pose_points(s: Vector2, pose: String, back: bool, reach_x: float = 0.0, aim: float = 0.0, bob: Vector2 = Vector2.ZERO, arm_len: float = 0.0) -> Array:
 	var e := s
 	var h := s
 	var tilt := false
@@ -686,7 +690,50 @@ static func arm_pose_points(s: Vector2, pose: String, back: bool, reach_x: float
 	if tilt and aim != 0.0:
 		e = s + (e - s).rotated(aim)
 		h = s + (h - s).rotated(aim)
-	return [e, h]
+	if arm_len <= 0.0 or pose.begins_with("claw:"):
+		return [e, h, s]   # (crawling arms reach for the floor however they can)
+	var slide := 0.0
+	if pose in ["punch", "low_punch", "uppercut", "hammer"]:
+		slide = 12.0
+		if back:
+			slide = 24.0
+			if reach_x > 0.0:
+				slide = maxf(slide, (reach_x - PUNCH_LEN + 8.0 - s.x) * 0.85)   # the hips turn: the rear shoulder comes through
+	elif pose == "block":
+		slide = 4.0
+	var s2 := s + Vector2(slide, 0.0)
+	var up_len := arm_len * 0.47
+	var fore_len := arm_len * 0.53
+	var d := h - s2
+	var maxr := (up_len + fore_len) * 0.985
+	if d.length() > maxr:
+		h = s2 + d.normalized() * maxr
+	e = ik_joint(s2, h, up_len, fore_len, e + Vector2(0.0, 4.0))
+	return [e, h, s2]
+
+
+## Two bones from a to t (lengths l1, l2): where the joint between them goes, bent toward hint.
+static func ik_joint(a: Vector2, t: Vector2, l1: float, l2: float, hint: Vector2) -> Vector2:
+	var d := t - a
+	var dist := clampf(d.length(), 0.001, l1 + l2 - 0.001)
+	var dir := d.normalized() if d.length() > 0.001 else Vector2.DOWN
+	var x := (l1 * l1 - l2 * l2 + dist * dist) / (2.0 * dist)
+	var hh := sqrt(maxf(0.0, l1 * l1 - x * x))
+	var perp := dir.orthogonal()
+	if perp.dot(hint - a) < 0.0:
+		perp = -perp
+	return a + dir * x + perp * hh
+
+
+## How long an arm is, shoulder to fist (local): a bigger part reaches further.
+static func arm_len_of(look: Dictionary, slot: String) -> float:
+	return 58.0 * float(_part(look, slot).get("size", 1.0))
+
+
+## How long a leg is, hip to foot (local).
+static func leg_len_of(look: Dictionary, slot: String) -> float:
+	var p := _part(look, slot)
+	return float(LEGS.get(p.get("shape", "rod"), LEGS["rod"])[0]) * float(p.get("size", 1.0))
 
 
 ## How far a weapon on the end of an arm sticks out past the hand, and how thick the striking end is.
@@ -722,17 +769,17 @@ static func punch_reach_x(g: Dictionary) -> float:
 
 ## The striking line of a limb in a pose (local, unscaled): from the elbow/knee out to the very tip,
 ## plus how thick the end is. {"a": inner point, "b": tip, "r": radius}
-static func limb_strike(look: Dictionary, slot: String, pose: String, aim: float = 0.0) -> Dictionary:
+static func limb_strike(look: Dictionary, slot: String, pose: String, aim: float = 0.0, drop: float = 0.0) -> Dictionary:
 	var g := geom(look)
 	if slot.begins_with("arm"):
 		var s := shoulder_of(g, slot)
-		var pts := arm_pose_points(s, pose, is_rear(look, slot), punch_reach_x(g), aim)
+		var pts := arm_pose_points(s, pose, is_rear(look, slot), punch_reach_x(g), aim, Vector2.ZERO, arm_len_of(look, slot))
 		var ex := arm_tip_extra(look, slot, pose)
 		var dir: Vector2 = ((pts[1] as Vector2) - (pts[0] as Vector2)).normalized()
 		return {"a": pts[0], "b": (pts[1] as Vector2) + dir * ex.x, "r": ex.y}
 	if slot.begins_with("leg"):
 		var hip: Vector2 = g["hip_front"] if slot == "leg_front" else g["hip_back"]
-		var foot := leg_pose_foot(hip, pose, 0.0, aim)
+		var foot := leg_pose_foot(hip, pose, 0.0, aim, leg_len_of(look, slot), drop)
 		var p := _part(look, slot)
 		return {"a": hip.lerp(foot, 0.45), "b": foot + (foot - hip).normalized() * 8.0, "r": 12.0 * maxf(0.8, float(p.get("size", 1.0)))}
 	# no limb: the front of the torso (shoulder charges, slams)
@@ -741,7 +788,17 @@ static func limb_strike(look: Dictionary, slot: String, pose: String, aim: float
 
 
 ## Where a foot goes in a pose (local, unscaled), from its hip.
-static func leg_pose_foot(hip: Vector2, pose: String, swing: float = 0.0, aim: float = 0.0) -> Vector2:
+## leg_len > 0 (1.51): the leg keeps its length; drop = how far the body has sunk (a sweep drops low
+## so the foot can run along the floor).
+static func leg_pose_foot(hip: Vector2, pose: String, swing: float = 0.0, aim: float = 0.0, leg_len: float = 0.0, drop: float = 0.0) -> Vector2:
+	if leg_len > 0.0 and pose != "stand" and pose != "":
+		var goal := _leg_goal(hip, pose, aim, leg_len, drop)
+		var gd := goal - hip
+		if gd.length() > leg_len * 0.985:
+			goal = hip + gd.normalized() * leg_len * 0.985
+		return goal
+	if leg_len > 0.0:
+		return Vector2(hip.x + swing, -drop)
 	match pose:
 		# the rear leg (hip behind the middle) swings through to land about as far as the lead one
 		"kick":
@@ -759,6 +816,23 @@ static func leg_pose_foot(hip: Vector2, pose: String, swing: float = 0.0, aim: f
 	return Vector2(hip.x + swing, 0.0)
 
 
+static func _leg_goal(hip: Vector2, pose: String, aim: float, leg_len: float, drop: float) -> Vector2:
+	match pose:
+		"kick":
+			return hip + Vector2(1.0, -0.17).normalized().rotated(aim) * leg_len
+		"high_kick":
+			return hip + Vector2(0.76, -0.65).normalized().rotated(aim) * leg_len
+		"sweep":
+			# low along the floor: the body has dropped, so the floor is `drop` above the usual line
+			var vd := maxf(0.0, -hip.y - drop)
+			return hip + Vector2(sqrt(maxf(0.0, leg_len * leg_len - vd * vd)), vd)
+		"tuck":
+			return hip + Vector2(16.0, 34.0)
+		"fly_kick":
+			return hip + Vector2(0.77, 0.64) * leg_len
+	return Vector2(hip.x, -drop)
+
+
 static func _draw_arm(ci: CanvasItem, look: Dictionary, slot: String, s: Vector2, pose: String,
 		back: bool, flash: bool, trim: Color, t: float, fist_gone: bool = false, aim: float = 0.0, bob: Vector2 = Vector2.ZERO) -> void:
 	var p := _part(look, slot)
@@ -770,9 +844,10 @@ static func _draw_arm(ci: CanvasItem, look: Dictionary, slot: String, s: Vector2
 	var th: float = dims[0] * sz
 	var fr: float = dims[1] * sz
 	var reach_x := punch_reach_x(geom(look)) if pose in ["punch", "low_punch", "uppercut", "hammer"] else 0.0
-	var ph := arm_pose_points(s, pose, back, reach_x, aim, bob)
+	var ph := arm_pose_points(s, pose, back, reach_x, aim, bob, arm_len_of(look, slot))
 	var e: Vector2 = ph[0]
 	var h: Vector2 = ph[1]
+	s = ph[2]   # the shoulder turns forward into a punch
 	var c := _col(p, flash, back)
 	var tc := trim.darkened(0.35) if back else trim
 	var dir := (h - e).normalized()
@@ -936,7 +1011,7 @@ static func _draw_back(ci: CanvasItem, look: Dictionary, g: Dictionary, pose: Di
 
 # ---- legs
 static func _draw_leg(ci: CanvasItem, look: Dictionary, slot: String, hip: Vector2, L: float, pose: String,
-		swing: float, back: bool, flash: bool, trim: Color, aim: float = 0.0) -> void:
+		swing: float, back: bool, flash: bool, trim: Color, aim: float = 0.0, drop: float = 0.0) -> void:
 	var p := _part(look, slot)
 	if not p.get("alive", false):
 		_stump(ci, hip, -1.0 if look.get("icon", false) else 0.0)
@@ -944,12 +1019,14 @@ static func _draw_leg(ci: CanvasItem, look: Dictionary, slot: String, hip: Vecto
 	var dims: Array = LEGS.get(p["shape"], LEGS["rod"])
 	var sz: float = p["size"]
 	var th: float = dims[1] * sz
-	var foot := leg_pose_foot(hip, pose, swing, aim)
+	var own_len := leg_len_of(look, slot)
+	var foot := leg_pose_foot(hip, pose, swing, aim, own_len, drop)
 	var c := _col(p, flash, back)
 	var tc := trim.darkened(0.3) if back else trim
 	var dir := (foot - hip).normalized()
 	var perp := dir.orthogonal()
-	var knee := hip.lerp(foot, 0.5) - perp * 6.0
+	# the knee: two equal bones, bent forward when the foot comes in closer than the leg is long
+	var knee := ik_joint(hip, foot, own_len * 0.5, own_len * 0.5, hip.lerp(foot, 0.5) + Vector2(8.0, 0.0))
 	_grade = int(p.get("grade", 3))
 	match p["shape"]:
 		"spring":
@@ -1048,7 +1125,7 @@ static func _draw_leg(ci: CanvasItem, look: Dictionary, slot: String, hip: Vecto
 	elif p["shape"] == "reverse":
 		_plate(ci, PackedVector2Array([foot + Vector2(-8, 0), foot + Vector2(22, 0), foot + Vector2(-2, -10)]), tc)
 	else:
-		_plate(ci, _chamfer(Rect2(foot.x - fw * 0.3, -8.0, fw, 8.0), 3.0), tc)
+		_plate(ci, _chamfer(Rect2(foot.x - fw * 0.3, foot.y - 8.0, fw, 8.0), 3.0), tc)
 	_damage_marks(ci, hip, foot, p.get("health", 1.0), 0.0)
 
 

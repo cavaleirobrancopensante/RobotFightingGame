@@ -31,6 +31,15 @@ const Story = preload("res://story_data.gd")
 const TEMPO := 1.25
 const GRAVITY := 1800.0
 const WALK_SPEED := 240.0
+## Moving while fighting (1.51): you can walk while a punch comes out and while you block (slower),
+## and a kick turns a push on the pad into a little hop with the leg still out. The recovery after
+## a strike stays rooted, so a whiff still leaves you open.
+const MOVE_PUNCH := 0.6
+const MOVE_BLOCK := 0.4
+const MOVE_CHARGE := 0.35
+const KICK_HOP_UP := 300.0
+const PUNCHES := ["punch", "low_punch", "uppercut"]
+const KICKS := ["kick", "high_kick", "sweep"]
 const JUMP_SPEED := 860.0
 const STUN_K := 1.18          # hit stun and knockback a bit longer: room after each hit, less mashing
 const KNOCK_K := 1.125
@@ -135,6 +144,7 @@ class Fighter:
 	var blocking := false
 	var on_ground := true
 	var walk_phase := 0.0
+	var kick_hop := false   # this kick has already hopped (one hop a kick)
 	var roll_a := 0.0        # no arms and no legs: the robot rolls along on its head and torso
 	var step_timer := 0.0
 	var target := ""
@@ -2026,6 +2036,7 @@ func start_attack(f: Fighter, attack: String, charge: float = 0.0) -> void:
 	if limb == "":
 		return
 	f.state = attack
+	f.kick_hop = false
 	pilot_jerk(f.team)
 	f.attack_limb = limb
 	f.charge_mult = 1.0 + (CHARGE_DMG - 1.0) * clampf(charge, 0.0, 1.0)
@@ -2160,7 +2171,11 @@ func update_charge(f: Fighter, i: Dictionary, delta: float) -> bool:
 				f.attack_limb = f.next_limb(kind, true)
 				f.blocking = false
 				Sfx.play("repair", 0.1, -8.0)
-			f.vel.x = 0.0 if f.on_ground else f.vel.x
+			if f.on_ground:
+				var cdir := int(i["right"]) - int(i["left"])
+				f.vel.x = cdir * WALK_SPEED * f.move_speed() * MOVE_CHARGE   # a slow step while it winds up
+				if cdir != 0:
+					f.walk_phase += delta * 8.0 * f.move_speed()
 			spend(f, f.power_max * CHARGE_DRAIN * delta)
 			if f.power <= 0.0:
 				held = false   # the tank's dry: it goes now
@@ -2526,7 +2541,19 @@ func update_fighter(f: Fighter, o: Fighter, i: Dictionary, delta: float) -> void
 		var a: Dictionary = ATTACKS[f.state]
 		f.timer += delta * f.attack_speed(f.attack_limb) / TEMPO
 		if f.on_ground and f.boost_t <= 0.0:
-			f.vel.x = 0.0
+			var mdir := int(i["right"]) - int(i["left"])
+			var rooted: bool = f.timer > a["startup"] + a["active"]   # the recovery: rooted
+			if PUNCHES.has(f.state) and not rooted:
+				f.vel.x = mdir * WALK_SPEED * f.move_speed() * MOVE_PUNCH
+				if mdir != 0:
+					f.walk_phase += delta * 12.0 * f.move_speed() * MOVE_PUNCH
+			elif KICKS.has(f.state) and mdir != 0 and not f.kick_hop and not rooted and f.timer >= a["startup"] * 0.5 and f.legs() >= 2:
+				# a push on the pad mid-kick: a little hop that way, the leg still out
+				f.kick_hop = true
+				f.vel.y = -KICK_HOP_UP
+				f.vel.x = mdir * WALK_SPEED * 0.75 * f.move_speed()
+			else:
+				f.vel.x = 0.0
 		elif f.state == "fly_kick" and f.timer >= a["startup"] and f.timer <= a["startup"] + a["active"]:
 			f.vel.y = maxf(f.vel.y, 620.0)
 		if not f.hit_done and f.timer >= a["startup"] and f.timer <= a["startup"] + a["active"]:
@@ -2573,9 +2600,9 @@ func update_fighter(f: Fighter, o: Fighter, i: Dictionary, delta: float) -> void
 				start_attack(f, hit_for(btn, h))
 		elif f.on_ground:
 			var dir := 0
-			if not f.crouching and not f.blocking:
+			if not f.crouching:
 				dir = int(i["right"]) - int(i["left"])
-			var spd := f.move_speed()
+			var spd := f.move_speed() * (MOVE_BLOCK if f.blocking else 1.0)   # you can back off (or press in) behind your guard
 			if f.boost_t <= 0.0:
 				f.vel.x = dir * WALK_SPEED * spd
 			f.state = "walk" if dir != 0 else "idle"
@@ -2697,7 +2724,7 @@ func strike_line(f: Fighter, slot: String, pose: String) -> Dictionary:
 	var use := slot if slot != "" and f.alive(slot) else "torso"
 	if pose == "block":
 		use = "torso"   # shoulder charges and slams hit with the front of the body
-	var st := RobotArt.limb_strike(f.get_look(), use, pose, f.aim_ang)
+	var st := RobotArt.limb_strike(f.get_look(), use, pose, f.aim_ang, float(f.vis_pose.get("drop", 0.0)))
 	return {"a": visual_point(f, st["a"]), "b": visual_point(f, st["b"]), "r": float(st["r"]) * f.scale}
 
 
@@ -3499,6 +3526,7 @@ func body_pose(f: Fighter) -> Dictionary:
 	var lean := 0.0
 	var dx := 0.0
 	var swoosh := false
+	var drop := 0.0      # a sweep sinks the body so the leg can run along the floor (local units)
 	var phase_t := 0.0   # 0..1 progress through the attack's startup, then >1 once it's live
 	if f.state == "special" or ATTACKS.has(f.state):
 		var a: Dictionary = Specials.MOVES[f.special_id] if f.state == "special" else ATTACKS[f.state]
@@ -3510,36 +3538,43 @@ func body_pose(f: Fighter) -> Dictionary:
 			lean = -f.facing * 0.16 * phase_t
 			dx = -f.facing * 10.0 * phase_t * f.scale
 			sy = 1.0 - 0.05 * phase_t
+			if state == "sweep":
+				drop = float(RobotArt.geom(f.get_look())["L"]) * 0.5 * phase_t
+				lean = 0.0
 			if f.state == "special" and TELEGRAPH.has(f.special_id):
 				dx += sin(clock * 70.0) * 3.0 * f.scale   # the heavy ones shake as they wind up
 		elif f.timer <= st + act + a.get("recovery", 0.2) * 0.5:
 			swoosh = f.timer <= st + act + 0.05
 			match state:
+				# (1.51) limbs keep their length: the body carries the reach (hips in, a step, a lunge)
 				"kick":
 					lean = -f.facing * 0.16
-					dx = f.facing * 8.0 * f.scale
+					dx = f.facing * 40.0 * f.scale
 				"high_kick":
 					lean = -f.facing * 0.26
-					dx = f.facing * 4.0 * f.scale
+					dx = f.facing * 34.0 * f.scale
 				"fly_kick":
 					lean = -f.facing * 0.38   # body tilted back, feet first
+					dx = f.facing * 20.0 * f.scale
 				"hammer":
 					lean = f.facing * 0.2
 				"low_punch":
 					lean = f.facing * 0.16
-					dx = f.facing * 14.0 * f.scale
+					dx = f.facing * 28.0 * f.scale
 				"uppercut":
 					lean = -f.facing * 0.12
+					dx = f.facing * 16.0 * f.scale
 					sy = 1.14
 					sx = 0.92
 				"sweep":
-					lean = f.facing * 0.12
+					drop = float(RobotArt.geom(f.get_look())["L"]) * 0.5
+					dx = f.facing * 40.0 * f.scale
 				"block":
 					lean = f.facing * 0.22
 					dx = f.facing * 16.0 * f.scale
 				_:
 					lean = f.facing * 0.22
-					dx = f.facing * 18.0 * f.scale
+					dx = f.facing * 30.0 * f.scale
 					sx = 1.08
 	elif f.state == "prejump":
 		# knees bend: the jump is coming
@@ -3609,6 +3644,7 @@ func body_pose(f: Fighter) -> Dictionary:
 	if rot == 0.0:
 		rot = lean
 	base.x += dx
+	base.y += drop * f.scale * sy
 	if f.legs() == 0 and f.arms() == 0 and absf(f.roll_a) > 0.001 and f.state != "ko":
 		# rolling round the middle of the torso, not the feet
 		var gr := RobotArt.geom(f.get_look())
@@ -3638,7 +3674,7 @@ func body_pose(f: Fighter) -> Dictionary:
 			"dazed": f.daze_t > 0.0, "tuck": f.state == "jump" and not f.on_ground and absf(f.vel.y) < 330.0,
 			"blocking": f.blocking or (f.state == "special" and state == "block"),
 			"crawl": fmod(f.walk_phase / TAU, 1.0) if f.state == "walk" and f.legs() == 0 and f.arms() > 0 else -1.0,
-			"fist_out": f.fist_out.keys()}
+			"fist_out": f.fist_out.keys(), "drop": drop}
 	return {"base": base, "rot": rot, "sx": sx, "sy": sy, "state": state, "extended": extended, "swoosh": swoosh, "dx": dx}
 
 
@@ -3666,7 +3702,8 @@ func draw_fighter(f: Fighter, off: Vector2) -> void:
 	var fist_out: Array = f.fist_out.keys()
 	RobotArt.draw(self, base, f.get_look(), {
 		"facing": f.facing, "state": state, "extended": extended, "attack_limb": f.attack_limb, "aim": f.aim_ang,
-		"swing": sin(f.walk_phase) * 10.0 if f.state == "walk" and f.legs() == 2 else 0.0,
+		"swing": sin(f.walk_phase) * 10.0 if (f.state == "walk" or (f.on_ground and absf(f.vel.x) > 20.0 and f.state in ["punch", "low_punch", "uppercut", "charge"])) and f.legs() == 2 else 0.0,
+		"drop": f.vis_pose.get("drop", 0.0),
 		"crawl": fmod(f.walk_phase / TAU, 1.0) if f.state == "walk" and f.legs() == 0 and f.arms() > 0 else -1.0,
 		"crouch": f.crouching, "blocking": f.blocking or (f.state == "special" and state == "block"),
 		"flash": f.flash > 0.0, "rot": rot, "time": clock, "fist_out": fist_out,
