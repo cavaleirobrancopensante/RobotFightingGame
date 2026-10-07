@@ -101,6 +101,7 @@ func _ready() -> void:
 ## A robot repainted (your dad's colours, or the rust under the tarp), every part whole or worn.
 func repaint(look: Dictionary, body: Color, trim: Color, health: float) -> Dictionary:
 	var l := look.duplicate(true)
+	l.erase("stickers")
 	for slot in l["parts"]:
 		var p: Dictionary = l["parts"][slot]
 		if p.has("shape"):

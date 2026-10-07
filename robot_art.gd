@@ -7,6 +7,8 @@ extends RefCounted
 ##
 ## Local coordinates: origin = between the feet on the floor, +x = the way the robot faces, -y = up.
 
+const Logos = preload("res://logos.gd")
+
 # [length, thickness] at size 1.0
 const LEGS := {"rod": [60.0, 11.0], "piston": [62.0, 15.0], "spring": [66.0, 12.0],
 		"reverse": [70.0, 13.0], "pillar": [48.0, 26.0], "thick": [56.0, 21.0],
@@ -273,7 +275,10 @@ static func draw(ci: CanvasItem, base: Vector2, look: Dictionary, pose: Dictiona
 	_draw_arm(ci, look, ra, shoulder_of(g, ra), arm_pose[ra], true, flash, trim, t, fist_out.has(ra), aim if limb == ra else 0.0, bob_r)
 	_draw_leg(ci, look, rl, g["hip_back"], g["L"], leg_pose[rl], -swing, true, flash, trim, aim if limb == rl else 0.0)
 	_draw_torso(ci, look, g, flash, trim, eye, t)
+	_sticker(ci, look, rl, g["hip_back"] + Vector2(0, 14), 7.0)
+	_sticker(ci, look, "torso", (g["torso"] as Rect2).get_center() + Vector2(0, g["th"] * 0.14), minf(g["tw"], g["th"]) * 0.2)
 	_draw_leg(ci, look, ll, g["hip_front"], g["L"], leg_pose[ll], swing, false, flash, trim, aim if limb == ll else 0.0)
+	_sticker(ci, look, ll, g["hip_front"] + Vector2(0, 14), 8.0)
 	# the head pans a little while it waits (pose "head_dx")
 	var gh := g
 	var hdx: float = pose.get("head_dx", 0.0)
@@ -284,9 +289,11 @@ static func draw(ci: CanvasItem, base: Vector2, look: Dictionary, pose: Dictiona
 	if look["parts"].has("head2") and look["parts"]["head2"].has("shape"):
 		_draw_head(ci, look, gh, flash, trim, eye, t, "head2")
 	_draw_head(ci, look, gh, flash, trim, eye, t, "head")
+	_sticker(ci, look, "head", (gh["head"] as Rect2).get_center() + Vector2(0, (gh["head"] as Rect2).size.y * 0.22), minf((gh["head"] as Rect2).size.x, (gh["head"] as Rect2).size.y) * 0.2)
 	if look["parts"].has(la2) and look["parts"][la2].has("shape"):
 		_draw_arm(ci, look, la2, shoulder_of(g, la2), arm_pose[la2], false, flash, trim, t, fist_out.has(la2), aim if limb == la2 else 0.0, bob_l)
 	_draw_arm(ci, look, la, shoulder_of(g, la), arm_pose[la], false, flash, trim, t, fist_out.has(la), aim if limb == la else 0.0, bob_l)
+	_sticker(ci, look, la, shoulder_of(g, la), 8.0)
 
 	if pose.get("shield", false):
 		var c := Vector2(0, -(g["L"] + g["th"] + 40.0) * 0.55)
@@ -337,19 +344,32 @@ static func draw_front(ci: CanvasItem, base: Vector2, look: Dictionary, pose: Di
 	_draw_back(ci, look, g, pose, false, trim, t)   # back gear peeks out from behind
 	ci.draw_set_transform_matrix(left)
 	_draw_leg(ci, look, "leg_front", g["hip"], g["L"], "stand", 0.0, false, false, trim)
+	_sticker(ci, look, "leg_front", g["hip"] + Vector2(0, 16), 8.0)
 	ci.draw_set_transform_matrix(right)
 	_draw_leg(ci, look, "leg_back", g["hip"], g["L"], "stand", 0.0, false, false, trim)
+	_sticker(ci, look, "leg_back", g["hip"] + Vector2(0, 16), 8.0)
 	_draw_torso(ci, look, g, false, trim, eye, t, true)
+	_sticker(ci, look, "torso", (g["torso"] as Rect2).get_center() + Vector2(0, g["th"] * 0.14), minf(g["tw"], g["th"]) * 0.2)
 	for side in [["arm_front", left], ["arm_back", right]]:
 		ci.draw_set_transform_matrix(side[1])
 		if look["parts"].has(side[0] + "2") and look["parts"][side[0] + "2"].has("shape"):
 			_draw_arm(ci, look, side[0] + "2", g["shoulder2"], "open", false, false, trim, t)
 		_draw_arm(ci, look, side[0], g["shoulder"], "open", false, false, trim, t)
+		_sticker(ci, look, side[0], g["shoulder"] + Vector2(4, 4), 8.0)
 	ci.draw_set_transform_matrix(right)
 	if look["parts"].has("head2") and look["parts"]["head2"].has("shape"):
 		_draw_head(ci, look, g, false, trim, eye, t, "head2", true)
 	_draw_head(ci, look, g, false, trim, eye, t, "head", true)
+	_sticker(ci, look, "head", (g["head"] as Rect2).get_center() + Vector2(0, (g["head"] as Rect2).size.y * 0.22), minf((g["head"] as Rect2).size.x, (g["head"] as Rect2).size.y) * 0.2)
 	ci.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+
+
+## A sponsor's sticker on a part (look "stickers": {slot: sponsor id}), only while the part is on.
+static func _sticker(ci: CanvasItem, look: Dictionary, slot: String, at: Vector2, r: float) -> void:
+	var st: Dictionary = look.get("stickers", {})
+	if st.is_empty() or not st.has(slot) or not _alive(look, slot):
+		return
+	Logos.draw_logo(ci, str(st[slot]), at, maxf(5.0, r), true)
 
 
 ## Tap boxes for the front view (local coordinates, standing). Order = tap priority.

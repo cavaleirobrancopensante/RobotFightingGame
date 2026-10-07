@@ -2,7 +2,7 @@ extends Node
 
 # helper scripts, loaded by path so the game also runs without an editor scan
 ## The game's version, shown on the main menu. Bump it with every change (1.1, 1.2, ...).
-const VERSION := "1.47"
+const VERSION := "1.48"
 const Arena = preload("res://arena.gd")
 const I18n = preload("res://i18n.gd")
 const Catalog = preload("res://catalog.gd")
@@ -28,6 +28,8 @@ const LIVING_COST_OPTIONS := [0, 250, 500, 1000, 1500, 2000]
 const DEFAULT_ROBOT := "ECHO"
 const Career = preload("res://career.gd")
 const World = preload("res://world.gd")
+const Social = preload("res://social.gd")
+const Contracts = preload("res://contracts.gd")
 const PILOT_NAMES := ["Rook", "Marisol", "Dex", "Kit", "Juno", "Tavi", "Bram", "Nia", "Otto", "Zara", "Lio", "Mags",
 		"Finn", "Ines", "Cass", "Rafa", "Wren", "Bo", "Sully", "Pia", "Grit", "Nova", "Ash", "Teo"]
 const ROBOT_FIRST := ["ECHO", "RUSTY", "BOLT", "PISTON", "SPARKY", "TANK", "GIZMO", "COPPER", "TORQUE", "DYNAMO",
@@ -270,6 +272,9 @@ var pilot_look := DEFAULT_PILOT_LOOK.duplicate()   # how your pilot looks in the
 var owned_controllers: Array = ["gamepad"]
 var tips_seen: Array = []
 var opening_replay := false   # the opening cutscene was asked for again (BotMedia): back to the bay after it
+var social := {}      # BotMedia: posts, follows, your followers (social.gd)
+var contracts := {}   # sponsor contracts and offers (contracts.gd)
+var alerts_unseen := 0   # new BotMedia alerts (the rail lights up)
 var tips_log: Array = []   # Gus's fight tips as he said them ({"id", "text"}, oldest first): the pause screen lists them
 const DIGS_PER_FIGHT := 1
 ## Scrapyard digs: [grade, chance] (cumulative, checked rarest first): anything can turn up, rarely.
@@ -559,6 +564,9 @@ func new_game() -> void:
 	inbox = []
 	day_log = {}
 	inbox_seen = 0
+	social = {}
+	contracts = {}
+	alerts_unseen = 0
 	tour = 0
 	streak = 0
 	pub_seen = ""
@@ -779,6 +787,19 @@ func is_wreck(p: Dictionary) -> bool:
 	return not UNDAMAGEABLE.has(part_def(p["id"])["kind"]) and p["hp"] <= 0.0
 
 
+## How whole the robot is (all body parts together, by HP), as it stands.
+func robot_hp_ratio() -> float:
+	var have := 0.0
+	var full := 0.0
+	for slot in BODY_SLOTS:
+		var p := equipped_inst(slot)
+		if p.is_empty():
+			continue
+		have += float(p["hp"])
+		full += float(part_def(p["id"])["hp"])
+	return 1.0 if full <= 0.0 else clampf(have / full, 0.0, 1.0)
+
+
 func hp_ratio(p: Dictionary) -> float:
 	var mx: float = part_def(p["id"])["hp"]
 	return 1.0 if mx <= 0.0 else clampf(p["hp"] / mx, 0.0, 1.0)
@@ -790,6 +811,7 @@ func buy(id: String) -> String:
 		return "Not enough money."
 	money -= d["cost"]
 	shop_stock.erase(id)
+	Contracts.on_buy()
 	var uid := add_part(id)
 	for slot in SLOTS:
 		if SLOT_KIND[slot] == d["kind"] and equipped[slot] == -1 and slot_available(slot):
@@ -1314,10 +1336,11 @@ func head_times(d: Dictionary) -> Array:
 const AIM_LEVEL_K := [1.6, 1.3, 1.0, 0.8, 0.6]   # x the head's times, levels 1-5
 
 
+## A pilot's Read in dots (1-5): world pilots from their Read, story and quick-fight robots from "smart".
 func pilot_aim_level(o: Dictionary) -> int:
 	if o.has("aim_level"):
 		return clampi(int(o["aim_level"]), 1, 5)
-	var lv := clampi(1 + int(float(o.get("smart", 0.3)) * 5.5), 1, 5)
+	var lv := World.read_dots(float(o["read"])) if o.has("read") else clampi(1 + int(float(o.get("smart", 0.3)) * 5.5), 1, 5)
 	if o.get("rival", false) or (o.has("wid") and is_rival(int(o["wid"]))):
 		lv = mini(5, lv + 1)
 	return lv
@@ -1523,6 +1546,7 @@ func player_spec(eq: Dictionary = {}, label: String = "") -> Dictionary:
 			"back": {} if back.is_empty() else {"shape": part_def(back["id"])["shape"], "color": Color(part_def(back["id"])["color"])},
 			"gadgets": gadgets, "specials": active_chips() if eq == equipped else [], "style": style,
 			"controller": str(pilot_look.get("controller", "gamepad")),
+			"stickers": Contracts.stickers() if eq == equipped else {},
 			"traits": global_traits(ids_of(eq))}
 
 
@@ -1867,6 +1891,13 @@ func grudge_of(wid: int) -> Array:
 	return [float(g[0]), float(g[1])]
 
 
+## A post or a reply moved their grudge against you (+ hotter, - cooler).
+func grudge_bump(wid: int, amount: float) -> void:
+	var g := grudge_of(wid)
+	g[1] = clampf(g[1] + amount, 0.0, 12.0)
+	grudge[str(wid)] = g
+
+
 func is_rival(wid: int) -> bool:
 	return grudge_of(wid)[0] >= GRUDGE_LINE
 
@@ -2092,6 +2123,7 @@ func next_day() -> void:
 		day = DAYS[day_index() + 1]
 		catch_up_leagues()
 	daily_hate_mail()
+	Social.daily()
 
 
 ## Is one of your own fights (a cup round, a league round) still to come this week?
@@ -2217,9 +2249,13 @@ func advance_week(n: int = 1) -> void:
 	for k in n:
 		World.week_passed(year, week, World.busy_ids())   # the rest of Port Ferrum fights and shops too
 		weekly_rumour()
+		Contracts.week_end()
 		if week % MONTH_WEEKS == 0:
 			money -= living_cost()   # end of the month: cost of living
 			bills_note += living_cost()
+			var fees := Contracts.month_end()
+			if fees > 0:
+				log_day(tr("Sponsors paid $%d.") % fees, "good")
 		catch_up_leagues()
 		week += 1
 		if week > Career.WEEKS_PER_YEAR:
@@ -2231,6 +2267,7 @@ func advance_week(n: int = 1) -> void:
 		digs_left = DIGS_PER_FIGHT
 		day = "mon"
 		catch_up_leagues()
+		Contracts.weekly_offers()
 
 
 ## A year ends: pilots move up and down by last year's tables, then the new tables are drawn.
@@ -2465,6 +2502,8 @@ func catch_up_leagues() -> Array:
 				continue
 			Career.play_npc_round(ev)
 			league_news(stage, ev)
+			if str(ev.get("phase", "")) != "league" and not ev.get("trials", false) and stage != "title":
+				Social.podium(ev, "league")
 			lines += settle_bets("div:" + stage, ev)["lines"]
 	if trials_over() and not leagues.has("scrap") and not leagues.is_empty():
 		build_scrap()
@@ -3501,7 +3540,7 @@ static func look_from_spec(spec: Dictionary) -> Dictionary:
 			parts[slot] = {"alive": p["hp"] > 0.0 or slot == "torso", "shape": p["shape"], "size": p["size"],
 					"color": p["color"], "health": clampf(p["hp"] / p["max_hp"], 0.0, 1.0)}
 	return {"parts": parts, "trim": spec["trim"], "eye": spec["eye"], "scale": spec["scale"],
-			"back": spec.get("back", {})}
+			"back": spec.get("back", {}), "stickers": spec.get("stickers", {})}
 
 
 func player_look() -> Dictionary:
@@ -3518,6 +3557,8 @@ func record_result(won: bool, part_hp: Dictionary, destroyed: int, salvage_ids: 
 	var base: int = current_reward()
 	var reward: int = base if won else loss_pay(base)
 	var forfeited := forfeit
+	if fight_mode() != "test" and fight_mode() != "quick" and fight_mode() != "watch":
+		Contracts.check_bell(robot_hp_ratio())
 	if forfeit:
 		reward = 0   # threw in the towel: no pay
 		forfeit = false
@@ -3614,6 +3655,18 @@ func record_result(won: bool, part_hp: Dictionary, destroyed: int, salvage_ids: 
 					rng.randomize()
 					World.lose_part(rng, wp, s)
 					break
+	# BotMedia and sponsors hear about it
+	var social_stage := "pickup"
+	match fight_mode():
+		"story":
+			social_stage = str(event.get("stage", rank))
+		"circuit":
+			social_stage = "cup"
+	var intact_rips := salvage_ids.filter(func(sv): return bool(sv.get("intact", false))).size()
+	Social.my_fight(o, won, destroyed, intact_rips, lost.size() + wrecked.size(), social_stage)
+	var sponsor_pay := Contracts.after_fight(won, destroyed, forfeited)
+	if sponsor_pay > 0:
+		log_day(tr("Sponsors paid $%d.") % sponsor_pay, "good")
 	style_locked = false         # a fight later, you may switch style again
 	var was_champion := champion
 	var mode := fight_mode()
@@ -3701,7 +3754,9 @@ func league_end(ev: Dictionary) -> String:
 	var m := Career.medal_of(ev, 0)
 	var pos := Career.standings(ev).find(0)
 	var text := tr("%s: %s") % [tr(str(ev["name"])), Career.finish_text(ev)]
+	Social.podium(ev, "league")
 	if m > 0:
+		Contracts.podium(m)
 		var prize: int = info["prizes"][m - 1]
 		money += prize
 		trophies.append(trophy_record(ev, ev["stage"], m))
@@ -3758,7 +3813,9 @@ func finish_title(ev: Dictionary) -> String:
 	var info: Dictionary = Career.STAGES["title"]
 	var m := Career.medal_of(ev, 0)
 	var text := tr("%s: %s") % [tr(str(ev["name"])), Career.finish_text(ev)]
+	Social.podium(ev, "title")
 	if m > 0:
+		Contracts.podium(m)
 		var prize: int = info["prizes"][m - 1]
 		money += prize
 		trophies.append(trophy_record(ev, "title", m))
@@ -3777,6 +3834,7 @@ func finish_title(ev: Dictionary) -> String:
 func finish_cup() -> String:
 	var m := Career.medal_of(circuit, 0)
 	var text := tr("%s: %s") % [circuit["name"], Career.finish_text(circuit)]
+	Social.podium(circuit, "cup")
 	if m > 0:
 		var prize: int = int(int(circuit["prize"]) * [0, 1.0, 0.5, 0.3][m])
 		money += prize
@@ -4254,7 +4312,7 @@ func save_game() -> bool:
 		"owned_chips": owned_chips, "chips": chips, "circuit": circuit, "circuit_offers": circuit_offers,
 		"circuits_won": circuits_won, "pickup": pickup, "setups": setups, "custom_parts": custom_parts,
 		"year": year, "week": week, "day": day, "rank": rank, "event": {}, "leagues": leagues, "title_seeds": title_seeds, "trophies": trophies, "career_stats": career_stats,
-		"pecking_k": pecking_k(), "style": style, "style_locked": style_locked, "shop_stock": shop_stock, "chip_stock": chip_stock, "scout": scout, "wingmen": wingmen, "sending": sending, "pilot_look": pilot_look, "owned_controllers": owned_controllers, "tips_seen": tips_seen, "tips_log": tips_log, "h2h": h2h, "rivals": rivals, "grudge": grudge, "pending_talk": pending_talk, "inbox": inbox, "inbox_seen": inbox_seen, "day_log": day_log, "tour": tour, "streak": streak, "pub_seen": pub_seen, "digs_left": digs_left, "dig_luck": dig_luck, "bills_note": bills_note, "fight_log": fight_log, "bets": bets, "world": world,
+		"pecking_k": pecking_k(), "style": style, "style_locked": style_locked, "shop_stock": shop_stock, "chip_stock": chip_stock, "scout": scout, "wingmen": wingmen, "sending": sending, "pilot_look": pilot_look, "owned_controllers": owned_controllers, "tips_seen": tips_seen, "tips_log": tips_log, "h2h": h2h, "rivals": rivals, "grudge": grudge, "pending_talk": pending_talk, "inbox": inbox, "inbox_seen": inbox_seen, "social": social, "contracts": contracts, "alerts_unseen": alerts_unseen, "day_log": day_log, "tour": tour, "streak": streak, "pub_seen": pub_seen, "digs_left": digs_left, "dig_luck": dig_luck, "bills_note": bills_note, "fight_log": fight_log, "bets": bets, "world": world,
 	}
 	var f := FileAccess.open(slot_path(save_slot), FileAccess.WRITE)
 	if f == null:
@@ -4362,6 +4420,9 @@ func load_game(slot: int = -1) -> String:
 			e["ph"] = int(e.get("ph", 0))
 			inbox.append(e)
 	inbox_seen = mini(int(data.get("inbox_seen", inbox.size())), inbox.size())
+	social = data.get("social", {})
+	contracts = data.get("contracts", {})
+	alerts_unseen = int(data.get("alerts_unseen", 0))
 	tour = int(data.get("tour", -1))
 	streak = int(data.get("streak", 0))
 	pub_seen = str(data.get("pub_seen", ""))

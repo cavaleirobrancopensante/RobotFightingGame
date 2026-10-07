@@ -116,6 +116,7 @@ class Fighter:
 	var weak := ""           # the enemy part the scan found (hits there do WEAK_BONUS more)
 	var scan_on = null       # the enemy being scanned
 	var ai_level := 3        # CPU pilots: 1 rookie .. 5 champion
+	var ai_rattled := false  # a bad run has got to the pilot (their Read is down for now)
 	var aim_acc := 0.0       # extra share of hits that go to the aimed part (aim level)
 	var stance_swap := false # switched stance: the right side leads
 	var daze_t := 0.0        # guard smashed open: arms flung wide, wobbling
@@ -509,6 +510,7 @@ func _ready() -> void:
 				"block": minf(0.85, opp["block"] * DIFF_BLOCK[diff]), "smart": opp["smart"],
 				"special_cd": 3.0 + randf(), "gadget_cd": 1.5 + randf(), "kit": {}}
 		set_aim_level(f, GameData.pilot_aim_level(opp) if diff >= 1 else maxi(1, GameData.pilot_aim_level(opp) - 1))
+		f.ai_rattled = bool(opp.get("rattled", false))
 		ai_load(f)
 		ai_build_kit()
 		ai_save(f)
@@ -536,6 +538,7 @@ func _ready() -> void:
 					"block": minf(0.85, float(left_o.get("block", 0.2))), "smart": float(left_o.get("smart", 0.0)),
 					"special_cd": 3.0 + randf(), "gadget_cd": 1.5 + randf(), "kit": {}}
 			set_aim_level(f, GameData.pilot_aim_level(left_o))
+			f.ai_rattled = bool(left_o.get("rattled", false))
 			ai_load(f)
 			ai_build_kit()
 			ai_save(f)
@@ -5554,11 +5557,13 @@ func draw_robot_card(ci: CanvasItem, f: Fighter, left: bool, w: float, h: float,
 	if Catalog.STYLES.has(f.style):
 		sub += "  ·  " + tr(Catalog.STYLES[f.style]["name"]).to_upper()
 	sub += "  ·  " + tr("fight power %d") % int(f.power_max)
-	if f.team == 1 or mode == "watch":
-		sub += "  ·  " + tr("pilot aim %s") % GameData.aim_dots(f.ai_level)
 	ci.draw_string(font, Vector2(x, y), sub, HORIZONTAL_ALIGNMENT_LEFT, cw, fs(14), Color(0.6, 0.85, 1.0, a))
 	y += fs(12) + 10
 	ci.draw_string(font, Vector2(x, y), tr("PARTS"), HORIZONTAL_ALIGNMENT_LEFT, -1, fs(12), gold)
+	if f.team == 1 or mode == "watch":
+		# the pilot's Read (and RATTLED after a bad run), right of the PARTS header
+		var rd := tr("READ %s") % GameData.aim_dots(f.ai_level) + ("  " + tr("RATTLED") if f.ai_rattled else "")
+		ci.draw_string(font, Vector2(x, y), rd, HORIZONTAL_ALIGNMENT_RIGHT, cw, fs(13), Color(1.0, 0.5, 0.4, a) if f.ai_rattled else Color(0.6, 0.85, 1.0, a))
 	for slot in GameData.SLOTS:
 		var pr: Dictionary = f.parts.get(slot, {})
 		if pr.is_empty():

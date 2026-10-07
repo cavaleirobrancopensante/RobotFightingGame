@@ -4,6 +4,7 @@ extends Control
 const Catalog = preload("res://catalog.gd")
 const PartIcon = preload("res://part_icon.gd")
 const PilotArt = preload("res://pilot_art.gd")
+const Logos = preload("res://logos.gd")
 const RobotPreview = preload("res://robot_preview.gd")
 const Specials = preload("res://specials.gd")
 const UI = preload("res://ui.gd")
@@ -438,11 +439,17 @@ func segs_of(t: String) -> Array:
 				out.append(["cups", tr("Cups"), "cups"])
 			out.append(["pilots", tr("Pilots"), ""])
 		"Feed":
-			out.append(["town", tr("News"), ""])
-			out.append(["all", tr("Messages"), ""])
+			# BotMedia: the feed, Explore, Alerts, your DMs and your profile (Looks, Gear and
+			# Contracts open from the profile; hidden = no button on the bar)
+			out.append(["home", tr("Home"), ""])
+			out.append(["explore", tr("Explore"), ""])
+			out.append(["alerts", tr("Alerts %d") % GameData.alerts_unseen if GameData.alerts_unseen > 0 else tr("Alerts"), ""])
+			out.append(["all", tr("DMs"), ""])
 			out.append(["profile", tr("Profile"), ""])
+			out.append(["looks", tr("Looks"), "", true])
 			if GameData.unlocked("pilot"):
-				out.append(["gear", tr("Gear"), "pilot"])
+				out.append(["gear", tr("Gear"), "pilot", true])
+			out.append(["contracts", tr("Contracts"), "", true])
 		"Pub":
 			# The Rusty Bolt: the scene stays the same pub while you switch between these
 			out.append(["bar", tr("Bar"), ""])
@@ -482,7 +489,8 @@ func seg_new(key: String, feature: String) -> bool:
 func section_new(t: String) -> bool:
 	match t:
 		"Feed":
-			return GameData.inbox.size() > GameData.inbox_seen
+			if GameData.inbox.size() > GameData.inbox_seen or GameData.alerts_unseen > 0 or not GameData.Social.drafts().is_empty():
+				return true
 		"Storage":
 			return GameData.is_new("storage")
 		"Season":
@@ -535,9 +543,12 @@ func build_seg_bar() -> void:
 		tabs_box.add_child(t)
 		return
 	for sg in list:
-		var on: bool = sg[0] == seg()
+		if sg.size() > 3 and sg[3]:
+			continue   # opens from somewhere else (BotMedia's profile)
+		var on: bool = sg[0] == seg() or (tab == "Feed" and sg[0] == "profile" and seg() in ["looks", "gear", "contracts"])
 		var b := UI.button(str(sg[1]), _on_seg.bind(sg[0]), 13, Vector2(0, 34))
-		GUI.mark_new(b, seg_new(sg[0], sg[2]))
+		GUI.mark_new(b, seg_new(sg[0], sg[2]) or (tab == "Feed" and sg[0] == "home" and not GameData.Social.drafts().is_empty())
+				or (tab == "Feed" and sg[0] == "profile" and (seg_new("gear", "pilot") and GameData.unlocked("pilot") or contracts_new())))
 		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		var st := GUI.seg_style(on)
 		for k in ["normal", "disabled"]:
@@ -1005,12 +1016,29 @@ func refresh() -> void:
 		"Season":
 			build_season_tab()
 		"Feed":
-			if seg() == "profile":
-				build_pilot_looks()
-			elif seg() == "gear":
-				build_controllers()
-			else:
-				build_feed()
+			if seg() != "alerts":
+				alerts_fresh = 0
+			match seg():
+				"home":
+					build_home()
+				"explore":
+					build_explore()
+				"alerts":
+					build_alerts()
+				"profile":
+					profile_bar()
+					build_my_posts()
+				"looks":
+					profile_bar()
+					build_pilot_looks()
+				"gear":
+					profile_bar()
+					build_controllers()
+				"contracts":
+					profile_bar()
+					build_contracts()
+				_:
+					build_feed()
 		"Pub":
 			match seg():
 				"bets":
@@ -1836,30 +1864,15 @@ func update_tour() -> void:
 		tour_arrow.queue_redraw()
 
 
-## Messages: everything anyone ever said to you, newest first (Gus, pilots, hate mail, the
-## story), plus the town news. Nothing that pops up in a bubble is lost.
+## BotMedia > DMs: everything anyone ever said to you, newest first (Gus, pilots, hate mail,
+## sponsors, the story). Nothing that pops up in a bubble is lost.
 func build_feed() -> void:
 	var view := seg()
 	GameData.inbox_seen = GameData.inbox.size()
-	if view == "town":
-		section(tr("Who leads the leagues, who moved, who bought what, and the talk at the docks."))
-		var news: Array = GameData.world.get("news", [])
-		if news.is_empty():
-			section(tr("Nothing yet. Give it a week."))
-		for i in range(news.size() - 1, -1, -1):
-			var n: Dictionary = news[i]
-			var ic := "pickup"
-			for a in n.get("args", []):
-				if str(a).begins_with("stage:"):
-					ic = str(a).substr(6)
-			if str(n["text"]).begins_with("Titanium"):
-				ic = "title"
-			make_row(GUI.EventIcon.new(ic, 40.0), tr("Year %d, week %d") % [int(n["y"]), int(n["w"])], GameData.World.news_text(n))
-		return
 	# Messages: one list, with a filter (who said it)
-	var fbar := action_bar()
+	var fbar := flow_bar()
 	fbar.add_child(GUI.text(tr("Show:"), 14, GUI.MUTED))
-	for f in [["all", tr("Everyone")], ["gus", tr("Gus")], ["pilots", tr("Pilots")], ["story", tr("Story")]]:
+	for f in [["all", tr("Everyone")], ["gus", tr("Gus")], ["pilots", tr("Pilots")], ["sponsors", tr("Sponsors")], ["story", tr("Story")]]:
 		var fb := row_button(fbar, str(f[1]), _on_msg_filter.bind(str(f[0])), true, 0)
 		fb.toggle_mode = true
 		fb.button_pressed = msg_filter == str(f[0])
@@ -1879,7 +1892,10 @@ func build_feed() -> void:
 				if who != "GUS":
 					continue
 			"pilots":
-				if who in ["GUS", "YOU", "NARRATOR", "ECHO"] or kind == "story":
+				if who in ["GUS", "YOU", "NARRATOR", "ECHO"] or kind == "story" or kind.begins_with("sponsor:"):
+					continue
+			"sponsors":
+				if not kind.begins_with("sponsor:"):
 					continue
 			"story":
 				if kind != "story":
@@ -1900,7 +1916,10 @@ func build_feed() -> void:
 			shown_name = GameData.robot_name
 		elif who == "NARRATOR":
 			shown_name = tr("NARRATOR")
-		if e.has("wid"):
+		if kind.begins_with("sponsor:"):
+			face.queue_free()
+			make_tap_row(Logos.LogoIcon.new(kind.substr(8), 52), shown_name, str(e["text"]), go_to.bind("Feed", "contracts"), tr("sponsor"))
+		elif e.has("wid"):
 			make_tap_row(face, shown_name, str(e["text"]), open_pilot.bind(int(e["wid"])))
 		else:
 			make_row(face, shown_name, str(e["text"]), null, {"story": tr("story"), "gus": "", "talk": ""}.get(kind, ""))
@@ -1923,6 +1942,727 @@ func _on_watch_opening() -> void:
 func _on_msg_filter(f: String) -> void:
 	msg_filter = f
 	refresh()
+
+
+# ---------------------------------------------------------------- BotMedia (Social / Contracts)
+
+var feed_focus := ""     # Explore: a "#tag" or an account key being looked at ("" = the Explore page)
+var feed_shown := 30     # how many posts the feed shows before "Show more"
+var alerts_fresh := 0    # how many alerts were new when you opened Alerts
+
+
+## A round avatar: a logo for companies and announcers, a face for pilots (and you), Gus as Gus,
+## an initial on a colour for fans.
+class Avatar extends Control:
+	var key := ""
+	var acc := {}
+
+	func _init(k: String = "", a: Dictionary = {}) -> void:
+		key = k
+		acc = a
+		mouse_filter = Control.MOUSE_FILTER_IGNORE
+		clip_contents = true
+
+	func _draw() -> void:
+		var r := minf(size.x, size.y) * 0.5
+		var c := size * 0.5
+		if acc.has("logo"):
+			draw_circle(c, r, Color(0.94, 0.93, 0.9))
+			load("res://logos.gd").draw_logo(self, str(acc["logo"]), c, r * 0.86)
+			return
+		draw_circle(c, r, Color(0.16, 0.17, 0.22))
+		var PA = load("res://pilot_art.gd")
+		if key == "me":
+			PA.draw_head(self, c + Vector2(0, r * 0.18), r * 0.6, GameData.pilot_look, 1.0, 0.0)
+		elif acc.has("wid"):
+			PA.draw_head(self, c + Vector2(0, r * 0.18), r * 0.6, GameData.World.look_of(int(acc["wid"])), 1.0, 0.0)
+		elif key == "gus":
+			# grey stubble, cap, the face that's been under robots for forty years
+			draw_circle(c, r, Color(0.32, 0.26, 0.2))
+			draw_circle(c + Vector2(0, r * 0.12), r * 0.52, Color(0.86, 0.68, 0.52))
+			draw_rect(Rect2(c + Vector2(-r * 0.6, -r * 0.62), Vector2(r * 1.2, r * 0.36)), Color(0.85, 0.3, 0.2))
+			draw_rect(Rect2(c + Vector2(-r * 0.3, r * 0.3), Vector2(r * 0.6, r * 0.2)), Color(0.7, 0.7, 0.72))
+			draw_circle(c + Vector2(-r * 0.2, 0), r * 0.07, Color(0.1, 0.1, 0.1))
+			draw_circle(c + Vector2(r * 0.2, 0), r * 0.07, Color(0.1, 0.1, 0.1))
+		else:
+			var h := absi(hash(key))
+			draw_circle(c, r, Color.from_hsv(float(h % 360) / 360.0, 0.45, 0.55))
+			var f: Font = GUI.headb()
+			var ch := str(acc.get("name", "?")).substr(0, 1).to_upper()
+			var fsz := int(r * 1.1)
+			draw_string(f, Vector2(0, c.y + fsz * 0.36), ch, HORIZONTAL_ALIGNMENT_CENTER, size.x, fsz, Color.WHITE)
+
+
+## Small drawn icons (the fonts have no hearts): "like", "liked", "repost", "reply", "check".
+class Glyph extends Control:
+	var kind := "like"
+	var col := Color.WHITE
+
+	func _init(k: String = "like", c: Color = Color.WHITE, px: float = 16.0) -> void:
+		kind = k
+		col = c
+		custom_minimum_size = Vector2(px, px)
+		mouse_filter = Control.MOUSE_FILTER_IGNORE
+
+	func _draw() -> void:
+		var s := minf(size.x, size.y)
+		var o := (size - Vector2(s, s)) * 0.5
+		match kind:
+			"like", "liked":
+				var pts := PackedVector2Array()
+				for i in 33:
+					var t := TAU * i / 32.0
+					var x := 16.0 * pow(sin(t), 3)
+					var y := -(13.0 * cos(t) - 5.0 * cos(2 * t) - 2.0 * cos(3 * t) - cos(4 * t))
+					pts.append(o + Vector2(s * 0.5, s * 0.46) + Vector2(x, y) * s / 36.0)
+				if kind == "liked":
+					draw_colored_polygon(pts, col)
+				else:
+					draw_polyline(pts, col, 1.6, true)
+			"repost":
+				var a := o + Vector2(s * 0.15, s * 0.35)
+				draw_polyline(PackedVector2Array([a + Vector2(0, s * 0.25), a, a + Vector2(s * 0.6, 0)]), col, 1.6)
+				draw_colored_polygon(PackedVector2Array([a + Vector2(s * 0.6, -s * 0.14), a + Vector2(s * 0.75, 0), a + Vector2(s * 0.6, s * 0.14)]), col)
+				var b := o + Vector2(s * 0.85, s * 0.65)
+				draw_polyline(PackedVector2Array([b - Vector2(0, s * 0.25), b, b - Vector2(s * 0.6, 0)]), col, 1.6)
+				draw_colored_polygon(PackedVector2Array([b - Vector2(s * 0.6, -s * 0.14), b - Vector2(s * 0.75, 0), b - Vector2(s * 0.6, s * 0.14)]), col)
+			"reply":
+				draw_rect(Rect2(o + Vector2(s * 0.12, s * 0.18), Vector2(s * 0.76, s * 0.5)), col, false, 1.6)
+				draw_colored_polygon(PackedVector2Array([o + Vector2(s * 0.3, s * 0.68), o + Vector2(s * 0.5, s * 0.68), o + Vector2(s * 0.28, s * 0.88)]), col)
+			"check":
+				draw_circle(o + Vector2(s, s) * 0.5, s * 0.5, col)
+				draw_polyline(PackedVector2Array([o + Vector2(s * 0.26, s * 0.52), o + Vector2(s * 0.44, s * 0.7), o + Vector2(s * 0.76, s * 0.32)]), Color(0.1, 0.1, 0.12), 2.0)
+
+
+func avatar_for(key: String, px: float = 46.0) -> Control:
+	var av := Avatar.new(key, GameData.Social.account(key))
+	av.custom_minimum_size = Vector2(px, px)
+	return av
+
+
+## Look at an account (Explore shows its header and its posts).
+func open_account(key: String) -> void:
+	if key == "me":
+		go_to("Feed", "profile")
+		return
+	feed_focus = key
+	feed_shown = 30
+	go_to("Feed", "explore")
+
+
+func open_tag(tag: String) -> void:
+	feed_focus = "#" + tag
+	feed_shown = 30
+	go_to("Feed", "explore")
+
+
+## One post: avatar, name, handle and when, the text, its card, and like / repost / reply.
+func post_row(p: Dictionary, parent: Control = null) -> void:
+	var S = GameData.Social
+	var by := str(p["by"])
+	var acc: Dictionary = S.account(by)
+	var panel := PanelContainer.new()
+	var sb := GUI.box(GUI.ROW, 10, 8)
+	if p.get("mention", false) and by != "me":
+		sb.border_color = GUI.YELLOW.darkened(0.3)
+		sb.border_width_left = 3
+	panel.add_theme_stylebox_override("panel", sb)
+	(parent if parent else list_box).add_child(panel)
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 10)
+	panel.add_child(row)
+	var avb := Button.new()
+	avb.flat = true
+	avb.focus_mode = Control.FOCUS_NONE
+	avb.custom_minimum_size = Vector2(48, 48)
+	avb.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
+	var av := avatar_for(by, 46)
+	av.set_anchors_preset(Control.PRESET_FULL_RECT)
+	avb.add_child(av)
+	avb.pressed.connect(open_account.bind(by))
+	row.add_child(avb)
+	var col := VBoxContainer.new()
+	col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	col.add_theme_constant_override("separation", 3)
+	row.add_child(col)
+	var head := HBoxContainer.new()
+	head.add_theme_constant_override("separation", 6)
+	col.add_child(head)
+	var nm := GUI.text(str(acc["name"]), 14, GUI.YELLOW if by == "me" else GUI.TEXT, "headb")
+	head.add_child(nm)
+	if acc.get("verified", false):
+		var g := Glyph.new("check", GUI.CYAN, 14)
+		g.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		head.add_child(g)
+	var hl := GUI.text("@%s · %s" % [acc["handle"], S.when_text(p)], 11, GUI.MUTED)
+	hl.clip_text = true
+	hl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	hl.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	head.add_child(hl)
+	var tx := GUI.text(S.text_of(p), 14, GUI.TEXT)
+	tx.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	col.add_child(tx)
+	var tags: Array = p.get("tags", [])
+	if not tags.is_empty():
+		var tb := HFlowContainer.new()
+		tb.add_theme_constant_override("h_separation", 8)
+		col.add_child(tb)
+		for t in tags:
+			if str(t) == "":
+				continue
+			var b := Button.new()
+			b.flat = true
+			b.focus_mode = Control.FOCUS_NONE
+			b.text = "#" + str(t)
+			b.add_theme_font_size_override("font_size", UI.tsz(12))
+			for c in ["font_color", "font_hover_color", "font_pressed_color"]:
+				b.add_theme_color_override(c, GUI.CYAN)
+			b.pressed.connect(open_tag.bind(str(t)))
+			tb.add_child(b)
+	post_card(p.get("card", {}), col)
+	# like, repost, reply
+	var acts := HBoxContainer.new()
+	acts.add_theme_constant_override("separation", 16)
+	col.add_child(acts)
+	var id := int(p["id"])
+	var lb := Button.new()
+	lb.flat = true
+	lb.focus_mode = Control.FOCUS_NONE
+	var liked: bool = S.st()["liked"].has(str(id))
+	var lh := HBoxContainer.new()
+	lh.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	lh.add_theme_constant_override("separation", 4)
+	lb.add_child(lh)
+	var lg := Glyph.new("liked" if liked else "like", GUI.RED if liked else GUI.MUTED, 20)
+	lh.add_child(lg)
+	var lc := GUI.text(S.fol_text(S.grown(p, "likes")), 13, GUI.RED if liked else GUI.MUTED)
+	lh.add_child(lc)
+	lb.custom_minimum_size = Vector2(70, 26)
+	lb.pressed.connect(func():
+		S.toggle_like(id)
+		var on: bool = S.st()["liked"].has(str(id))
+		lg.kind = "liked" if on else "like"
+		lg.col = GUI.RED if on else GUI.MUTED
+		lg.queue_redraw()
+		lc.text = S.fol_text(S.grown(p, "likes"))
+		lc.add_theme_color_override("font_color", GUI.RED if on else GUI.MUTED)
+		Sfx.play("click", 0.05))
+	acts.add_child(lb)
+	for f in [["repost", "reposts"], ["reply", "replies"]]:
+		var h := HBoxContainer.new()
+		h.add_theme_constant_override("separation", 4)
+		h.add_child(Glyph.new(f[0], GUI.MUTED, 20))
+		h.add_child(GUI.text(S.fol_text(S.grown(p, f[1])), 13, GUI.MUTED))
+		acts.add_child(h)
+	if p.get("mention", false) and by != "me" and not p.get("replied", false) and not acc.has("logo"):
+		var rb := UI.button(tr("Reply"), open_reply.bind(id), 12, Vector2(80, 28))
+		acts.add_child(rb)
+
+
+## The picture under a post: a result, a podium, a Read change, a sponsor's logo.
+func post_card(card: Dictionary, parent: Control) -> void:
+	if card.is_empty():
+		return
+	var panel := PanelContainer.new()
+	panel.add_theme_stylebox_override("panel", GUI.box(GUI.BG, 8, 8))
+	parent.add_child(panel)
+	var h := HBoxContainer.new()
+	h.add_theme_constant_override("separation", 10)
+	panel.add_child(h)
+	match str(card.get("kind", "")):
+		"result":
+			h.add_child(GUI.text(tr("WIN"), 13, GUI.GREEN, "headb"))
+			h.add_child(GUI.text(str(card.get("a", "?")), 14, GUI.TEXT, "headb"))
+			h.add_child(GUI.text(tr("beat"), 12, GUI.MUTED))
+			h.add_child(GUI.text(str(card.get("b", "?")), 14, GUI.TEXT, "headb"))
+		"podium":
+			var names: Array = card.get("names", [])
+			var cols := [Color(1.0, 0.84, 0.3), Color(0.8, 0.82, 0.86), Color(0.85, 0.55, 0.3)]
+			for i in mini(3, names.size()):
+				h.add_child(GUI.text("%d. %s" % [i + 1, names[i]], 13, cols[i], "headb"))
+		"read":
+			h.add_child(GUI.text(tr("READ"), 12, GUI.MUTED, "headb"))
+			h.add_child(GUI.readout(GameData.aim_dots(int(card.get("dots", 1))), 18, GUI.GREEN))
+		"rattled":
+			h.add_child(GUI.text(tr("RATTLED"), 14, GUI.RED, "headb"))
+		"logo":
+			h.add_child(Logos.LogoIcon.new(str(card.get("logo", "")), 36))
+			h.add_child(GUI.text(str(GameData.Contracts.sp(str(card.get("logo", ""))).get("name", "")), 14, GUI.TEXT, "headb"))
+		"ad":
+			h.add_child(Logos.LogoIcon.new("kane", 36))
+			h.add_child(GUI.text(tr("SPONSORED"), 11, GUI.MUTED, "headb"))
+		_:
+			panel.queue_free()
+
+
+func feed_list(kind: String) -> void:
+	var posts: Array = GameData.Social.feed(kind, feed_shown + 1)
+	if posts.is_empty():
+		section(tr("Nothing here yet."))
+		return
+	for i in mini(posts.size(), feed_shown):
+		post_row(posts[i])
+	if posts.size() > feed_shown:
+		var bar := action_bar()
+		row_button(bar, tr("Show more"), func(): feed_shown += 30; refresh(), true, 160)
+
+
+## Home: your post waiting after a fight (three drafts), then everyone you follow.
+func build_home() -> void:
+	var S = GameData.Social
+	var drafts: Array = S.drafts()
+	if not drafts.is_empty():
+		var panel := PanelContainer.new()
+		var sb := GUI.box(GUI.ROW.lightened(0.04), 10, 10)
+		sb.border_color = GUI.YELLOW
+		sb.set_border_width_all(2)
+		panel.add_theme_stylebox_override("panel", sb)
+		list_box.add_child(panel)
+		var col := VBoxContainer.new()
+		col.add_theme_constant_override("separation", 6)
+		panel.add_child(col)
+		var top := HBoxContainer.new()
+		top.add_theme_constant_override("separation", 10)
+		col.add_child(top)
+		top.add_child(avatar_for("me", 40))
+		var t := GUI.text(tr("POST ABOUT TONIGHT? Pick one."), 15, GUI.YELLOW, "headb")
+		t.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		top.add_child(t)
+		var opp := str(S.st()["draft"].get("opp", ""))
+		var hints := {"humble": tr("Safe. Sponsors like it."), "hype": tr("Big if you keep winning."), "trash": tr("Fans love it. They won't.")}
+		var names := {"humble": tr("HUMBLE"), "hype": tr("HYPE"), "trash": tr("TRASH TALK")}
+		var no_trash: bool = GameData.Contracts.st()["active"].any(func(c): return c["reqs"].any(func(r): return r["kind"] == "no_trash"))
+		for d in drafts:
+			var tone := str(d[0])
+			var b := Button.new()
+			b.focus_mode = Control.FOCUS_NONE
+			b.custom_minimum_size = Vector2(0, 58)
+			for k in ["normal", "hover", "pressed", "hover_pressed"]:
+				var st := GUI.box(GUI.BG if k == "normal" else GUI.BG.lightened(0.08), 8, 6)
+				b.add_theme_stylebox_override(k, st)
+			b.pressed.connect(_on_publish.bind(tone))
+			col.add_child(b)
+			var v := VBoxContainer.new()
+			v.set_anchors_preset(Control.PRESET_FULL_RECT)
+			v.offset_left = 10
+			v.offset_right = -10
+			v.alignment = BoxContainer.ALIGNMENT_CENTER
+			v.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			v.add_theme_constant_override("separation", 0)
+			b.add_child(v)
+			var warn := tone == "trash" and no_trash
+			v.add_child(GUI.text(str(names[tone]) + "  ·  " + (tr("Breaks your Harbour Mutual deal!") if warn else str(hints[tone])), 11, GUI.RED if warn or tone == "trash" else GUI.MUTED, "headb"))
+			var dt := GUI.text(tr(str(d[1])) % opp, 13, GUI.TEXT)
+			dt.clip_text = true
+			v.add_child(dt)
+		var bar := action_bar(col)
+		var sp := Control.new()
+		sp.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		bar.add_child(sp)
+		var skip := UI.button(tr("Say nothing"), _on_skip_post, 12, Vector2(130, 32))
+		bar.add_child(skip)
+	feed_list("home")
+
+
+func _on_publish(tone: String) -> void:
+	var before: int = GameData.Social.followers()
+	GameData.Social.publish(tone)
+	var d: int = GameData.Social.followers() - before
+	note(tr("Posted. Followers %s%d.") % ["+" if d >= 0 else "", d], "equip")
+	feed_shown = 30
+	GameData.save_game()
+	refresh()
+
+
+func _on_skip_post() -> void:
+	GameData.Social.st()["draft"] = {}
+	refresh()
+
+
+## Explore: trending tags, who to follow, everything; or one tag / one account.
+func build_explore() -> void:
+	var S = GameData.Social
+	if feed_focus != "":
+		var bar := action_bar()
+		row_button(bar, tr("‹ Explore"), func(): feed_focus = ""; feed_shown = 30; refresh(), true, 130)
+		if feed_focus.begins_with("#"):
+			var tl := GUI.text(feed_focus, 18, GUI.CYAN, "headb")
+			tl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			bar.add_child(tl)
+		else:
+			account_header(feed_focus)
+		feed_list(feed_focus)
+		return
+	section(tr("TRENDING IN PORT FERRUM"))
+	var fb := flow_bar()
+	for t in S.trending(8):
+		var b := UI.button("#" + str(t), open_tag.bind(str(t)), 13, Vector2(0, 36))
+		fb.add_child(b)
+	var sugg: Array = S.suggestions(5)
+	if not sugg.is_empty():
+		section(tr("WHO TO FOLLOW"))
+		for k in sugg:
+			var acc: Dictionary = S.account(k)
+			var row := make_tap_row(avatar_for(k), str(acc["name"]), "@%s · %s" % [acc["handle"], tr("%s followers") % S.fol_text(int(acc["fol"]))], open_account.bind(k))
+			row_button(row, tr("Follow"), _on_follow.bind(k, true), true, 110)
+	section(tr("EVERYTHING ON BOTMEDIA"))
+	feed_list("all")
+
+
+## An account's header in Explore: avatar, name, handle, followers, Follow, and the pilot card.
+func account_header(key: String) -> void:
+	var S = GameData.Social
+	var acc: Dictionary = S.account(key)
+	var panel := PanelContainer.new()
+	panel.add_theme_stylebox_override("panel", GUI.box(GUI.ROW, 10, 10))
+	list_box.add_child(panel)
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 12)
+	panel.add_child(row)
+	row.add_child(avatar_for(key, 72))
+	var col := VBoxContainer.new()
+	col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.add_child(col)
+	col.add_child(GUI.text(str(acc["name"]), 18, GUI.TEXT, "headb"))
+	col.add_child(GUI.text("@" + str(acc["handle"]), 12, GUI.MUTED))
+	col.add_child(GUI.readout(tr("%s FOLLOWERS") % S.fol_text(int(acc["fol"])), 20, GUI.GREEN))
+	if acc.has("wid"):
+		var line := tr("Read %s") % GameData.aim_dots(GameData.World.read_dots(float(acc["read"])))
+		if acc.get("rattled", false):
+			line += "  " + tr("RATTLED")
+		col.add_child(GUI.text(line, 13, GUI.RED if acc.get("rattled", false) else GUI.TEXT))
+	var bx := VBoxContainer.new()
+	bx.add_theme_constant_override("separation", 6)
+	row.add_child(bx)
+	var on: bool = S.follows(key)
+	bx.add_child(UI.button(tr("Following") if on else tr("Follow"), _on_follow.bind(key, not on), 13, Vector2(120, 38)))
+	if acc.has("wid"):
+		bx.add_child(UI.button(tr("Pilot card"), open_pilot.bind(int(acc["wid"])), 13, Vector2(120, 38)))
+	if key.begins_with("sp:"):
+		bx.add_child(UI.button(tr("Contracts"), go_to.bind("Feed", "contracts"), 13, Vector2(120, 38)))
+
+
+func _on_follow(key: String, on: bool) -> void:
+	GameData.Social.follow(key, on)
+	Sfx.play("click", 0.05)
+	refresh()
+
+
+## Alerts: mentions, follower jumps, offers, rule warnings. Opening it clears the count.
+func build_alerts() -> void:
+	var S = GameData.Social
+	if GameData.alerts_unseen > 0:
+		alerts_fresh = GameData.alerts_unseen   # stays marked while you look (refreshes don't clear it)
+		GameData.alerts_unseen = 0
+	var fresh := alerts_fresh
+	var offers: Array = GameData.Contracts.st()["offers"]
+	if not offers.is_empty():
+		var row := make_tap_row(Logos.LogoIcon.new(str(offers[0]["sp"]), 52), tr("Sponsor offers waiting: %d") % offers.size(), tr("Read them before they run out."), go_to.bind("Feed", "contracts"))
+		GUI.mark_new(row.get_parent(), true)
+	var notes: Array = S.st()["notes"]
+	if notes.is_empty():
+		section(tr("No alerts yet. Win a fight and Port Ferrum will notice."))
+		return
+	var n := 0
+	for i in range(notes.size() - 1, -1, -1):
+		var e: Dictionary = notes[i]
+		var pid := int(e.get("post", -1))
+		var txt: String = S.note_text(e)
+		var sub := S.when_text({"at": e.get("at", 0), "w": e.get("w", 1)})
+		var icon: Control
+		if str(e.get("icon", "")) != "":
+			icon = Logos.LogoIcon.new(str(e["icon"]), 52)
+		elif pid >= 0:
+			icon = avatar_for(str(S.find_post(pid).get("by", "botmedia")))
+		else:
+			icon = Glyph.new("like", GUI.YELLOW, 40)
+		var row: HBoxContainer
+		if pid >= 0 and not S.find_post(pid).is_empty():
+			row = make_tap_row(icon, txt, sub, open_post.bind(pid))
+		else:
+			row = make_row(icon, txt, sub)
+		if n < fresh:
+			GUI.mark_new(row.get_parent(), true)
+		n += 1
+		if n >= 60:
+			break
+
+
+## One post on its own (from an alert): the post, and a reply if it named you.
+func open_post(id: int) -> void:
+	var p: Dictionary = GameData.Social.find_post(id)
+	if p.is_empty():
+		return
+	var col := open_popup(tr("POST"))
+	post_row(p, col)
+	popup_footer.add_child(UI.button(tr("Close"), close_popup, 16, Vector2(0, 46)))
+
+
+## Reply to a post that names you: friendly, cool or cutting.
+func open_reply(id: int) -> void:
+	var S = GameData.Social
+	var p: Dictionary = S.find_post(id)
+	if p.is_empty():
+		return
+	var acc: Dictionary = S.account(str(p["by"]))
+	var col := open_popup(tr("REPLY TO @%s") % acc["handle"])
+	post_row(p, col)
+	var hints := {"friendly": tr("Cools a grudge."), "cool": tr("Says nothing, looks calm."), "cutting": tr("Fans love it. So do grudges.")}
+	for r in S.reply_options():
+		var b := UI.button((tr(str(r[1])) % ("@" + str(acc["handle"]))) + "\n" + str(hints[r[0]]), _on_reply.bind(id, str(r[0])), 13, Vector2(0, 58))
+		col.add_child(b)
+	popup_footer.add_child(UI.button(tr("Back"), close_popup, 16, Vector2(0, 46)))
+
+
+func _on_reply(id: int, tone: String) -> void:
+	GameData.Social.reply(id, tone)
+	close_popup()
+	note(tr("Replied."), "equip")
+	GameData.save_game()
+	refresh()
+
+
+## Your profile, on top of Posts / Looks / Gear / Contracts.
+func profile_bar() -> void:
+	var S = GameData.Social
+	var panel := PanelContainer.new()
+	panel.add_theme_stylebox_override("panel", GUI.box(GUI.ROW, 10, 10))
+	list_box.add_child(panel)
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 12)
+	panel.add_child(row)
+	row.add_child(avatar_for("me", 64))
+	var col := VBoxContainer.new()
+	col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.add_child(col)
+	col.add_child(GUI.text(GameData.pilot_name, 18, GUI.YELLOW, "headb"))
+	col.add_child(GUI.text("@%s · %s" % [S.account("me")["handle"], tr("Record %d-%d") % [GameData.wins, GameData.losses]], 12, GUI.MUTED))
+	var right := VBoxContainer.new()
+	right.alignment = BoxContainer.ALIGNMENT_CENTER
+	row.add_child(right)
+	right.add_child(GUI.readout(S.fol_text(S.followers()), 28, GUI.GREEN))
+	right.add_child(GUI.text(tr("FOLLOWERS"), 10, GUI.MUTED, "headb"))
+	var bar := flow_bar()
+	var subs := [["profile", tr("Posts")], ["looks", tr("Looks")]]
+	if GameData.unlocked("pilot"):
+		subs.append(["gear", tr("Gear")])
+	var nc: int = GameData.Contracts.st()["offers"].size()
+	subs.append(["contracts", tr("Contracts %d") % nc if nc > 0 else tr("Contracts")])
+	for sb in subs:
+		var b := UI.button(str(sb[1]), go_to.bind("Feed", str(sb[0])), 13, Vector2(110, 36))
+		var st := GUI.seg_style(seg() == sb[0])
+		for k in ["normal", "disabled"]:
+			b.add_theme_stylebox_override(k, st[0])
+		for k in ["hover", "pressed", "hover_pressed"]:
+			b.add_theme_stylebox_override(k, st[1])
+		GUI.mark_new(b, (sb[0] == "gear" and seg_new("gear", "pilot")) or (sb[0] == "contracts" and contracts_new()))
+		bar.add_child(b)
+
+
+func build_my_posts() -> void:
+	var S = GameData.Social
+	section(tr("Posts this week: %d. Your posts go out after fights: win, lose, the fans want to hear it.") % S.posts_this_week())
+	feed_list("me")
+
+
+## Offers waiting that you haven't opened yet.
+func contracts_new() -> bool:
+	return GameData.Contracts.st()["offers"].any(func(o): return not o.get("seen", false))
+
+
+# ---------------------------------------------------------------- contracts
+
+func build_contracts() -> void:
+	var C = GameData.Contracts
+	var s: Dictionary = C.st()
+	section(tr("SPONSORS pay to put their name on your robot: one title sponsor (their paint, their logo on the chest) and up to two stickers. Break their rules and you get a warning, then a fine, then the deal is off."))
+	if s["active"].is_empty():
+		section(tr("No sponsors yet."))
+	else:
+		var tl := GUI.readout(tr("SPONSORS PAY $%d A MONTH") % C.monthly_total(), 20, GUI.GREEN)
+		list_box.add_child(tl)
+	for c in s["active"]:
+		var d: Dictionary = C.sp(str(c["sp"]))
+		var role := tr("TITLE SPONSOR") if c["role"] == "title" else tr("PARTNER")
+		var sub := tr("$%d a month · $%d a win · %d weeks left · sticker %s") % [int(c["fee"]), int(c["win"]), int(c["weeks"]), C.slot_text(str(c["slot"]))]
+		make_row(Logos.LogoIcon.new(str(c["sp"]), 52), str(d["name"]), sub, null, role)
+		for r in c["reqs"]:
+			var ok := req_ok(r)
+			var rh := HBoxContainer.new()
+			rh.add_theme_constant_override("separation", 8)
+			list_box.add_child(rh)
+			var pad := Control.new()
+			pad.custom_minimum_size = Vector2(16, 0)
+			rh.add_child(pad)
+			var gl := Glyph.new("check", GUI.GREEN if ok else GUI.AMBER.darkened(0.4), 16)
+			gl.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+			rh.add_child(gl)
+			var l := GUI.text(C.req_text(r), 13, GUI.TEXT if ok else GUI.AMBER)
+			l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+			l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			rh.add_child(l)
+		var strikes := int(c.get("strikes", 0))
+		if strikes > 0:
+			list_box.add_child(GUI.text("    " + (tr("WARNED once.") if strikes == 1 else tr("FINED. One more and it's over.")), 13, GUI.RED, "headb"))
+	section(tr("OFFERS"))
+	if s["offers"].is_empty():
+		section(tr("No offers right now. Win fights and grow your followers: sponsors are watching. Offers come on Mondays."))
+	for o in s["offers"]:
+		var d2: Dictionary = C.sp(str(o["sp"]))
+		var role2 := tr("TITLE") if o["role"] == "title" else tr("PARTNER")
+		var row := make_tap_row(Logos.LogoIcon.new(str(o["sp"]), 52), str(d2["name"]),
+				tr("$%d a month · $%d to sign · %d weeks") % [int(o["fee"]), int(o["sign"]), int(o["weeks"])] + ("  ·  " + tr("sleeping on it") if o.get("sleeping", false) else ""),
+				open_offer.bind(int(o["id"])), role2)
+		GUI.mark_new(row.get_parent(), not o.get("seen", false))
+		row_button(row, tr("Open"), open_offer.bind(int(o["id"])), true, 90)
+
+
+## Is a rule being kept right now? (for the tick in the list)
+func req_ok(r: Dictionary) -> bool:
+	match str(r["kind"]):
+		"paint":
+			return GameData.paint == int(r["paint"])
+		"controller":
+			return str(GameData.pilot_look.get("controller", "")) == str(r["id"])
+		"posts":
+			return GameData.Social.posts_this_week() >= int(r["n"])
+		"followers":
+			return GameData.Social.followers() >= int(r["n"])
+		"dealer":
+			return int(GameData.Contracts.st()["dealer_buys"]) >= int(r["n"])
+		"repaired":
+			return GameData.robot_hp_ratio() * 100.0 >= float(r["pct"])
+		"wins":
+			return int(r.get("played", 0)) - int(r.get("won", 0)) <= int(r["m"]) - int(r["n"])
+	return true
+
+
+var offer_ask_open := false
+
+
+## An offer up close: the money, the rules, what Gus thinks, how they seem; and the haggling.
+func open_offer(id: int) -> void:
+	var C = GameData.Contracts
+	var i: int = C.find_offer(id)
+	if i < 0:
+		close_popup()
+		refresh()
+		return
+	var o: Dictionary = C.st()["offers"][i]
+	o["seen"] = true
+	var d: Dictionary = C.sp(str(o["sp"]))
+	var col := open_popup(str(d["name"]).to_upper())
+	var top := HBoxContainer.new()
+	top.add_theme_constant_override("separation", 14)
+	col.add_child(top)
+	top.add_child(Logos.LogoIcon.new(str(o["sp"]), 84))
+	var tv := VBoxContainer.new()
+	tv.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	top.add_child(tv)
+	tv.add_child(GUI.text(tr("TITLE SPONSOR: their paint, their logo on the chest.") if o["role"] == "title" else tr("PARTNER: a sticker %s.") % C.slot_text(str(o["slot"])), 14, GUI.YELLOW, "headb"))
+	var tagline := GUI.text("@%s · %s" % [d["handle"], tr("%s followers") % GameData.Social.fol_text(int(d["fol"]))], 12, GUI.MUTED)
+	tv.add_child(tagline)
+	var grid := GridContainer.new()
+	grid.columns = 2
+	grid.add_theme_constant_override("h_separation", 18)
+	col.add_child(grid)
+	for t in [[tr("Signing bonus"), "$%d" % int(o["sign"])], [tr("Every month"), "$%d" % int(o["fee"])], [tr("Every win"), "$%d" % int(o["win"])],
+			[tr("Every part you tear off"), "$%d" % int(o["rip"])], [tr("A medal"), tr("$%d (gold)") % int(o["podium"])], [tr("Term"), tr("%d weeks") % int(o["weeks"])]]:
+		grid.add_child(GUI.text(t[0], 14, GUI.MUTED))
+		grid.add_child(GUI.readout(t[1], 20, GUI.GREEN))
+	col.add_child(GUI.text(tr("THE RULES"), 14, GUI.YELLOW, "headb"))
+	for r in o["reqs"]:
+		var l := GUI.text("· " + C.req_text(r), 14, GUI.TEXT)
+		l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		col.add_child(l)
+	var gus := GUI.text(tr("GUS: %s") % C.gus_line(o), 14, GUI.AMBER)
+	gus.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	col.add_child(gus)
+	col.add_child(GUI.text(C.mood_text(o), 13, GUI.MUTED))
+	if str(o.get("reply", "")) != "":
+		var rl := GUI.text("\"%s\"" % o["reply"], 15, GUI.CYAN, "headb")
+		rl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		col.add_child(rl)
+	# haggling
+	var fb := flow_bar(col)
+	if offer_ask_open:
+		for a in [["fee", tr("More a month")], ["sign", tr("Bigger signing bonus")], ["term", tr("Shorter term")], ["drop", tr("Drop a rule")]]:
+			fb.add_child(UI.button(str(a[1]), _on_offer_ask.bind(id, str(a[0])), 13, Vector2(0, 40)))
+		fb.add_child(UI.button(tr("Cancel"), func(): offer_ask_open = false; open_offer(id), 13, Vector2(0, 40)))
+	else:
+		fb.add_child(UI.button(tr("Ask for more ▾"), func(): offer_ask_open = true; open_offer(id), 13, Vector2(0, 40)))
+		var mb := UI.button(tr("Mention another offer"), _on_offer_mention.bind(id), 13, Vector2(0, 40))
+		mb.disabled = o.get("played", false)
+		fb.add_child(mb)
+	var foot := HBoxContainer.new()
+	foot.add_theme_constant_override("separation", 8)
+	popup_footer.add_child(foot)
+	for b in [[tr("Refuse"), _on_offer_refuse.bind(id)], [tr("Sleep on it"), _on_offer_sleep.bind(id)], [tr("Back"), func(): offer_ask_open = false; close_popup(); refresh()]]:
+		var bb := UI.button(str(b[0]), b[1], 14, Vector2(0, 46))
+		bb.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		foot.add_child(bb)
+	var sg := UI.button(tr("SIGN"), _on_offer_sign.bind(id), 16, Vector2(0, 46))
+	sg.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	for k in ["normal", "hover", "pressed", "hover_pressed"]:
+		sg.add_theme_stylebox_override(k, GUI.box(GUI.YELLOW if k == "normal" else GUI.YELLOW.lightened(0.15), 8, 6))
+	for k in ["font_color", "font_hover_color", "font_pressed_color"]:
+		sg.add_theme_color_override(k, Color(0.08, 0.08, 0.1))
+	foot.add_child(sg)
+
+
+func _on_offer_ask(id: int, what: String) -> void:
+	offer_ask_open = false
+	var said: String = GameData.Contracts.ask(id, what)
+	Sfx.play("click", 0.05)
+	if GameData.Contracts.find_offer(id) < 0:
+		close_popup()
+		note(said)
+		refresh()
+		return
+	open_offer(id)
+
+
+func _on_offer_mention(id: int) -> void:
+	var said: String = GameData.Contracts.mention(id)
+	if GameData.Contracts.find_offer(id) < 0:
+		close_popup()
+		note(said)
+		refresh()
+		return
+	open_offer(id)
+
+
+func _on_offer_sleep(id: int) -> void:
+	GameData.Contracts.sleep_on(id)
+	close_popup()
+	note(tr("You'll sleep on it. Your next fight will move their number, one way or the other."))
+	refresh()
+
+
+func _on_offer_refuse(id: int) -> void:
+	confirm(tr("REFUSE?"), tr("They won't ask again for a while."), tr("Refuse"), func():
+		GameData.Contracts.refuse(id)
+		GameData.save_game()
+		refresh(), tr("Keep it"))
+
+
+func _on_offer_sign(id: int) -> void:
+	var C = GameData.Contracts
+	var i: int = C.find_offer(id)
+	if i < 0:
+		return
+	var o: Dictionary = C.st()["offers"][i]
+	var paint_line := ""
+	for r in o["reqs"]:
+		if r["kind"] == "paint" and GameData.paint != int(r["paint"]):
+			paint_line = " " + tr("The crew repaints the robot %s.") % tr(str(GameData.PAINTS[int(r["paint"])]["name"]))
+	confirm(tr("SIGN WITH %s?") % str(C.sp(str(o["sp"]))["name"]).to_upper(), tr("You get $%d now and $%d every month for %d weeks.") % [int(o["sign"]), int(o["fee"]), int(o["weeks"])] + paint_line,
+			tr("Sign"), func():
+		var said: String = C.sign(id)
+		offer_ask_open = false
+		note(said, "buy")
+		GameData.save_game()
+		refresh(), tr("Not yet"))
 
 
 ## Bay > Job board: everything being fixed or bolted on, in order, with the hands that work it.
@@ -3403,7 +4143,9 @@ func open_pilot(wid: int) -> void:
 	row.add_child(info)
 	info.add_child(GUI.text(GameData.pilot_standing(wid), 16, GUI.YELLOW, "headb"))
 	info.add_child(GUI.text(tr("Career record %d-%d · this season %d-%d") % [int(p.get("w", 0)), int(p.get("l", 0)), int(p.get("sw", 0)), int(p.get("sl", 0))], 14, GUI.TEXT))
-	info.add_child(GUI.text(tr("Aim %s") % GameData.aim_dots(GameData.pilot_aim_level(W.robot(wid))), 14, GUI.TEXT))
+	var wo: Dictionary = W.robot(wid)
+	info.add_child(GUI.text(tr("Read %s") % GameData.aim_dots(GameData.pilot_aim_level(wo)) + ("  " + tr("RATTLED") if wo.get("rattled", false) else ""), 14, GUI.RED if wo.get("rattled", false) else GUI.TEXT))
+	info.add_child(GUI.text(tr("%s followers on BotMedia") % GameData.Social.fol_text(GameData.Social.pilot_fol(p)), 14, GUI.CYAN))
 	var h: Array = GameData.h2h.get(str(wid), [0, 0])
 	if int(h[0]) + int(h[1]) > 0:
 		info.add_child(GUI.text(tr("Against you: you %d, them %d") % [int(h[0]), int(h[1])], 14, GUI.AMBER))
@@ -3427,6 +4169,20 @@ func open_pilot(wid: int) -> void:
 	brow.add_child(bi)
 	bi.add_child(GUI.text(str(bot.get("name", "?")), 16, GUI.TEXT, "headb"))
 	bi.add_child(GUI.text(tr("Parts worth $%d") % int(W.bot_value(p.get("bot", {}))), 14, GUI.MUTED))
+	# BotMedia: follow them, or read what they've been posting
+	var sbar := HBoxContainer.new()
+	sbar.add_theme_constant_override("separation", 8)
+	popup_footer.add_child(sbar)
+	var key := "w:%d" % wid
+	var fol_on: bool = GameData.Social.follows(key)
+	var fbt := UI.button(tr("Following") if fol_on else tr("Follow"), func():
+		GameData.Social.follow(key, not GameData.Social.follows(key))
+		open_pilot(wid), 14, Vector2(0, 42))
+	fbt.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	sbar.add_child(fbt)
+	var bmb := UI.button(tr("BotMedia ›"), func(): close_popup(); open_account(key), 14, Vector2(0, 42))
+	bmb.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	sbar.add_child(bmb)
 	# at the bar tonight? then you can take them on from here
 	if GameData.patrons_today().any(func(x): return int(x["wid"]) == wid) and GameData.can_pass_day():
 		var cb := UI.button(tr("Challenge ($%d)") % GameData.PICKUP_PURSE.get(str(p["tier"]), 100), func(): close_popup(); _on_challenge(wid), 16, Vector2(0, 46))
@@ -3927,6 +4683,20 @@ func open_day_plan() -> void:
 		ut.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		r4.add_child(ut)
 		row_button(r4, tr("Read them ›"), func(): close_popup(); go_to("Feed", "all"), true, 170)
+	var offers_n: int = GameData.Contracts.st()["offers"].size()
+	if offers_n > 0:
+		var r6 := action_bar(todo)
+		var ot := GUI.text(tr("Sponsor offers waiting: %d") % offers_n, 14, GUI.TEXT)
+		ot.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		r6.add_child(ot)
+		row_button(r6, tr("Contracts ›"), func(): close_popup(); go_to("Feed", "contracts"), true, 170)
+	if not GameData.Social.drafts().is_empty():
+		var r7 := action_bar(todo)
+		var pt := GUI.text(tr("The fans are waiting for your post about the fight."), 14, GUI.TEXT)
+		pt.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		pt.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		r7.add_child(pt)
+		row_button(r7, tr("Post ›"), func(): close_popup(); go_to("Feed", "home"), true, 170)
 	if not GameData.league_night().is_empty() and not evening:
 		var r5 := action_bar(todo)
 		var bt := GUI.text(tr("League night: the bookies close when the bell rings."), 14, GUI.TEXT)
@@ -4821,7 +5591,7 @@ func _on_repair_all() -> void:
 
 
 ## A yes/no window for things that can't be undone.
-func confirm(title: String, text: String, yes_text: String, cb: Callable) -> void:
+func confirm(title: String, text: String, yes_text: String, cb: Callable, no_text: String = "") -> void:
 	var col := open_popup(title)
 	var l := GUI.text(text, 16, GUI.TEXT)
 	l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -4832,7 +5602,7 @@ func confirm(title: String, text: String, yes_text: String, cb: Callable) -> voi
 	var yes := UI.button(yes_text, func(): close_popup(); cb.call(), 17, Vector2(0, 48))
 	yes.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	row.add_child(yes)
-	var no := UI.button(tr("Keep it"), close_popup, 17, Vector2(0, 48))
+	var no := UI.button(no_text if no_text != "" else tr("Keep it"), close_popup, 17, Vector2(0, 48))
 	no.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	row.add_child(no)
 
@@ -4966,7 +5736,11 @@ func _on_uninstall_chip(id: String) -> void:
 
 func _on_paint(k: int) -> void:
 	GameData.paint = k
-	note(tr("Painted %s.") % tr(GameData.PAINTS[k]["name"]), "equip")
+	var need: int = GameData.Contracts.paint_required()
+	if need >= 0 and need != k:
+		note(tr("Painted %s. Your title sponsor wants %s at the bell!") % [tr(GameData.PAINTS[k]["name"]), tr(GameData.PAINTS[need]["name"])], "error")
+	else:
+		note(tr("Painted %s.") % tr(GameData.PAINTS[k]["name"]), "equip")
 	refresh()
 
 
@@ -5145,7 +5919,16 @@ func open_fight_popup() -> void:
 	opp_line.add_child(name_button(tr("%s, piloted by %s") % [o.get("name", "?"), who_p] if who_p != "" else str(o.get("name", "?")), int(o.get("wid", -1)), 18, GUI.YELLOW))
 	opp_line.add_child(GUI.readout(tr("Purse $%d") % GameData.current_reward(), 20, GUI.AMBER))
 	if who_p != "" or o.has("wid"):
-		col.add_child(GUI.text(tr("Pilot's aim %s: how fast they aim and find your weak spots.") % GameData.aim_dots(GameData.pilot_aim_level(o)), 14, GUI.TEXT))
+		col.add_child(GUI.text(tr("Their Read %s: how fast they aim and find your weak spots.") % GameData.aim_dots(GameData.pilot_aim_level(o)), 14, GUI.TEXT))
+		if o.get("rattled", false):
+			col.add_child(GUI.text(tr("RATTLED: a bad run has got to them. Their Read is down for now."), 14, GUI.GREEN))
+	# sponsors check their rules at the bell
+	for c in GameData.Contracts.st()["active"]:
+		for r in c["reqs"]:
+			if str(r["kind"]) in ["paint", "controller", "repaired"] and not req_ok(r):
+				var sl := GUI.text(tr("%s wants: %s") % [GameData.Contracts.sp_name(c), GameData.Contracts.req_text(r)], 14, GUI.AMBER)
+				sl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+				col.add_child(sl)
 	if mode != "story" and mode != "circuit" and GameData.day_index() < 5 and ["league", "playoff"].has(str(GameData.week_plan(GameData.year, GameData.week, "sat")["kind"])):
 		var warn := GUI.text(tr("Your big fight is this Saturday. Whatever breaks tonight has to be fixed (and paid for) by then."), 14, GUI.CYAN)
 		warn.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART

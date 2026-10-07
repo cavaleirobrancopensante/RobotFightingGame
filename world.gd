@@ -8,7 +8,11 @@ extends RefCounted
 ##
 ## State lives in GameData.world (saved with the game):
 ##   {"next": int, "pilots": {"<wid>": pilot}, "news": [{y, w, text}], "season": {tier: [y, week]}}
-## pilot: {wid, name, tier, cash, skill, habit, age, w, l, sw, sl, retired, ret_y, ret_why, bot, wear}
+## pilot: {wid, name, tier, cash, skill, habit, age, w, l, sw, sl, retired, ret_y, ret_why, bot, wear,
+##         talent, peak, last_fw, lstreak, rattled, newbot, fol}
+## READ: a pilot's `skill` (0..1) is shown as Read, 0 to 100 (read_of). It grows with experience
+## toward the pilot's talent (their ceiling), and fades with ring rust and age; a beating can
+## leave them RATTLED (-10 for two fights). See "Read" below and the Pilot Skill & BotMedia Study.
 
 const I18n = preload("res://i18n.gd")
 
@@ -32,8 +36,8 @@ const VALUE_CAP := {"open": 1000.0, "scrap": 2600.0, "rust": 7500.0, "iron": 220
 const RICH := {"open": 4000, "scrap": 9000, "rust": 27000, "iron": 80000, "steel": 250000}
 ## What a league fight pays the winner.
 const FIGHT_PAY := {"open": 300, "scrap": 800, "rust": 2400, "iron": 7000, "steel": 21000, "title": 90000, "cup": 2000}
-const HABITS := ["saver", "spender", "gambler"]
-const SPEND_CHANCE := {"saver": 0.3, "spender": 0.75, "gambler": 0.5}
+const HABITS := ["saver", "spender", "gambler", "grinder"]   # grinders spar every week (Read)
+const SPEND_CHANCE := {"saver": 0.3, "spender": 0.75, "gambler": 0.5, "grinder": 0.4}
 const UPGRADE_SLOTS := ["head", "torso", "arm_front", "arm_back", "leg_front", "leg_back", "reactor", "back"]
 const RETIRED_KEEP := 30   # retired pilots kept on the books (oldest are forgotten)
 
@@ -80,6 +84,8 @@ static func new_pilot(rng: RandomNumberGenerator, tier: String, value: float, sk
 	var p := {"wid": wid, "name": unique_name(rng), "tier": tier, "cash": rng.randi_range(-living, living * 3),
 			"skill": skill, "habit": HABITS[rng.randi() % HABITS.size()], "age": 0, "w": 0, "l": 0, "sw": 0, "sl": 0,
 			"retired": false, "bot": {}, "wear": {}}
+	p["talent"] = roll_talent(rng, skill)
+	p["peak"] = skill
 	p["bot"] = build_bot(rng, value, skill)
 	wd["pilots"][str(wid)] = p
 	p["look"] = make_look(wid, str(p["name"]))
@@ -117,6 +123,7 @@ static func active(tier: String = "") -> Array:
 static func news(text: String, args: Array = []) -> void:
 	var n: Array = w()["news"]
 	n.append({"y": GameData.year, "w": GameData.week, "text": text, "args": args})
+	GameData.Social.post("botmedia", text, args, {}, news_tags(args))   # every headline is a BotMedia post too
 	if n.size() > 120:
 		n.pop_front()
 
@@ -373,12 +380,16 @@ static func robot(wid: int) -> Dictionary:
 	league_wear(o, str(p["tier"]), "%d" % wid)
 	o["pilot"] = p["name"]
 	o["wid"] = wid
-	var lv: float = float(p["skill"]) * 3.6
-	o["hp"] = 0.8 + lv * 0.11
-	o["damage"] = 0.8 + lv * 0.07
+	# the pilot's Read drives the robot (thinking, blocking, aiming); the parts decide how tough it is
+	var rd := read_of(p)
+	var lv: float = rd / 100.0 * 3.6
+	o["hp"] = 1.0
+	o["damage"] = 1.0
 	o["think"] = maxf(0.16, 0.6 - lv * 0.09)
 	o["block"] = minf(0.65, 0.1 + lv * 0.11)
 	o["smart"] = minf(0.95, 0.1 + lv * 0.18)
+	o["read"] = rd
+	o["rattled"] = int(p.get("rattled", 0)) > 0
 	return o
 
 
@@ -392,7 +403,7 @@ static func rating(o: Dictionary, skill: float) -> float:
 		if id == "":
 			continue
 		value += part_cost(id) * (0.35 + 0.65 * float(wear.get(slot, 1.0)))
-	return sqrt(400.0 + value) * float(o.get("hp", 1.0)) * float(o.get("damage", 1.0)) * (0.8 + 0.4 * skill)
+	return sqrt(400.0 + value) * float(o.get("hp", 1.0)) * float(o.get("damage", 1.0)) * (0.75 + 0.6 * skill)
 
 
 static func win_chance(ra: float, rb: float) -> float:
@@ -440,7 +451,6 @@ static func after_fight(rng: RandomNumberGenerator, winner: Dictionary, loser: D
 		winner["cash"] = int(winner["cash"]) + pay
 		winner["w"] = int(winner["w"]) + 1
 		winner["sw"] = int(winner.get("sw", 0)) + 1
-		winner["skill"] = minf(1.0, float(winner["skill"]) + 0.006)
 		wear_down(rng, winner, rng.randi_range(1, 2), 0.05, 0.3, 0.0)
 	if not loser.is_empty():
 		match stage:
@@ -450,8 +460,14 @@ static func after_fight(rng: RandomNumberGenerator, winner: Dictionary, loser: D
 				loser["cash"] = int(loser["cash"]) + int(pay * 0.3)
 		loser["l"] = int(loser["l"]) + 1
 		loser["sl"] = int(loser.get("sl", 0)) + 1
-		loser["skill"] = minf(1.0, float(loser["skill"]) + 0.003)
 		wear_down(rng, loser, rng.randi_range(2, 4), 0.15, 0.6, 0.06)
+	GameData.Social.world_fight(rng, winner, loser, stage)
+	if not winner.is_empty() and not loser.is_empty():
+		var close := rng.randf() < 0.3
+		var rw := read_of(winner)
+		var rl := read_of(loser)
+		fought(winner, rl, true, close, false)
+		fought(loser, rw, false, close, rng.randf() < 0.08)
 
 
 static func wear_down(rng: RandomNumberGenerator, p: Dictionary, n: int, lo: float, hi: float, lose_chance: float) -> void:
@@ -499,7 +515,7 @@ static func after_player_fight(wid: int, player_won: bool, enemy_hp: Dictionary,
 		p["w"] = int(p["w"]) + 1
 		p["sw"] = int(p.get("sw", 0)) + 1
 		p["cash"] = int(p["cash"]) + pay
-	p["skill"] = minf(1.0, float(p["skill"]) + 0.004)
+	fought(p, player_read(), not player_won, false, player_won and not ripped.is_empty())
 	if not p.has("wear"):
 		p["wear"] = {}
 	for slot in enemy_hp:
@@ -620,9 +636,10 @@ static func month_passed(rng: RandomNumberGenerator, busy: Dictionary) -> void:
 		var tier: String = p["tier"]
 		var living: int = LIVING[tier]
 		p["age"] = int(p["age"]) + GameData.MONTH_WEEKS
+		read_month(p)
 		p["cash"] = int(p["cash"]) - living + rng.randi_range(INCOME[tier][0], INCOME[tier][1])
 		p["cash"] = int(p["cash"]) - int(bot_value(p["bot"]) * 0.03)   # oil, bolts, upkeep: dear robots cost dear
-		var reserve: int = {"saver": living * 2, "spender": 0, "gambler": -living / 2}[p["habit"]]
+		var reserve: int = {"saver": living * 2, "spender": 0, "gambler": -living / 2, "grinder": living}.get(str(p["habit"]), 0)
 		# repairs, worst part first, while the money lasts
 		var worn: Array = p["wear"].keys()
 		worn.sort_custom(func(a, b): return float(p["wear"][a]) < float(p["wear"][b]))
@@ -652,6 +669,7 @@ static func month_passed(rng: RandomNumberGenerator, busy: Dictionary) -> void:
 				p["cash"] = int(p["cash"]) - int(spare * 0.8)
 				p["bot"] = nb
 				p["wear"] = {}
+				p["newbot"] = true   # a new machine to learn: -5 Read for its first fight
 				news("%s sold %s and built a brand-new robot: %s.", [p["name"], old_name, nb["name"]])
 			else:
 				var budget := minf(spare * rng.randf_range(0.4, 0.9), cap - value)
@@ -806,6 +824,13 @@ static func busy_ids() -> Dictionary:
 
 
 ## Display name: "(retired)" after a pilot who has left the game.
+static func news_tags(args: Array) -> Array:
+	for a in args:
+		if str(a).begins_with("stage:"):
+			return [GameData.Social.tag_for(str(a).substr(6))]
+	return []
+
+
 static func news_text(n: Dictionary) -> String:
 	var args: Array = []
 	for a in n.get("args", []):
@@ -862,3 +887,119 @@ static func shown_name(wid: int, fallback: String) -> String:
 	if p.is_empty():
 		return fallback
 	return p["name"] + (I18n.t(" (retired)") if p["retired"] else "")
+
+
+# ---------------------------------------------------------------- Read
+# A pilot's Read (skill x 100) grows by fighting, most against better pilots and in close fights,
+# slower near their talent; it fades with ring rust and age, and a beating leaves them RATTLED.
+
+const READ_FIGHT := 0.5         # points per fight, times the room left below talent
+const READ_BETTER := 0.25       # more per Read dot the opponent has over you
+const READ_CLOSE := 0.25
+const READ_WIN := 0.15
+const RATTLED_FIGHTS := 2
+const RATTLED_HIT := 10.0
+const NEWBOT_HIT := 5.0
+const RUST_AFTER := 4           # idle weeks before ring rust starts
+const RUST_WEEK := 0.25
+const AGE_FADE_FROM := 8 * 52   # weeks on the circuit before age takes Read away
+const AGE_FADE_YEAR := 2.0
+
+
+static func roll_talent(rng: RandomNumberGenerator, skill: float) -> float:
+	# most pilots top out in the middle; a few could reach the very top
+	return clampf(maxf(skill + 0.08, 0.4 + 0.6 * pow(rng.randf(), 1.3)), 0.4, 1.0)
+
+
+static func ensure_read(p: Dictionary) -> void:
+	if not p.has("talent"):
+		var rng := RandomNumberGenerator.new()
+		rng.seed = int(p.get("wid", 0)) * 7919 + 31
+		p["talent"] = roll_talent(rng, float(p.get("skill", 0.3)))
+		p["peak"] = float(p.get("skill", 0.3))
+	if not p.has("last_fw"):
+		p["last_fw"] = abs_week()
+
+
+static func abs_week() -> int:
+	return GameData.year * 52 + GameData.week
+
+
+## The Read a pilot fights with right now (0..100): RATTLED and a brand-new robot take some off.
+static func read_of(p: Dictionary) -> float:
+	ensure_read(p)
+	var r := float(p.get("skill", 0.3)) * 100.0
+	if int(p.get("rattled", 0)) > 0:
+		r -= RATTLED_HIT
+	if p.get("newbot", false):
+		r -= NEWBOT_HIT
+	return clampf(r, 0.0, 100.0)
+
+
+static func read_dots(r: float) -> int:
+	return clampi(1 + int(r / 20.0), 1, 5)
+
+
+## What you count as, for a pilot learning from fighting you: the middle of your league.
+static func player_read() -> float:
+	var s: Array = TIER_SKILL.get(GameData.rank, [0.0, 0.1])
+	return (float(s[0]) + float(s[1])) * 50.0
+
+
+## A fight happened: Read moves, slumps start or wear off, BotMedia hears about whole dots.
+static func fought(p: Dictionary, opp_read: float, won: bool, close: bool, ko_rip: bool) -> void:
+	ensure_read(p)
+	var before := read_dots(read_of(p))
+	var base_r := float(p["skill"]) * 100.0
+	var talent := float(p["talent"]) * 100.0
+	var room := clampf((talent - base_r) / maxf(1.0, talent), 0.0, 1.0)
+	var gain := READ_FIGHT * room
+	var dot_gap := read_dots(opp_read) - read_dots(base_r)
+	if dot_gap > 0:
+		gain += READ_BETTER * dot_gap * room
+	elif dot_gap <= -2:
+		gain = 0.0   # beating up rookies teaches nothing
+	if close:
+		gain += READ_CLOSE * room
+	if won:
+		gain += READ_WIN * room
+	p["skill"] = clampf((base_r + gain) / 100.0, 0.0, float(p["talent"]))
+	p["peak"] = maxf(float(p.get("peak", 0.0)), float(p["skill"]))
+	p["last_fw"] = abs_week()
+	p["newbot"] = false
+	# slumps: three losses in a row, or a KO with a part torn off
+	if int(p.get("rattled", 0)) > 0:
+		p["rattled"] = int(p["rattled"]) - 1
+		if int(p["rattled"]) == 0:
+			GameData.Social.read_event(p, "steady")
+	p["lstreak"] = 0 if won else int(p.get("lstreak", 0)) + 1
+	if not won and (int(p["lstreak"]) >= 3 or ko_rip) and int(p.get("rattled", 0)) == 0:
+		p["rattled"] = RATTLED_FIGHTS
+		GameData.Social.read_event(p, "rattled")
+	var after := read_dots(float(p["skill"]) * 100.0)
+	if after > before:
+		GameData.Social.read_event(p, "up")
+
+
+## Once a month: sparring for grinders, ring rust for the idle, age for the veterans.
+static func read_month(p: Dictionary) -> void:
+	ensure_read(p)
+	var before := read_dots(float(p["skill"]) * 100.0)
+	var r := float(p["skill"]) * 100.0
+	var talent := float(p["talent"]) * 100.0
+	if str(p.get("habit", "")) == "grinder" and r < talent:
+		r = minf(talent, r + 0.3 * GameData.MONTH_WEEKS)
+	var idle := abs_week() - int(p.get("last_fw", abs_week()))
+	if idle > RUST_AFTER:
+		var floor_r := float(p.get("peak", 0.0)) * 100.0 * 0.6
+		r = maxf(minf(r, floor_r), r - RUST_WEEK * mini(GameData.MONTH_WEEKS, idle - RUST_AFTER))
+	var age := int(p.get("age", 0))
+	if age > AGE_FADE_FROM:
+		var per_year := AGE_FADE_YEAR * (2.0 if age > 12 * 52 else 1.0)
+		r -= per_year * GameData.MONTH_WEEKS / 52.0
+	p["skill"] = clampf(r / 100.0, 0.0, 1.0)
+	var after := read_dots(r)
+	if after < before:
+		GameData.Social.read_event(p, "down")
+	elif after > before:
+		GameData.Social.read_event(p, "up")
