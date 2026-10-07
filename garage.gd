@@ -3341,6 +3341,7 @@ func open_pilot(wid: int) -> void:
 	row.add_child(info)
 	info.add_child(GUI.text(GameData.pilot_standing(wid), 16, GUI.YELLOW, "headb"))
 	info.add_child(GUI.text(tr("Career record %d-%d · this season %d-%d") % [int(p.get("w", 0)), int(p.get("l", 0)), int(p.get("sw", 0)), int(p.get("sl", 0))], 14, GUI.TEXT))
+	info.add_child(GUI.text(tr("Aim %s") % GameData.aim_dots(GameData.pilot_aim_level(W.robot(wid))), 14, GUI.TEXT))
 	var h: Array = GameData.h2h.get(str(wid), [0, 0])
 	if int(h[0]) + int(h[1]) > 0:
 		info.add_child(GUI.text(tr("Against you: you %d, them %d") % [int(h[0]), int(h[1])], 14, GUI.AMBER))
@@ -5077,6 +5078,8 @@ func open_fight_popup() -> void:
 	col.add_child(opp_line)
 	opp_line.add_child(name_button(tr("%s, piloted by %s") % [o.get("name", "?"), who_p] if who_p != "" else str(o.get("name", "?")), int(o.get("wid", -1)), 18, GUI.YELLOW))
 	opp_line.add_child(GUI.readout(tr("Purse $%d") % GameData.current_reward(), 20, GUI.AMBER))
+	if who_p != "" or o.has("wid"):
+		col.add_child(GUI.text(tr("Pilot's aim %s: how fast they aim and find your weak spots.") % GameData.aim_dots(GameData.pilot_aim_level(o)), 14, GUI.TEXT))
 	if mode != "story" and mode != "circuit" and GameData.day_index() < 5 and ["league", "playoff"].has(str(GameData.week_plan(GameData.year, GameData.week, "sat")["kind"])):
 		var warn := GUI.text(tr("Your big fight is this Saturday. Whatever breaks tonight has to be fixed (and paid for) by then."), 14, GUI.CYAN)
 		warn.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART

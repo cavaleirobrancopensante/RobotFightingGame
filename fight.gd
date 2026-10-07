@@ -103,6 +103,18 @@ class Fighter:
 	var punch_turn := 0      # arms take turns: jab, cross, jab...
 	var kick_turn := 0       # legs take turns too
 	var aim_ang := 0.0       # the current punch/kick tilts this much toward its target (radians, - = up)
+	# aiming (1.44): the head sets how long before the crosshair can go on a part again (aim_time) and how
+	# long it takes to find the weakest part (scan_time); a pilot's aim level scales both for the CPU
+	var aim_time := 2.5
+	var scan_time := 4.0
+	var aim_cd := 0.0        # seconds until this robot can aim again
+	var scan_t := 0.0        # scanning progress (seconds)
+	var weak := ""           # the enemy part the scan found (hits there do WEAK_BONUS more)
+	var scan_on = null       # the enemy being scanned
+	var ai_level := 3        # CPU pilots: 1 rookie .. 5 champion
+	var aim_acc := 0.0       # extra share of hits that go to the aimed part (aim level)
+	var stance_swap := false # switched stance: the right side leads
+	var block_tap_t := -10.0 # when BLOCK was last pressed (a double tap switches stance)
 	var charge_btn := ""     # "punch"/"kick" while the button is held (a tap or a charge)
 	var charge_t := 0.0
 	var charge_h := 1        # height picked when the button went down: 0 up, 1 level, 2 down
@@ -285,7 +297,12 @@ class Fighter:
 			spec["parts"] = parts
 			look = GameData.look_from_spec(spec)
 			look_dirty = false
+		look["swap"] = stance_swap
 		return look
+
+	## Arm and leg slots on the side facing the enemy right now.
+	func lead_slots() -> Array:
+		return ["arm_back", "arm_back2", "leg_back"] if stance_swap else ["arm_front", "arm_front2", "leg_front"]
 
 
 var player: Fighter        # your main robot (first one still standing)
@@ -329,6 +346,7 @@ var ai_block := 0.2
 var ai_smart := 0.0
 # what each side has been doing lately (decays), so the CPU - and Gus - can read habits
 var habit := {"punch": 0.0, "kick": 0.0, "hold": 0.0, "block": 0.0}
+var limb_use := {}         # your limbs: how many hits each has thrown (sharp CPU pilots aim at your favourite)
 var cpu_habit := {"punch": 0.0, "kick": 0.0, "hold": 0.0, "block": 0.0}
 var ai_special_cd := 3.0   # CPU waits between specials so it doesn't spam them
 var ai_gadget_cd := 1.5
@@ -474,6 +492,7 @@ func _ready() -> void:
 		f.ai = {"timer": randf() * 0.3, "plan": {}, "think": maxf(THINK_MIN, opp["think"] * DIFF_THINK[diff] * THINK_K),
 				"block": minf(0.85, opp["block"] * DIFF_BLOCK[diff]), "smart": opp["smart"],
 				"special_cd": 3.0 + randf(), "gadget_cd": 1.5 + randf(), "kit": {}}
+		set_aim_level(f, GameData.pilot_aim_level(opp) if diff >= 1 else maxi(1, GameData.pilot_aim_level(opp) - 1))
 		ai_load(f)
 		ai_build_kit()
 		ai_save(f)
@@ -500,6 +519,7 @@ func _ready() -> void:
 			f.ai = {"timer": randf() * 0.3, "plan": {}, "think": maxf(THINK_MIN, float(left_o.get("think", 0.4)) * THINK_K),
 					"block": minf(0.85, float(left_o.get("block", 0.2))), "smart": float(left_o.get("smart", 0.0)),
 					"special_cd": 3.0 + randf(), "gadget_cd": 1.5 + randf(), "kit": {}}
+			set_aim_level(f, GameData.pilot_aim_level(left_o))
 			ai_load(f)
 			ai_build_kit()
 			ai_save(f)
@@ -558,6 +578,16 @@ func _exit_tree() -> void:
 	OS.low_processor_usage_mode = true   # menus only redraw when something changes
 
 
+## A computer pilot's aim level: its timers run faster or slower, and it lands more of its aimed hits.
+func set_aim_level(f: Fighter, lv: int) -> void:
+	f.ai_level = clampi(lv, 1, 5)
+	var k: float = GameData.AIM_LEVEL_K[f.ai_level - 1]
+	f.aim_time *= k
+	f.scan_time *= k
+	f.aim_cd = f.aim_time
+	f.aim_acc = (f.ai_level - 3) * 0.05
+
+
 func make_fighter(spec: Dictionary) -> Fighter:
 	var f := Fighter.new()
 	f.spec = spec.duplicate()
@@ -589,6 +619,15 @@ func make_fighter(spec: Dictionary) -> Fighter:
 	f.ctrl = GameData.CONTROLLER_INFO.get(str(spec.get("controller", "")), {}).get("mods", {})
 	f.power_max = maxf(6.0, float(spec.get("power", 10.0))) * (1.25 if spec.get("style", "") == "tank" else 1.0)
 	f.power = f.power_max
+	# the best head on the robot sets how fast it aims and scans
+	f.aim_time = 5.0
+	f.scan_time = 8.0
+	for hs in ["head", "head2"]:
+		if not f.parts[hs].is_empty() and f.parts[hs].has("id"):
+			var ht := GameData.head_times(GameData.part_def(str(f.parts[hs]["id"])))
+			f.aim_time = minf(f.aim_time, float(ht[0]))
+			f.scan_time = minf(f.scan_time, float(ht[1]))
+	f.aim_cd = f.aim_time
 	if Catalog.STYLES.has(f.style):
 		var sig: String = Catalog.STYLES[f.style]["signature"]
 		if Specials.MOVES.has(sig) and not f.specials.has(sig):
@@ -652,7 +691,7 @@ func _input(event: InputEvent) -> void:
 		if not handle_tap(event.position):
 			tap_pending = true
 	elif event is InputEventKey and event.pressed and not event.echo:
-		var kb := {KEY_J: "punch", KEY_K: "kick", KEY_SPACE: "jump"}
+		var kb := {KEY_J: "punch", KEY_K: "kick", KEY_SPACE: "jump", KEY_L: "block"}
 		if kb.has(event.physical_keycode) and phase == "fight" and not paused and not tut_pause:
 			pressed_since[kb[event.physical_keycode]] = true
 		if phase == "intro" and intro_step == "show":
@@ -695,7 +734,7 @@ func note_press_at(p: Vector2) -> void:
 	if phase != "fight" or paused or tut_pause:
 		return
 	for b in buttons:
-		if b["name"] in ["punch", "kick", "jump"] and p.distance_to(b["pos"]) <= b["r"] * 1.2:
+		if b["name"] in ["punch", "kick", "jump", "block"] and p.distance_to(b["pos"]) <= b["r"] * 1.2:
 			pressed_since[b["name"]] = true
 
 
@@ -780,11 +819,16 @@ func handle_tap(p: Vector2) -> bool:
 		for f in team_p:
 			f.target = ""
 		Sfx.play("untarget")
+	elif player.aim_cd > 0.0:
+		# the head isn't ready: the crosshair icon is still filling
+		popup(tr("AIMING... %.1fs") % player.aim_cd, visual_point(who, RobotArt.part_center(who.get_look(), slot)) + Vector2(0, -30), Color(1.0, 0.6, 0.4))
+		Sfx.play("error", 0.05, -6.0)
 	else:
 		if team_c.size() > 1:
 			focus = who
 		for f in team_p:
 			f.target = slot
+			f.aim_cd = f.aim_time
 		Sfx.play("target")
 		if slot.begins_with("head"):
 			coach("head", tr("Heads are small and tough, so aimed head shots miss a lot. Try the limbs!"))
@@ -876,6 +920,7 @@ func read_player_input() -> Array:
 	# a press counts once, even if it came and went between two frames (pressed_since catches those)
 	for nm in ["punch", "kick", "jump"]:
 		shared[nm if nm != "jump" else "jump_press"] = (now[nm] and not prev_held.get(nm, false)) or pressed_since.has(nm)
+	shared["block_press"] = (now["block"] and not prev_held.get("block", false)) or pressed_since.has("block")
 	shared["punch_held"] = now["punch"]
 	shared["kick_held"] = now["kick"]
 	shared["jump"] = now["jump"] or pressed_since.has("jump")
@@ -1080,6 +1125,10 @@ func read_ai_input(delta: float) -> Dictionary:
 		ai_plan["fresh"] = true
 		if ai_plan.has("keep"):
 			ai_timer = float(ai_plan["keep"])   # e.g. holding a charge
+		# sharp pilots turn a limb you're aiming at away from you
+		if cpu.ai_level >= 4 and player.target != "" and cpu.lead_slots().has(player.target) and cpu.ratio(player.target) < 0.75 \
+				and cpu.on_ground and cpu.state in ["idle", "walk"] and randf() < (0.35 if cpu.ai_level == 4 else 0.55):
+			switch_stance(cpu)
 
 	for k in ai_plan.get("hold", []):
 		i[k] = true
@@ -1490,22 +1539,52 @@ func ai_build_kit() -> void:
 
 
 ## Smarter opponents aim at your weakest part.
+## What the CPU puts its crosshair on, by its pilot's aim level. It can only aim when its head is
+## ready (aim_cd), and every new target starts the wait again.
 func ai_pick_target() -> void:
-	if randf() >= ai_smart:
-		cpu.target = ""
+	if cpu.aim_cd > 0.0:
 		return
+	var want := ""
+	match cpu.ai_level:
+		1:
+			# rookies: now and then, at whatever catches the eye
+			if cpu.target == "" and randf() < 0.25:
+				var opts: Array = []
+				for slot in BODY_PARTS:
+					if slot != "torso" and player.alive(slot):
+						opts.append(slot)
+				if not opts.is_empty():
+					want = opts[randi() % opts.size()]
+		2:
+			want = cpu.weak
+		3:
+			# the weak spot, or the limb you keep hitting with
+			want = cpu.weak if cpu.weak != "" else most_used_limb()
+		_:
+			# sharp pilots read the stance: the weak spot if it's in front, otherwise your lead arm
+			if cpu.weak != "" and (player.lead_slots().has(cpu.weak) or cpu.weak.begins_with("head")):
+				want = cpu.weak
+			else:
+				for slot in player.lead_slots():
+					if slot.begins_with("arm") and player.alive(slot):
+						want = slot
+						break
+				if want == "":
+					want = cpu.weak
+	if want != "" and want != cpu.target and player.alive(want):
+		cpu.target = want
+		cpu.aim_cd = cpu.aim_time
+
+
+## The limb of yours that has thrown the most hits this fight.
+func most_used_limb() -> String:
 	var best := ""
-	var best_score := 99.0
-	for slot in BODY_PARTS:
-		if not player.alive(slot):
-			continue
-		var score := player.ratio(slot)
-		if slot == "torso":
-			score += 0.1
-		if score < best_score:
-			best_score = score
+	var most := 1.5
+	for slot in limb_use:
+		if float(limb_use[slot]) > most and player.alive(slot):
+			most = float(limb_use[slot])
 			best = slot
-	cpu.target = best
+	return best
 
 
 # ---------------------------------------------------------------- game loop
@@ -1910,6 +1989,7 @@ func start_attack(f: Fighter, attack: String, charge: float = 0.0) -> void:
 	if f.team == 0 and ATTACKS[attack].has("family"):
 		var fam: String = ATTACKS[attack]["family"]
 		habit[fam] = habit.get(fam, 0.0) + 1.0
+		limb_use[limb] = float(limb_use.get(limb, 0.0)) + 1.0
 	elif f.team == 1 and ATTACKS[attack].has("family"):
 		var fam2: String = ATTACKS[attack]["family"]
 		cpu_habit[fam2] = cpu_habit.get(fam2, 0.0) + 1.0
@@ -1950,6 +2030,53 @@ func pad_height(i: Dictionary) -> int:
 
 
 ## Charging: the button is held past a tap. Returns true while the robot is busy charging.
+## The head at work: the aim cooldown runs down, and the scan hunts for the enemy's weakest part.
+## When the weakest part changes (a fresh dent somewhere else), the scan starts over.
+func update_aim(f: Fighter, delta: float) -> void:
+	f.aim_cd = maxf(0.0, f.aim_cd - delta)
+	var o: Fighter = f.foe
+	if o == null or o.state == "ko" or f.heads() == 0:
+		return
+	if f.scan_on != o:
+		f.scan_on = o
+		f.weak = ""
+		f.scan_t = 0.0
+	var wp := weak_point(o)
+	if f.weak != "" and f.weak != wp:
+		f.weak = ""
+		f.scan_t = 0.0
+	if f.weak == "" and wp != "":
+		f.scan_t += delta
+		if f.scan_t >= f.scan_time:
+			f.weak = wp
+			if f.team == 0 and f == player:
+				popup(tr("WEAK SPOT FOUND"), visual_point(o, RobotArt.part_center(o.get_look(), wp)) + Vector2(0, -40), Color(1.0, 0.9, 0.2))
+				Sfx.play("target", 0.1, -6.0)
+
+
+## Switch stance: the other side leads (0.3 s, a little power). Anyone aiming at a limb that just
+## turned away loses the crosshair, and their aim cooldown starts again.
+func switch_stance(f: Fighter) -> void:
+	f.stance_swap = not f.stance_swap
+	f.look_dirty = true
+	f.state = "switch"
+	f.timer = 0.3
+	f.blocking = false
+	f.crouching = false
+	f.squash = 0.12
+	spend(f, f.power_max * 0.06)
+	Sfx.play("step", 0.1, -4.0)
+	var rear: Array = ["arm_front", "arm_front2", "leg_front"] if f.stance_swap else ["arm_back", "arm_back2", "leg_back"]
+	for e in enemies_of(f):
+		if e.foe == f and rear.has(e.target):
+			e.target = ""
+			e.aim_cd = e.aim_time
+			if e.team == 0:
+				popup(tr("LOST AIM"), visual_point(f, RobotArt.part_center(f.get_look(), "torso")) + Vector2(0, -80), Color(1.0, 0.5, 0.4))
+	if f.team == 0:
+		popup(tr("SWITCH!"), f.pos + Vector2(0, -230.0 * f.scale), Color(0.6, 0.9, 1.0))
+
+
 func update_charge(f: Fighter, i: Dictionary, delta: float) -> bool:
 	if f.charge_btn == "":
 		return false
@@ -2079,7 +2206,7 @@ func update_special(f: Fighter, o: Fighter, delta: float) -> void:
 				f.hit_done = false
 				try_hit(f, o, hit)
 	# jumping specials leave the floor once the first hit has had its chance, so it lands on the way up
-	if m.has("rise") and f.on_ground and f.timer >= st and f.vel.y >= 0.0:
+	if m.has("rise") and f.on_ground and f.timer >= st and f.vel.y >= 0.0 and f.legs() > 0:   # no legs, no leap: it's an uppercut from the floor
 		f.vel.y = -m["rise"]
 		f.on_ground = false
 	if f.timer >= st + act + m.get("recovery", 0.2):
@@ -2271,6 +2398,21 @@ func update_fighter(f: Fighter, o: Fighter, i: Dictionary, delta: float) -> void
 	update_power(f, delta)
 	if f.burn_t > 0.0:
 		i = empty_input()   # burned out: no moves, no block
+	if phase == "fight":
+		update_aim(f, delta)
+	# a double tap on BLOCK switches stance
+	if i.get("block_press", false) and f.on_ground and f.state in ["idle", "walk"]:
+		if clock - f.block_tap_t < 0.32:
+			switch_stance(f)
+			f.block_tap_t = -10.0
+		else:
+			f.block_tap_t = clock
+	if f.state == "switch":
+		f.timer -= delta
+		f.vel.x = 0.0
+		if f.timer <= 0.0:
+			f.state = "idle"
+		i = empty_input()
 	var punch: bool = i["punch"]
 	var kick: bool = i["kick"]
 	if punch:
@@ -2406,7 +2548,7 @@ func update_fighter(f: Fighter, o: Fighter, i: Dictionary, delta: float) -> void
 ## Without touched (shots, blasts) the move's zone decides, as before.
 func choose_part(att: Fighter, d: Fighter, zone_name: String, sure: bool = false, touched: Array = []) -> String:
 	var zone: Dictionary = Specials.ZONES.get(zone_name, Specials.ZONES["any"])
-	var accuracy: float = (0.45 if att.target.begins_with("head") else 0.8) + att.ctrl.get("aim", 0.0) / 100.0
+	var accuracy: float = (0.45 if att.target.begins_with("head") else 0.8) + att.ctrl.get("aim", 0.0) / 100.0 + att.aim_acc
 	if not touched.is_empty():
 		if att.target != "" and touched.has(att.target) and d.alive(att.target) and (sure or randf() < accuracy):
 			return att.target
@@ -2674,8 +2816,8 @@ func apply_hit(att: Fighter, d: Fighter, a: Dictionary, at: Vector2) -> void:
 			dmg *= 1.0 + att.best_aim() / 100.0
 			if att.style == "specialist":
 				dmg *= 1.25
-		if slot == weak_point(d):
-			dmg *= 1.0 + WEAK_BONUS
+		if att.weak != "" and slot == att.weak:
+			dmg *= 1.0 + WEAK_BONUS   # only once your head's scan has found it
 		# precision: critical hits
 		var crit: float = off_trait(att, src, "crit") + (5.0 if att.style == "striker" else 0.0)
 		if randf() * 100.0 < crit:
@@ -3240,6 +3382,10 @@ func body_pose(f: Fighter) -> Dictionary:
 					lean = f.facing * 0.22
 					dx = f.facing * 18.0 * f.scale
 					sx = 1.08
+	elif f.state == "switch":
+		# a quick hop while the feet swap over
+		base.y -= sin(clampf((0.3 - f.timer) / 0.3, 0.0, 1.0) * PI) * 14.0 * f.scale
+		sx = 0.94
 	elif f.state == "charge":
 		# winding up: leaning back, shaking harder as it fills
 		var ck := clampf((f.charge_t - CHARGE_TAP) / (CHARGE_MAX - CHARGE_TAP), 0.0, 1.0)
@@ -3425,8 +3571,8 @@ func draw_crosshair(slot: String, f: Fighter, c: Color, off: Vector2, size: floa
 func draw_weak_point(f: Fighter, off: Vector2) -> void:
 	if phase != "fight" or f.state == "ko":
 		return
-	var slot := weak_point(f)
-	if slot == "" or slot == player.target:
+	var slot := player.weak if f == player.foe else ""   # only what your head's scan has found
+	if slot == "" or slot == player.target or not f.alive(slot):
 		return
 	var p := visual_point(f, RobotArt.part_center(f.get_look(), slot)) + off
 	var r := 9.0 + sin(clock * 5.0) * 2.0
@@ -3459,7 +3605,7 @@ func draw_part_map(f: Fighter, at: Vector2, _mirror: bool, k: float = UI_SCALE) 
 			draw_rect(r, c)
 			if h < 0.999:
 				draw_rect(Rect2(r.position, Vector2(r.size.x, r.size.y * (1.0 - h))), Color(0, 0, 0, 0.35))   # the missing share, darker
-		if f.state != "ko" and f != player and f.alive(slot) and slot == weak_point(f):
+		if f.state != "ko" and f == player.foe and f.alive(slot) and slot == player.weak:
 			var wc := r.get_center()
 			var wr := 5.0 * k * 0.8
 			draw_colored_polygon(PackedVector2Array([wc + Vector2(0, -wr), wc + Vector2(wr, 0), wc + Vector2(0, wr), wc + Vector2(-wr, 0)]), Color(1.0, 0.9, 0.2, 0.95))
@@ -3470,6 +3616,43 @@ func draw_part_map(f: Fighter, at: Vector2, _mirror: bool, k: float = UI_SCALE) 
 
 func part_map_step() -> float:
 	return 50.0 * UI_SCALE * 0.72 + 6.0
+
+
+## The head at work, by the health bar: a crosshair that fills while the aim cooldown runs (and blinks
+## when you can aim), and a radar that sweeps while the scan hunts for the weak spot (a yellow diamond
+## once it's found). The enemy has the same two, so you can see it's about to find your bad arm.
+func draw_head_icons(f: Fighter, at: Vector2, right: bool) -> void:
+	if f == null or f.state == "ko":
+		return
+	var r := 10.0 * UI_SCALE
+	var step := r * 4.2 * (1.0 if not right else -1.0)
+	# crosshair
+	var c := at
+	var ready := f.aim_cd <= 0.0
+	var k := 1.0 - clampf(f.aim_cd / maxf(0.01, f.aim_time), 0.0, 1.0)
+	var col := Color(1.0, 0.35, 0.3) if ready else Color(0.75, 0.75, 0.8)
+	if ready and f == player:
+		col.a = 0.6 + 0.4 * sin(clock * 8.0)
+	draw_circle(c, r + 2.0, Color(0, 0, 0, 0.55))
+	draw_arc(c, r, -PI / 2.0, -PI / 2.0 + TAU * k, 24, col, 3.0)
+	draw_line(c + Vector2(-r * 0.6, 0), c + Vector2(r * 0.6, 0), col, 1.5)
+	draw_line(c + Vector2(0, -r * 0.6), c + Vector2(0, r * 0.6), col, 1.5)
+	draw_string(font, c + Vector2(-40, r + fs(10) + 2.0), tr("AIM") if ready else "%.1f" % f.aim_cd, HORIZONTAL_ALIGNMENT_CENTER, 80, fs(10), col)
+	# radar / weak spot
+	var c2 := at + Vector2(step, 0)
+	draw_circle(c2, r + 2.0, Color(0, 0, 0, 0.55))
+	if f.weak != "":
+		var wc := Color(1.0, 0.9, 0.2)
+		draw_colored_polygon(PackedVector2Array([c2 + Vector2(0, -r * 0.8), c2 + Vector2(r * 0.8, 0), c2 + Vector2(0, r * 0.8), c2 + Vector2(-r * 0.8, 0)]), wc)
+		draw_string(font, c2 + Vector2(-40, r + fs(10) + 2.0), tr("WEAK"), HORIZONTAL_ALIGNMENT_CENTER, 80, fs(10), wc)
+	else:
+		var sc := Color(0.4, 1.0, 0.55)
+		var sk := clampf(f.scan_t / maxf(0.01, f.scan_time), 0.0, 1.0)
+		draw_arc(c2, r, 0.0, TAU, 24, Color(sc.r, sc.g, sc.b, 0.35), 1.5)
+		draw_arc(c2, r, -PI / 2.0, -PI / 2.0 + TAU * sk, 24, sc, 3.0)
+		var a := clock * 5.0
+		draw_line(c2, c2 + Vector2(cos(a), sin(a)) * r * 0.9, sc, 2.0)
+		draw_string(font, c2 + Vector2(-40, r + fs(10) + 2.0), tr("SCAN"), HORIZONTAL_ALIGNMENT_CENTER, 80, fs(10), sc)
 
 
 ## A body map for every robot on a team (smaller when there are several).
@@ -3572,6 +3755,11 @@ func draw_hud() -> void:
 		draw_string(font, Vector2(px, y + bh + 50), "  ".join(status), HORIZONTAL_ALIGNMENT_LEFT, -1, fs(16), Color(1.0, 0.5, 0.2))
 	draw_part_maps(team_p, y, false)
 	draw_part_maps(team_c, y, true)
+	if phase == "fight" or phase == "intro":
+		# under each corner's body map
+		var iy := y + 58.0 * UI_SCALE * 1.45 + 22.0
+		draw_head_icons(player, Vector2(34.0, iy), false)
+		draw_head_icons(cpu, Vector2(screen.x - 34.0, iy), true)
 	for f in [player, cpu]:
 		if f.combo >= 2 and f.combo_show > 0.0:
 			var x := px if f == player else cx
@@ -3791,6 +3979,8 @@ func _draw_pause_lines(x: float, y: float, bottom: float) -> void:
 		[tr("PUNCH · KICK · BLOCK · JUMP. The pad sets the height: up + PUNCH = uppercut, down + PUNCH = low jab, up + KICK = high kick, down + KICK = sweep. In combos, → means toward the enemy (P = punch, K = kick)."), Color(0.8, 0.8, 0.85)],
 		[tr("Your arms take turns: jab, cross, jab. Kicks swap legs the same way. Lose a limb and the other one does all the work."), Color(0.8, 0.8, 0.85)],
 		[tr("CHARGE: hold PUNCH or KICK. It drains power while it fills; let go to hit up to twice as hard. A full charge breaks a guard."), Color(1.0, 0.85, 0.4)],
+		[tr("AIM: tap an enemy part to put the crosshair on it. Your head decides how long before you can aim again (the crosshair icon under your body map). Its scan hunts for their weakest part (the radar icon): once it's found, hits there do extra damage."), Color(1.0, 0.6, 0.5)],
+		[tr("STANCE: double-tap BLOCK to switch which side leads. The lead arm and leg take most of the hits. Turning an aimed limb away knocks their crosshair off it."), Color(0.6, 0.9, 1.0)],
 		[tr("Combos: hit again while the enemy is still reeling. Landed attacks can chain into the next."), Color(0.8, 0.8, 0.85)],
 		[tr("COUNTERS: a block stops punches (and the puncher recoils), a full charge breaks a block. Kicks power through punches, but a block only partly stops them. Crouch under high hits, jump over low ones."), Color(1.0, 0.85, 0.4)],
 		[tr("POWER (blue bar): punch %.1f  kick %.1f  special %.1f of %.0f. Charging drains it too. Refills when you stop attacking. Empty = BURNOUT.") % [attack_cost(player, "punch", "arm_front"), attack_cost(player, "kick", "leg_front"), special_cost(player), player.power_max], POWER_COLOR],
@@ -4063,8 +4253,8 @@ func update_coach(delta: float) -> void:
 	if phase == "fight":
 		if phase_timer > 0.5:
 			coach("aim", (tr("Tap a part of %s to aim at it. %s hits where you point.") if touch_device else tr("Click a part of %s to aim at it. %s hits where you point.")) % [cpu.label, player.label])
-		if phase_timer > 10.0 and weak_point(cpu) != "":
-			coach("weak", tr("See the yellow diamond? That's its weakest part. Hits there do extra damage."))
+		if player.weak != "":
+			coach("weak", tr("Your head's scan found its weakest part: the yellow diamond. Hits there do extra damage."))
 		if player.power < player.power_max * 0.5:
 			coach("power", tr("That blue bar under your health is POWER. Every move costs some, and kicks cost the most. Run it dry and you burn out!"))
 		if phase_timer > 16.0:
@@ -4729,6 +4919,8 @@ func draw_robot_card(ci: CanvasItem, f: Fighter, left: bool, w: float, h: float,
 	if Catalog.STYLES.has(f.style):
 		sub += "  ·  " + tr(Catalog.STYLES[f.style]["name"]).to_upper()
 	sub += "  ·  " + tr("fight power %d") % int(f.power_max)
+	if f.team == 1 or mode == "watch":
+		sub += "  ·  " + tr("pilot aim %s") % GameData.aim_dots(f.ai_level)
 	ci.draw_string(font, Vector2(x, y), sub, HORIZONTAL_ALIGNMENT_LEFT, cw, fs(14), Color(0.6, 0.85, 1.0, a))
 	y += fs(12) + 10
 	ci.draw_string(font, Vector2(x, y), tr("PARTS"), HORIZONTAL_ALIGNMENT_LEFT, -1, fs(12), gold)
@@ -4775,6 +4967,8 @@ func draw_robot_card(ci: CanvasItem, f: Fighter, left: bool, w: float, h: float,
 				bits.append(tr("dmg %+d") % int(d["damage"]))
 			if int(d.get("speed", 0)) != 0:
 				bits.append(tr("spd %+d") % int(d["speed"]))
+			if slot.begins_with("head"):
+				bits.append(tr("aim in %.1fs · scan %.1fs") % [f.aim_time, f.scan_time])
 			stat = " · ".join(bits)
 		ci.draw_string(font, Vector2(bx, y), stat, HORIZONTAL_ALIGNMENT_RIGHT, maxf(0.0, x + cw - bx), fs(12), Color(0.75, 0.75, 0.82, a))
 	# what the starred parts do

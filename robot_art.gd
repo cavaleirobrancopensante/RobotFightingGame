@@ -72,40 +72,57 @@ static func geom(look: Dictionary) -> Dictionary:
 	var sb := Vector2(-tw * 0.5 - 4.0, top + 12.0)
 	var hf := Vector2(tw * 0.26, -L)
 	var hb := Vector2(-tw * 0.3, -L)
+	var sf2 := Vector2(tw * 0.3, top + th * 0.55)
+	var sb2 := Vector2(-tw * 0.5 - 8.0, top + th * 0.55)
+	if look.get("swap", false):
+		# switched stance: the right side (_back slots) leads, the left side (_front slots) is behind
+		var t1 := sf
+		sf = sb
+		sb = t1
+		var t2 := hf
+		hf = hb
+		hb = t2
+		var t3 := sf2
+		sf2 = sb2
+		sb2 = t3
 	return {
 		"L": L, "tw": tw, "th": th, "top": top,
 		"torso": Rect2(-tw * 0.5, top, tw, th), "head": head, "head2": head2,
 		"shoulder_front": sf, "shoulder_back": sb, "hip_front": hf, "hip_back": hb,
-		"shoulder_front2": Vector2(tw * 0.3, top + th * 0.55), "shoulder_back2": Vector2(-tw * 0.5 - 8.0, top + th * 0.55),
+		"shoulder_front2": sf2, "shoulder_back2": sb2,
 	}
+
+
+## Is this limb on the side away from the enemy right now? (normally the _back slots; switched
+## stance (look "swap") turns it round.)
+static func is_rear(look: Dictionary, slot: String) -> bool:
+	var b := slot.begins_with("arm_back") or slot == "leg_back"
+	return b != bool(look.get("swap", false))
 
 
 ## Rectangles (local, standing) used for tapping/aiming at parts. Order = tap priority.
 static func regions(look: Dictionary) -> Array:
 	var g := geom(look)
-	var sf: Vector2 = g["shoulder_front"]
-	var sb: Vector2 = g["shoulder_back"]
-	var hf: Vector2 = g["hip_front"]
-	var hb: Vector2 = g["hip_back"]
 	var out: Array = []
-	var sf2: Vector2 = g["shoulder_front2"]
-	var sb2: Vector2 = g["shoulder_back2"]
 	if _alive(look, "head"):
 		out.append(["head", (g["head"] as Rect2).grow(6.0)])
 	if _alive(look, "head2"):
 		out.append(["head2", (g["head2"] as Rect2).grow(6.0)])
-	if _alive(look, "arm_front"):
-		out.append(["arm_front", Rect2(sf.x - 6.0, sf.y - 14.0, 66.0, 50.0)])
-	if _alive(look, "arm_front2"):
-		out.append(["arm_front2", Rect2(sf2.x - 6.0, sf2.y - 10.0, 62.0, 44.0)])
-	if _alive(look, "leg_front"):
-		out.append(["leg_front", Rect2(hf.x - 14.0, hf.y, 38.0, g["L"])])
-	if _alive(look, "leg_back"):
-		out.append(["leg_back", Rect2(hb.x - 26.0, hb.y, 36.0, g["L"])])
-	if _alive(look, "arm_back"):
-		out.append(["arm_back", Rect2(sb.x - 34.0, sb.y - 12.0, 40.0, 56.0)])
-	if _alive(look, "arm_back2"):
-		out.append(["arm_back2", Rect2(sb2.x - 34.0, sb2.y - 10.0, 40.0, 52.0)])
+	# lead limbs reach forward, rear ones hang behind (a switched stance swaps which is which)
+	for slot in ["arm_front", "arm_front2", "leg_front", "leg_back", "arm_back", "arm_back2"]:
+		if not _alive(look, slot):
+			continue
+		var rear := is_rear(look, slot)
+		if slot.begins_with("leg"):
+			var hp: Vector2 = g["hip_front"] if slot == "leg_front" else g["hip_back"]
+			out.append([slot, Rect2(hp.x - (26.0 if rear else 14.0), hp.y, 36.0 if rear else 38.0, g["L"])])
+		else:
+			var sp := shoulder_of(g, slot)
+			var low: bool = slot.ends_with("2")
+			if rear:
+				out.append([slot, Rect2(sp.x - 34.0, sp.y - (10.0 if low else 12.0), 40.0, 52.0 if low else 56.0)])
+			else:
+				out.append([slot, Rect2(sp.x - 6.0, sp.y - (10.0 if low else 14.0), 62.0 if low else 66.0, 44.0 if low else 50.0)])
 	if _alive(look, "torso"):
 		out.append(["torso", g["torso"]])
 	return out
@@ -172,7 +189,7 @@ static func hit_shapes(look: Dictionary, pose: Dictionary) -> Array:
 		var sz: float = p.get("size", 1.0)
 		var s := shoulder_of(g, slot)
 		var ap: String = lp["arms"][slot]
-		var pts := arm_pose_points(s, ap, slot.begins_with("arm_back"), punch_reach_x(g) if ap in ["punch", "low_punch", "uppercut"] else 0.0, aim if slot == limb else 0.0)
+		var pts := arm_pose_points(s, ap, is_rear(look, slot), punch_reach_x(g) if ap in ["punch", "low_punch", "uppercut"] else 0.0, aim if slot == limb else 0.0)
 		out.append([slot, "cap", s, pts[0], dims[0] * sz * 0.55])
 		out.append([slot, "cap", pts[0], pts[1], maxf(dims[0] * sz * 0.5, dims[1] * sz)])
 	for slot in ["leg_front", "leg_back"]:
@@ -228,20 +245,27 @@ static func draw(ci: CanvasItem, base: Vector2, look: Dictionary, pose: Dictiona
 		var pulse := 0.5 + 0.5 * sin(t * 14.0)
 		ci.draw_circle(Vector2(0, -(g["L"] + g["th"]) * 0.6), (g["L"] + g["th"]) * 0.75, Color(1.0, 0.15, 0.35, 0.12 + 0.1 * pulse))
 
-	# back gear, back arm, back leg, torso, front leg, head, front arm
+	# back gear, rear arm, rear leg, torso, lead leg, head, lead arm (switched stance swaps the sides)
+	var sw: bool = look.get("swap", false)
+	var ra := "arm_front" if sw else "arm_back"
+	var ra2 := "arm_front2" if sw else "arm_back2"
+	var la := "arm_back" if sw else "arm_front"
+	var la2 := "arm_back2" if sw else "arm_front2"
+	var rl := "leg_front" if sw else "leg_back"
+	var ll := "leg_back" if sw else "leg_front"
 	_draw_back(ci, look, g, pose, flash, trim, t)
-	if look["parts"].has("arm_back2") and look["parts"]["arm_back2"].has("shape"):
-		_draw_arm(ci, look, "arm_back2", g["shoulder_back2"], arm_pose["arm_back2"], true, flash, trim, t, fist_out.has("arm_back2"), aim if limb == "arm_back2" else 0.0)
-	_draw_arm(ci, look, "arm_back", g["shoulder_back"], arm_pose["arm_back"], true, flash, trim, t, fist_out.has("arm_back"), aim if limb == "arm_back" else 0.0)
-	_draw_leg(ci, look, "leg_back", g["hip_back"], g["L"], leg_pose["leg_back"], -swing, true, flash, trim, aim if limb == "leg_back" else 0.0)
+	if look["parts"].has(ra2) and look["parts"][ra2].has("shape"):
+		_draw_arm(ci, look, ra2, shoulder_of(g, ra2), arm_pose[ra2], true, flash, trim, t, fist_out.has(ra2), aim if limb == ra2 else 0.0)
+	_draw_arm(ci, look, ra, shoulder_of(g, ra), arm_pose[ra], true, flash, trim, t, fist_out.has(ra), aim if limb == ra else 0.0)
+	_draw_leg(ci, look, rl, g["hip_back"], g["L"], leg_pose[rl], -swing, true, flash, trim, aim if limb == rl else 0.0)
 	_draw_torso(ci, look, g, flash, trim, eye, t)
-	_draw_leg(ci, look, "leg_front", g["hip_front"], g["L"], leg_pose["leg_front"], swing, false, flash, trim, aim if limb == "leg_front" else 0.0)
+	_draw_leg(ci, look, ll, g["hip_front"], g["L"], leg_pose[ll], swing, false, flash, trim, aim if limb == ll else 0.0)
 	if look["parts"].has("head2") and look["parts"]["head2"].has("shape"):
 		_draw_head(ci, look, g, flash, trim, eye, t, "head2")
 	_draw_head(ci, look, g, flash, trim, eye, t, "head")
-	if look["parts"].has("arm_front2") and look["parts"]["arm_front2"].has("shape"):
-		_draw_arm(ci, look, "arm_front2", g["shoulder_front2"], arm_pose["arm_front2"], false, flash, trim, t, fist_out.has("arm_front2"), aim if limb == "arm_front2" else 0.0)
-	_draw_arm(ci, look, "arm_front", g["shoulder_front"], arm_pose["arm_front"], false, flash, trim, t, fist_out.has("arm_front"), aim if limb == "arm_front" else 0.0)
+	if look["parts"].has(la2) and look["parts"][la2].has("shape"):
+		_draw_arm(ci, look, la2, shoulder_of(g, la2), arm_pose[la2], false, flash, trim, t, fist_out.has(la2), aim if limb == la2 else 0.0)
+	_draw_arm(ci, look, la, shoulder_of(g, la), arm_pose[la], false, flash, trim, t, fist_out.has(la), aim if limb == la else 0.0)
 
 	if pose.get("shield", false):
 		var c := Vector2(0, -(g["L"] + g["th"] + 40.0) * 0.55)
@@ -448,7 +472,7 @@ static func shoulder_of(g: Dictionary, slot: String) -> Vector2:
 
 ## Where a punching hand ends up (local x): the lead hand's reach, used for the rear hand too.
 static func punch_reach_x(g: Dictionary) -> float:
-	return float((g["shoulder_front"] as Vector2).x) + PUNCH_LEN - 8.0
+	return maxf(float((g["shoulder_front"] as Vector2).x), float((g["shoulder_back"] as Vector2).x)) + PUNCH_LEN - 8.0
 
 
 ## The striking line of a limb in a pose (local, unscaled): from the elbow/knee out to the very tip,
@@ -457,7 +481,7 @@ static func limb_strike(look: Dictionary, slot: String, pose: String, aim: float
 	var g := geom(look)
 	if slot.begins_with("arm"):
 		var s := shoulder_of(g, slot)
-		var pts := arm_pose_points(s, pose, slot.begins_with("arm_back"), punch_reach_x(g), aim)
+		var pts := arm_pose_points(s, pose, is_rear(look, slot), punch_reach_x(g), aim)
 		var ex := arm_tip_extra(look, slot, pose)
 		var dir: Vector2 = ((pts[1] as Vector2) - (pts[0] as Vector2)).normalized()
 		return {"a": pts[0], "b": (pts[1] as Vector2) + dir * ex.x, "r": ex.y}

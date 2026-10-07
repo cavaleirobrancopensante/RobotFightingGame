@@ -2,7 +2,7 @@ extends Node
 
 # helper scripts, loaded by path so the game also runs without an editor scan
 ## The game's version, shown on the main menu. Bump it with every change (1.1, 1.2, ...).
-const VERSION := "1.43"
+const VERSION := "1.44"
 const Arena = preload("res://arena.gd")
 const I18n = preload("res://i18n.gd")
 const Catalog = preload("res://catalog.gd")
@@ -205,6 +205,9 @@ func rival(idx: int) -> Dictionary:
 	var g: int = RIVAL_GRADE[clampi(idx, 0, RIVAL_GRADE.size() - 1)]
 	for slot in o["parts"]:
 		o["parts"][slot] = graded_id(str(o["parts"][slot]), g)
+	o["rival"] = true   # a story rival: a level sharper with the crosshair
+	if idx == OPPONENTS.size() - 1:
+		o["aim_level"] = 5
 	# story rivals bring dents like anyone in their league
 	World.league_wear(o, ["scrap", "rust", "iron", "steel"][clampi(idx / 3, 0, 3)], "rival%d" % idx)
 	return o
@@ -1279,6 +1282,48 @@ static func fight_tank(output: float, used: float) -> float:
 
 
 ## cur_hp >= 0: a real part's health is shown as HP now/max.
+# ---------------------------------------------------------------- heads: aiming and scanning
+## Every head has an Aim time (how long before you can put the crosshair on a part again) and a
+## Scan time (how long it takes to find the weakest part). The kind comes from the shape: junk heads
+## are slow at both, snipers aim fast, scanners find weak spots fast; the aim stat and the grade
+## make any head quicker.
+const HEAD_KIND := {"bucket": "plain", "box": "plain", "skull": "plain", "tall": "allround", "dome": "allround",
+		"horned": "allround", "knight": "allround", "orb": "allround", "cyclops": "sniper", "visor": "sniper",
+		"wedge": "sniper", "laser": "sniper", "dish": "scanner", "tv": "scanner", "bulb": "scanner", "speaker": "scanner"}
+const HEAD_TIMES := {"junk": [5.0, 8.0], "plain": [2.5, 4.0], "sniper": [0.6, 5.0], "scanner": [3.0, 1.0], "allround": [1.5, 2.0]}
+
+
+func head_kind(d: Dictionary) -> String:
+	if int(d.get("cost", 0)) <= 0 and not d.get("custom", false):
+		return "junk"
+	return str(HEAD_KIND.get(str(d.get("shape", "")), "plain"))
+
+
+## [aim seconds, scan seconds] for a head part.
+func head_times(d: Dictionary) -> Array:
+	var base: Array = HEAD_TIMES[head_kind(d)]
+	var k := (1.0 - clampf(float(d.get("aim", 0)), 0.0, 40.0) / 100.0) * pow(0.9, maxi(0, int(d.get("grade", 1)) - 1))
+	return [maxf(0.3, float(base[0]) * k), maxf(0.6, float(base[1]) * k)]
+
+
+## A computer pilot's aim level, 1 (gutter rookie) to 5 (champion): how fast they aim and scan
+## and how cleverly they pick what to aim at. Story rivals are a level sharper.
+const AIM_LEVEL_K := [1.6, 1.3, 1.0, 0.8, 0.6]   # x the head's times, levels 1-5
+
+
+func pilot_aim_level(o: Dictionary) -> int:
+	if o.has("aim_level"):
+		return clampi(int(o["aim_level"]), 1, 5)
+	var lv := clampi(1 + int(float(o.get("smart", 0.3)) * 5.5), 1, 5)
+	if o.get("rival", false) or (o.has("wid") and is_rival(int(o["wid"]))):
+		lv = mini(5, lv + 1)
+	return lv
+
+
+func aim_dots(lv: int) -> String:
+	return "●".repeat(clampi(lv, 1, 5)) + "○".repeat(5 - clampi(lv, 1, 5))
+
+
 func part_stat_text(d: Dictionary, cur_hp: float = -1.0) -> String:
 	var g := gimmick_text(d)
 	if d["kind"] == "reactor":
@@ -1306,6 +1351,10 @@ func part_stat_text(d: Dictionary, cur_hp: float = -1.0) -> String:
 		bits.append(tr("AIM %+d%%") % d["aim"])
 	if d["output"] != 0:
 		bits.append(tr("PWR +%d") % d["output"])
+	if d["kind"] == "head":
+		var ht := head_times(d)
+		bits.append(tr("AIM IN %.1fs") % ht[0])
+		bits.append(tr("SCAN %.1fs") % ht[1])
 	if d["kind"] == "head" and d["chips"] > 0:
 		bits.append(tr("CHIPS %d") % d["chips"])
 	if d["kind"] in ["head", "torso", "arm", "leg"]:
