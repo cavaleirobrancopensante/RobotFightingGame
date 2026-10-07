@@ -1,7 +1,8 @@
 extends RefCounted
 ## Touch button layout, shared by the fight and the layout editor in Settings.
 ##
-## Default: two mirrored diamonds, movement on the left and actions on the right, gadgets in the
+## Default: two mirrored diamonds, movement on the left (up / down set the height of a hit, down alone
+## crouches) and actions on the right (BLOCK top, PUNCH left, KICK right, JUMP bottom), gadgets in the
 ## bottom middle. Players can drag and resize every button in Settings > Edit controls; those
 ## changes are saved in GameData.settings["layout"] as
 ##   {button name: {"x": 0..1 of screen width, "y": 0..1 of screen height, "s": size factor}}
@@ -14,7 +15,7 @@ const BUTTON_SCALES := [0.8, 1.0, 1.25]
 const MIN_SIZE := 0.55
 const MAX_SIZE := 1.9
 const MOVE_NAMES := ["left", "right", "up", "down"]
-const MOVE_LABELS := {"left": "◀ LEFT", "right": "RIGHT ▶", "up": "JUMP", "down": "CROUCH"}
+const MOVE_LABELS := {"left": "◀ LEFT", "right": "RIGHT ▶", "up": "▲ HIGH", "down": "▼ LOW"}
 
 
 static func base_radius(screen: Vector2) -> float:
@@ -49,13 +50,13 @@ static func default_buttons(screen: Vector2, gadget_labels: Array, pads: int = 1
 		var tag := "" if pads == 1 else " %d" % (pad + 1)
 		out.append({"name": pad_name("left", pad), "pos": c + Vector2(-pr * 1.55, 0), "r": pr, "label": "◀" + tag if pads > 1 else MOVE_LABELS["left"]})
 		out.append({"name": pad_name("right", pad), "pos": c + Vector2(pr * 1.55, 0), "r": pr, "label": tag + "▶" if pads > 1 else MOVE_LABELS["right"]})
-		out.append({"name": pad_name("up", pad), "pos": c + Vector2(0, -pr * 1.55), "r": pr, "label": "JUMP" + tag})
-		out.append({"name": pad_name("down", pad), "pos": c + Vector2(0, pr * 1.3), "r": pr, "label": "DUCK" + tag if pads > 1 else MOVE_LABELS["down"]})
+		out.append({"name": pad_name("up", pad), "pos": c + Vector2(0, -pr * 1.55), "r": pr, "label": "▲" + tag if pads > 1 else MOVE_LABELS["up"]})
+		out.append({"name": pad_name("down", pad), "pos": c + Vector2(0, pr * 1.3), "r": pr, "label": "▼" + tag if pads > 1 else MOVE_LABELS["down"]})
 	var rc := Vector2(w - r * 2.75, h - r * 2.4)
 	out.append({"name": "punch", "pos": rc + Vector2(-r * 1.55, 0), "r": r, "label": "PUNCH"})
 	out.append({"name": "kick", "pos": rc + Vector2(r * 1.55, 0), "r": r, "label": "KICK"})
 	out.append({"name": "block", "pos": rc + Vector2(0, -r * 1.55), "r": r, "label": "BLOCK"})
-	out.append({"name": "grab", "pos": rc + Vector2(0, r * 1.3), "r": r, "label": "GRAB"})
+	out.append({"name": "jump", "pos": rc + Vector2(0, r * 1.3), "r": r, "label": "JUMP"})
 	var gr := r * 0.72
 	for k in gadget_labels.size():
 		var gp: Vector2

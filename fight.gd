@@ -20,10 +20,11 @@ const Story = preload("res://story_data.gd")
 ## SPECIALS: training chips teach input sequences (see specials.gd), e.g. down, toward, punch.
 ## GADGETS: some parts add buttons (rocket fist, laser, shield...) or passive tricks (double jump).
 ##
-## Touch: left pad LEFT/RIGHT move, JUMP, CROUCH | right pad (same diamond shape): BLOCK on top,
-##        PUNCH left, KICK right, GRAB bottom | gadget buttons along the bottom middle
-##        MOVES (top) pauses and lists your moves
-## Keyboard: A/D move, W jump, S crouch, J punch, K kick, L block, H grab, U/I/O gadgets, M moves, Esc quit
+## Touch: left pad LEFT/RIGHT move, UP / DOWN set the height of the next hit (down alone = crouch) |
+##        right pad (same diamond shape): BLOCK on top, PUNCH left, KICK right, JUMP bottom |
+##        gadget buttons along the bottom middle | MOVES (top) pauses and lists your moves
+## PUNCH and KICK take turns between the arms (legs). Hold PUNCH or KICK to charge a heavier hit.
+## Keyboard: A/D move, W/S up/down, Space jump, J punch, K kick, L block, 1 2 3 gadgets, M moves, Esc pause
 
 const GRAVITY := 2200.0
 const WALK_SPEED := 300.0
@@ -40,24 +41,29 @@ const CORE_SHARE := 0.35      # share of a limb/head hit that also hurts the tor
 const HEAD_FACTOR := 0.6      # heads are hard to hit cleanly
 const COMBO_BONUS := 0.08     # extra damage per hit in a combo
 const BODY_PARTS := ["head", "head2", "torso", "arm_front", "arm_back", "arm_front2", "arm_back2", "leg_front", "leg_back"]
-const SPLIT_BUTTONS := ["punch", "kick"]   # touch buttons cut in half: left half = left limb, right half = right limb
 const ARM_SLOTS := ["arm_front", "arm_back", "arm_front2", "arm_back2"]
 const PART_LABELS := {"head": "HEAD", "head2": "2ND HEAD", "torso": "TORSO", "arm_front": "LEFT ARM", "arm_back": "RIGHT ARM",
 		"arm_front2": "LOWER LEFT ARM", "arm_back2": "LOWER RIGHT ARM", "leg_front": "LEFT LEG", "leg_back": "RIGHT LEG"}
 const WEAK_BONUS := 0.15      # extra damage on the part the scanner marks as weakest
 const GADGET_KEYS := [KEY_1, KEY_2, KEY_3]
-## Keyboard attacks: U / I punch with the left / right arm, J / K kick with the left / right leg.
-const KB_ATTACKS := {"kb_u": [KEY_U, "punch", "L"], "kb_i": [KEY_I, "punch", "R"], "kb_j": [KEY_J, "kick", "L"], "kb_k": [KEY_K, "kick", "R"]}
+## Charge: hold PUNCH or KICK. A tap shorter than CHARGE_TAP is a normal hit; longer holds charge up
+## to CHARGE_MAX seconds (draining power), hitting up to CHARGE_DMG times harder. A full charge breaks a guard.
+const CHARGE_TAP := 0.16
+const CHARGE_MAX := 1.2
+const CHARGE_DMG := 2.2
+const CHARGE_DRAIN := 0.22    # share of the tank per second while charging
 
+## The six normal hits: PUNCH or KICK, with the pad held up, level or down.
 const ATTACKS := {
-	"punch":    {"startup": 0.07, "active": 0.10, "recovery": 0.16, "reach": 82.0,  "damage": 7.0,  "height": "high", "stun": 0.22, "limb": "arm", "zone": "punch", "family": "punch"},
-	"kick":     {"startup": 0.14, "active": 0.10, "recovery": 0.26, "reach": 100.0, "damage": 10.0, "height": "mid",  "stun": 0.28, "limb": "leg", "zone": "kick", "family": "kick"},
-	"uppercut": {"startup": 0.12, "active": 0.10, "recovery": 0.35, "reach": 72.0,  "damage": 13.0, "height": "mid",  "stun": 0.50, "limb": "arm", "zone": "uppercut", "launch": -700.0, "family": "punch"},
-	"sweep":    {"startup": 0.12, "active": 0.12, "recovery": 0.30, "reach": 105.0, "damage": 8.0,  "height": "low",  "stun": 0.35, "limb": "leg", "zone": "sweep", "family": "kick"},
-	# grab beats block: slow and short, but can't be blocked
-	"grab":     {"startup": 0.14, "active": 0.08, "recovery": 0.45, "reach": 72.0,  "damage": 9.0,  "height": "mid",  "stun": 0.6,  "limb": "arm", "zone": "torso",
-			"unblockable": true, "launch": -250.0, "knock": 380.0, "family": "hold"},
+	"punch":     {"startup": 0.07, "active": 0.10, "recovery": 0.16, "reach": 82.0,  "damage": 7.0,  "height": "high", "stun": 0.22, "limb": "arm", "zone": "punch", "family": "punch"},
+	"low_punch": {"startup": 0.08, "active": 0.10, "recovery": 0.20, "reach": 80.0,  "damage": 6.0,  "height": "low",  "stun": 0.22, "limb": "arm", "zone": "low_punch", "family": "punch"},
+	"uppercut":  {"startup": 0.12, "active": 0.10, "recovery": 0.35, "reach": 72.0,  "damage": 13.0, "height": "mid",  "stun": 0.50, "limb": "arm", "zone": "uppercut", "launch": -700.0, "family": "punch"},
+	"kick":      {"startup": 0.14, "active": 0.10, "recovery": 0.26, "reach": 100.0, "damage": 10.0, "height": "mid",  "stun": 0.28, "limb": "leg", "zone": "kick", "family": "kick"},
+	"high_kick": {"startup": 0.17, "active": 0.10, "recovery": 0.30, "reach": 96.0,  "damage": 12.0, "height": "high", "stun": 0.32, "limb": "leg", "zone": "high_kick", "family": "kick"},
+	"sweep":     {"startup": 0.12, "active": 0.12, "recovery": 0.30, "reach": 105.0, "damage": 8.0,  "height": "low",  "stun": 0.35, "limb": "leg", "zone": "sweep", "family": "kick"},
 }
+## Which hit a button makes, by the pad's height: [up, level, down]
+const HITS_BY_HEIGHT := {"punch": ["uppercut", "punch", "low_punch"], "kick": ["high_kick", "kick", "sweep"]}
 
 
 class Fighter:
@@ -76,6 +82,7 @@ class Fighter:
 	var vis_sx := 1.0
 	var vis_sy := 1.0
 	var vis_ok := false
+	var vis_pose := {}       # which pose each limb was in (RobotArt.limb_poses), for the hit test
 	var pos := Vector2.ZERO
 	var vel := Vector2.ZERO
 	var facing := 1
@@ -86,7 +93,14 @@ class Fighter:
 	var landed := false      # the current attack connected (allows combo cancels)
 	var queued := ""         # attack pressed slightly early, waiting for the current one to allow it
 	var queued_t := 0.0
-	var queued_side := ""    # "L"/"R": which half of PUNCH/KICK the queued attack came from
+	var punch_turn := 0      # arms take turns: jab, cross, jab...
+	var kick_turn := 0       # legs take turns too
+	var aim_ang := 0.0       # the current punch/kick tilts this much toward its target (radians, - = up)
+	var charge_btn := ""     # "punch"/"kick" while the button is held (a tap or a charge)
+	var charge_t := 0.0
+	var charge_h := 1        # height picked when the button went down: 0 up, 1 level, 2 down
+	var charge_mult := 1.0   # the hit being thrown was charged this much
+	var guard_break := false # ...and fully: it breaks a guard
 	var recovered_at := -10.0   # when this fighter last recovered from being hit
 	var flash := 0.0
 	var crouching := false
@@ -125,7 +139,6 @@ class Fighter:
 	# fighting style, traits and status effects
 	var style := "striker"
 	var gtraits := {}        # robot-wide traits from reactor / back gear: trait -> value
-	var arm_turn := 0        # extra arms take turns punching
 	var slow_t := 0.0        # frost
 	var hobble_t := 0.0      # leg got hit: slower walking
 	var numb_t := 0.0        # arm got hit: weaker hits
@@ -147,9 +160,6 @@ class Fighter:
 	var idle_t := 0.0        # seconds since power was last spent (refill starts after a pause)
 	var burn_t := 0.0        # burned out: can't act or block
 	var burn_pending := false
-	var clinch_t := 0.0      # holding the enemy in a grab
-	var clinch_on: Fighter = null
-	var clinch_hit := false
 
 	func alive(slot: String) -> bool:
 		return parts.has(slot) and not parts[slot].is_empty() and parts[slot]["hp"] > 0.0
@@ -184,36 +194,42 @@ class Fighter:
 	func usable_arm(slot: String) -> bool:
 		return alive(slot) and not fist_out.has(slot)
 
-	## side "L"/"R" = the robot's own left or right limb (the split PUNCH/KICK buttons).
-	## Facing right, its left side is toward the camera (the "front" limbs); facing left it's the back ones.
-	## If that side's limb is gone, the other side does the job.
-	func limb_for(kind: String, prefer_back: bool = false, side: String = "") -> String:
-		if side != "" and (kind == "arm" or kind == "leg"):
-			var near := side == "L"   # L = the left arm/leg (the _front slots), R = the right one
-			var front: Array = ["arm_front", "arm_front2"] if kind == "arm" else ["leg_front"]
-			var back: Array = ["arm_back", "arm_back2"] if kind == "arm" else ["leg_back"]
-			for grp in ([front, back] if near else [back, front]):
-				var ok: Array = []
-				for sl in grp:
-					if (usable_arm(sl) if kind == "arm" else alive(sl)):
-						ok.append(sl)
-				if not ok.is_empty():
-					return ok[arm_turn % ok.size()]
-			return ""
+	## The limb a special move uses: the first working one (specials that hit many times take turns, see next_limb).
+	func limb_for(kind: String, prefer_back: bool = false) -> String:
 		if kind == "arm":
 			var order := ["arm_back", "arm_front", "arm_back2", "arm_front2"] if prefer_back else ["arm_front", "arm_back", "arm_front2", "arm_back2"]
-			var ok: Array = []
 			for s in order:
 				if usable_arm(s):
-					ok.append(s)
-			if ok.is_empty():
-				return ""
-			if ok.size() > 2:
-				return ok[arm_turn % ok.size()]   # four-armed robots punch with each arm in turn
-			return ok[0]
+					return s
+			return ""
 		if kind == "leg":
 			return "leg_front" if alive("leg_front") else ("leg_back" if alive("leg_back") else "")
 		return "torso"
+
+	## Arms (legs) take turns: jab, cross, jab. With one left it does every hit; none = "".
+	## peek: don't move the turn on (just ask who would go next).
+	func next_limb(kind: String, peek: bool = false) -> String:
+		var ok: Array = []
+		if kind == "arm":
+			for s in ["arm_front", "arm_back", "arm_front2", "arm_back2"]:
+				if usable_arm(s):
+					ok.append(s)
+		elif kind == "leg":
+			for s in ["leg_front", "leg_back"]:
+				if alive(s):
+					ok.append(s)
+		else:
+			return "torso"
+		if ok.is_empty():
+			return ""
+		var turn := punch_turn if kind == "arm" else kick_turn
+		var pick: String = ok[turn % ok.size()]
+		if not peek:
+			if kind == "arm":
+				punch_turn += 1
+			else:
+				kick_turn += 1
+		return pick
 
 	func has_gadget(id: String) -> bool:
 		for g in gadgets:
@@ -286,9 +302,12 @@ var gadget_buttons: Array = []
 var held_buttons := {}
 var prev_held := {}
 var tap_pending := false
+var pressed_since := {}     # buttons pressed since the last input read (taps quicker than a frame, presses during a hit-freeze)
 var quit_rect := Rect2()
 var moves_rect := Rect2()
 var reset_rect := Rect2()   # Test Drive: start over
+var hitbox_rect := Rect2()  # Test Drive: show the hit boxes
+var hitbox_view := false
 var touch_device := false
 var control_pads := 1      # movement pads on screen (multibot split controls use more)
 var paused := false
@@ -603,6 +622,7 @@ func layout() -> void:
 	quit_rect = Rect2(w * 0.5 - 140.0, h * 0.04 + 52.0, 130.0, 44.0)
 	moves_rect = Rect2(w * 0.5 + 10.0, h * 0.04 + 52.0, 130.0, 44.0)
 	reset_rect = Rect2(w * 0.5 - 290.0, h * 0.04 + 52.0, 130.0, 44.0)
+	hitbox_rect = Rect2(w * 0.5 + 160.0, h * 0.04 + 52.0, 130.0, 44.0)
 
 
 # ---------------------------------------------------------------- input
@@ -616,6 +636,7 @@ func _input(event: InputEvent) -> void:
 				return
 			touches[event.index] = event.position
 			tap_pending = true
+			note_press_at(event.position)
 		else:
 			touches.erase(event.index)
 	elif event is InputEventScreenDrag:
@@ -624,6 +645,9 @@ func _input(event: InputEvent) -> void:
 		if not handle_tap(event.position):
 			tap_pending = true
 	elif event is InputEventKey and event.pressed and not event.echo:
+		var kb := {KEY_J: "punch", KEY_K: "kick", KEY_SPACE: "jump"}
+		if kb.has(event.physical_keycode) and phase == "fight" and not paused and not tut_pause:
+			pressed_since[kb[event.physical_keycode]] = true
 		if phase == "intro" and intro_step == "show":
 			if event.physical_keycode in [KEY_ENTER, KEY_SPACE, KEY_ESCAPE]:
 				skip_show()   # computers: any of these skips the announcer's show
@@ -656,6 +680,16 @@ func _input(event: InputEvent) -> void:
 					else:
 						quit_ask = true
 						Sfx.play("click")
+
+
+## A touch landed on PUNCH / KICK / JUMP: remember it, so a tap shorter than a frame, or one during
+## a hit-freeze, still counts.
+func note_press_at(p: Vector2) -> void:
+	if phase != "fight" or paused or tut_pause:
+		return
+	for b in buttons:
+		if b["name"] in ["punch", "kick", "jump"] and p.distance_to(b["pos"]) <= b["r"] * 1.2:
+			pressed_since[b["name"]] = true
 
 
 ## Quit, moves list and aiming. Returns true if the tap was used.
@@ -702,6 +736,10 @@ func handle_tap(p: Vector2) -> bool:
 	if mode == "test" and reset_rect.has_point(p):
 		Sfx.play("click")
 		get_tree().reload_current_scene()
+		return true
+	if mode == "test" and hitbox_rect.has_point(p):
+		hitbox_view = not hitbox_view
+		Sfx.play("click")
 		return true
 	if quit_rect.has_point(p):
 		if mode == "watch" or mode == "test":
@@ -793,7 +831,8 @@ func part_at(f: Fighter, p: Vector2) -> String:
 
 func empty_input() -> Dictionary:
 	return {"left": false, "right": false, "up": false, "down": false, "block": false,
-			"punch": false, "kick": false, "grab": false, "up_press": false, "gadget": -1}
+			"punch": false, "kick": false, "punch_held": false, "kick_held": false,
+			"jump": false, "jump_press": false, "gadget": -1}
 
 
 func key(k: Key) -> bool:
@@ -810,17 +849,15 @@ func read_player_input() -> Array:
 		for b in buttons + gadget_buttons:
 			if t.distance_to(b["pos"]) <= b["r"] * 1.2:
 				held_buttons[b["name"]] = true
-				if SPLIT_BUTTONS.has(b["name"]):
-					held_buttons[b["name"] + ("_L" if t.x < b["pos"].x else "_R")] = true
 	var now := {
 		"left": held_buttons.get("left", false) or key(KEY_A) or key(KEY_LEFT),
 		"right": held_buttons.get("right", false) or key(KEY_D) or key(KEY_RIGHT),
 		"up": held_buttons.get("up", false) or key(KEY_W) or key(KEY_UP),
 		"down": held_buttons.get("down", false) or key(KEY_S) or key(KEY_DOWN),
 		"block": held_buttons.get("block", false) or key(KEY_L),
-		"punch": held_buttons.get("punch", false),
-		"kick": held_buttons.get("kick", false),
-		"grab": held_buttons.get("grab", false) or key(KEY_O),
+		"punch": held_buttons.get("punch", false) or key(KEY_J),
+		"kick": held_buttons.get("kick", false) or key(KEY_K),
+		"jump": held_buttons.get("jump", false) or (key(KEY_SPACE) and not tut_pause),
 	}
 	for pad in range(1, control_pads):
 		for d in Controls.MOVE_NAMES:
@@ -829,24 +866,13 @@ func read_player_input() -> Array:
 		now["gadget%d" % k] = held_buttons["gadget%d" % k] or key(GADGET_KEYS[k])
 	var shared := empty_input()
 	shared["block"] = now["block"]
-	shared["punch"] = now["punch"] and not prev_held.get("punch", false)
-	shared["kick"] = now["kick"] and not prev_held.get("kick", false)
-	# keyboard: U / I punch, J / K kick, each with its own side
-	for kn in KB_ATTACKS:
-		var ka: Array = KB_ATTACKS[kn]
-		now[kn] = key(ka[0])
-		if now[kn] and not prev_held.get(kn, false):
-			shared[ka[1]] = true
-			shared["pside" if ka[1] == "punch" else "kside"] = ka[2]
-	# split buttons: a fresh tap on either half is a new punch/kick with that side's limb
-	for nm in SPLIT_BUTTONS:
-		for sd in ["L", "R"]:
-			var half: String = nm + "_" + sd
-			now[half] = held_buttons.get(half, false)
-			if now[half] and not prev_held.get(half, false):
-				shared[nm] = true
-				shared["pside" if nm == "punch" else "kside"] = sd
-	shared["grab"] = now["grab"] and not prev_held.get("grab", false)
+	# a press counts once, even if it came and went between two frames (pressed_since catches those)
+	for nm in ["punch", "kick", "jump"]:
+		shared[nm if nm != "jump" else "jump_press"] = (now[nm] and not prev_held.get(nm, false)) or pressed_since.has(nm)
+	shared["punch_held"] = now["punch"]
+	shared["kick_held"] = now["kick"]
+	shared["jump"] = now["jump"] or pressed_since.has("jump")
+	pressed_since.clear()
 	for k in gadget_buttons.size():
 		if now["gadget%d" % k] and not prev_held.get("gadget%d" % k, false):
 			shared["gadget"] = k
@@ -861,8 +887,6 @@ func read_player_input() -> Array:
 			# record direction presses for special-move sequences
 			if now[pn] and not prev_held.get(pn, false):
 				push_token(f, dir_token(f, d))
-		var up_name := Controls.pad_name("up", pad)
-		i["up_press"] = now[up_name] and not prev_held.get(up_name, false)
 		out.append(i)
 	prev_held = now
 	return out
@@ -1030,14 +1054,14 @@ func read_ai_input(delta: float) -> Dictionary:
 		if absf(pdx) < 300.0 and signf(pdx) == signf(p["vel"].x):
 			p["ai_seen"] = true
 			if not cpu.on_ground and cpu.air_jumps > 0 and randf() < 0.4 + ai_smart * 0.5:
-				ai_plan = {"hold": ["up", away], "fresh": true, "air": true, "air_in": false, "dj_now": true}   # jet over it
+				ai_plan = {"hold": ["jump", away], "fresh": true, "air": true, "air_in": false, "dj_now": true}   # jet over it
 				ai_timer = 0.4
 			elif randf() < 0.25 + ai_smart * 0.6 and cpu.state in ["idle", "walk"]:
 				var sh := ai_gadget("shield")
 				if not sh.is_empty():
 					use_gadget(cpu, sh)
 				elif cpu.legs() > 0 and cpu.on_ground and randf() < 0.6:
-					ai_plan = {"hold": ["up", away], "fresh": true}
+					ai_plan = {"hold": ["jump", away], "fresh": true}
 				elif cpu.arms() > 0:
 					ai_plan = {"hold": ["block"], "fresh": true}
 				ai_timer = 0.4
@@ -1047,13 +1071,15 @@ func read_ai_input(delta: float) -> Dictionary:
 		ai_pick_target()
 		ai_plan = ai_decide(dist, toward, away)
 		ai_plan["fresh"] = true
+		if ai_plan.has("keep"):
+			ai_timer = float(ai_plan["keep"])   # e.g. holding a charge
 
 	for k in ai_plan.get("hold", []):
 		i[k] = true
 	if ai_plan.get("fresh", false) and ai_plan.has("tap"):
 		i[ai_plan["tap"]] = true
 	ai_plan["fresh"] = false
-	var melee := 82.0 * cpu.scale + 25.0 * player.scale
+	var melee := ai_melee()
 	# follow-up after a hook / EMP / booster: they're helpless, so hit them with the best thing we have
 	if ai_plan.get("follow", "") != "" and (player.state == "hit" or player.stun_t > 0.0 or dist < melee) and dist < melee + 40.0 and cpu.state in ["idle", "walk"]:
 		var punish := ai_pick_special(dist, false, true)
@@ -1064,7 +1090,7 @@ func read_ai_input(delta: float) -> Dictionary:
 		ai_plan["follow"] = ""
 	# jet packs: second jump at the top of the first one (or right now, to hop over a shot)
 	if ai_plan.get("air", false) and not cpu.on_ground and cpu.air_jumps > 0 and (ai_plan.get("dj_now", false) or (cpu.vel.y > -150.0 and randf() < 0.25)):
-		i["up_press"] = true
+		i["jump_press"] = true
 		ai_plan["dj_now"] = false
 		var ad := toward if ai_plan.get("air_in", true) else away
 		i[ad] = true
@@ -1095,7 +1121,7 @@ func junk_input(i: Dictionary) -> Dictionary:
 	var dx := player.pos.x - cpu.pos.x
 	var dist := absf(dx)
 	var toward := "right" if dx > 0 else "left"
-	var melee := 82.0 * cpu.scale + 25.0 * player.scale
+	var melee := ai_melee()
 	match str(cpu.spec["junk"]):
 		"fridge":
 			# The Fridge: blocks. Always. (a grab gets through)
@@ -1125,7 +1151,7 @@ func ai_decide(dist: float, toward: String, away: String) -> Dictionary:
 	var free := cpu.state in ["idle", "walk", "jump"]
 	var can_punch := cpu.arms() > 0
 	var can_kick := cpu.legs() > 0
-	var melee := 82.0 * cpu.scale + 25.0 * player.scale
+	var melee := ai_melee()
 	# threatened = their attack is still coming; once it's in recovery they're open to a punish
 	var threatened := false
 	var p_open := player.stun_t > 0.0
@@ -1166,15 +1192,13 @@ func ai_decide(dist: float, toward: String, away: String) -> Dictionary:
 					return {"tap": "kick"}   # kicks power through punches
 				if cpu.arms() > 0:
 					return {"hold": ["block"]}
-			"hold":
-				if can_punch:
-					return {"tap": "punch"}   # a punch beats a grab
 			"kick":
 				if cpu.arms() > 0:
 					return {"hold": ["block"]}   # block and let them burn their power
 			"block":
-				if can_punch:
-					return {"tap": "grab"}
+				var cb := ai_charge_plan(can_punch, can_kick)
+				if not cb.is_empty():
+					return cb   # a full charge breaks a guard
 
 	# 1) gadgets, used for what they're good at
 	if free and ai_gadget_cd <= 0.0:
@@ -1201,11 +1225,13 @@ func ai_decide(dist: float, toward: String, away: String) -> Dictionary:
 		if aggro and dist < melee and can_punch and randf() < 0.4:
 			return {"tap": "punch"}   # strikers trade blows
 		if ai_kit["air"] and can_kick and randf() < 0.45:
-			return {"hold": ["up", away], "air": true, "air_in": false}   # jump away
+			return {"hold": ["jump", away], "air": true, "air_in": false}   # jump away
 		return {"hold": [away]}
-	# grab beats a turtle
-	if player.blocking and dist < 100.0 * cpu.scale and can_punch and randf() < 0.3 + ai_smart * 0.5:
-		return {"tap": "grab"}
+	# a charged hit beats a turtle
+	if player.blocking and dist < melee + 20.0 and randf() < 0.3 + ai_smart * 0.5:
+		var cb2 := ai_charge_plan(can_punch, can_kick)
+		if not cb2.is_empty():
+			return cb2
 	# 4) self-repairing robots back off to heal when hurt
 	if cpu.has_gadget("regen") and hurt < 0.4 and dist < 320.0 and randf() < 0.55:
 		return {"hold": [away]}
@@ -1215,7 +1241,7 @@ func ai_decide(dist: float, toward: String, away: String) -> Dictionary:
 		var near_wall := cpu.pos.x < wall_l + 140.0 or cpu.pos.x > wall_r - 140.0
 		if dist < want * 0.7 and not near_wall:
 			if ai_kit["air"] and randf() < 0.3:
-				return {"hold": ["up", away], "air": true, "air_in": false}
+				return {"hold": ["jump", away], "air": true, "air_in": false}
 			return {"hold": [away]}
 		if dist > want * 1.4:
 			return {"hold": [toward]}
@@ -1224,15 +1250,15 @@ func ai_decide(dist: float, toward: String, away: String) -> Dictionary:
 	# cornered: jump gadgets vault right over the enemy
 	var cornered := (cpu.pos.x < wall_l + 130.0 * cpu.scale and toward == "right") or (cpu.pos.x > wall_r - 130.0 * cpu.scale and toward == "left")
 	if cornered and dist < 220.0 * cpu.scale and ai_kit["air"] and cpu.on_ground and randf() < 0.3 + ai_smart * 0.4:
-		return {"hold": ["up", toward], "air": true, "air_in": true}
+		return {"hold": ["jump", toward], "air": true, "air_in": true}
 	# 6) jumpers come in from above
 	if ai_kit["air"] and can_kick and dist > melee and dist < 420.0 and randf() < 0.35:
-		return {"hold": ["up", toward], "air": true, "air_in": true}
+		return {"hold": ["jump", toward], "air": true, "air_in": true}
 	# 7) close the distance
 	if dist > melee:
 		var plan := {"hold": [toward]}
 		if r < 0.06 and can_kick:
-			plan["tap"] = "up_press"
+			plan["tap"] = "jump_press"
 		return plan
 	# 8) up close
 	if cpu.has_gadget("thorns") and not threatened and randf() < 0.3:
@@ -1244,10 +1270,14 @@ func ai_decide(dist: float, toward: String, away: String) -> Dictionary:
 		return {"tap": "punch"}
 	if r < atk * 0.75 and can_kick:
 		return {"tap": "kick"}
-	if r < atk * 0.88 and can_kick:
+	if r < atk * 0.82 and can_kick:
 		return {"hold": ["down"], "tap": "kick"}
+	if r < atk * 0.88 and can_kick:
+		return {"hold": ["up"], "tap": "kick"}   # high kick
+	if r < atk * 0.94 and can_punch:
+		return {"hold": ["up"], "tap": "punch"}   # uppercut
 	if r < atk and can_punch:
-		return {"hold": ["down"], "tap": "punch"}
+		return {"hold": ["down"], "tap": "punch"}   # low jab
 	if r < 0.88 and cpu.arms() > 0:
 		return {"hold": ["block"]}
 	if can_punch:
@@ -1255,6 +1285,21 @@ func ai_decide(dist: float, toward: String, away: String) -> Dictionary:
 	if can_kick:
 		return {"tap": "kick"}
 	return {"hold": [away]}
+
+
+## How close the CPU needs to be for its punch to land: the real reach of its fist, plus a bit of the enemy.
+func ai_melee() -> float:
+	return maxf(strike_reach(cpu, "arm", "punch"), strike_reach(cpu, "leg", "kick")) * 0.9 + 18.0 * cpu.scale + 30.0 * player.scale
+
+
+## Hold PUNCH (or KICK) for a full charge: it breaks a guard. Needs power to pay for it.
+func ai_charge_plan(can_punch: bool, can_kick: bool) -> Dictionary:
+	if cpu.power < cpu.power_max * 0.45 or not cpu.on_ground:
+		return {}
+	var btn := "punch" if can_punch and (not can_kick or randf() < 0.5) else ("kick" if can_kick else "")
+	if btn == "":
+		return {}
+	return {"tap": btn, "hold": [btn + "_held"], "keep": CHARGE_MAX + 0.05}
 
 
 func ai_pick_special(dist: float, threatened: bool = false, punish: bool = false) -> String:
@@ -1756,7 +1801,7 @@ func quit_fight() -> void:
 # limb draws, times the move's weight: punches are cheap, kicks are hungry. Refills when you
 # stop attacking. Empty it and you burn out.
 
-const MOVE_COST := {"punch": 1.0, "uppercut": 1.3, "grab": 1.5, "sweep": 2.0, "kick": 2.6}
+const MOVE_COST := {"punch": 1.0, "low_punch": 1.0, "uppercut": 1.3, "sweep": 2.0, "kick": 2.6, "high_kick": 2.8}
 const REFILL := 0.28          # share of the tank refilled per second when not attacking
 const REFILL_DELAY := 0.4     # seconds after a move before it starts refilling
 const BURNOUT_TIME := 1.5
@@ -1771,7 +1816,7 @@ func limb_draw(f: Fighter, limb: String) -> float:
 
 func attack_cost(f: Fighter, attack: String, limb: String) -> float:
 	var c: float = MOVE_COST.get(attack, 1.0) * limb_draw(f, limb)
-	if f.style == "striker" and attack in ["punch", "uppercut"]:
+	if f.style == "striker" and attack in ["punch", "low_punch", "uppercut"]:
 		c *= 0.75
 	return c
 
@@ -1802,7 +1847,7 @@ func update_power(f: Fighter, delta: float) -> void:
 			f.power = f.power_max * 0.35
 			f.idle_t = 0.0
 		return
-	var busy := ATTACKS.has(f.state) or f.state == "special"
+	var busy := ATTACKS.has(f.state) or f.state == "special" or f.state == "charge"
 	if f.burn_pending and not busy and f.state != "ko":
 		f.burn_pending = false
 		f.burn_t = BURNOUT_TIME
@@ -1814,14 +1859,17 @@ func update_power(f: Fighter, delta: float) -> void:
 		f.power = minf(f.power_max, f.power + f.power_max * rate * delta)
 
 
-func start_attack(f: Fighter, attack: String, side: String = "") -> void:
+## Throw a normal hit. charge: 0 = a plain tap, up to 1 = fully charged.
+func start_attack(f: Fighter, attack: String, charge: float = 0.0) -> void:
 	var a: Dictionary = ATTACKS[attack]
-	var limb := f.limb_for(a["limb"], attack == "uppercut", side)
+	var limb := f.next_limb(a["limb"])
 	if limb == "":
 		return
 	f.state = attack
 	pilot_jerk(f.team)
 	f.attack_limb = limb
+	f.charge_mult = 1.0 + (CHARGE_DMG - 1.0) * clampf(charge, 0.0, 1.0)
+	f.guard_break = charge >= 0.999
 	spend(f, attack_cost(f, attack, limb))
 	if f.team == 0 and ATTACKS[attack].has("family"):
 		var fam: String = ATTACKS[attack]["family"]
@@ -1829,28 +1877,77 @@ func start_attack(f: Fighter, attack: String, side: String = "") -> void:
 	elif f.team == 1 and ATTACKS[attack].has("family"):
 		var fam2: String = ATTACKS[attack]["family"]
 		cpu_habit[fam2] = cpu_habit.get(fam2, 0.0) + 1.0
-	f.arm_turn += 1
 	f.timer = 0.0
 	f.hit_done = false
 	f.landed = false
 	f.blocking = false
-	f.crouching = attack == "sweep"
-	Sfx.play("uppercut" if attack == "uppercut" else ("equip" if attack == "grab" else "swing"), 0.15)
+	f.crouching = attack == "sweep" or attack == "low_punch"
+	f.aim_ang = aim_angle(f, attack)
+	if charge > 0.0:
+		Sfx.play("hit_big", 0.1, -4.0)
+	Sfx.play("uppercut" if attack == "uppercut" else "swing", 0.15)
 
 
 ## Fire the buffered attack (or a special, if the buffered button completes a sequence).
 func start_queued(f: Fighter) -> bool:
 	var q := f.queued
 	f.queued = ""
-	var button := "P" if q == "punch" or q == "uppercut" else "K"
+	var button := "P" if ATTACKS[q]["family"] == "punch" else "K"
 	var sp := match_special(f, button)
 	if sp != "":
 		start_special(f, sp)
 		return true
 	var a: Dictionary = ATTACKS[q]
-	if f.limb_for(a["limb"], q == "uppercut", f.queued_side) == "":
+	if f.next_limb(a["limb"], true) == "":
 		return false
-	start_attack(f, q, f.queued_side)
+	start_attack(f, q)
+	return true
+
+
+## Which hit a button throws at a height (0 up, 1 level, 2 down).
+func hit_for(button: String, h: int) -> String:
+	return HITS_BY_HEIGHT[button][clampi(h, 0, 2)]
+
+
+func pad_height(i: Dictionary) -> int:
+	return 0 if i["up"] and not i["down"] else (2 if i["down"] and not i["up"] else 1)
+
+
+## Charging: the button is held past a tap. Returns true while the robot is busy charging.
+func update_charge(f: Fighter, i: Dictionary, delta: float) -> bool:
+	if f.charge_btn == "":
+		return false
+	var held: bool = i.get(f.charge_btn + "_held", false)
+	var kind: String = "arm" if f.charge_btn == "punch" else "leg"
+	if f.next_limb(kind, true) == "" or f.burn_t > 0.0:
+		f.charge_btn = ""
+		if f.state == "charge":
+			f.state = "idle"
+		return false
+	f.charge_t += delta
+	var k := clampf((f.charge_t - CHARGE_TAP) / (CHARGE_MAX - CHARGE_TAP), 0.0, 1.0)
+	if held and f.charge_t < CHARGE_MAX:
+		if f.charge_t >= CHARGE_TAP:
+			if f.state != "charge":
+				f.state = "charge"
+				f.attack_limb = f.next_limb(kind, true)
+				f.blocking = false
+				Sfx.play("repair", 0.1, -8.0)
+			f.vel.x = 0.0 if f.on_ground else f.vel.x
+			spend(f, f.power_max * CHARGE_DRAIN * delta)
+			if f.power <= 0.0:
+				held = false   # the tank's dry: it goes now
+			if randf() < delta * (6.0 + 20.0 * k):
+				add_spark(visual_point(f, RobotArt.part_center(f.get_look(), f.attack_limb)) + Vector2(randf_range(-12, 12), randf_range(-12, 12)),
+						Color(1.0, 0.85, 0.3).lerp(Color(1.0, 0.35, 0.2), k), 10.0 + 14.0 * k)
+		if held:
+			return f.state == "charge"
+	# let go (or the charge is full): throw it
+	var btn := f.charge_btn
+	var charged := f.charge_t >= CHARGE_TAP
+	f.charge_btn = ""
+	f.state = "idle"
+	start_attack(f, hit_for(btn, f.charge_h), k if charged else 0.0)
 	return true
 
 
@@ -1861,7 +1958,11 @@ func start_special(f: Fighter, id: String) -> void:
 	if randf() < 0.6:
 		pilot_say(f.team, "special", false, (tr(Specials.MOVES[id]["name"]) as String).to_upper() + "!" if not pilots.is_empty() and not pilots[f.team]["auto"] else tr("[ EXECUTE: %s ]") % (tr(Specials.MOVES[id]["name"]) as String).to_upper())
 	f.special_id = id
-	f.attack_limb = f.limb_for(m["limb"]) if m.has("limb") else ""
+	f.attack_limb = f.next_limb(m["limb"]) if m.has("limb") else ""
+	f.aim_ang = aim_angle(f, str(m.get("pose", "")))
+	f.charge_btn = ""
+	f.charge_mult = 1.0
+	f.guard_break = false
 	f.timer = 0.0
 	f.hits_done = 0
 	f.hit_done = false
@@ -1872,9 +1973,6 @@ func start_special(f: Fighter, id: String) -> void:
 	f.cooldowns[id] = m["cd"]
 	f.buffer.clear()
 	spend(f, special_cost(f))
-	if m.has("rise"):
-		f.vel.y = -m["rise"]
-		f.on_ground = false
 	if m.has("counter"):
 		f.counter_t = m["counter"]
 	if m.has("invuln"):
@@ -1932,12 +2030,22 @@ func update_special(f: Fighter, o: Fighter, delta: float) -> void:
 			if active and f.hits_done < hits and f.timer >= st + f.hits_done * interval:
 				f.hits_done += 1
 				var hit := m.duplicate()
+				if f.hits_done > 1 and m.has("limb"):
+					# rapid jabs and kicks take turns between the arms (legs), like normal hits
+					var nl := f.next_limb(m["limb"])
+					if nl != "":
+						f.attack_limb = nl
+						f.aim_ang = aim_angle(f, str(m.get("pose", "")))
 				if m.get("finisher", false) and f.hits_done == hits:
 					hit["launch"] = -650.0
 					hit["knock"] = 450.0
 					hit["damage"] = m["damage"] * 2.0
 				f.hit_done = false
 				try_hit(f, o, hit)
+	# jumping specials leave the floor once the first hit has had its chance, so it lands on the way up
+	if m.has("rise") and f.on_ground and f.timer >= st and f.vel.y >= 0.0:
+		f.vel.y = -m["rise"]
+		f.on_ground = false
 	if f.timer >= st + act + m.get("recovery", 0.2):
 		f.state = "idle" if f.on_ground else "jump"
 		f.crouching = false
@@ -2047,9 +2155,13 @@ func update_projectiles(delta: float) -> void:
 			for e in enemies_of(owner):
 				if e.state == "ko" or e.invuln_t > 0.0:
 					continue
-				var top: float = e.pos.y - 200.0 * e.scale
-				if absf(p["pos"].x - e.pos.x) < 36.0 * e.scale and p["pos"].y > top and p["pos"].y < e.pos.y + 5.0:
-					hit_now = true
+				# a shot hits only where it touches the robot (so a high shot sails over a crouch)
+				var l := visual_local(e, p["pos"])
+				for r in RobotArt.regions(e.get_look()):
+					if (r[1] as Rect2).grow(4.0).has_point(l):
+						hit_now = true
+						break
+				if hit_now:
 					o = e
 					break
 		if hit_now:
@@ -2123,20 +2235,19 @@ func update_fighter(f: Fighter, o: Fighter, i: Dictionary, delta: float) -> void
 	update_power(f, delta)
 	if f.burn_t > 0.0:
 		i = empty_input()   # burned out: no moves, no block
-	if f.clinch_t > 0.0:
-		update_clinch(f, delta)
-		return
 	var punch: bool = i["punch"]
 	var kick: bool = i["kick"]
-	var side: String = i.get("pside", "") if punch else i.get("kside", "")
 	if punch:
 		push_token(f, "P")
 	if kick:
 		push_token(f, "K")
+	var h := pad_height(i)
 
 	if f.state == "ko":
 		f.vel.x = move_toward(f.vel.x, 0.0, 900.0 * delta)
+		f.charge_btn = ""
 	elif f.state == "hit":
+		f.charge_btn = ""
 		f.timer -= delta
 		f.vel.x = move_toward(f.vel.x, 0.0, 1200.0 * delta)
 		if f.timer <= 0.0 and f.on_ground:
@@ -2155,8 +2266,7 @@ func update_fighter(f: Fighter, o: Fighter, i: Dictionary, delta: float) -> void
 			try_hit(f, o, a)
 		# remember an attack pressed a little early so slower button presses still chain
 		if punch or kick:
-			f.queued = ("uppercut" if i["down"] else "punch") if punch else ("sweep" if i["down"] else "kick")
-			f.queued_side = side
+			f.queued = hit_for("punch" if punch else "kick", h)
 			f.queued_t = 0.45
 		# combo cancel: a normal that landed can go straight into the next attack or a special
 		if f.landed and f.timer >= a["startup"] + a["active"] and f.queued != "":
@@ -2165,8 +2275,12 @@ func update_fighter(f: Fighter, o: Fighter, i: Dictionary, delta: float) -> void
 		elif f.timer >= a["startup"] + a["active"] + a["recovery"]:
 			f.state = "idle"
 			f.crouching = false
+			f.charge_mult = 1.0
+			f.guard_break = false
 			if f.queued != "" and start_queued(f):
 				return
+	elif update_charge(f, i, delta):
+		pass
 	else:
 		if f.on_ground:
 			f.facing = 1 if o.pos.x >= f.pos.x else -1
@@ -2177,12 +2291,15 @@ func update_fighter(f: Fighter, o: Fighter, i: Dictionary, delta: float) -> void
 			sp = match_special(f, "P" if punch else "K")
 		if sp != "":
 			start_special(f, sp)
-		elif punch and f.arms() > 0:
-			start_attack(f, "uppercut" if f.crouching else "punch", side)
-		elif kick and f.legs() > 0:
-			start_attack(f, "sweep" if f.crouching else "kick", side)
-		elif i["grab"] and f.arms() > 0 and f.on_ground:
-			start_attack(f, "grab")
+		elif (punch and f.arms() > 0) or (kick and f.legs() > 0):
+			var btn := "punch" if punch else "kick"
+			if i.get(btn + "_held", false) and f.on_ground:
+				# still held: a tap throws it on release, a hold charges it (update_charge)
+				f.charge_btn = btn
+				f.charge_t = 0.0
+				f.charge_h = h
+			else:
+				start_attack(f, hit_for(btn, h))
 		elif f.on_ground:
 			var dir := 0
 			if not f.crouching and not f.blocking:
@@ -2201,17 +2318,18 @@ func update_fighter(f: Fighter, o: Fighter, i: Dictionary, delta: float) -> void
 				if f.step_timer <= 0.0:
 					f.step_timer = 0.28 / maxf(0.4, spd)
 					Sfx.play("step", 0.2, -10.0)
-			if i["up"] and not f.crouching and not f.blocking and f.legs() > 0:
+			if i["jump"] and not f.blocking and f.legs() > 0:
 				var jump: float = JUMP_SPEED * (1.0 if f.legs() == 2 else 0.75) * (1.0 + f.ctrl.get("jump", 0.0))
 				if f.has_gadget("high_jump"):
 					jump *= 1.4
 				f.vel.y = -jump
 				f.on_ground = false
+				f.crouching = false
 				f.state = "jump"
 				spend(f, 0.5 * limb_draw(f, "leg_front"))
 				f.air_jumps = 1 if f.has_gadget("double_jump") else 0
 				Sfx.play("jump", 0.1)
-		elif i["up_press"] and f.air_jumps > 0:
+		elif i["jump_press"] and f.air_jumps > 0:
 			f.air_jumps -= 1
 			spend(f, 0.5 * limb_draw(f, "leg_front"))
 			f.vel.y = -JUMP_SPEED * 0.9
@@ -2243,14 +2361,31 @@ func update_fighter(f: Fighter, o: Fighter, i: Dictionary, delta: float) -> void
 		f.on_ground = true
 	else:
 		f.on_ground = false
-	f.pos.x = clampf(f.pos.x, wall_l + 55.0 * f.scale, wall_r - 55.0 * f.scale)
+	f.pos.x = clampf(f.pos.x, wall_l + body_half(f) + 8.0 * f.scale, wall_r - body_half(f) - 8.0 * f.scale)
 	f.squash = maxf(0.0, f.squash - delta)
 
 
-func choose_part(att: Fighter, d: Fighter, zone_name: String, sure: bool = false) -> String:
+## Which part a hit lands on. touched = the parts the striking limb actually reached (melee); then
+## the aimed part is hit if it was touched (and the aim holds), otherwise one of the touched parts.
+## Without touched (shots, blasts) the move's zone decides, as before.
+func choose_part(att: Fighter, d: Fighter, zone_name: String, sure: bool = false, touched: Array = []) -> String:
 	var zone: Dictionary = Specials.ZONES.get(zone_name, Specials.ZONES["any"])
+	var accuracy: float = (0.45 if att.target.begins_with("head") else 0.8) + att.ctrl.get("aim", 0.0) / 100.0
+	if not touched.is_empty():
+		if att.target != "" and touched.has(att.target) and d.alive(att.target) and (sure or randf() < accuracy):
+			return att.target
+		var tw := 0.0
+		for slot in touched:
+			if d.alive(slot):
+				tw += float(zone.get(slot, 0.1))
+		var rr := randf() * tw
+		for slot in touched:
+			if d.alive(slot):
+				rr -= float(zone.get(slot, 0.1))
+				if rr <= 0.0:
+					return slot
+		return "torso" if d.alive("torso") else str(touched[0])
 	if att.target != "" and d.alive(att.target) and (zone.has(att.target) or zone_name == "any"):
-		var accuracy: float = (0.45 if att.target.begins_with("head") else 0.8) + att.ctrl.get("aim", 0.0) / 100.0
 		if sure or randf() < accuracy:
 			return att.target
 	var total := 0.0
@@ -2268,102 +2403,141 @@ func choose_part(att: Fighter, d: Fighter, zone_name: String, sure: bool = false
 	return "torso"
 
 
-## Melee hit check: range and height. If it connects, apply it.
+# ---------------------------------------------------------------- where limbs land
+# Every melee hit comes from the drawn limb: RobotArt.limb_strike gives the line from the elbow (knee)
+# out to the fist (foot, blade, drill...) in the pose being thrown, the same points the drawing uses.
+# A hit lands where that line first touches one of the enemy's parts, and the spark goes there.
+
+## The pose a move shows (normal hits are named after their pose; specials say theirs).
+func strike_pose(f: Fighter) -> String:
+	if f.state == "special" and Specials.MOVES.has(f.special_id):
+		return str(Specials.MOVES[f.special_id].get("pose", "punch"))
+	return f.state
+
+
+## The striking line of f's limb in a pose, in world coordinates: {"a", "b", "r"}.
+func strike_line(f: Fighter, slot: String, pose: String) -> Dictionary:
+	var use := slot if slot != "" and f.alive(slot) else "torso"
+	if pose == "block":
+		use = "torso"   # shoulder charges and slams hit with the front of the body
+	var st := RobotArt.limb_strike(f.get_look(), use, pose, f.aim_ang)
+	return {"a": visual_point(f, st["a"]), "b": visual_point(f, st["b"]), "r": float(st["r"]) * f.scale}
+
+
+## Where f's strike touches d: {"at": contact point, "parts": [touched parts]} or {} for a miss.
+func strike_contact(f: Fighter, d: Fighter, line: Dictionary) -> Dictionary:
+	if d == null or d.state == "ko":
+		return {}
+	# what there is to hit: d's head, torso and every limb exactly as they're drawn this frame
+	var shapes := RobotArt.hit_shapes(d.get_look(), d.vis_pose)
+	var grow: float = line["r"] / maxf(0.1, d.scale)
+	# walk the limb from the elbow (knee) out to the tip: the first touch is where the spark goes, and
+	# every part the limb passes through can take the hit (at long range only their guard is in reach)
+	var steps := 12
+	var at := Vector2.ZERO
+	var parts: Array = []
+	for k in steps + 1:
+		var p: Vector2 = (line["a"] as Vector2).lerp(line["b"], float(k) / steps)
+		var l := visual_local(d, p)
+		for sh in shapes:
+			var hit := false
+			if sh[1] == "rect":
+				hit = (sh[2] as Rect2).grow(grow).has_point(l)
+			else:
+				hit = RobotArt.seg_dist(l, sh[2], sh[3]) <= float(sh[4]) + grow
+			if hit and not parts.has(sh[0]):
+				if parts.is_empty():
+					at = p
+				parts.append(sh[0])
+	if parts.is_empty():
+		return {}
+	return {"at": at, "parts": parts}
+
+
+## How far forward (world px from f's centre) f's strike reaches in a pose: the CPU uses this to judge range.
+func strike_reach(f: Fighter, kind: String, pose: String) -> float:
+	var slot := f.next_limb(kind, true)
+	if slot == "":
+		return 0.0
+	var st := RobotArt.limb_strike(f.get_look(), slot, pose)
+	return (float((st["b"] as Vector2).x) + float(st["r"])) * f.scale
+
+
+## The tilt (radians) a punch or kick takes toward what it's aimed at: the aimed part, or the middle
+## of the enemy's torso. Limited, so ducking under a high punch still works.
+func aim_angle(f: Fighter, attack: String) -> float:
+	var o: Fighter = f.foe
+	if o == null or o.state == "ko" or not AIM_TILT.has(attack):
+		return 0.0
+	var slot := f.attack_limb
+	var look := f.get_look()
+	var g := RobotArt.geom(look)
+	var from_l: Vector2 = RobotArt.shoulder_of(g, slot) if slot.begins_with("arm") else (g["hip_front"] if slot == "leg_front" else g["hip_back"])
+	var from := visual_point(f, from_l)
+	var aimed := f.target if f.target != "" and o.alive(f.target) else ""
+	if aimed == "":
+		aimed = "head" if attack in ["uppercut", "high_kick"] and o.alive("head") else "torso"
+	var want := visual_point(o, RobotArt.part_center(o.get_look(), aimed))
+	var v := want - from
+	# the angle the limb would need, against the angle it's drawn at untilted
+	var ang := atan2(v.y / maxf(0.1, f.scale), absf(v.x) / maxf(0.1, f.scale))
+	var t: Array = AIM_TILT[attack]
+	return clampf(ang - float(t[0]), -float(t[1]), float(t[2]))
+
+
+## How far each hit can tilt toward its target: [its own angle, most it tilts up, most it tilts down].
+## Small enough that crouching under a high punch, or jumping a sweep, still works.
+const AIM_TILT := {"punch": [0.02, 0.30, 0.30], "low_punch": [0.46, 0.25, 0.25], "uppercut": [-0.67, 0.2, 0.55],
+		"kick": [-0.17, 0.25, 0.25], "high_kick": [-0.69, 0.2, 0.5]}
+
+
+## Melee hit check: does the limb (or the body, for slams) reach the enemy?
 func melee_ok(att: Fighter, d: Fighter, a: Dictionary) -> bool:
-	var dx := (d.pos.x - att.pos.x) * att.facing
-	var reach: float = (a.get("reach", 80.0) + limb_trait(att, att.attack_limb, "magnet")) * att.scale
-	return d.state != "ko" and dx >= -10.0 and dx <= reach + 35.0 * d.scale and absf(d.pos.y - att.pos.y) <= 130.0
+	if a.has("emp"):
+		# a pulse, not a limb: anything close enough
+		var dx := (d.pos.x - att.pos.x) * att.facing
+		return d.state != "ko" and dx >= -10.0 and dx <= (a.get("reach", 80.0) + 35.0) * att.scale and absf(d.pos.y - att.pos.y) <= 130.0
+	return not strike_contact(att, d, strike_line(att, att.attack_limb, strike_pose(att))).is_empty()
 
 
 func try_hit(att: Fighter, d: Fighter, a: Dictionary) -> void:
-	if d == null or not melee_ok(att, d, a):
-		for e in enemies_of(att):
-			if e != d and melee_ok(att, e, a):
-				d = e
-				break
-	if d == null:
+	if phase != "fight":
 		return
-	var dx := (d.pos.x - att.pos.x) * att.facing
-	var reach: float = (a.get("reach", 80.0) + limb_trait(att, att.attack_limb, "magnet")) * att.scale
-	if dx < -10.0 or dx > reach + 35.0 * d.scale:
-		return
-	if absf(d.pos.y - att.pos.y) > 130.0:
-		return
-	if d.state == "ko" or phase != "fight":
+	body_pose(att)   # where everything is this frame, exactly as it's about to be drawn
+	var line := strike_line(att, att.attack_limb, strike_pose(att))
+	var contact := {}
+	var pool: Array = [d] if d != null else []
+	for e in enemies_of(att):
+		if e != d:
+			pool.append(e)
+	for e in pool:
+		if e == null or e.state == "ko" or e.invuln_t > 0.0:
+			continue
+		body_pose(e)
+		if a.has("emp"):
+			if melee_ok(att, e, a):
+				contact = {"at": e.pos + Vector2(0, -90.0 * e.scale), "parts": []}
+		else:
+			contact = strike_contact(att, e, line)
+		if not contact.is_empty():
+			d = e
+			break
+	if contact.is_empty():
 		return
 	if a.get("height", "mid") == "high" and d.crouching:
 		return  # ducked under it
 	if a.get("height", "mid") == "low" and not d.on_ground:
 		return  # jumped over it
-	if d.invuln_t > 0.0:
-		return
 	att.hit_done = true
 	var limb: Dictionary = att.parts[att.attack_limb] if att.parts.has(att.attack_limb) and att.alive(att.attack_limb) else {"damage": 0}
 	var hit := a.duplicate()
-	hit["damage"] = a["damage"] * (1.0 + limb["damage"] / 100.0) * att.limb_damage(limb)
+	hit["damage"] = a["damage"] * (1.0 + limb["damage"] / 100.0) * att.limb_damage(limb) * att.charge_mult
 	hit["src"] = att.attack_limb
-	var at := Vector2(att.pos.x + att.facing * minf(dx, reach), d.pos.y - 90.0 * d.scale)
-	if a.get("family", "") == "hold" and d.shield_t <= 0.0 and d.state != "ko":
-		start_clinch(att, d, hit)
-		return
-	apply_hit(att, d, hit, at)
-
-
-# ---------------------------------------------------------------- the standard hold
-# A grab that connects clamps on: the two robots lock together, a knee goes in, then a shove
-# sends them apart. Short, so the counter loop stays quick.
-
-const CLINCH_TIME := 0.42
-
-
-func start_clinch(att: Fighter, d: Fighter, hit: Dictionary) -> void:
-	att.hit_done = true
-	att.landed = true
-	att.clinch_t = CLINCH_TIME
-	att.clinch_on = d
-	att.clinch_hit = false
-	att.spec["clinch_hit"] = hit
-	d.state = "hit"
-	d.timer = CLINCH_TIME + 0.2
-	d.blocking = false
-	d.crouching = false
-	d.special_id = ""
-	d.vel = Vector2.ZERO
-	popup(tr("GRABBED!"), d.pos + Vector2(0, -230.0 * d.scale), Color(1.0, 0.8, 0.4))
-	Sfx.play("equip", 0.1)
-	if d == player:
-		shout("grabbed", tr("He's got you! Hang on!"), tr("He grabbed you! Grabs go through a block. Next time, hit him before he gets close."), 2, 1, 8.0)
-
-
-func update_clinch(f: Fighter, delta: float) -> void:
-	var d: Fighter = f.clinch_on
-	f.clinch_t -= delta
-	f.vel.x = 0.0
-	if d == null or d.state == "ko" or f.state == "hit" or f.state == "ko":
-		f.clinch_t = 0.0
-		return
-	# hold them right up against us
-	d.pos.x = f.pos.x + f.facing * 64.0 * (f.scale + d.scale) * 0.5
-	d.vel.x = 0.0
-	d.state = "hit"
-	d.timer = maxf(d.timer, 0.25)
-	if not f.clinch_hit and f.clinch_t < CLINCH_TIME * 0.55:
-		f.clinch_hit = true
-		var hit: Dictionary = (f.spec.get("clinch_hit", {}) as Dictionary).duplicate()
-		hit["knock"] = 0.0
-		hit.erase("launch")
-		apply_hit(f, d, hit, d.pos + Vector2(-f.facing * 20.0, -70.0 * d.scale))   # the knee
-		Sfx.play("hit_big", 0.1)
-	if f.clinch_t <= 0.0:
-		# the shove
-		f.clinch_t = 0.0
-		f.clinch_on = null
-		if d.state != "ko":
-			d.vel.x = f.facing * 380.0
-			d.vel.y = -250.0
-			d.on_ground = false
-			d.timer = 0.6
-		f.timer = ATTACKS["grab"]["startup"] + ATTACKS["grab"]["active"]   # straight into recovery
+	hit["touched"] = contact["parts"]
+	if att.guard_break:
+		hit["guard_break"] = true
+		hit["knock"] = float(a.get("knock", 320.0)) * 1.5
+	apply_hit(att, d, hit, contact["at"])
 
 
 ## Apply a hit that connected (melee, projectile or gadget).
@@ -2371,9 +2545,11 @@ func apply_hit(att: Fighter, d: Fighter, a: Dictionary, at: Vector2) -> void:
 	if d.state == "ko" or phase != "fight":
 		return
 	att.landed = true
-	var slot := choose_part(att, d, a.get("zone", "punch"), a.get("sure_aim", false))
+	var touched: Array = a.get("touched", [])
+	var slot := choose_part(att, d, a.get("zone", "punch"), a.get("sure_aim", false), touched)
 	var hit_at := to_world_point(d, RobotArt.part_center(d.get_look(), slot))
-	var spark_pos := Vector2(at.x, hit_at.y)
+	# the spark goes where the limb met the body (shots and blasts: at the part they hit)
+	var spark_pos := at if not touched.is_empty() else Vector2(at.x, hit_at.y)
 	var dmg: float = a["damage"]
 
 	# shield bubble: nothing gets through
@@ -2396,6 +2572,13 @@ func apply_hit(att: Fighter, d: Fighter, a: Dictionary, at: Vector2) -> void:
 	var src: String = a.get("src", "")
 	var blocked: bool = d.blocking and d.arms() > 0 and not a.get("unblockable", false) \
 			and (a.get("height", "mid") != "low" or d.crouching)
+	if blocked and a.get("guard_break", false):
+		# a fully charged hit smashes the guard open
+		blocked = false
+		d.blocking = false
+		popup(tr("GUARD BROKEN!"), d.pos + Vector2(0, -220.0 * d.scale), Color(1.0, 0.6, 0.3))
+		Sfx.play("break", 0.1)
+		shake = maxf(shake, 14.0)
 	# evasion: a clean miss
 	var dodge: float = minf(25.0, part_trait_sum(d, "dodge") * 0.6 + d.gtraits.get("dodge", 0.0))
 	if not blocked and not a.get("unblockable", false) and randf() * 100.0 < dodge:
@@ -2503,14 +2686,14 @@ func apply_hit(att: Fighter, d: Fighter, a: Dictionary, at: Vector2) -> void:
 			damage_part(att, limb, dmg * 0.25)
 			add_spark(att.pos + Vector2(att.facing * 40.0, -100.0 * att.scale), Color(0.8, 0.8, 0.8), 14.0)
 		# kick beats punch: a kick on its way powers through punches (it still takes the damage)
-		var armored: bool = a.get("family", "") == "punch" and (d.state == "kick" or d.state == "sweep") \
+		var armored: bool = a.get("family", "") == "punch" and (d.state == "kick" or d.state == "sweep" or d.state == "high_kick") \
 				and d.timer <= float(ATTACKS[d.state]["startup"]) + float(ATTACKS[d.state]["active"])
 		if armored:
 			popup(tr("POWERED THROUGH"), d.pos + Vector2(0, -220.0 * d.scale), Color(0.85, 0.9, 1.0))
 			add_spark(hit_at, Color(0.85, 0.9, 1.0), 34.0)
 		if d.state != "ko" and not armored:
+			d.charge_btn = ""   # a hit knocks a charge out
 			d.state = "hit"
-			d.clinch_t = 0.0
 			d.timer = maxf(a.get("stun", 0.25), a.get("emp", 0.0))
 			d.crouching = false
 			d.blocking = false
@@ -2701,12 +2884,18 @@ func separate() -> void:
 			if a.state == "ko" or b.state == "ko":
 				continue
 			var dx: float = b.pos.x - a.pos.x
-			var gap: float = 70.0 * (a.scale + b.scale) * 0.5
+			# the bodies themselves can't overlap: each robot's real torso width
+			var gap: float = body_half(a) + body_half(b) + 4.0
 			if absf(dx) < gap and absf(b.pos.y - a.pos.y) < 120.0:
 				var push := (gap - absf(dx)) * 0.5
 				var sgn := 1.0 if dx >= 0.0 else -1.0
-				a.pos.x = clampf(a.pos.x - push * sgn, wall_l + 55.0 * a.scale, wall_r - 55.0 * a.scale)
-				b.pos.x = clampf(b.pos.x + push * sgn, wall_l + 55.0 * b.scale, wall_r - 55.0 * b.scale)
+				a.pos.x = clampf(a.pos.x - push * sgn, wall_l + body_half(a) + 8.0 * a.scale, wall_r - body_half(a) - 8.0 * a.scale)
+				b.pos.x = clampf(b.pos.x + push * sgn, wall_l + body_half(b) + 8.0 * b.scale, wall_r - body_half(b) - 8.0 * b.scale)
+
+
+## Half the robot's real torso width, in world px.
+func body_half(f: Fighter) -> float:
+	return float(RobotArt.geom(f.get_look())["tw"]) * 0.5 * f.scale
 
 
 func add_spark(p: Vector2, c: Color, size: float) -> void:
@@ -2764,6 +2953,8 @@ func _draw() -> void:
 		c.a = 1.0 - t
 		draw_arc(r["pos"] + off, r["r"] * t, 0, TAU, 40, c, 6.0)
 
+	if hitbox_view:
+		draw_hitboxes(off)
 	draw_weak_point(cpu, off)
 	draw_crosshair(player.target, cpu, Color(1.0, 0.2, 0.2, 0.9), off, 1.0)
 	for e in team_c:
@@ -2796,6 +2987,38 @@ func _draw() -> void:
 		if Time.get_ticks_msec() - tut_pause_at > TUT_GRACE_MS:
 			draw_string(font, Vector2(0, screen.y * 0.62), tr("Tap to continue"), HORIZONTAL_ALIGNMENT_CENTER, screen.x, fs(26),
 					Color(1, 1, 1, 0.6 + 0.4 * sin(Time.get_ticks_msec() / 200.0)))
+
+
+## Test Drive's HITBOX switch: every part's box (what a hit has to touch) and every striking limb's line
+## (what does the touching), so you can see exactly why a hit landed or missed.
+func draw_hitboxes(off: Vector2) -> void:
+	for f in all_fighters():
+		if f.state == "ko":
+			continue
+		var look: Dictionary = f.get_look()
+		var hc := Color(0.3, 1.0, 0.5, 0.8) if f.team == 0 else Color(1.0, 0.45, 0.35, 0.8)
+		for sh in RobotArt.hit_shapes(look, f.vis_pose):
+			if sh[1] == "rect":
+				var rc: Rect2 = sh[2]
+				var pts := PackedVector2Array()
+				for c in [rc.position, Vector2(rc.end.x, rc.position.y), rc.end, Vector2(rc.position.x, rc.end.y), rc.position]:
+					pts.append(visual_point(f, c) + off)
+				draw_polyline(pts, hc, 2.0)
+			else:
+				var a2 := visual_point(f, sh[2]) + off
+				var b2 := visual_point(f, sh[3]) + off
+				var rr: float = float(sh[4]) * f.scale
+				draw_line(a2, b2, Color(hc.r, hc.g, hc.b, 0.25), rr * 2.0)
+				draw_circle(b2, rr, Color(hc.r, hc.g, hc.b, 0.25))
+		var pose := strike_pose(f)
+		var live: bool = (ATTACKS.has(f.state) or f.state == "special") and pose != ""
+		var limb: String = f.attack_limb if live else f.next_limb("arm", true)
+		if limb == "":
+			continue
+		var line := strike_line(f, limb, pose if live else "punch")
+		var col := Color(1.0, 0.9, 0.2) if live else Color(1.0, 1.0, 1.0, 0.35)
+		draw_line(line["a"] + off, line["b"] + off, col, 3.0)
+		draw_arc(line["b"] + off, line["r"], 0.0, TAU, 20, col, 2.0)
 
 
 ## The arena lives on its own layer behind the fighters and is redrawn ~24 times a second
@@ -2888,11 +3111,10 @@ func draw_projectiles(off: Vector2) -> void:
 				draw_circle(pos - dir * 14.0, 7.0, Color(1.0, 0.6, 0.2, 0.7))
 
 
-func draw_fighter(f: Fighter, off: Vector2) -> void:
-	draw_set_transform(Vector2(f.pos.x, floor_y) + off, 0.0, Vector2(1.0, 0.22))
-	draw_circle(Vector2.ZERO, 42.0 * f.scale, Color(0, 0, 0, 0.35))
-	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
-	var base := f.pos + off
+## How the robot stands right now: the lean, lunge, squash and stretch of its pose. The drawing and
+## the hit test both use it (it also records it in f.vis_*), so hits follow what's on screen.
+func body_pose(f: Fighter) -> Dictionary:
+	var base := f.pos
 	var rot := 0.0
 	var state := f.state
 	var extended := false
@@ -2911,9 +3133,6 @@ func draw_fighter(f: Fighter, off: Vector2) -> void:
 	elif ATTACKS.has(state):
 		var a: Dictionary = ATTACKS[state]
 		extended = f.timer >= a["startup"] * 0.6 and f.timer <= a["startup"] + a["active"] + a["recovery"] * 0.5
-		if state == "grab":
-			# both arms reach out; a miss stumbles forward
-			extended = f.timer >= a["startup"] * 0.5 and (f.landed or f.timer <= a["startup"] + a["active"] + 0.1)
 	# --- exaggerated animation: lean, lunge, recoil, squash & stretch
 	var sx := 1.0
 	var sy := 1.0
@@ -2937,6 +3156,12 @@ func draw_fighter(f: Fighter, off: Vector2) -> void:
 				"kick":
 					lean = -f.facing * 0.16
 					dx = f.facing * 8.0 * f.scale
+				"high_kick":
+					lean = -f.facing * 0.26
+					dx = f.facing * 4.0 * f.scale
+				"low_punch":
+					lean = f.facing * 0.16
+					dx = f.facing * 14.0 * f.scale
 				"uppercut":
 					lean = -f.facing * 0.12
 					sy = 1.14
@@ -2950,6 +3175,12 @@ func draw_fighter(f: Fighter, off: Vector2) -> void:
 					lean = f.facing * 0.22
 					dx = f.facing * 18.0 * f.scale
 					sx = 1.08
+	elif f.state == "charge":
+		# winding up: leaning back, shaking harder as it fills
+		var ck := clampf((f.charge_t - CHARGE_TAP) / (CHARGE_MAX - CHARGE_TAP), 0.0, 1.0)
+		lean = -f.facing * (0.08 + 0.1 * ck)
+		dx = -f.facing * 8.0 * f.scale + sin(clock * 60.0) * 2.5 * ck * f.scale
+		sy = 1.0 - 0.04 * ck
 	elif f.burn_t > 0.0 and f.state != "ko":
 		# burned out: slumped forward, head down
 		lean = f.facing * 0.32
@@ -3014,28 +3245,42 @@ func draw_fighter(f: Fighter, off: Vector2) -> void:
 			base.y -= 18.0 * f.scale
 		else:
 			rot = -f.facing * (PI / 4.0 + clock * 3.0)
-	if swoosh and extended:
-		var g := RobotArt.geom(f.get_look())
-		var low := state == "kick" or state == "sweep"
-		var pivot: Vector2 = g["hip_front"] if low else g["shoulder_front"]
-		var c := to_world_point(f, pivot) + Vector2(dx, 0)
-		var a0 := 0.0 if f.facing == 1 else PI
-		var span := -0.9 if state == "uppercut" else (0.5 if state == "sweep" else -0.5)
-		draw_arc(c, 100.0 * f.scale, a0 + span * f.facing - 0.35, a0 + span * f.facing + 0.35, 14, Color(1, 1, 1, 0.28), 14.0 * f.scale)
-	var fist_out: Array = f.fist_out.keys()
-	f.vis_base = base - off
+	f.vis_base = base
 	f.vis_rot = rot
 	f.vis_sx = sx
 	f.vis_sy = sy
 	f.vis_ok = true
-	var knee := f.clinch_t > 0.0 and f.clinch_t < CLINCH_TIME * 0.6 and f.clinch_t > CLINCH_TIME * 0.25
-	if f.clinch_t > 0.0:
-		state = "grab"
-		extended = true
-		lean = f.facing * 0.1 if rot == lean else rot
-		rot = lean
+	f.vis_pose = {"state": state, "extended": extended, "attack_limb": f.attack_limb, "aim": f.aim_ang,
+			"blocking": f.blocking or (f.state == "special" and state == "block"),
+			"crawl": fmod(f.walk_phase / TAU, 1.0) if f.state == "walk" and f.legs() == 0 and f.arms() > 0 else -1.0,
+			"fist_out": f.fist_out.keys()}
+	return {"base": base, "rot": rot, "sx": sx, "sy": sy, "state": state, "extended": extended, "swoosh": swoosh, "dx": dx}
+
+
+func draw_fighter(f: Fighter, off: Vector2) -> void:
+	draw_set_transform(Vector2(f.pos.x, floor_y) + off, 0.0, Vector2(1.0, 0.22))
+	draw_circle(Vector2.ZERO, 42.0 * f.scale, Color(0, 0, 0, 0.35))
+	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+	var bp := body_pose(f)
+	var base: Vector2 = bp["base"] + off
+	var rot: float = bp["rot"]
+	var sx: float = bp["sx"]
+	var sy: float = bp["sy"]
+	var state: String = bp["state"]
+	var extended: bool = bp["extended"]
+	var swoosh: bool = bp["swoosh"]
+	var dx: float = bp["dx"]
+	if swoosh and extended:
+		var g := RobotArt.geom(f.get_look())
+		var low := state == "kick" or state == "sweep" or state == "high_kick"
+		var pivot: Vector2 = (g["hip_front"] if f.attack_limb != "leg_back" else g["hip_back"]) if low else RobotArt.shoulder_of(g, f.attack_limb if f.attack_limb.begins_with("arm") else "arm_front")
+		var c := to_world_point(f, pivot) + Vector2(dx, 0)
+		var a0 := 0.0 if f.facing == 1 else PI
+		var span: float = {"uppercut": -0.9, "sweep": 0.5, "high_kick": -0.85, "low_punch": 0.4}.get(state, -0.5)
+		draw_arc(c, 100.0 * f.scale, a0 + span * f.facing - 0.35, a0 + span * f.facing + 0.35, 14, Color(1, 1, 1, 0.28), 14.0 * f.scale)
+	var fist_out: Array = f.fist_out.keys()
 	RobotArt.draw(self, base, f.get_look(), {
-		"facing": f.facing, "state": state, "extended": extended, "attack_limb": f.attack_limb, "knee": knee,
+		"facing": f.facing, "state": state, "extended": extended, "attack_limb": f.attack_limb, "aim": f.aim_ang,
 		"swing": sin(f.walk_phase) * 10.0 if f.state == "walk" and f.legs() == 2 else 0.0,
 		"crawl": fmod(f.walk_phase / TAU, 1.0) if f.state == "walk" and f.legs() == 0 and f.arms() > 0 else -1.0,
 		"crouch": f.crouching, "blocking": f.blocking or (f.state == "special" and state == "block"),
@@ -3044,6 +3289,13 @@ func draw_fighter(f: Fighter, off: Vector2) -> void:
 		"jet": f.jet_t > 0.0 or (not f.on_ground and f.vel.y < -400.0 and f.has_gadget("double_jump")),
 		"boost": f.boost_t > 0.0, "sx": sx, "sy": sy,
 	})
+	if f.state == "charge" and f.attack_limb != "":
+		# the charging fist (foot) glows brighter as the charge fills
+		var ck := clampf((f.charge_t - CHARGE_TAP) / (CHARGE_MAX - CHARGE_TAP), 0.0, 1.0)
+		var tip := visual_point(f, RobotArt.limb_strike(f.get_look(), f.attack_limb, "charge" if f.attack_limb.begins_with("arm") else "stand")["b"]) + off
+		var gc := Color(1.0, 0.85, 0.3).lerp(Color(1.0, 0.3, 0.15), ck)
+		draw_circle(tip, (14.0 + 18.0 * ck + sin(clock * 30.0) * 3.0) * f.scale, Color(gc.r, gc.g, gc.b, 0.25 + 0.3 * ck))
+		draw_arc(tip, (20.0 + 20.0 * ck) * f.scale, 0.0, TAU * ck, 24, gc, 3.0)
 
 
 ## Burned out: a red lightning bolt and BURNOUT right above the robot's head, blinking.
@@ -3260,7 +3512,7 @@ func draw_hud() -> void:
 	if phase == "intro" or phase == "fight":
 		var hud_btns: Array = [[quit_rect, "LEAVE"]] if mode == "watch" else [[quit_rect, "QUIT"], [moves_rect, "MOVES"]]
 		if mode == "test":
-			hud_btns = [[quit_rect, "LEAVE"], [moves_rect, "MOVES"], [reset_rect, "RESET"]]
+			hud_btns = [[quit_rect, "LEAVE"], [moves_rect, "MOVES"], [reset_rect, "RESET"], [hitbox_rect, "HITBOX"]]
 		for rr in hud_btns:
 			draw_rect(rr[0], Color(1, 1, 1, 0.1))
 			draw_rect(rr[0], Color(1, 1, 1, 0.4), false, 2.0)
@@ -3390,9 +3642,6 @@ func draw_result_cards(y: float) -> float:
 
 func draw_buttons() -> void:
 	for b in (buttons if touch_device else []):
-		if SPLIT_BUTTONS.has(b["name"]):
-			draw_split_button(b)
-			continue
 		var held: bool = held_buttons.get(b["name"], false)
 		draw_circle(b["pos"], b["r"], Color(1, 1, 1, 0.35 if held else 0.12))
 		draw_arc(b["pos"], b["r"], 0.0, TAU, 40, Color(1, 1, 1, 0.5), 2.0)
@@ -3401,6 +3650,10 @@ func draw_buttons() -> void:
 		while size > 9 and font.get_string_size(btxt, HORIZONTAL_ALIGNMENT_LEFT, -1, size).x > b["r"] * 1.9:
 			size -= 1
 		draw_string(font, b["pos"] + Vector2(-b["r"], size * 0.35), btxt, HORIZONTAL_ALIGNMENT_CENTER, b["r"] * 2.0, size, Color(1, 1, 1, 0.85))
+		if player.state == "charge" and player.charge_btn == b["name"]:
+			# the charge fills round the button
+			var ck := clampf((player.charge_t - CHARGE_TAP) / (CHARGE_MAX - CHARGE_TAP), 0.0, 1.0)
+			draw_arc(b["pos"], b["r"] + 6.0, -PI / 2.0, -PI / 2.0 + TAU * ck, 40, Color(1.0, 0.85, 0.3).lerp(Color(1.0, 0.35, 0.2), ck), 6.0)
 	for b in gadget_buttons:
 		var g: Dictionary = b["gadget"]
 		var id: String = g["id"]
@@ -3418,31 +3671,9 @@ func draw_buttons() -> void:
 		draw_string(font, b["pos"] + Vector2(-b["r"] - 10, 7.0), glabel, HORIZONTAL_ALIGNMENT_CENTER, b["r"] * 2.0 + 20, fs(15), col)
 
 
-## PUNCH / KICK: one circle cut in half - the left half uses the robot's left arm (leg), the right half its right one.
-func draw_split_button(b: Dictionary) -> void:
-	var c: Vector2 = b["pos"]
-	var r: float = b["r"]
-	for k in 2:
-		var sd := "L" if k == 0 else "R"
-		var held: bool = held_buttons.get(b["name"] + "_" + sd, false)
-		var pts := PackedVector2Array()
-		for n in 21:
-			var ang := PI / 2.0 + PI * n / 20.0 if k == 0 else -PI / 2.0 + PI * n / 20.0
-			pts.append(c + Vector2(cos(ang), sin(ang)) * r)
-		draw_colored_polygon(pts, Color(1, 1, 1, 0.35 if held else 0.12))
-		draw_string(font, c + Vector2((-0.75 + k) * r, r * 0.38), sd, HORIZONTAL_ALIGNMENT_CENTER, r * 0.5, fs(17), Color(1, 1, 1, 0.85))
-	draw_arc(c, r, 0.0, TAU, 40, Color(1, 1, 1, 0.5), 2.0)
-	draw_line(c + Vector2(0, -r * 0.12), c + Vector2(0, r), Color(1, 1, 1, 0.5), 2.0)
-	var size := fs(13)
-	var btxt := tr(b["label"])
-	while size > 8 and font.get_string_size(btxt, HORIZONTAL_ALIGNMENT_LEFT, -1, size).x > r * 1.5:
-		size -= 1
-	draw_string(font, c + Vector2(-r, -r * 0.3), btxt, HORIZONTAL_ALIGNMENT_CENTER, r * 2.0, size, Color(1, 1, 1, 0.85))
-
-
 ## On a computer the touch buttons are hidden: one line of keys along the bottom instead.
 func draw_key_strip() -> void:
-	var t := tr("WASD move · U / I punch · J / K kick · L block · O grab · 1 2 3 gadgets · Esc pause")
+	var t := tr("A D move · W / S high / low · Space jump · J punch · K kick · L block · hold J / K to charge · 1 2 3 gadgets · Esc pause")
 	var size := fs(15)
 	var w := font.get_string_size(t, HORIZONTAL_ALIGNMENT_LEFT, -1, size).x + 28.0
 	var r := Rect2(screen.x * 0.5 - w * 0.5, screen.y - size - 22.0, w, size + 14.0)
@@ -3450,7 +3681,7 @@ func draw_key_strip() -> void:
 	draw_string(font, Vector2(r.position.x, r.end.y - 9.0), t, HORIZONTAL_ALIGNMENT_CENTER, r.size.x, size, Color(1, 1, 1, 0.8))
 
 
-const PC_KEYS := "ON A COMPUTER: W A S D (or the arrows) move, jump and crouch · U / I punch with the left / right arm · J / K kick with the left / right leg · L block · O grab · 1 2 3 gadgets · click an enemy part to aim · Esc or M pause · Space or Enter to continue."
+const PC_KEYS := "ON A COMPUTER: A D (or the arrows) move · W / S (up / down) aim your hit high or low, S alone crouches · Space jump · J punch · K kick · L block · hold J or K to charge · 1 2 3 gadgets · click an enemy part to aim · Esc or M pause · Enter to continue."
 
 
 func draw_moves_list() -> void:
@@ -3483,14 +3714,15 @@ func draw_moves_list() -> void:
 func _draw_pause_lines(x: float, y: float, bottom: float) -> void:
 	var lines: Array = [
 		[tr(PC_KEYS) if not touch_device else "", Color(0.55, 1.0, 0.7)],
-		[tr("PUNCH · KICK · BLOCK · GRAB (beats block) · down + PUNCH = uppercut · down + KICK = sweep · in combos, → means toward the enemy (P = punch, K = kick)"), Color(0.8, 0.8, 0.85)],
-		[(tr("PUNCH and KICK are split in two: tap the left half for the left arm (leg), the right half for the right one.") if touch_device else ""), Color(0.8, 0.8, 0.85)],
+		[tr("PUNCH · KICK · BLOCK · JUMP. The pad sets the height: up + PUNCH = uppercut, down + PUNCH = low jab, up + KICK = high kick, down + KICK = sweep. In combos, → means toward the enemy (P = punch, K = kick)."), Color(0.8, 0.8, 0.85)],
+		[tr("Your arms take turns: jab, cross, jab. Kicks swap legs the same way. Lose a limb and the other one does all the work."), Color(0.8, 0.8, 0.85)],
+		[tr("CHARGE: hold PUNCH or KICK. It drains power while it fills; let go to hit up to twice as hard. A full charge breaks a guard."), Color(1.0, 0.85, 0.4)],
 		[tr("Combos: hit again while the enemy is still reeling. Landed attacks can chain into the next."), Color(0.8, 0.8, 0.85)],
-		[tr("COUNTERS: punch beats grab, grab beats block, block stops punch (and the puncher recoils). Kick powers through punches, but a block only partly stops it."), Color(1.0, 0.85, 0.4)],
-		[tr("POWER (blue bar): punch %.1f  kick %.1f  grab %.1f  special %.1f of %.0f. Refills when you stop attacking. Empty = BURNOUT.") % [attack_cost(player, "punch", "arm_front"), attack_cost(player, "kick", "leg_front"), attack_cost(player, "grab", "arm_front"), special_cost(player), player.power_max], POWER_COLOR],
+		[tr("COUNTERS: a block stops punches (and the puncher recoils), a full charge breaks a block. Kicks power through punches, but a block only partly stops them. Crouch under high hits, jump over low ones."), Color(1.0, 0.85, 0.4)],
+		[tr("POWER (blue bar): punch %.1f  kick %.1f  special %.1f of %.0f. Charging drains it too. Refills when you stop attacking. Empty = BURNOUT.") % [attack_cost(player, "punch", "arm_front"), attack_cost(player, "kick", "leg_front"), special_cost(player), player.power_max], POWER_COLOR],
 	]
 	if team_p.size() > 1:
-		lines.append([tr("TEAM: tap an enemy part to send your whole team after that robot. ") + (tr("Each numbered pad moves the robot with that number; PUNCH / KICK / BLOCK / GRAB work for all of them.") if control_pads > 1 else tr("Linked controls: every robot follows the one pad.")) + tr(" Switch in Settings > Team controls."), Color(0.5, 0.8, 1.0)])
+		lines.append([tr("TEAM: tap an enemy part to send your whole team after that robot. ") + (tr("Each numbered pad moves the robot with that number; PUNCH / KICK / BLOCK / JUMP work for all of them.") if control_pads > 1 else tr("Linked controls: every robot follows the one pad.")) + tr(" Switch in Settings > Team controls."), Color(0.5, 0.8, 1.0)])
 	if player.specials.is_empty():
 		lines.append([tr("No special moves installed. Buy training chips in the garage!"), Color(1.0, 0.7, 0.3)])
 	for id in player.specials:
@@ -3762,7 +3994,7 @@ func update_coach(delta: float) -> void:
 		if player.power < player.power_max * 0.5:
 			coach("power", tr("That blue bar under your health is POWER. Every move costs some, and kicks cost the most. Run it dry and you burn out!"))
 		if phase_timer > 16.0:
-			coach("counters", tr("Punch beats a grab, a grab beats a block, a block stops punches, and kicks power through punches."))
+			coach("counters", tr("A block stops punches, a full charge breaks a block, and kicks power through punches. Hold PUNCH or KICK to charge."))
 		if phase_timer > 22.0 and not player.specials.is_empty():
 			coach("moves", tr("Tap MOVES to see your special moves and how to do them.") if touch_device else tr("Press Esc to pause. Your special moves and every key are listed there."))
 		if player.ratio("torso") < 0.35:
@@ -3850,26 +4082,24 @@ func live_coach(delta: float) -> void:
 		shout("read_punch", tr("He's mashing punches. KICK!"), tr("He keeps punching. A kick powers right through punches!"), 2, 2, 9.0)
 	if close and cpu_habit["kick"] > 1.8 and player.arms() > 0:
 		shout("read_kick", tr("Block his kicks, he'll run dry!"), tr("He's kicking a lot, so block them. Kicks drink power, he'll burn out soon."), 2, 2, 9.0)
-	if close and cpu_habit["hold"] > 1.0 and player.arms() > 0:
-		shout("read_hold", tr("He's reaching for you. PUNCH!"), tr("He keeps going for grabs. A quick punch stops a grab cold."), 2, 2, 9.0)
+	if close and cpu.state == "charge":
+		shout("read_charge", tr("He's charging. Hit him first!"), tr("He's winding up a charged hit. Hit him before he lets go, a hit knocks the charge out!"), 3, 2, 6.0)
 	# --- danger first
 	if cpu.combo >= 2 and player.state == "hit" and not player.blocking:
 		shout("combo", tr("BLOCK!"), tr("He's chaining a combo. Hold BLOCK till it stops!"), 3, 1, 3.0)
 	if ATTACKS.has(cpu.state) and cpu.timer < float(ATTACKS[cpu.state]["startup"]) and close and not player.blocking:
-		if cpu.state == "grab":
-			shout("grab_in", tr("He's grabbing! Hit him first!"), tr("He's going for a grab, and a block won't stop it. Punch him first!"), 3, 3, 4.0)
-		elif cpu.state == "sweep":
+		if cpu.state == "sweep":
 			shout("sweep_in", tr("JUMP!"), tr("He's sweeping low. JUMP over it!"), 3, 3, 4.0)
 		else:
 			shout("incoming", tr("BLOCK!"), tr("Here it comes. BLOCK!"), 3, 3, 3.0)
 	if cpu.state == "special" and dist < 260.0 and not player.blocking:
 		shout("special_in", tr("Big one coming. BLOCK!"), tr("He's winding up a special move. BLOCK!"), 3, 2, 5.0)
 	if not cpu.on_ground and cpu.vel.y > 0.0 and dist < 200.0 and player.on_ground and player.arms() > 0:
-		shout("anti_air", tr("Uppercut! ↓+P"), tr("He's dropping in on you. Uppercut him, hold down and PUNCH!"), 2, 2, 6.0)
+		shout("anti_air", tr("Uppercut! ↑+P"), tr("He's dropping in on you. Uppercut him, hold up and PUNCH!"), 2, 2, 6.0)
 	# --- openings
 	cpu_turtle_t = cpu_turtle_t + delta if cpu.blocking else maxf(0.0, cpu_turtle_t - delta * 2.0)
 	if cpu_turtle_t > 0.9 and dist < 220.0 and player.arms() > 0:
-		shout("turtle", tr("GRAB HIM!"), tr("He's hiding behind his guard. GRAB goes straight through a block!"), 2, 1, 6.0)
+		shout("turtle", tr("Charge it up!"), tr("He's hiding behind his guard. Hold PUNCH or KICK till it's full: a full charge breaks a block!"), 2, 1, 6.0)
 	if ATTACKS.has(cpu.state) and not cpu.landed and cpu.timer > float(ATTACKS[cpu.state]["startup"]) + float(ATTACKS[cpu.state]["active"]) and close:
 		shout("punish", tr("NOW! Hit him!"), tr("He missed, he's wide open. Hit him NOW!"), 2, 2, 5.0)
 	if (cpu.stun_t > 0.25 or (cpu.state == "hit" and not cpu.on_ground)) and close:
@@ -4186,7 +4416,7 @@ func barrier_for(id: String) -> String:
 
 func move_only(i: Dictionary) -> Dictionary:
 	var o := empty_input()
-	for k in ["left", "right", "up", "down", "up_press"]:
+	for k in ["left", "right", "up", "down", "jump", "jump_press"]:
 		o[k] = i[k]
 	return o
 

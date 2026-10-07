@@ -2,7 +2,7 @@ extends Node
 
 # helper scripts, loaded by path so the game also runs without an editor scan
 ## The game's version, shown on the main menu. Bump it with every change (1.1, 1.2, ...).
-const VERSION := "1.39"
+const VERSION := "1.40"
 const Arena = preload("res://arena.gd")
 const I18n = preload("res://i18n.gd")
 const Catalog = preload("res://catalog.gd")
@@ -369,7 +369,7 @@ var chips: Array = []         # chips installed (only the first chip_slots() of 
 var last_result := {}       # handed from the fight to the garage
 var story_key := ""         # which story scene to show next
 var story_return := ""      # scene to go to after the story
-const DEFAULT_SETTINGS := {"sound": true, "music": true, "shake": true, "button_size": 1, "difficulty": 1, "layout": {}, "team_controls": "linked", "battery_saver": false, "rev": 2,
+const DEFAULT_SETTINGS := {"sound": true, "music": true, "shake": true, "button_size": 1, "difficulty": 1, "layout": {}, "team_controls": "linked", "battery_saver": false, "rev": 3,
 		"start_money": START_MONEY, "living_cost": LIVING_COST, "coaching": 2, "lang": "en", "pecking": 1, "edges": 0, "text": UI.TEXT_DEFAULT}
 var settings := DEFAULT_SETTINGS.duplicate(true)
 
@@ -3275,7 +3275,7 @@ func apply_wingman_damage(k: int, part_hp: Dictionary, lost: Array, wrecked: Arr
 ## junk = how they behave in the ring (see fight.gd junk_input).
 const JUNKERS := {
 	"fridge": {"name": "THE FRIDGE", "junk": "fridge", "body": "#e8ecef", "style": "tank",
-		"desc": "Only ever blocks. Practise grabs (they beat a block) and breaking a guard.",
+		"desc": "Only ever blocks. Practise breaking a guard: hold PUNCH or KICK for a full charge.",
 		"parts": {"head": "junk_head_box", "torso": "junk_torso_box", "arm_front": "junk_arm", "arm_back": "junk_arm", "leg_front": "junk_leg_thick", "leg_back": "junk_leg_thick"}},
 	"toaster": {"name": "TOASTER TIM", "junk": "toaster", "body": "#c0c4c8", "style": "striker",
 		"desc": "Throws one slow punch every couple of seconds. Practise blocking, then hitting back.",
@@ -4583,4 +4583,7 @@ func load_settings() -> void:
 		# settings from before 1.37: team fights now start with every robot on one pad
 		if int(data.get("rev", 1)) < 2:
 			settings["team_controls"] = "linked"
-		settings["rev"] = 2
+		# settings from before 1.40: the fight buttons changed (JUMP took GRAB's spot), so old layouts reset once
+		if int(data.get("rev", 1)) < 3:
+			settings["layout"] = {}
+		settings["rev"] = 3
