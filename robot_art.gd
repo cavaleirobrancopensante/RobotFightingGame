@@ -215,7 +215,7 @@ static func draw(ci: CanvasItem, base: Vector2, look: Dictionary, pose: Dictiona
 	ci.draw_set_transform(base, rot, Vector2(facing * sc * sx, (0.7 if crouch else 1.0) * sc * sy))
 	var g := geom(look)
 	var trim: Color = Color.WHITE if flash else look["trim"]
-	var eye: Color = look["eye"]
+	var eye: Color = look["eye"] if not pose.get("eye_off", false) else Color(0.12, 0.1, 0.1)
 
 	# --- arm and leg poses
 	var lp := limb_poses(look, pose)

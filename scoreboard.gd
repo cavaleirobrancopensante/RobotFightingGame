@@ -62,8 +62,9 @@ static func split_title(title: String) -> Array:
 	return [parts[0] if parts.size() > 0 else "", parts[1] if parts.size() > 1 else ""]
 
 
+## The fight clock's seconds: two digits, three once the clock runs past 99 (fights run three minutes).
 static func seconds_text(secs: float) -> String:
-	return str(mini(99, ceili(maxf(0.0, secs)))).lpad(2, "0")
+	return str(mini(999, ceili(maxf(0.0, secs)))).lpad(2, "0")
 
 
 static func clock_text(seconds: float) -> String:
@@ -135,9 +136,10 @@ static func draw_chalk(ci: CanvasItem, r: Rect2, title: String, secs: float, hur
 	var screen := cr.grow(-6)
 	ci.draw_rect(screen, Color(0.42, 0.5, 0.36))
 	var digits := seconds_text(secs)
-	var dsize := fit_size(font, "88", screen.size.x - 4, int(screen.size.y * 1.05))
+	var ghost := "888" if digits.length() > 2 else "88"
+	var dsize := fit_size(font, ghost, screen.size.x - 4, int(screen.size.y * 1.05))
 	var lcd := Color(0.08, 0.1, 0.06) if not hurry else Color(0.45, 0.05, 0.03)
-	ci.draw_string(font, Vector2(screen.position.x, screen.end.y - screen.size.y * 0.12), "88", HORIZONTAL_ALIGNMENT_CENTER, screen.size.x, dsize, Color(0, 0, 0, 0.07))   # ghost segments
+	ci.draw_string(font, Vector2(screen.position.x, screen.end.y - screen.size.y * 0.12), ghost, HORIZONTAL_ALIGNMENT_CENTER, screen.size.x, dsize, Color(0, 0, 0, 0.07))   # ghost segments
 	ci.draw_string(font, Vector2(screen.position.x, screen.end.y - screen.size.y * 0.12), digits, HORIZONTAL_ALIGNMENT_CENTER, screen.size.x, dsize, lcd)
 	# the crack across the glass, with a spider web where something hit it
 	var hit := screen.position + Vector2(screen.size.x * 0.72, screen.size.y * 0.3)
@@ -199,11 +201,11 @@ static func draw_flip(ci: CanvasItem, r: Rect2, title: String, secs: float, hurr
 	# right: the countdown (seconds), two tall flaps
 	var dh := r.size.y - 8.0
 	var dw := dh * 0.66
-	var clock_w := dw * 2.0 + 3.0
-	var cr := Rect2(Vector2(r.end.x - 4.0 - clock_w, r.position.y + 4.0), Vector2(clock_w, dh))
 	var digits := seconds_text(secs)
+	var clock_w := dw * digits.length() + 3.0 * (digits.length() - 1)
+	var cr := Rect2(Vector2(r.end.x - 4.0 - clock_w, r.position.y + 4.0), Vector2(clock_w, dh))
 	var ink := Color(1.0, 0.35, 0.25) if hurry else white
-	for k in 2:
+	for k in digits.length():
 		flap(ci, Rect2(cr.position.x + k * (dw + 3.0), cr.position.y, dw, dh), digits.substr(k, 1), font, int(dh * 0.9), ink)
 	ci.draw_rect(Rect2(cr.position.x - 5.0, r.position.y + 3.0, 1.5, r.size.y - 6.0), Color(0.05, 0.05, 0.05))
 	# left: the fight name in two rows - the event, then the round
@@ -279,7 +281,7 @@ static func draw_dots(ci: CanvasItem, r: Rect2, title: String, secs: float, hurr
 	var lit := Color(1.0, 0.24, 0.14)
 	# right: the seconds
 	var cp := floorf((r.size.y - 8.0) / 7.0 * 0.8)
-	var cw := 11.0 * cp
+	var cw := (6.0 * seconds_text(secs).length() - 1.0) * cp
 	var cl := Rect2(Vector2(r.end.x - 5.0 - cw, r.position.y + (r.size.y - cp * 7.0) * 0.5), Vector2(cw, cp * 7.0))
 	dot_grid(ci, Rect2(cl.position - Vector2(cp * 0.5, 0), cl.size + Vector2(cp, 0)), cp, 7)
 	var on := lit if not hurry or fmod(t, 0.5) < 0.35 else Color(0.5, 0.05, 0.03)

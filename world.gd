@@ -331,6 +331,37 @@ static func output_of(bot: Dictionary) -> int:
 	return maxi(n, 10)
 
 
+## How often a robot turns up fully repaired, by league (the rest bring dents), and how dented.
+## Money decides it: gutter scrappers fight on whatever's left, Steel teams have mechanics.
+const REPAIRED := {"open": 0.15, "scrap": 0.3, "rust": 0.5, "iron": 0.7, "steel": 0.9, "title": 0.95}
+const DENTS := {"open": [0.4, 0.8], "scrap": [0.4, 0.8], "rust": [0.5, 0.85], "iron": [0.6, 0.9], "steel": [0.7, 0.95], "title": [0.75, 0.95]}
+
+
+## The dents a robot brings to today's fight. Seeded by the robot and the day, so the Bell Check, the
+## walk-in card and the fight all agree. Repaired = no wear; otherwise its dents from earlier fights,
+## or (a fresh world, a story rival) a few new ones in the league's range.
+static func league_wear(o: Dictionary, tier: String, key: String) -> void:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = hash("%s/%d/%d/%s" % [key, GameData.year, GameData.week, GameData.day])
+	if rng.randf() < float(REPAIRED.get(tier, 0.5)):
+		o["wear"] = {}
+		return
+	var wear: Dictionary = o.get("wear", {})
+	if not wear.is_empty():
+		return
+	var slots: Array = []
+	for slot in o.get("parts", {}):
+		if GameData.BODY_SLOTS.has(slot) and str(o["parts"][slot]) != "":
+			slots.append(slot)
+	if slots.is_empty():
+		return
+	var rg: Array = DENTS.get(tier, [0.5, 0.85])
+	for k in rng.randi_range(1, 3):
+		var slot: String = slots[rng.randi() % slots.size()]
+		wear[slot] = rng.randf_range(float(rg[0]), float(rg[1]))
+	o["wear"] = wear
+
+
 ## The opponent dictionary the fight and the garage use, for a world pilot: their robot, its
 ## wear (it starts the fight dented), and fighting numbers from the pilot's skill.
 static func robot(wid: int) -> Dictionary:
@@ -339,6 +370,7 @@ static func robot(wid: int) -> Dictionary:
 		return {}
 	var o: Dictionary = (p["bot"] as Dictionary).duplicate(true)
 	o["wear"] = (p.get("wear", {}) as Dictionary).duplicate()
+	league_wear(o, str(p["tier"]), "%d" % wid)
 	o["pilot"] = p["name"]
 	o["wid"] = wid
 	var lv: float = float(p["skill"]) * 3.6

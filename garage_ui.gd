@@ -22,7 +22,7 @@ const GREEN := Color(0.553, 1.0, 0.651)         # #8dffa6 - phosphor green
 const AMBER := Color(1.0, 0.765, 0.353)         # #ffc35a
 const RED := Color(1.0, 0.478, 0.353)           # #ff7a5a
 const CYAN := Color(0.43, 0.88, 1.0)
-const HP_UNIT := 10.0                           # one block in a health bar = 10 HP, always
+const HP_UNIT := 25.0                           # one block in a health bar = 25 HP, always
 
 static var _fonts := {}
 
@@ -167,7 +167,7 @@ static func draw_blocks(ci: CanvasItem, r: Rect2, n: int, filled: float, col: Co
 
 
 ## Bars longer than WRAP blocks (high-grade parts have hundreds of HP) wrap onto more rows of
-## thinner blocks: a block is still 10 HP, so a tougher part has a bigger bar.
+## thinner blocks: a block is still HP_UNIT, so a tougher part has a bigger bar.
 const WRAP := 30
 
 
@@ -216,7 +216,7 @@ class BlockBar extends Control:
 		load("res://garage_ui.gd").draw_wrapped(self, n, filled, block_w, color)
 
 
-## Health as joined blocks: every block is 10 HP, so a tough part has a longer bar and the dark blocks
+## Health as joined blocks: every block is HP_UNIT (25 HP), so a tough part has a longer bar and the dark blocks
 ## are the damage.
 class SegBar extends Control:
 	const BLOCK := 7.0
@@ -228,13 +228,13 @@ class SegBar extends Control:
 		hp = value
 		max_hp = maxf(1.0, maximum)
 		color = col
-		var nb := int(ceilf(max_hp / 10.0))
+		var nb := int(ceilf(max_hp / HP_UNIT))
 		custom_minimum_size = Vector2(mini(nb, WRAP) * BLOCK, load("res://garage_ui.gd").rows_height(nb, 12.0))
 		queue_redraw()
 
 	func _draw() -> void:
-		var n := int(ceilf(max_hp / 10.0))
-		var filled := hp / 10.0
+		var n := int(ceilf(max_hp / HP_UNIT))
+		var filled := hp / HP_UNIT
 		if n > WRAP:
 			load("res://garage_ui.gd").draw_wrapped(self, n, filled, BLOCK, color)
 			return

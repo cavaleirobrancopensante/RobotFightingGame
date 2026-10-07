@@ -26,18 +26,25 @@ const Story = preload("res://story_data.gd")
 ## PUNCH and KICK take turns between the arms (legs). Hold PUNCH or KICK to charge a heavier hit.
 ## Keyboard: A/D move, W/S up/down, Space jump, J punch, K kick, L block, 1 2 3 gadgets, M moves, Esc pause
 
-const GRAVITY := 2200.0
-const WALK_SPEED := 300.0
-const JUMP_SPEED := 950.0
+## Pace (1.41): a fight you can read. Every move runs TEMPO times slower, robots walk and jump slower
+## and float a little longer, hits push further apart, and the clock runs three minutes.
+const TEMPO := 1.25
+const GRAVITY := 1800.0
+const WALK_SPEED := 240.0
+const JUMP_SPEED := 860.0
+const STUN_K := 1.18          # hit stun and knockback a bit longer: room after each hit, less mashing
+const KNOCK_K := 1.125
+const THINK_K := 1.3          # the CPU re-plans a bit less often
+const THINK_MIN := 0.32
 const BOT_SCALE := 1.3        # fighters are drawn this much bigger than in the garage
-const FIGHT_TIME := 90.0
+const FIGHT_TIME := 180.0
 const UI_SCALE := 1.25
 const UIK = preload("res://ui.gd")
 const BUTTON_SCALES := [0.8, 1.0, 1.25]
 const DIFF_THINK := [1.4, 1.0, 0.7]
 const DIFF_BLOCK := [0.7, 1.0, 1.25]
 const DIFF_DAMAGE := [0.75, 1.0, 1.2]
-const CORE_SHARE := 0.35      # share of a limb/head hit that also hurts the torso
+const CORE_SHARE := 0.25      # share of a limb/head hit that also hurts the torso
 const HEAD_FACTOR := 0.6      # heads are hard to hit cleanly
 const COMBO_BONUS := 0.08     # extra damage per hit in a combo
 const BODY_PARTS := ["head", "head2", "torso", "arm_front", "arm_back", "arm_front2", "arm_back2", "leg_front", "leg_back"]
@@ -464,7 +471,7 @@ func _ready() -> void:
 	for f in team_c:
 		f.dmg_mult *= DIFF_DAMAGE[diff]
 		f.foe = player
-		f.ai = {"timer": randf() * 0.3, "plan": {}, "think": opp["think"] * DIFF_THINK[diff],
+		f.ai = {"timer": randf() * 0.3, "plan": {}, "think": maxf(THINK_MIN, opp["think"] * DIFF_THINK[diff] * THINK_K),
 				"block": minf(0.85, opp["block"] * DIFF_BLOCK[diff]), "smart": opp["smart"],
 				"special_cd": 3.0 + randf(), "gadget_cd": 1.5 + randf(), "kit": {}}
 		ai_load(f)
@@ -490,7 +497,7 @@ func _ready() -> void:
 		# both corners are computer pilots: the left robot gets a brain too
 		var left_o: Dictionary = GameData.watch_robot(0)
 		for f in team_p:
-			f.ai = {"timer": randf() * 0.3, "plan": {}, "think": float(left_o.get("think", 0.4)),
+			f.ai = {"timer": randf() * 0.3, "plan": {}, "think": maxf(THINK_MIN, float(left_o.get("think", 0.4)) * THINK_K),
 					"block": minf(0.85, float(left_o.get("block", 0.2))), "smart": float(left_o.get("smart", 0.0)),
 					"special_cd": 3.0 + randf(), "gadget_cd": 1.5 + randf(), "kit": {}}
 			ai_load(f)
@@ -1614,26 +1621,51 @@ func update_effects(delta: float) -> void:
 	for r in rings:
 		r["t"] += delta
 	rings = rings.filter(func(r): return r["t"] < 0.4)
-	if debris.size() > 24:
-		debris = debris.slice(debris.size() - 24)   # old scrap disappears so it can't pile up forever
+	# shards fade out; whole parts stay lying in the ring (the oldest go if there are too many)
+	for d in debris:
+		if d.has("life"):
+			d["life"] = float(d["life"]) - delta
+	debris = debris.filter(func(d): return not d.has("life") or float(d["life"]) > 0.0)
+	if debris.size() > 30:
+		debris = debris.slice(debris.size() - 30)
 	for d in debris:
 		d["vel"].y += GRAVITY * 0.8 * delta
 		d["pos"] += d["vel"] * delta
 		d["rot"] += d["rv"] * delta
-		if d["pos"].y > floor_y - 4.0:
-			d["pos"].y = floor_y - 4.0
+		var rest: float = floor_y - (float((d["size"] as Vector2).y) * 0.22 if d.get("lie", false) else 4.0)
+		if d["pos"].y > rest:
+			d["pos"].y = rest
 			d["vel"].y *= -0.35
 			d["vel"].x *= 0.6
 			d["rv"] *= 0.5
 			if absf(d["vel"].y) > 120.0:
 				Sfx.play("land", 0.3, -10.0)
+			if d.get("lie", false) and absf(d["vel"].y) < 60.0:
+				# settles flat on the floor
+				var flat: float = PI * 0.5 if str((d["def"] as Dictionary).get("kind", "")) == "leg" else 0.0   # legs lie on their side
+				d["rot"] = lerp_angle(d["rot"], round((d["rot"] - flat) / PI) * PI + flat, minf(1.0, delta * 6.0))
+				d["rv"] = 0.0
+				d["vel"].x = move_toward(d["vel"].x, 0.0, 600.0 * delta)
 	for p in popups:
 		p["t"] += delta
 	popups = popups.filter(func(p): return p["t"] < 1.4)
 	for f in all_fighters():
+		if f.state == "ko":
+			continue
 		for slot in BODY_PARTS:
-			if f.alive(slot) and f.ratio(slot) < 0.3 and randf() < delta * 5.0:
-				smoke.append({"pos": to_world_point(f, RobotArt.part_center(f.get_look(), slot)), "t": 0.0, "dark": false})
+			if slot != "torso" and f.alive(slot) and f.ratio(slot) < 0.3 and randf() < delta * 2.5:
+				smoke.append({"pos": to_world_point(f, RobotArt.part_center(f.get_look(), slot)), "t": 0.0, "dark": false, "k": 0.6})
+		# a hurt core smokes: a wisp under half, thick black smoke and sparks under a quarter
+		if f.alive("torso"):
+			var cr: float = f.ratio("torso")
+			var top: Vector2 = to_world_point(f, Vector2(randf_range(-12, 12), RobotArt.geom(f.get_look())["top"] + 6.0))
+			if cr < 0.25:
+				if randf() < delta * 14.0:
+					smoke.append({"pos": top, "t": 0.0, "dark": true, "k": 1.6})
+				if randf() < delta * 3.0:
+					add_spark(top + Vector2(randf_range(-20, 20), randf_range(-10, 20)), Color(1.0, 0.75, 0.3), 9.0)
+			elif cr < 0.5 and randf() < delta * 4.0:
+				smoke.append({"pos": top, "t": 0.0, "dark": false, "k": 0.8})
 		if f.burn_t > 0.0 and randf() < delta * 6.0:
 			smoke.append({"pos": f.pos + Vector2(-f.facing * 20.0, -90.0 * f.scale), "t": 0.0, "dark": true})
 	for s in smoke:
@@ -1726,7 +1758,11 @@ func finish_match() -> void:
 		if not ep.is_empty():
 			ehp[slot] = [float(ep["hp"]), float(ep["max_hp"])]
 	GameData.last_enemy_hp = ehp
-	result = GameData.record_result(won, part_hp, ripped.size(), ripped, team_hp)
+	# which of your parts came off whole (a wreck to rebuild) and which shattered (gone)
+	var own_rips := {}
+	for rp in main.ripped:
+		own_rips[str(rp.get("slot", ""))] = bool(rp.get("intact", false))
+	result = GameData.record_result(won, part_hp, ripped.size(), ripped, team_hp, own_rips)
 	phase = "results"
 	phase_timer = 0.0
 	Sfx.play("victory" if won else "defeat")
@@ -1802,8 +1838,8 @@ func quit_fight() -> void:
 # stop attacking. Empty it and you burn out.
 
 const MOVE_COST := {"punch": 1.0, "low_punch": 1.0, "uppercut": 1.3, "sweep": 2.0, "kick": 2.6, "high_kick": 2.8}
-const REFILL := 0.28          # share of the tank refilled per second when not attacking
-const REFILL_DELAY := 0.4     # seconds after a move before it starts refilling
+const REFILL := 0.20          # share of the tank refilled per second when not attacking
+const REFILL_DELAY := 0.6     # seconds after a move before it starts refilling
 const BURNOUT_TIME := 1.5
 const POWER_COLOR := Color(0.25, 0.8, 1.0)
 
@@ -2006,7 +2042,7 @@ func start_special(f: Fighter, id: String) -> void:
 func update_special(f: Fighter, o: Fighter, delta: float) -> void:
 	var m: Dictionary = Specials.MOVES[f.special_id]
 	var spd := f.attack_speed(f.attack_limb) if f.attack_limb != "" else f.mod_speed()
-	f.timer += delta * spd
+	f.timer += delta * spd / TEMPO
 	var st: float = m["startup"]
 	var act: float = m["active"]
 	var active := f.timer >= st and f.timer <= st + act
@@ -2205,7 +2241,7 @@ func update_fighter(f: Fighter, o: Fighter, i: Dictionary, delta: float) -> void
 			f.power = 0.0   # the overcharge drains the tank: burnout
 			f.burn_pending = true
 	if f.has_gadget("regen") and f.alive("torso") and phase == "fight":
-		f.parts["torso"]["hp"] = minf(f.parts["torso"]["max_hp"], f.parts["torso"]["hp"] + 1.2 * f.gpow * delta)
+		f.parts["torso"]["hp"] = minf(f.parts["torso"]["max_hp"], f.parts["torso"]["hp"] + 3.6 * f.gpow * delta)
 	f.slow_t = maxf(0.0, f.slow_t - delta)
 	f.hobble_t = maxf(0.0, f.hobble_t - delta)
 	f.numb_t = maxf(0.0, f.numb_t - delta)
@@ -2259,7 +2295,7 @@ func update_fighter(f: Fighter, o: Fighter, i: Dictionary, delta: float) -> void
 		update_special(f, o, delta)
 	elif ATTACKS.has(f.state):
 		var a: Dictionary = ATTACKS[f.state]
-		f.timer += delta * f.attack_speed(f.attack_limb)
+		f.timer += delta * f.attack_speed(f.attack_limb) / TEMPO
 		if f.on_ground and f.boost_t <= 0.0:
 			f.vel.x = 0.0
 		if not f.hit_done and f.timer >= a["startup"] and f.timer <= a["startup"] + a["active"]:
@@ -2531,7 +2567,9 @@ func try_hit(att: Fighter, d: Fighter, a: Dictionary) -> void:
 	att.hit_done = true
 	var limb: Dictionary = att.parts[att.attack_limb] if att.parts.has(att.attack_limb) and att.alive(att.attack_limb) else {"damage": 0}
 	var hit := a.duplicate()
-	hit["damage"] = a["damage"] * (1.0 + limb["damage"] / 100.0) * att.limb_damage(limb) * att.charge_mult
+	# a limb hits as hard as its grade; body moves (charges, slams, pulses) hit as hard as the whole robot
+	var grade_k: float = att.limb_damage(limb) if limb.has("gm") else att.mod_damage()
+	hit["damage"] = a["damage"] * (1.0 + limb["damage"] / 100.0) * grade_k * att.charge_mult
 	hit["src"] = att.attack_limb
 	hit["touched"] = contact["parts"]
 	if att.guard_break:
@@ -2694,12 +2732,12 @@ func apply_hit(att: Fighter, d: Fighter, a: Dictionary, at: Vector2) -> void:
 		if d.state != "ko" and not armored:
 			d.charge_btn = ""   # a hit knocks a charge out
 			d.state = "hit"
-			d.timer = maxf(a.get("stun", 0.25), a.get("emp", 0.0))
+			d.timer = maxf(float(a.get("stun", 0.25)) * STUN_K, a.get("emp", 0.0))
 			d.crouching = false
 			d.blocking = false
 			d.special_id = ""
 			d.boost_t = 0.0
-			d.vel.x = att.facing * a.get("knock", 320.0)
+			d.vel.x = att.facing * float(a.get("knock", 320.0)) * KNOCK_K
 			if off_trait(att, src, "magnet") > 0.0:
 				d.vel.x = -att.facing * 260.0   # magnets yank the enemy in
 			if a.has("launch"):
@@ -2806,32 +2844,54 @@ func damage_part(f: Fighter, slot: String, amount: float, quiet: bool = false) -
 		f.spec["hit_t"] = clock
 		return
 	if p["hp"] <= 0.0:
+		var overkill := -float(p["hp"]) / maxf(1.0, float(p["max_hp"]))   # how far past zero the hit went
 		p["hp"] = 0.0
 		if slot != "torso":
-			rip_off(f, slot)
+			rip_off(f, slot, overkill)
 
 
-func rip_off(f: Fighter, slot: String) -> void:
+## A part comes off. A roll decides how: INTACT, the real part flies off and lies in the ring (salvage
+## for the winner, a wreck you can rebuild if it was yours); BROKEN, it shatters into shards (gone).
+## A clean aimed rip mostly comes off intact; an overkill hit or an explosion mostly breaks it.
+func rip_off(f: Fighter, slot: String, overkill: float = 0.0) -> void:
 	var p: Dictionary = f.parts[slot]
 	var aimed := false
 	for e in enemies_of(f):
 		if e.target == slot and e.foe == f:
 			aimed = true
-	f.ripped.append({"id": p["id"], "aimed": aimed})
+	var boom: float = (limb_trait(f, slot, "explosive") + f.gtraits.get("explosive", 0.0)) * float(p.get("gm", f.gpow))
+	var keep := 0.75 if aimed else 0.5
+	if overkill > 0.6:
+		keep *= 0.4
+	if boom > 0.0:
+		keep = 0.15
+	var intact := randf() < keep
+	f.ripped.append({"id": p["id"], "aimed": aimed, "slot": slot, "intact": intact})
 	if f.team == 1:
 		if aimed:
-			coach("aimed_rip", tr("Clean rip! Parts you AIM at and rip off usually come home with us after a win."))
+			coach("aimed_rip", tr("Clean rip! Parts you AIM at mostly come off in one piece, and whole parts come home with us after a win."))
 		else:
-			coach("rip_any", tr("Ripped off! Aim at a part first and it comes off clean. Free spare parts."))
+			coach("rip_any", tr("Ripped off! Aim at a part first and it usually comes off whole. Free spare parts."))
 	else:
-		coach("own_lost", tr("We lost a part! Ripped-off parts must be bought again. Dented ones can be repaired."))
+		coach("own_lost", tr("We lost a part! If it came off whole we can rebuild it. If it shattered, it's gone."))
 	f.fist_out.erase(slot)
 	f.burns = f.burns.filter(func(b): return b["slot"] != slot)
-	var boom: float = (limb_trait(f, slot, "explosive") + f.gtraits.get("explosive", 0.0)) * float(p.get("gm", f.gpow))
 	var at := to_world_point(f, RobotArt.part_center(f.get_look(), slot))
-	var size := Vector2(46, 14) if slot.begins_with("arm") else (Vector2(16, 52) if slot.begins_with("leg") else Vector2(36, 32))
-	debris.append({"pos": at, "vel": Vector2(-f.facing * randf_range(150, 350), randf_range(-650, -400)),
-			"rot": 0.0, "rv": randf_range(-12, 12), "size": size * f.scale, "color": p["color"]})
+	var d := GameData.part_def(str(p["id"]))
+	var big := Vector2(70, 70) if slot.begins_with("leg") or slot == "torso" else Vector2(56, 56)
+	if intact:
+		# the real part flies off, bounces, and stays lying in the ring
+		debris.append({"pos": at, "vel": Vector2(-f.facing * randf_range(150, 350), randf_range(-650, -400)),
+				"rot": 0.0, "rv": randf_range(-10, 10), "size": big * f.scale, "color": p["color"], "def": d, "lie": true})
+		popup(tr("INTACT"), at + Vector2(0, -36), Color(0.6, 1.0, 0.7))
+	else:
+		# it shatters: shards in its colour, sparks and a puff of smoke
+		for k in 8:
+			debris.append({"pos": at + Vector2(randf_range(-14, 14), randf_range(-14, 14)), "vel": Vector2(randf_range(-420, 420), randf_range(-700, -250)),
+					"rot": randf() * TAU, "rv": randf_range(-20, 20), "size": Vector2(randf_range(8, 18), randf_range(5, 12)) * f.scale, "color": p["color"], "shard": true, "life": 1.6})
+		for k in 5:
+			smoke.append({"pos": at + Vector2(randf_range(-16, 16), randf_range(-16, 16)), "t": 0.0, "dark": true, "k": 1.3})
+		popup(tr("SHATTERED"), at + Vector2(0, -36), Color(1.0, 0.55, 0.4))
 	for k in 3:
 		add_spark(at + Vector2(randf_range(-20, 20), randf_range(-20, 20)), Color(1.0, 0.6, 0.2), 26.0)
 	popup(tr("%s LOST!") % tr(PART_LABELS[slot]) if f.team == 0 else tr("%s DESTROYED!") % tr(PART_LABELS[slot]), at,
@@ -2932,16 +2992,21 @@ func _draw() -> void:
 	draw_projectiles(off)
 
 	for d in debris:
-		draw_set_transform(d["pos"] + off, d["rot"], Vector2.ONE)
 		var sz: Vector2 = d["size"]
-		draw_rect(Rect2(-sz * 0.5, sz), d["color"])
-		draw_rect(Rect2(-sz * 0.5, sz), (d["color"] as Color).darkened(0.5), false, 2.0)
+		if d.has("def"):
+			PartIcon.draw_part_at(self, d["pos"] + off, sz.x, d["def"], 0.25, d["rot"])   # the real part, lying where it fell
+			continue
+		draw_set_transform(d["pos"] + off, d["rot"], Vector2.ONE)
+		var col: Color = d["color"]
+		if d.has("life"):
+			col.a = clampf(float(d["life"]) / 0.6, 0.0, 1.0)
+		draw_colored_polygon(PackedVector2Array([Vector2(-sz.x * 0.5, -sz.y * 0.3), Vector2(sz.x * 0.4, -sz.y * 0.5), Vector2(sz.x * 0.5, sz.y * 0.4), Vector2(-sz.x * 0.2, sz.y * 0.5)]), col)
 	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
 	for s in smoke:
 		var t: float = s["t"] / 1.2
-		var c := Color(0.12, 0.12, 0.12, 0.6 * (1.0 - t)) if s["dark"] else Color(0.3, 0.3, 0.32, 0.5 * (1.0 - t))
-		draw_circle(s["pos"] + off, 6.0 + t * 14.0, c)
+		var c := Color(0.08, 0.08, 0.08, 0.65 * (1.0 - t)) if s["dark"] else Color(0.35, 0.35, 0.37, 0.45 * (1.0 - t))
+		draw_circle(s["pos"] + off, (6.0 + t * 14.0) * float(s.get("k", 1.0)), c)
 	for s in sparks:
 		var t: float = s["t"] / 0.25
 		var c: Color = s["color"]
@@ -3288,6 +3353,8 @@ func draw_fighter(f: Fighter, off: Vector2) -> void:
 		"shield": f.shield_t > 0.0, "overcharge": f.over_t > 0.0, "stunned": f.stun_t > 0.0,
 		"jet": f.jet_t > 0.0 or (not f.on_ground and f.vel.y < -400.0 and f.has_gadget("double_jump")),
 		"boost": f.boost_t > 0.0, "sx": sx, "sy": sy,
+		# a core under a quarter: its eye flickers like a bad bulb
+		"eye_off": f.state != "ko" and f.alive("torso") and f.ratio("torso") < 0.25 and fmod(clock * 9.0 + f.team * 3.1, 3.7) < 0.9,
 	})
 	if f.state == "charge" and f.attack_limb != "":
 		# the charging fist (foot) glows brighter as the charge fills
@@ -3382,13 +3449,20 @@ func draw_part_map(f: Fighter, at: Vector2, _mirror: bool, k: float = UI_SCALE) 
 		var r: Rect2 = boxes[slot]
 		# (no mirroring: the map is the robot seen from the front, left parts on the left, like the bay)
 		r = Rect2(at + r.position * k, r.size * k)
-		var c := Color(0.25, 0.25, 0.28)
-		if f.state == "ko":
-			c = Color(0.18, 0.18, 0.2)
-		elif f.alive(slot):
+		# green, amber, red by health (the same marks as DENTED / CRACKED on the walk-in card); ripped = an empty outline
+		if f.state == "ko" or not f.alive(slot):
+			draw_rect(r, Color(0.12, 0.12, 0.14, 0.8))
+			draw_rect(r, Color(0.45, 0.45, 0.5, 0.8), false, 1.0)
+		else:
 			var h := f.ratio(slot)
-			c = Color(0.9, 0.2, 0.15).lerp(Color(0.3, 0.9, 0.35), h) if h < 1.0 else Color(0.3, 0.9, 0.35)
-		draw_rect(r, c)
+			var c := Color(0.3, 0.9, 0.35) if h >= 0.6 else (Color(1.0, 0.72, 0.2) if h >= 0.3 else Color(0.95, 0.25, 0.2))
+			draw_rect(r, c)
+			if h < 0.999:
+				draw_rect(Rect2(r.position, Vector2(r.size.x, r.size.y * (1.0 - h))), Color(0, 0, 0, 0.35))   # the missing share, darker
+		if f.state != "ko" and f != player and f.alive(slot) and slot == weak_point(f):
+			var wc := r.get_center()
+			var wr := 5.0 * k * 0.8
+			draw_colored_polygon(PackedVector2Array([wc + Vector2(0, -wr), wc + Vector2(wr, 0), wc + Vector2(0, wr), wc + Vector2(-wr, 0)]), Color(1.0, 0.9, 0.2, 0.95))
 		var aimed: bool = (f == cpu and player.target == slot) or (f == player and cpu.target == slot)
 		if aimed:
 			draw_rect(r.grow(2.0), Color(1, 0.2, 0.2) if f == cpu else Color(1, 0.6, 0.1), false, 2.0)
@@ -3401,7 +3475,7 @@ func part_map_step() -> float:
 ## A body map for every robot on a team (smaller when there are several).
 func draw_part_maps(team: Array, y: float, right: bool) -> void:
 	if team.size() == 1:
-		draw_part_map(team[0], Vector2(screen.x - 44 if right else 44, y), right)
+		draw_part_map(team[0], Vector2(screen.x - 56 if right else 56, y), right, UI_SCALE * 1.45)
 		return
 	var k := UI_SCALE * 0.72
 	var step := part_map_step()
@@ -3426,18 +3500,18 @@ func draw_team_bars(team: Array, x: float, y: float, w: float, bh: float, right:
 	for k in n:
 		var f: Fighter = team[k]
 		var by := y + k * (h + gap)
-		# core health in blocks - 1 block = 10 HP, like the bars in the garage
+		# core health in blocks: 1 block = 25 HP, like the bars in the garage
 		var ph := maxf(4.0, h * 0.28)
 		var max_hp: float = f.parts["torso"].get("max_hp", 100.0) if not f.parts["torso"].is_empty() else 100.0
 		# the blocks have a fixed size, so the length of the bar IS the robot's toughness:
-		# 20 blocks (200 HP) fill the slot; a tougher robot squeezes its blocks in
-		var hn := int(ceilf(max_hp / 10.0))
+		# 20 blocks (500 HP) fill the slot; a tougher robot squeezes its blocks in
+		var hn := int(ceilf(max_hp / GUI.HP_UNIT))
 		var hw := w * minf(1.0, hn / 20.0)
 		var hb := Rect2(x + (w - hw if right else 0.0), by, hw, h - ph - 2.0)
 		var hp: float = f.parts["torso"].get("hp", 0.0) if not f.parts["torso"].is_empty() and f.state != "ko" else 0.0
 		var edge := Color(1.0, 0.35, 0.3) if (right and f == cpu and n > 1) else Color(1, 1, 1, 0.8)
 		draw_rect(hb.grow(2.0), Color(0.02, 0.02, 0.03, 0.9))
-		GUI.draw_blocks(self, hb, hn, hp / 10.0, Color(0.95, 0.85, 0.2) if f.state != "ko" else Color(0.4, 0.4, 0.4), Color(0.3, 0.06, 0.06), right)
+		GUI.draw_blocks(self, hb, hn, hp / GUI.HP_UNIT, Color(0.95, 0.85, 0.2) if f.state != "ko" else Color(0.4, 0.4, 0.4), Color(0.3, 0.06, 0.06), right)
 		draw_rect(hb.grow(2.0), edge, false, 1.5)
 		# power in blocks under it - 1 block = 1 point of power
 		var pn := int(ceilf(f.power_max))
@@ -3462,8 +3536,8 @@ func draw_hud() -> void:
 	for k in 6:
 		draw_rect(Rect2(0, k * (y + bh + 50) / 6.0, screen.x, (y + bh + 50) / 6.0 + 1), Color(0, 0, 0, 0.42 * (1.0 - k / 6.0)))
 	# one body map per robot in the corners; the health bars move over to make room
-	var px := 100.0 if team_p.size() == 1 else 30.0 + team_p.size() * part_map_step()
-	var cx := screen.x - (100.0 if team_c.size() == 1 else 30.0 + team_c.size() * part_map_step()) - w
+	var px := 118.0 if team_p.size() == 1 else 30.0 + team_p.size() * part_map_step()
+	var cx := screen.x - (118.0 if team_c.size() == 1 else 30.0 + team_c.size() * part_map_step()) - w
 	draw_team_bars(team_p, px, y, w, bh, false)
 	draw_team_bars(team_c, cx, y, w, bh, true)
 	var my_team := player.label
@@ -3611,7 +3685,7 @@ func draw_result_cards(y: float) -> float:
 	if cards.is_empty():
 		return y
 	var tags := {"salvaged": ["SALVAGED", Color(0.5, 1.0, 0.6)], "trophy": ["TROPHY PART", Color(0.5, 1.0, 0.6)],
-			"wrecked": ["WRECKED", Color(1.0, 0.7, 0.3)], "lost": ["LOST", Color(1.0, 0.45, 0.4)]}
+			"wrecked": ["WRECKED", Color(1.0, 0.7, 0.3)], "lost": ["LOST", Color(1.0, 0.45, 0.4)], "shattered": ["SHATTERED", Color(0.75, 0.75, 0.8)]}
 	var n := mini(cards.size(), 6)
 	var cw := minf(150.0, (screen.x - 40.0) / n)
 	var icon := minf(cw - 30.0, 84.0)
@@ -3630,7 +3704,7 @@ func draw_result_cards(y: float) -> float:
 			continue
 		PartIcon.draw_part(self, box, d, float(c.get("health", 1.0)))
 		draw_rect(box, tag[1], false, 3.0)
-		if c["what"] == "lost":
+		if c["what"] == "lost" or c["what"] == "shattered":
 			draw_line(box.position + Vector2(6, 6), box.end - Vector2(6, 6), Color(1.0, 0.3, 0.25, 0.85), 4.0)
 			draw_line(Vector2(box.end.x - 6, box.position.y + 6), Vector2(box.position.x + 6, box.end.y - 6), Color(1.0, 0.3, 0.25, 0.85), 4.0)
 		draw_string(font, Vector2(cx - cw * 0.5, box.end.y + 18), tr(tag[0]), HORIZONTAL_ALIGNMENT_CENTER, cw, fs(13), tag[1])
@@ -4620,7 +4694,7 @@ func draw_show_marks(off: Vector2) -> void:
 
 ## Parts worth shouting about: ones with a trait or a gadget.
 ## The walk-in spec card: name, class and style, every part with its health blocks (1 block =
-## 10 HP) and its numbers, special parts starred, then the special moves.
+## 25 HP) and its numbers, special parts starred, then the special moves.
 func draw_robot_card(ci: CanvasItem, f: Fighter, left: bool, w: float, h: float, font: Font) -> void:
 	# every height comes from the font sizes, so the card grows with Settings > Text size
 	var l1 := float(fs(14)) + 5.0      # a part's name line
@@ -4671,16 +4745,16 @@ func draw_robot_card(ci: CanvasItem, f: Fighter, left: bool, w: float, h: float,
 		ci.draw_string(font, Vector2(x, y), slot_txt, HORIZONTAL_ALIGNMENT_LEFT, -1, fs(11), Color(0.62, 0.62, 0.7, a))
 		ci.draw_string(font, Vector2(x + sw + 8, y), ("★ " if special else "") + tr(str(d["name"])), HORIZONTAL_ALIGNMENT_LEFT, cw - sw - 8,
 				fs(14), gold if special else Color(1, 1, 1, a))
-		# line 2: health blocks (1 block = 10 HP, dents show as empty blocks), HP numbers, then armor / damage / speed
+		# line 2: health blocks (1 block = 25 HP, dents show as empty blocks), HP numbers, then armor / damage / speed
 		y += l2
 		var bx := x
 		if pr.has("max_hp") and float(pr["max_hp"]) > 0.0:
 			var mx := float(pr["max_hp"])
 			var hp := float(pr["hp"])
-			var n := int(ceil(mx / 10.0))
+			var n := int(ceil(mx / GUI.HP_UNIT))
 			var bw := minf(cw * 0.34, n * 6.0)
 			var bh := float(fs(12)) * 0.7
-			GUI.draw_blocks(ci, Rect2(x, y - bh, bw, bh), n, hp / 10.0, Color(0.4, 0.95, 0.5, a), Color(0.25, 0.08, 0.08, a), false)
+			GUI.draw_blocks(ci, Rect2(x, y - bh, bw, bh), n, hp / GUI.HP_UNIT, Color(0.4, 0.95, 0.5, a), Color(0.25, 0.08, 0.08, a), false)
 			var r := hp / mx
 			var hc := Color(0.55, 0.95, 0.6, a) if r >= 0.6 else Color(1.0, 0.75, 0.3, a) if r >= 0.3 else Color(1.0, 0.4, 0.35, a)
 			var ht := "%d/%d" % [int(round(hp)), int(round(mx))]

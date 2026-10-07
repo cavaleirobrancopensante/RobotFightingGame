@@ -73,6 +73,25 @@ static func draw_part(ci: CanvasItem, box: Rect2, part: Dictionary, health: floa
 	ci.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
 
+## A part on its own in the world (a ripped-off part lying in the ring): centred on `center`,
+## about `span` px across, turned by `rot`. No background box.
+static func draw_part_at(ci: CanvasItem, center: Vector2, span: float, part: Dictionary, health: float, rot: float, trim: Color = Color(0.85, 0.85, 0.9)) -> void:
+	var kind: String = part.get("kind", "")
+	if not kind in ["head", "torso", "arm", "leg"]:
+		return
+	var slot: String = {"head": "head", "torso": "torso", "arm": "arm_front", "leg": "leg_front"}[kind]
+	var parts := {}
+	for s in ["head", "torso", "arm_front", "arm_back", "leg_front", "leg_back"]:
+		parts[s] = {"alive": false}
+	parts[slot] = {"alive": true, "shape": part["shape"], "size": part["size"], "color": Color(part["color"]), "health": health}
+	var look := {"parts": parts, "trim": trim, "eye": Color(0.25, 0.1, 0.08), "scale": 1.0, "icon": true}
+	var rect := _bounds(look, slot)
+	var sc := span / maxf(rect.size.x, rect.size.y)
+	var base := center - (rect.get_center() * sc).rotated(rot)
+	RobotArt.draw(ci, base, look, {"scale": sc, "rot": rot, "state": "limp"})
+	ci.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+
+
 static func _bounds(look: Dictionary, slot: String) -> Rect2:
 	var g := RobotArt.geom(look)
 	match slot:

@@ -988,8 +988,8 @@ func refresh_stats() -> void:
 	grid.add_theme_constant_override("v_separation", 4)
 	stats_box.add_child(grid)
 	var over: bool = s["power_used"] > s["power_output"]
-	# core: blocks of 10 HP, like every part; power: one block per point of power
-	stat_cell(grid, "Core", _seg(s["core"], s["core_max"], 10.0, GUI.GREEN), "%d/%d" % [s["core"], s["core_max"]], GUI.GREEN)
+	# core: blocks of 25 HP, like every part; power: one block per point of power
+	stat_cell(grid, "Core", _seg(s["core"], s["core_max"], GUI.HP_UNIT, GUI.GREEN), "%d/%d" % [s["core"], s["core_max"]], GUI.GREEN)
 	stat_cell(grid, "Power", _seg(s["power_used"], s["power_output"], 1.0, GUI.RED if over else GUI.CYAN), "%d/%d" % [s["power_used"], s["power_output"]], GUI.RED if over else GUI.CYAN)
 	# 1 block = 10%
 	var dmg_bar := GUI.BlockBar.new()
@@ -1009,7 +1009,7 @@ func refresh_stats() -> void:
 
 func _seg(value: float, maximum: float, unit: float, col: Color) -> Control:
 	var b := GUI.SegBar.new()
-	b.setup(value * 10.0 / unit, maximum * 10.0 / unit, col)
+	b.setup(value * GUI.HP_UNIT / unit, maximum * GUI.HP_UNIT / unit, col)
 	b.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	return b
 
@@ -1129,7 +1129,6 @@ func make_tap_row(icon: Control, title: String, subtitle: String, cb: Callable, 
 	return row
 
 
-## Health as a block bar (1 block = 10 HP) with the numbers glowing next to it.
 ## The notes drawn off the selected part in the bay (what it is, who made it, what's wrong with it).
 func part_callouts(slot: String) -> Array:
 	if slot == "":
@@ -1611,7 +1610,7 @@ func build_overview() -> void:
 	blk.custom_minimum_size = Vector2(6, 11)
 	blk.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	key.add_child(blk)
-	key.add_child(GUI.text(tr("= 10 HP"), 10, GUI.MUTED, "headb"))
+	key.add_child(GUI.text(tr("= 25 HP"), 10, GUI.MUTED, "headb"))
 	var pad := Control.new()
 	pad.custom_minimum_size = Vector2(100, 0)
 	key.add_child(pad)

@@ -2,7 +2,7 @@ extends Node
 
 # helper scripts, loaded by path so the game also runs without an editor scan
 ## The game's version, shown on the main menu. Bump it with every change (1.1, 1.2, ...).
-const VERSION := "1.40"
+const VERSION := "1.41"
 const Arena = preload("res://arena.gd")
 const I18n = preload("res://i18n.gd")
 const Catalog = preload("res://catalog.gd")
@@ -18,7 +18,7 @@ const UI = preload("res://ui.gd")
 const OLD_SAVE_PATH := "user://savegame.json"   # single save from earlier versions -> becomes slot 1
 const SAVE_SLOTS := 3
 const SETTINGS_PATH := "user://settings.json"
-const SAVE_VERSION := 6   # 6: part grades. 5: Scrap/Rust/Iron/Steel + the Championship cup (older saves are converted on load)
+const SAVE_VERSION := 7   # 7: part HP x3 torso, x2 head/arms/legs. 6: part grades. 5: Scrap/Rust/Iron/Steel + the Championship cup (older saves are converted on load)
 const START_MONEY := -1000   # default: you start in debt (back rent to Gus) and climb out
 const MONTH_WEEKS := 4        # every 4 weeks...
 const LIVING_COST := 1000     # ...rent and food come out of your balance (default)
@@ -205,6 +205,8 @@ func rival(idx: int) -> Dictionary:
 	var g: int = RIVAL_GRADE[clampi(idx, 0, RIVAL_GRADE.size() - 1)]
 	for slot in o["parts"]:
 		o["parts"][slot] = graded_id(str(o["parts"][slot]), g)
+	# story rivals bring dents like anyone in their league
+	World.league_wear(o, ["scrap", "rust", "iron", "steel"][clampi(idx / 3, 0, 3)], "rival%d" % idx)
 	return o
 const SETUP_SLOTS := 4
 const CIRCUIT_NAMES := ["Rust Belt Cup", "Neon Night League", "Dockside Brawl", "Chrome Crown", "Scrapheap Classic",
@@ -512,6 +514,7 @@ func _ready() -> void:
 			d["gimmick"] = ""
 		if not d.has("size_class"):
 			d["size_class"] = "M"
+		d["hp"] = int(round(float(d["hp"]) * hp_mult(str(d["kind"]))))   # 1.40 numbers -> the tougher 1.41 parts
 		d["cost_v5"] = int(d["cost"])   # the price before grades (old saves get their grade from it)
 		d["cost"] = grade_one_price(int(d["cost"]))
 		PARTS[d["id"]] = d
@@ -3448,7 +3451,7 @@ func player_look() -> Dictionary:
 ## Called when a championship match ends.
 ## part_hp: slot -> remaining hp for the player's parts. destroyed: number of enemy parts ripped off.
 ## salvage_ids: enemy part ids that were ripped off (some may be salvaged).
-func record_result(won: bool, part_hp: Dictionary, destroyed: int, salvage_ids: Array, team_hp: Array = []) -> Dictionary:
+func record_result(won: bool, part_hp: Dictionary, destroyed: int, salvage_ids: Array, team_hp: Array = [], own_rips: Dictionary = {}) -> Dictionary:
 	var o := current_opponent()
 	var base: int = current_reward()
 	var reward: int = base if won else loss_pay(base)
@@ -3485,8 +3488,8 @@ func record_result(won: bool, part_hp: Dictionary, destroyed: int, salvage_ids: 
 			p["hp"] = maxf(1.0, p["hp"])   # the core survives a knockout, badly dented
 		if p["hp"] <= 0.0:
 			equipped[slot] = -1
-			if randf() < 0.5:
-				# your crew dragged the wreck out of the ring: rebuild it for half price
+			if bool(own_rips.get(slot, randf() < 0.5)):
+				# it came off whole: your crew dragged the wreck out of the ring, rebuild it for half price
 				p["hp"] = 0.0
 				wrecked.append(part_def(p["id"])["name"])
 				cards.append({"id": p["id"], "what": "wrecked", "health": 0.0})
@@ -3502,14 +3505,16 @@ func record_result(won: bool, part_hp: Dictionary, destroyed: int, salvage_ids: 
 	var salvaged: Array = []
 	if won:
 		for sv in salvage_ids:
-			# parts you aimed at come off cleanly: much better odds
-			var chance := 0.75 if sv["aimed"] else 0.25
-			if style == "specialist":
-				chance += 0.15
-			if randf() < chance:
+			# parts that came off whole are yours (you saw them lying in the ring); shattered ones are scrap
+			var whole: bool = bool(sv.get("intact", randf() < (0.75 if sv["aimed"] else 0.25)))
+			if not whole and style == "specialist" and randf() < 0.15:
+				whole = true   # specialists pick the bits up and make something of them
+			if whole:
 				add_part(sv["id"], 0.35 if sv["aimed"] else 0.2)
 				cards.append({"id": sv["id"], "what": "salvaged", "health": 0.35 if sv["aimed"] else 0.2})
 				salvaged.append(part_def(sv["id"])["name"] + (tr(" (aimed)") if sv["aimed"] else ""))
+			else:
+				cards.append({"id": sv["id"], "what": "shattered", "health": 0.0})
 
 	# trophy: sometimes the beaten robot's crew hands over one of its parts
 	var trophy := ""
@@ -3798,6 +3803,15 @@ func random_bot(rng: RandomNumberGenerator, budget: float, level: float, sizes: 
 	}
 
 
+## Since 1.41 parts are tougher (fights last 1-2 minutes): torsos x3, heads, arms and legs x2.
+## Repairs are priced and timed by the share of health missing, so the economy doesn't move.
+const HP_MULT := {"torso": 3.0, "head": 2.0, "arm": 2.0, "leg": 2.0}
+
+
+static func hp_mult(kind: String) -> float:
+	return float(HP_MULT.get(kind, 1.0))
+
+
 ## The old catalog spread prices from $150 to $4,200 for parts that were only 2-3x better.
 ## Inside one grade the spread is squeezed (about $150 to $600 at Scrap grade): the grade is what costs.
 static func grade_one_price(c: int) -> int:
@@ -3953,7 +3967,7 @@ func custom_def(cfg: Dictionary) -> Dictionary:
 	var info: Dictionary = CUSTOM_KINDS[kind]
 	var alloc: Dictionary = cfg["alloc"]
 	var pts := custom_points_used(cfg)
-	var hp_step: int = CUSTOM_STEP["hp"] * (2 if kind == "torso" else 1)
+	var hp_step: int = int(CUSTOM_STEP["hp"] * (2 if kind == "torso" else 1) * hp_mult(kind))
 	var shape: String = cfg["shape"]
 	if kind == "arm" and cfg["gadget"] == "rocket_fist":
 		shape = "rocket"
@@ -3961,7 +3975,7 @@ func custom_def(cfg: Dictionary) -> Dictionary:
 		shape = "grapple"
 	var d := {
 		"id": "", "kind": kind, "name": cfg.get("name", ""), "cost": custom_price(cfg), "shop": false, "custom": true,
-		"hp": info["base_hp"] + alloc.get("hp", 0) * hp_step,
+		"hp": int(info["base_hp"] * hp_mult(kind)) + alloc.get("hp", 0) * hp_step,
 		"armor": alloc.get("armor", 0) * CUSTOM_STEP["armor"],
 		"damage": alloc.get("damage", 0) * CUSTOM_STEP["damage"],
 		"speed": alloc.get("speed", 0) * CUSTOM_STEP["speed"],
@@ -4208,6 +4222,10 @@ func load_game(slot: int = -1) -> String:
 			cd[k] = int(cd.get(k, 0))
 		cd["size"] = float(cd.get("size", 1.0))
 		fill_defaults(cd)
+		if int(data.get("version", 1)) < 7:
+			cd["hp"] = int(round(cd["hp"] * hp_mult(str(cd["kind"]))))
+			if cd.has("hp_base"):
+				cd["hp_base"] = int(round(float(cd["hp_base"]) * hp_mult(str(cd["kind"]))))
 		custom_parts.append(cd)
 		PARTS[cd["id"]] = cd
 	inventory = []
@@ -4217,6 +4235,11 @@ func load_game(slot: int = -1) -> String:
 			if bool(p.get("dug", false)):
 				inventory[inventory.size() - 1]["dug"] = true
 	var save_v := int(data.get("version", 1))
+	if save_v < 7:
+		# 1.41: parts got tougher (torso x3, head/arms/legs x2); every part keeps its health ratio
+		for p in inventory:
+			var pd := part_def(str(p["id"]))
+			p["hp"] = float(p["hp"]) * hp_mult(str(pd.get("kind", "")))
 	if save_v < 6:
 		# before grades: every part gets the grade its old price fits, and keeps its health ratio
 		for p in inventory:
@@ -4326,7 +4349,12 @@ func load_game(slot: int = -1) -> String:
 			if typeof(j) == TYPE_DICTIONARY:
 				jobs.append({"kind": str(j["kind"]), "uid": int(j["uid"]), "robot": str(j.get("robot", "")), "slot": str(j.get("slot", "")),
 						"total": float(j["total"]), "done": float(j["done"]), "rush": bool(j.get("rush", false)),
-						"start": float(j.get("start", 0.0)), "to": float(j.get("to", 0.0)), "applied": float(j.get("applied", 0.0))})
+						"start": float(j.get("start", 0.0)), "to": float(j.get("to", 0.0)), "applied": float(j.get("applied", 0.0)),
+						"paid": int(j.get("paid", 0))})
+				if int(data.get("version", 1)) < 7 and str(j["kind"]) == "repair" and not inst(int(j["uid"])).is_empty():
+					var hm := hp_mult(str(part_def(str(inst(int(j["uid"]))["id"])).get("kind", "")))
+					jobs[-1]["start"] = float(jobs[-1]["start"]) * hm
+					jobs[-1]["to"] = float(jobs[-1]["to"]) * hm
 		sync_swaps()
 	else:
 		bolt_everything()   # a save from before time in the bay: everything's on and fixed as it was
