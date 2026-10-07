@@ -357,8 +357,9 @@ static func _front(ci: CanvasItem, size: Vector2, scene: String, t: float, info:
 		"phone":
 			_phone_closeup(ci, size, t, info)
 		"office":
-			# Gus at the desk going through the fixtures; you at the board
-			var dx := size.x * 0.62
+			# Gus's desk sits under the fight-net screen (the keyboard's cable runs up to it). When he
+			# talks about the trophies, he and you stand to the right of the shelves and point up at them.
+			var dx := office_desk_x(size)
 			ci.draw_rect(Rect2(dx - 70 * s, floor_y - 40 * s, 150 * s, 8 * s), Color(0.42, 0.3, 0.18))
 			ci.draw_rect(Rect2(dx - 64 * s, floor_y - 32 * s, 6 * s, 32 * s), Color(0.3, 0.2, 0.12))
 			ci.draw_rect(Rect2(dx + 68 * s, floor_y - 32 * s, 6 * s, 32 * s), Color(0.3, 0.2, 0.12))
@@ -366,16 +367,19 @@ static func _front(ci: CanvasItem, size: Vector2, scene: String, t: float, info:
 			ci.draw_line(Vector2(dx + 50 * s, floor_y - 40 * s), Vector2(dx + 40 * s, floor_y - 70 * s), Color(0.2, 0.2, 0.22), 3.0)
 			ci.draw_colored_polygon(PackedVector2Array([Vector2(dx + 28 * s, floor_y - 66 * s), Vector2(dx + 50 * s, floor_y - 76 * s), Vector2(dx + 48 * s, floor_y - 64 * s)]), Color(0.75, 0.7, 0.2))
 			ci.draw_colored_polygon(PackedVector2Array([Vector2(dx + 36 * s, floor_y - 66 * s), Vector2(dx + 22 * s, floor_y - 41 * s), Vector2(dx + 60 * s, floor_y - 41 * s), Vector2(dx + 48 * s, floor_y - 66 * s)]), Color(1.0, 0.9, 0.5, 0.12))
-			ci.draw_rect(Rect2(dx - 40 * s, floor_y - 48 * s, 8 * s, 8 * s), Color(0.9, 0.9, 0.85))
+			ci.draw_rect(Rect2(dx + 4 * s, floor_y - 48 * s, 8 * s, 8 * s), Color(0.9, 0.9, 0.85))
 			if info.get("gus_point", false):
-				# up from the desk, pointing at your dad's trophies
-				PilotArt.draw_person(ci, Vector2(size.x * 0.14, floor_y), s, PilotArt.GUS_LOOK, -1.0, "point_up", t)
-				_head(info, "GUS", Vector2(size.x * 0.14, floor_y), s)
+				# up from the desk, standing right of the shelves and pointing up at your dad's trophies
+				PilotArt.draw_person(ci, Vector2(size.x * 0.8, floor_y), s, PilotArt.GUS_LOOK, -1.0, "point_up", t)
+				_head(info, "GUS", Vector2(size.x * 0.8, floor_y), s)
+				PilotArt.draw_person(ci, Vector2(size.x * 0.66, floor_y), s, info.get("pilot", {}), -1.0, "point_up", t + 0.4)
+				_head(info, "YOU", Vector2(size.x * 0.66, floor_y), s)
 			else:
-				PilotArt.draw_person(ci, Vector2(dx + 8 * s, floor_y), s, PilotArt.GUS_LOOK, -1.0, "sit_type", t)
-				_head(info, "GUS", Vector2(dx + 8 * s, floor_y), s, true)
-			PilotArt.draw_person(ci, Vector2(size.x * 0.3, floor_y), s, info.get("pilot", {}), -1.0, "point", t + 0.4)
-			_head(info, "YOU", Vector2(size.x * 0.3, floor_y), s)
+				# Gus at his keyboard; you looking at the table on the screen
+				PilotArt.draw_person(ci, Vector2(dx - 20 * s, floor_y), s, PilotArt.GUS_LOOK, -1.0, "sit_type", t)
+				_head(info, "GUS", Vector2(dx - 20 * s, floor_y), s, true)
+				PilotArt.draw_person(ci, Vector2(size.x * 0.7, floor_y), s, info.get("pilot", {}), -1.0, "point", t + 0.4)
+				_head(info, "YOU", Vector2(size.x * 0.7, floor_y), s)
 		"storage":
 			# two crates being opened: one lid already off with parts sticking out, Gus prying the other
 			var a := Rect2(size.x * 0.1, floor_y - 40 * s, 70 * s, 40 * s)
@@ -466,6 +470,11 @@ static func _gantry(ci: CanvasItem, g: Dictionary, floor_y: float) -> void:
 
 # ---------------------------------------------------------------- Gus's office (the Season screens)
 
+## Gus's desk: under the fight-net screen, on the left (people stand right of it).
+static func office_desk_x(size: Vector2) -> float:
+	return size.x * 0.3
+
+
 ## The trophy shelves, the fight-net screen under them, the wall clock and the sign.
 static func _office_back(ci: CanvasItem, size: Vector2, floor_y: float, t: float, info: Dictionary) -> void:
 	_trophy_wall(ci, size, info)
@@ -526,10 +535,9 @@ static func _office_terminal(ci: CanvasItem, size: Vector2, floor_y: float, t: f
 	ci.draw_rect(Rect2(scr.position.x, band, scr.size.x, 6), Color(0.4, 1.0, 0.5, 0.05))
 	# the cable down the wall to the keyboard on Gus's desk
 	var s := clampf(size.y / 300.0, 0.6, 1.3)
-	var desk_x := size.x * 0.62
-	var kb := Vector2(desk_x - 30 * s, floor_y - 40 * s)
+	var kb := Vector2(office_desk_x(size) - 20 * s, floor_y - 40 * s)
 	ci.draw_polyline(PackedVector2Array([Vector2(scr.end.x + 9, scr.end.y - 10), Vector2(scr.end.x + 18, scr.end.y - 10),
-			Vector2(scr.end.x + 18, kb.y - 2), kb + Vector2(-20 * s, -2)]), Color(0.1, 0.1, 0.1), 2.0)
+			Vector2(scr.end.x + 18, kb.y - 2), kb + Vector2(14 * s, -2)]), Color(0.1, 0.1, 0.1), 2.0)
 	ci.draw_rect(Rect2(kb + Vector2(-20 * s, -5 * s), Vector2(34 * s, 5 * s)), Color(0.22, 0.22, 0.24))
 	for k in 6:
 		ci.draw_line(kb + Vector2(-18 * s + k * 5.5 * s, -3 * s), kb + Vector2(-15 * s + k * 5.5 * s, -3 * s), Color(0.5, 0.5, 0.52), 1.0)

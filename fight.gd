@@ -549,7 +549,9 @@ func _ready() -> void:
 	setup_pilots()
 	barrier_kind = barrier_for(arena_id)
 	cam_c = screen * 0.5
-	if mode == "test" or GameData.settings.get("skip_intros", false):
+	if mode == "pickup" and GameData.pickup.get("first", false) and gus_here():
+		course_step = 0   # the very first fight: Old Pike, Gus's five-step course
+	if mode == "test" or GameData.settings.get("skip_intros", false) or course_step >= 0:
 		intro_step = "count"
 	intro_layer = CanvasLayer.new()
 	intro_layer.layer = 5
@@ -735,6 +737,12 @@ func _input(event: InputEvent) -> void:
 						quit_fight()
 					else:
 						toggle_pause()
+			KEY_TAB, KEY_RIGHT, KEY_LEFT:
+				if paused and not quit_ask:
+					var i := PAUSE_TABS.find(pause_tab)
+					i = (i + (PAUSE_TABS.size() - 1 if event.physical_keycode == KEY_LEFT else 1)) % PAUSE_TABS.size()
+					pause_tab = PAUSE_TABS[i]
+					Sfx.play("click")
 			KEY_Q:
 				if paused:
 					if quit_ask:
@@ -772,6 +780,10 @@ func handle_tap(p: Vector2) -> bool:
 		if resume_rect_p.has_point(p):
 			quit_ask = false
 			toggle_pause()
+		for k in pause_tab_rects:
+			if (pause_tab_rects[k] as Rect2).has_point(p) and not quit_ask:
+				pause_tab = k
+				Sfx.play("click")
 		return true   # (a stray tap on the move list doesn't throw you back into the fight)
 	if phase != "intro" and phase != "fight":
 		return false
@@ -1641,6 +1653,8 @@ func _process(delta: float) -> void:
 	for f in team_c:
 		c_ins.append(ai_input_for(f, delta))
 	assign_foes()   # restores player / cpu after the AI turns
+	if course_step >= 0 and course_step < COURSE.size() - 1 and not c_ins.is_empty():
+		c_ins[0] = course_input(delta)   # Old Pike does what the lesson needs
 	if moment_t > 0.0:
 		# a big moment plays out: nobody acts until it's done
 		for k in p_ins.size():
@@ -1666,7 +1680,9 @@ func _process(delta: float) -> void:
 		"intro":
 			update_walk_in(delta)
 		"fight":
-			time_left -= delta
+			if course_step < 0 or course_step >= COURSE.size() - 1:
+				time_left -= delta   # (the clock waits while you learn)
+			update_course(delta)
 			if time_left <= 0.0:
 				time_left = 0.0
 				time_up()
@@ -2112,6 +2128,8 @@ func launch_jump(f: Fighter) -> void:
 	f.vel.y = -jump
 	f.on_ground = false
 	f.crouching = false
+	if f.team == 0:
+		course_event("jump")
 	f.state = "jump"
 	spend(f, 0.5 * limb_draw(f, "leg_front"))
 	f.air_jumps = 1 if f.has_gadget("double_jump") else 0
@@ -2876,7 +2894,11 @@ func apply_hit(att: Fighter, d: Fighter, a: Dictionary, at: Vector2) -> void:
 			popup(tr("BLOCKED!"), att.pos + Vector2(0, -210.0 * att.scale), Color(0.6, 0.85, 1.0))
 		add_spark(spark_pos, Color(0.7, 0.85, 1.0), 18.0)
 		Sfx.play("block", 0.15)
+		if d.team == 0 and family == "punch":
+			course_event("block")
 	else:
+		if att.team == 0:
+			course_event("hit")
 		# combos: hits while the enemy is still reeling
 		# still reeling, or only just recovered (a slightly late press still counts)
 		if att.combo_timer > 0.0 and (d.state == "hit" or clock - d.recovered_at < 0.35):
@@ -3312,6 +3334,8 @@ func _draw() -> void:
 		draw_buttons()
 		if not touch_device:
 			draw_key_strip()
+	if course_on() and phase == "fight":
+		draw_course()
 	if paused:
 		draw_moves_list()
 	if tut_pause:
@@ -4144,11 +4168,14 @@ const PC_KEYS := "ON A COMPUTER: A D (or the arrows) move · W / S (up / down) a
 
 
 func draw_moves_list() -> void:
-	draw_rect(Rect2(Vector2.ZERO, screen), Color(0, 0, 0, 0.86))
+	draw_rect(Rect2(Vector2.ZERO, screen), Color(0.02, 0.02, 0.03, 0.94))
 	var x := screen.x * 0.08
 	var y := screen.y * 0.1
-	draw_string(font, Vector2(0, y), tr("QUIT THIS FIGHT?") if quit_ask else tr("PAUSED · MOVE LIST"), HORIZONTAL_ALIGNMENT_CENTER, screen.x, fs(30), Color(1.0, 0.45, 0.2))
-	y += 50.0
+	if quit_ask:
+		draw_string(font, Vector2(0, y), tr("QUIT THIS FIGHT?"), HORIZONTAL_ALIGNMENT_CENTER, screen.x, fs(30), Color(1.0, 0.45, 0.2))
+		y += 50.0
+	else:
+		y = draw_pause_tabs(screen.y * 0.04) + 14.0
 	# the two buttons along the bottom: resume, and quit (asks first: quitting pays nothing)
 	var bw := minf(300.0, screen.x * 0.3)
 	var bh := 56.0
@@ -4158,7 +4185,15 @@ func draw_moves_list() -> void:
 		var q := tr("Nothing is lost in a quick fight.") if mode == "quick" else tr("You throw in the towel: it counts as a loss, there's no pay, and the damage comes home with you.")
 		draw_multiline_string(font, Vector2(screen.x * 0.15, y + 20.0), q, HORIZONTAL_ALIGNMENT_CENTER, screen.x * 0.7, fs(20), -1, Color(0.9, 0.9, 0.95))
 	else:
-		_draw_pause_lines(x, y, resume_rect_p.position.y - 10.0)
+		match pause_tab:
+			"how":
+				draw_how_cards(Rect2(x, y, screen.x - x * 2.0, resume_rect_p.position.y - 12.0 - y))
+			"robots":
+				draw_pause_robots(y, resume_rect_p.position.y - 10.0)
+			"tips":
+				draw_pause_tips(x, y, resume_rect_p.position.y - 10.0)
+			_:
+				_draw_pause_lines(x, y + fs(16), resume_rect_p.position.y - 10.0)
 	for bt in [[resume_rect_p, tr("KEEP FIGHTING") if quit_ask else tr("RESUME"), Color(0.3, 0.3, 0.38)],
 			[quit_rect_p, tr("YES, QUIT") if quit_ask else tr("QUIT FIGHT"), Color(0.55, 0.2, 0.15) if quit_ask else Color(0.3, 0.3, 0.38)]]:
 		var rr: Rect2 = bt[0]
@@ -4166,8 +4201,179 @@ func draw_moves_list() -> void:
 		draw_rect(rr, Color(1, 1, 1, 0.4), false, 2.0)
 		draw_string(font, Vector2(rr.position.x, rr.position.y + rr.size.y * 0.5 + fs(18) * 0.35), bt[1], HORIZONTAL_ALIGNMENT_CENTER, rr.size.x, fs(18), Color.WHITE)
 	if not touch_device:
-		var hint := tr("Esc / Space: resume      Q: quit") if not quit_ask else tr("Esc: keep fighting      Q: quit")
+		var hint := tr("Esc / Space: resume      Tab: next page      Q: quit") if not quit_ask else tr("Esc: keep fighting      Q: quit")
 		draw_string(font, Vector2(0, screen.y - 4.0), hint, HORIZONTAL_ALIGNMENT_CENTER, screen.x, fs(13), Color(0.75, 0.75, 0.8))
+
+
+
+# ---------------------------------------------------------------- the pause screen's pages
+const PAUSE_TABS := ["moves", "how", "robots", "tips"]
+var pause_tab := "moves"
+var pause_tab_rects := {}
+
+
+## The page tabs across the top. Returns the y under them.
+func draw_pause_tabs(y: float) -> float:
+	var names := {"moves": tr("MOVES"), "how": tr("HOW FIGHTING WORKS"), "robots": tr("THE ROBOTS"), "tips": tr("GUS'S TIPS")}
+	var size := fs(17)
+	var pad := 22.0
+	var total := 0.0
+	for k in PAUSE_TABS:
+		total += font.get_string_size(names[k], HORIZONTAL_ALIGNMENT_LEFT, -1, size).x + pad * 2.0 + 8.0
+	while total > screen.x - 40.0 and size > 10:
+		size -= 1
+		total = 0.0
+		for k in PAUSE_TABS:
+			total += font.get_string_size(names[k], HORIZONTAL_ALIGNMENT_LEFT, -1, size).x + pad * 2.0 + 8.0
+	var x := (screen.x - total) * 0.5
+	var h := size + 26.0
+	pause_tab_rects = {}
+	for k in PAUSE_TABS:
+		var w: float = font.get_string_size(names[k], HORIZONTAL_ALIGNMENT_LEFT, -1, size).x + pad * 2.0
+		var r := Rect2(x, y, w, h)
+		pause_tab_rects[k] = r
+		var on: bool = k == pause_tab
+		draw_rect(r, Color(0.2, 0.2, 0.26) if on else Color(0.1, 0.1, 0.13))
+		if on:
+			draw_rect(Rect2(r.position.x, r.end.y - 4.0, r.size.x, 4.0), GUI.YELLOW)
+		draw_string(font, Vector2(r.position.x, r.position.y + h * 0.5 + size * 0.35), names[k], HORIZONTAL_ALIGNMENT_CENTER, w, size, Color.WHITE if on else Color(0.65, 0.65, 0.7))
+		x += w + 8.0
+	return y + h
+
+
+## HOW FIGHTING WORKS: one card per idea, each with a little picture.
+func how_cards() -> Array:
+	var block_word := tr("BLOCK") if touch_device else "L"
+	return [
+		["highlow", tr("HIGH OR LOW"), tr("Hold ▲ or ▼ as you hit. Low hits get under a standing guard. Crouch under high ones.") if touch_device else tr("Hold W or S as you hit. Low hits get under a standing guard. Crouch under high ones.")],
+		["charge", tr("CHARGE"), tr("Hold PUNCH or KICK, let go to hit up to twice as hard. A full charge breaks a guard.")],
+		["counters", tr("WHAT BEATS WHAT"), tr("Block beats punch. Kick beats punch. A full charge beats block.")],
+		["aim", tr("AIM"), tr("Tap a part to aim at it. Your head decides how soon you can aim again.") if touch_device else tr("Click a part to aim at it. Your head decides how soon you can aim again.")],
+		["weak", tr("WEAK SPOT"), tr("Your head scans for their weakest part. Hits on the yellow diamond do extra damage.")],
+		["stance", tr("STANCE"), tr("Double-tap %s to switch your leading side. It knocks their aim off.") % block_word],
+		["power", tr("POWER"), tr("Every move costs power, kicks the most. Run dry and you burn out: no blocking.")],
+		["air", tr("IN THE AIR"), tr("KICK dives in feet first. PUNCH hammers down: block that one standing.")],
+		["rips", tr("RIPS"), tr("Parts torn off whole are yours after a win. Shattered ones are gone.")],
+	]
+
+
+func draw_how_cards(area: Rect2) -> void:
+	var cards := how_cards()
+	var cols := 3
+	var rows := int(ceil(cards.size() / float(cols)))
+	var gap := 10.0
+	var cw := (area.size.x - gap * (cols - 1)) / cols
+	var ch := (area.size.y - gap * (rows - 1)) / rows
+	var t := Time.get_ticks_msec() / 1000.0
+	for k in cards.size():
+		var r := Rect2(area.position + Vector2((k % cols) * (cw + gap), (k / cols) * (ch + gap)), Vector2(cw, ch))
+		draw_rect(r, Color(0.09, 0.09, 0.12))
+		draw_rect(r, Color(0.25, 0.25, 0.3), false, 2.0)
+		var icon := minf(ch - 16.0, 64.0)
+		draw_how_icon(cards[k][0], Rect2(r.position + Vector2(8, (ch - icon) * 0.5), Vector2(icon, icon)), t)
+		var tx := r.position.x + icon + 18.0
+		var tw := r.end.x - tx - 8.0
+		var ts := fs(15)
+		var bs := fs(13)
+		# shrink the words until they fit the card
+		while bs > 9 and font.get_multiline_string_size(cards[k][2], HORIZONTAL_ALIGNMENT_LEFT, tw, bs).y + ts + 14.0 > ch:
+			bs -= 1
+			ts = maxi(bs + 2, ts - 1)
+		draw_string(font, Vector2(tx, r.position.y + ts + 6.0), cards[k][1], HORIZONTAL_ALIGNMENT_LEFT, tw, ts, GUI.YELLOW)
+		draw_multiline_string(font, Vector2(tx, r.position.y + ts + bs + 12.0), cards[k][2], HORIZONTAL_ALIGNMENT_LEFT, tw, bs, -1, Color(0.85, 0.85, 0.9))
+
+
+## The little pictures on the HOW FIGHTING WORKS cards (drawn, so they follow the game's look).
+func draw_how_icon(kind: String, r: Rect2, t: float) -> void:
+	var c := r.get_center()
+	var u := r.size.x / 64.0
+	var y := GUI.YELLOW
+	var w := Color(0.9, 0.9, 0.95)
+	var bl := Color(0.45, 0.75, 1.0)
+	draw_rect(r, Color(0.05, 0.05, 0.07))
+	match kind:
+		"highlow":
+			draw_line(c + Vector2(-14, 18) * u, c + Vector2(-14, -18) * u, w, 4.0 * u)
+			draw_colored_polygon(PackedVector2Array([c + Vector2(-24, -12) * u, c + Vector2(-4, -12) * u, c + Vector2(-14, -26) * u]), w)
+			draw_line(c + Vector2(14, -18) * u, c + Vector2(14, 18) * u, y, 4.0 * u)
+			draw_colored_polygon(PackedVector2Array([c + Vector2(4, 12) * u, c + Vector2(24, 12) * u, c + Vector2(14, 26) * u]), y)
+		"charge":
+			var k := fmod(t * 0.8, 1.0)
+			draw_arc(c, 24.0 * u, -PI / 2.0, -PI / 2.0 + TAU * k, 32, Color(1.0, 0.85, 0.3).lerp(Color(1.0, 0.35, 0.2), k), 5.0 * u)
+			draw_rect(Rect2(c - Vector2(10, 9) * u, Vector2(20, 18) * u), w)
+			for i in 3:
+				draw_line(c + Vector2(-10 + i * 7, -9) * u, c + Vector2(-10 + i * 7, -3) * u, Color(0.3, 0.3, 0.35), 1.5 * u)
+		"counters":
+			var pts := [c + Vector2(0, -22) * u, c + Vector2(20, 14) * u, c + Vector2(-20, 14) * u]
+			for i in 3:
+				draw_line(pts[i], pts[(i + 1) % 3], Color(0.5, 0.5, 0.55), 2.0 * u)
+			for i in 3:
+				draw_circle(pts[i], 8.0 * u, [bl, y, Color(1.0, 0.5, 0.3)][i])
+			draw_string(font, pts[0] + Vector2(-4, 5) * u, "B", HORIZONTAL_ALIGNMENT_LEFT, -1, int(11 * u), Color.BLACK)
+			draw_string(font, pts[1] + Vector2(-4, 5) * u, "P", HORIZONTAL_ALIGNMENT_LEFT, -1, int(11 * u), Color.BLACK)
+			draw_string(font, pts[2] + Vector2(-4, 5) * u, "K", HORIZONTAL_ALIGNMENT_LEFT, -1, int(11 * u), Color.BLACK)
+		"aim":
+			draw_arc(c, 20.0 * u, 0.0, TAU, 32, Color(1.0, 0.4, 0.3), 3.0 * u)
+			draw_arc(c, 20.0 * u, -PI / 2.0, -PI / 2.0 + TAU * fmod(t * 0.5, 1.0), 32, Color(1.0, 0.75, 0.3), 3.0 * u)
+			for d in [Vector2(1, 0), Vector2(-1, 0), Vector2(0, 1), Vector2(0, -1)]:
+				draw_line(c + d * 12.0 * u, c + d * 27.0 * u, Color(1.0, 0.4, 0.3), 2.5 * u)
+		"weak":
+			var a := t * 3.0
+			draw_arc(c, 24.0 * u, 0.0, TAU, 32, Color(0.3, 1.0, 0.5, 0.5), 2.0 * u)
+			draw_line(c, c + Vector2(cos(a), sin(a)) * 24.0 * u, Color(0.3, 1.0, 0.5), 2.0 * u)
+			draw_colored_polygon(PackedVector2Array([c + Vector2(0, -10) * u, c + Vector2(10, 0) * u, c + Vector2(0, 10) * u, c + Vector2(-10, 0) * u]), y)
+		"stance":
+			draw_line(c + Vector2(-20, -8) * u, c + Vector2(18, -8) * u, w, 3.5 * u)
+			draw_colored_polygon(PackedVector2Array([c + Vector2(14, -15) * u, c + Vector2(24, -8) * u, c + Vector2(14, -1) * u]), w)
+			draw_line(c + Vector2(20, 8) * u, c + Vector2(-18, 8) * u, y, 3.5 * u)
+			draw_colored_polygon(PackedVector2Array([c + Vector2(-14, 1) * u, c + Vector2(-24, 8) * u, c + Vector2(-14, 15) * u]), y)
+		"power":
+			var lvl := 0.5 + 0.5 * sin(t * 1.5)
+			draw_rect(Rect2(c + Vector2(-12, -20) * u, Vector2(24, 40) * u), Color(0.5, 0.5, 0.55), false, 3.0 * u)
+			draw_rect(Rect2(c + Vector2(-5, -25) * u, Vector2(10, 5) * u), Color(0.5, 0.5, 0.55))
+			draw_rect(Rect2(c + Vector2(-9, 17 - 34 * lvl) * u, Vector2(18, 34 * lvl) * u), POWER_COLOR if lvl > 0.2 else Color(1.0, 0.35, 0.3))
+		"air":
+			var pts2 := PackedVector2Array()
+			for i in 13:
+				var f := i / 12.0
+				pts2.append(c + Vector2(-22 + 44 * f, 14 - 60 * f * (1.0 - f) * 1.4) * u)
+			draw_polyline(pts2, Color(0.6, 0.6, 0.65), 2.0 * u)
+			draw_line(c + Vector2(10, -6) * u, c + Vector2(20, 18) * u, y, 5.0 * u)
+			draw_line(c + Vector2(-26, 20) * u, c + Vector2(26, 20) * u, Color(0.4, 0.4, 0.45), 2.0 * u)
+		"rips":
+			draw_line(c + Vector2(-20, -14) * u, c + Vector2(-2, 0) * u, Color(0.6, 0.62, 0.68), 7.0 * u)
+			draw_line(c + Vector2(6, 4) * u, c + Vector2(22, 18) * u, Color(0.6, 0.62, 0.68), 7.0 * u)
+			draw_circle(c + Vector2(22, 18) * u, 5.0 * u, Color(0.5, 0.5, 0.55))
+			for d in [Vector2(2, -8), Vector2(-6, 9), Vector2(9, -2)]:
+				draw_line(c + Vector2(2, 2) * u, c + Vector2(2, 2) * u + d * u, Color(1.0, 0.6, 0.2), 2.0 * u)
+
+
+## THE ROBOTS: both robots' parts and how much of each is left, side by side.
+func draw_pause_robots(y: float, bottom: float) -> void:
+	var keep := card_t
+	card_t = 9.0
+	draw_robot_card(self, player, true, screen.x, bottom, font, y)
+	draw_robot_card(self, cpu, false, screen.x, bottom, font, y)
+	card_t = keep
+
+
+## GUS'S TIPS: everything he's told you in fights, newest first.
+func draw_pause_tips(x: float, y: float, bottom: float) -> void:
+	var tips: Array = GameData.tips_log.duplicate()
+	tips.reverse()
+	var width := screen.x - x * 2.0
+	if tips.is_empty():
+		draw_string(font, Vector2(x, y + fs(18)), tr("No tips yet. Gus speaks up the first time something matters."), HORIZONTAL_ALIGNMENT_LEFT, width, fs(18), Color(0.7, 0.7, 0.75))
+		return
+	var size := fs(16)
+	for t in tips:
+		var text := str(t.get("text", ""))
+		var hgt := font.get_multiline_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, width - 30.0, size).y
+		if y + hgt > bottom:
+			break
+		draw_rect(Rect2(x, y + 4.0, 6.0, hgt - 6.0), Color(0.95, 0.6, 0.25))
+		draw_multiline_string(font, Vector2(x + 18.0, y + size), text, HORIZONTAL_ALIGNMENT_LEFT, width - 30.0, size, -1, Color(0.92, 0.9, 0.85))
+		y += hgt + 10.0
 
 
 func _draw_pause_lines(x: float, y: float, bottom: float) -> void:
@@ -4175,12 +4381,7 @@ func _draw_pause_lines(x: float, y: float, bottom: float) -> void:
 		[tr(PC_KEYS) if not touch_device else "", Color(0.55, 1.0, 0.7)],
 		[tr("PUNCH · KICK · BLOCK · JUMP. The pad sets the height: up + PUNCH = uppercut, down + PUNCH = low jab, up + KICK = high kick, down + KICK = sweep. In combos, → means toward the enemy (P = punch, K = kick)."), Color(0.8, 0.8, 0.85)],
 		[tr("Your arms take turns: jab, cross, jab. Kicks swap legs the same way. Lose a limb and the other one does all the work."), Color(0.8, 0.8, 0.85)],
-		[tr("IN THE AIR: KICK = flying kick, diving at them feet first. PUNCH = hammer, both fists smashed down: block it standing, not crouching."), Color(0.8, 0.8, 0.85)],
-		[tr("CHARGE: hold PUNCH or KICK. It drains power while it fills; let go to hit up to twice as hard. A full charge breaks a guard."), Color(1.0, 0.85, 0.4)],
-		[tr("AIM: tap an enemy part to put the crosshair on it. Your head decides how long before you can aim again (the crosshair icon under your body map). Its scan hunts for their weakest part (the radar icon): once it's found, hits there do extra damage."), Color(1.0, 0.6, 0.5)],
-		[tr("STANCE: double-tap BLOCK to switch which side leads. The lead arm and leg take most of the hits. Turning an aimed limb away knocks their crosshair off it."), Color(0.6, 0.9, 1.0)],
 		[tr("Combos: hit again while the enemy is still reeling. Landed attacks can chain into the next."), Color(0.8, 0.8, 0.85)],
-		[tr("COUNTERS: a block stops punches (and the puncher recoils), a full charge breaks a block. Kicks power through punches, but a block only partly stops them. Crouch under high hits, jump over low ones."), Color(1.0, 0.85, 0.4)],
 		[tr("POWER (blue bar): punch %.1f  kick %.1f  special %.1f of %.0f. Charging drains it too. Refills when you stop attacking. Empty = BURNOUT.") % [attack_cost(player, "punch", "arm_front"), attack_cost(player, "kick", "leg_front"), special_cost(player), player.power_max], POWER_COLOR],
 	]
 	if team_p.size() > 1:
@@ -4425,7 +4626,7 @@ var coach_t := 0.0
 
 
 func coach(id: String, text: String) -> void:
-	if mode == "quick" or mode == "watch" or mode == "demo" or mode == "test" or GameData.tips_seen.has(id) or id == coach_id:
+	if mode == "quick" or mode == "watch" or mode == "demo" or mode == "test" or GameData.tips_seen.has(id) or id == coach_id or course_on():
 		return
 	for q in coach_queue:
 		if q["id"] == id:
@@ -4461,6 +4662,15 @@ func update_coach(delta: float) -> void:
 			coach("moves", tr("Tap MOVES to see your special moves and how to do them.") if touch_device else tr("Press Esc to pause. Your special moves and every key are listed there."))
 		if player.ratio("torso") < 0.35:
 			coach("low_core", tr("Core's hurting! Lose the torso or the head and it's lights out. BLOCK!"))
+		if cpu.blocking and not cpu.crouching and phase_timer > 6.0 and absf(cpu.pos.x - player.pos.x) < 260.0:
+			coach("highlow", tr("He's guarding high. Hold ▼ LOW and hit: low hits get under a standing guard.") if touch_device else tr("He's guarding high. Hold S and hit: low hits get under a standing guard."))
+		var lead_arm: String = player.lead_slots()[0]
+		if player.alive(lead_arm) and player.ratio(lead_arm) < 0.5 and phase_timer > 5.0:
+			coach("stance", tr("Your lead arm takes most of the hits. Double-tap BLOCK to switch stance and turn it away.") if touch_device else tr("Your lead arm takes most of the hits. Double-tap L to switch stance and turn it away."))
+		if not player.on_ground and player.legs() > 0 and phase_timer > 3.0:
+			coach("air", tr("In the air, KICK dives in feet first and PUNCH hammers down with both fists."))
+		if player.burn_t > 0.0:
+			coach("burnout", tr("Burned out: no power means no blocking. Back off and let the blue bar refill."))
 		live_coach(delta)
 	elif phase != "intro":
 		coach_queue.clear()   # the fight is over: no more tips
@@ -4474,6 +4684,221 @@ func update_coach(delta: float) -> void:
 		coach_t = COACH_SHOW
 		coach_shown()
 		GameData.tip_once(q["id"])   # only counts as seen once it was actually shown
+		GameData.log_tip(q["id"], q["text"])
+
+
+# ---------------------------------------------------------------- the first fight: Gus's course
+# A new game's first fight is a lesson against Old Pike's junk FENCEPOST, in five steps. Each step
+# is one line from Gus, a goal on screen with a counter, and stripes round what to press. Pike does
+# only what the step needs (stands still, then swings slowly), the clock waits, and nobody can be
+# knocked out until the last step.
+
+const COURSE := ["move", "hit", "block", "rip", "finish"]
+const COURSE_NEED := {"move": 2, "hit": 3, "block": 2, "rip": 1, "finish": 1}
+var course_step := -1       # -1 = no course; COURSE.size() = done
+var course_count := 0
+var course_walk := 0.0      # how far you've walked this step
+var course_last_x := 0.0
+var course_jumped := false
+var course_gap := 0.0       # a beat between steps, so a finished goal can be seen ticking over
+var course_pike_t := 0.0    # Pike's next swing
+var course_flash := 0.0
+var course_started := false
+
+
+func course_on() -> bool:
+	return course_step >= 0 and course_step < COURSE.size()
+
+
+func course_key() -> String:
+	return COURSE[course_step] if course_on() else ""
+
+
+## What Gus says when a step starts.
+func course_line(k: String) -> String:
+	match k:
+		"move":
+			return tr("Get a feel for it. Walk with ◀ ▶, then JUMP.") if touch_device else tr("Get a feel for it. Walk with A and D, then jump with Space.")
+		"hit":
+			return tr("Now hit him. PUNCH and KICK. Your arms and legs take turns.") if touch_device else tr("Now hit him. J punches, K kicks. Your arms and legs take turns.")
+		"block":
+			return tr("He's swinging back. Hold BLOCK when he punches.") if touch_device else tr("He's swinging back. Hold L when he punches.")
+		"rip":
+			return tr("Tap his arm to aim at it, then hit it till it comes off.") if touch_device else tr("Click his arm to aim at it, then hit it till it comes off.")
+		"finish":
+			return tr("Now finish him. Hold PUNCH to charge a big one, let go to swing.") if touch_device else tr("Now finish him. Hold J to charge a big one, let go to swing.")
+	return ""
+
+
+## The goal on screen.
+func course_goal(k: String) -> String:
+	return tr({"move": "WALK AND JUMP", "hit": "LAND 3 HITS", "block": "BLOCK 2 PUNCHES", "rip": "RIP OFF AN ARM", "finish": "KNOCK HIM OUT"}.get(k, ""))
+
+
+## Buttons that get the marching stripes for this step.
+func course_buttons(k: String) -> Array:
+	match k:
+		"move":
+			return ["right", "left"] if course_walk < 160.0 else ["jump"]
+		"hit":
+			return ["punch", "kick"]
+		"block":
+			return ["block"]
+		"rip":
+			return ["punch", "kick"] if player.target.begins_with("arm") else []
+		"finish":
+			return ["punch"]
+	return []
+
+
+func course_begin(step: int) -> void:
+	course_step = step
+	course_count = 0
+	course_walk = 0.0
+	course_jumped = false
+	course_last_x = player.pos.x
+	course_pike_t = clock + 1.6
+	if not course_on():
+		GameData.tip_once("course")
+		return
+	var k := course_key()
+	match k:
+		"rip":
+			# his arms are rusted through: a few hits take one off
+			for slot in ["arm_front", "arm_back"]:
+				if cpu.alive(slot):
+					cpu.parts[slot]["hp"] = minf(cpu.parts[slot]["hp"], cpu.parts[slot]["max_hp"] * 0.3)
+			player.aim_cd = 0.0   # aim right away for the lesson
+		"finish":
+			if cpu.alive("torso"):
+				cpu.parts["torso"]["hp"] = minf(cpu.parts["torso"]["hp"], cpu.parts["torso"]["max_hp"] * 0.45)
+			if not cpu.ai.is_empty():
+				cpu.ai["think"] = float(cpu.ai["think"]) * 1.6   # Pike's tired: he thinks slowly
+	cpu.look_dirty = true
+	coach_text = course_line(k)
+	coach_id = "course_" + k
+	coach_t = 6.0
+	GameData.log_tip("course_" + k, coach_text)
+
+
+## Something happened that a step may be waiting for.
+func course_event(what: String) -> void:
+	if not course_on() or course_gap > 0.0:
+		return
+	var k := course_key()
+	if (k == "hit" and what == "hit") or (k == "block" and what == "block"):
+		course_count += 1
+	elif k == "move" and what == "jump" and not course_jumped:
+		course_jumped = true
+		course_count += 1
+	else:
+		return
+	course_flash = 0.5
+	Sfx.play("target")
+
+
+func update_course(delta: float) -> void:
+	if not course_on():
+		return
+	course_flash = maxf(0.0, course_flash - delta)
+	if not course_started:
+		course_started = true
+		course_begin(course_step)   # the bell just rang: say the first line
+	var k := course_key()
+	if k == "move":
+		var was := course_walk
+		course_walk += absf(player.pos.x - course_last_x) if player.on_ground else 0.0
+		if was < 160.0 and course_walk >= 160.0:
+			course_count += 1
+			course_flash = 0.5
+			Sfx.play("target")
+	course_last_x = player.pos.x
+	if k == "rip" and cpu.arms() < 2:
+		course_count = 1
+	if k == "finish" and cpu.state == "ko":
+		course_count = 1
+	# nobody gets knocked out while learning; in the last step Pike can go down, you still can't
+	var learning := k != "finish"
+	for slot in player.parts:
+		var keep := 0.5 if learning else (0.2 if slot in ["torso", "head", "head2"] else 0.0)
+		if keep > 0.0 and player.alive(slot) and player.parts[slot]["hp"] < player.parts[slot]["max_hp"] * keep:
+			player.parts[slot]["hp"] = player.parts[slot]["max_hp"] * keep
+	if learning:
+		for slot in ["torso", "head", "head2"]:
+			if cpu.alive(slot) and cpu.parts[slot]["hp"] < cpu.parts[slot]["max_hp"] * 0.5:
+				cpu.parts[slot]["hp"] = cpu.parts[slot]["max_hp"] * 0.5
+	if course_gap > 0.0:
+		course_gap -= delta
+		if course_gap <= 0.0:
+			course_begin(course_step + 1)
+		return
+	if course_count >= int(COURSE_NEED[k]) and k != "finish":
+		course_gap = 1.0
+		popup(tr("NICE!"), player.pos + Vector2(0, -240.0 * player.scale), Color(0.6, 1.0, 0.6))
+		Sfx.play("crowd_ooh", 0.1, -8.0)
+
+
+## Old Pike's brain for the lesson: stand there, then come in and swing slowly so you can block.
+func course_input(_delta: float) -> Dictionary:
+	var i := empty_input()
+	var dx := player.pos.x - cpu.pos.x
+	var toward := "right" if dx > 0 else "left"
+	var melee := ai_melee()
+	match course_key():
+		"block":
+			if absf(dx) > melee * 0.9:
+				i[toward] = true
+			elif clock > course_pike_t and cpu.state in ["idle", "walk"]:
+				i["punch"] = true
+				course_pike_t = clock + 2.2
+		"rip":
+			if absf(dx) > melee * 1.6:
+				i[toward] = true   # stays close enough to be hit
+	return i
+
+
+func draw_course() -> void:
+	var k := course_key()
+	if k == "":
+		return
+	var t := Time.get_ticks_msec() / 1000.0
+	# the goal: STEP 2 OF 5 · LAND 3 HITS  1/3, with a block per thing to do
+	var need: int = COURSE_NEED[k]
+	var done := mini(course_count, need)
+	var head := tr("STEP %d OF %d") % [course_step + 1, COURSE.size()]
+	var goal := course_goal(k) + ("   %d/%d" % [done, need] if need > 1 else "")
+	var hs := fs(13)
+	var gs := fs(22)
+	var gw := maxf(font.get_string_size(goal, HORIZONTAL_ALIGNMENT_LEFT, -1, gs).x, font.get_string_size(head, HORIZONTAL_ALIGNMENT_LEFT, -1, hs).x) + 40.0
+	var r := Rect2(screen.x * 0.5 - gw * 0.5, screen.y * 0.04 + 104.0, gw, hs + gs + 34.0)
+	var ok := course_gap > 0.0
+	draw_rect(r, Color(0.04, 0.04, 0.06, 0.88))
+	draw_rect(r, Color(0.4, 1.0, 0.5) if ok else GUI.YELLOW.lerp(Color.WHITE, course_flash), false, 3.0)
+	draw_string(font, Vector2(r.position.x, r.position.y + hs + 6.0), head, HORIZONTAL_ALIGNMENT_CENTER, r.size.x, hs, Color(0.7, 0.7, 0.75))
+	draw_string(font, Vector2(r.position.x, r.position.y + hs + gs + 8.0), ("✓ " if ok else "") + goal, HORIZONTAL_ALIGNMENT_CENTER, r.size.x, gs, Color(0.5, 1.0, 0.6) if ok else Color.WHITE)
+	GUI.draw_blocks(self, Rect2(r.position.x + 14.0, r.end.y - 12.0, r.size.x - 28.0, 6.0), need, float(done), Color(0.5, 1.0, 0.6) if ok else GUI.YELLOW, Color(0.2, 0.2, 0.24))
+	if ok:
+		return
+	# marching stripes round the buttons to press (touch), or the keys in the strip (computer)
+	for b in buttons:
+		if touch_device and b["name"] in course_buttons(k):
+			_course_ring(b["pos"], b["r"] + 7.0, t)
+	if k == "rip" and not player.target.begins_with("arm"):
+		# the arm to aim at: stripes round it
+		for slot in ["arm_front", "arm_back"]:
+			if cpu.alive(slot):
+				var c := visual_point(cpu, RobotArt.part_center(cpu.get_look(), slot))
+				_course_ring(c, 46.0 * cpu.scale, t)
+				break
+
+
+## A ring of marching hazard stripes (yellow / black), turning.
+func _course_ring(c: Vector2, rad: float, t: float) -> void:
+	draw_arc(c, rad, 0.0, TAU, 48, Color(0.08, 0.08, 0.08), 6.0)
+	var n := 12
+	for k in n:
+		var a0 := t * 1.6 + k * TAU / n
+		draw_arc(c, rad, a0, a0 + TAU / n * 0.5, 6, GUI.YELLOW, 6.0)
 
 
 # ---------------------------------------------------------------- Gus coaching live
@@ -4493,7 +4918,7 @@ func first_fight() -> bool:
 
 ## Gus started saying something: in your first fight, the first few stop the action.
 func coach_shown() -> void:
-	if first_fight() and phase == "fight" and tut_pauses < TUTORIAL_PAUSES:
+	if first_fight() and phase == "fight" and tut_pauses < TUTORIAL_PAUSES and course_step < 0:
 		tut_pauses += 1
 		tut_pause = true
 		tut_pause_at = Time.get_ticks_msec()
@@ -4513,7 +4938,7 @@ func tutorial_fights() -> bool:
 ## 1 = advice. Each shout has its own cooldown so he doesn't repeat himself.
 func shout(id: String, short_text: String, long_text: String, prio: int, need_level: int = 1, again: float = 7.0) -> void:
 	var lv := coach_level()
-	if lv < need_level or not gus_here():
+	if lv < need_level or not gus_here() or course_on():
 		return
 	if coach_clock < shout_cd.get(id, 0.0):
 		return
@@ -4726,7 +5151,7 @@ func draw_coach() -> void:
 		var size := fs(16) if not tut_pause else fs(21)   # bigger while the fight waits for you to read it
 		var maxw := minf(560.0 if not tut_pause else 680.0, quit_rect.position.x - 50.0 if not tut_pause else screen.x - 80.0)
 		var text_size := font.get_multiline_string_size(coach_text, HORIZONTAL_ALIGNMENT_LEFT, maxw, size)
-		var w := text_size.x + 24.0
+		var w := text_size.x + 36.0
 		var h := text_size.y + size + 22.0
 		var bx := 12.0
 		var by := screen.y * 0.03 + 28.0 + 38.0
@@ -5095,7 +5520,7 @@ func draw_show_marks(off: Vector2) -> void:
 ## Parts worth shouting about: ones with a trait or a gadget.
 ## The walk-in spec card: name, class and style, every part with its health blocks (1 block =
 ## 25 HP) and its numbers, special parts starred, then the special moves.
-func draw_robot_card(ci: CanvasItem, f: Fighter, left: bool, w: float, h: float, font: Font) -> void:
+func draw_robot_card(ci: CanvasItem, f: Fighter, left: bool, w: float, h: float, font: Font, top_at: float = -1.0) -> void:
 	# every height comes from the font sizes, so the card grows with Settings > Text size
 	var l1 := float(fs(14)) + 5.0      # a part's name line
 	var l2 := float(fs(12)) + 7.0      # its health and numbers under it
@@ -5110,7 +5535,7 @@ func draw_robot_card(ci: CanvasItem, f: Fighter, left: bool, w: float, h: float,
 			specials_shown.append(pid)
 	var head_h := fs(28) + fs(14) + fs(12) + 26.0
 	var card_h := head_h + parts_n * (l1 + l2) + specials_shown.size() * l1 + fs(12) + 10.0 + (fs(13) + 4.0) * 2.0 + 16.0
-	var top := clampf(h * 0.1, 8.0, maxf(8.0, h - card_h - 70.0))
+	var top := clampf(h * 0.1, 8.0, maxf(8.0, h - card_h - 70.0)) if top_at < 0.0 else top_at
 	var card := Rect2(w * 0.03 if left else w * 0.55, top, w * 0.42, card_h)
 	var a := clampf(card_t * 3.0, 0.0, 1.0)
 	var x := card.position.x + 16

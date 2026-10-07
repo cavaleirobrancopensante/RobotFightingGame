@@ -269,6 +269,7 @@ const CONTROLLER_INFO := {
 var pilot_look := DEFAULT_PILOT_LOOK.duplicate()   # how your pilot looks in the corner and in the story
 var owned_controllers: Array = ["gamepad"]
 var tips_seen: Array = []
+var tips_log: Array = []   # Gus's fight tips as he said them ({"id", "text"}, oldest first): the pause screen lists them
 const DIGS_PER_FIGHT := 1
 ## Scrapyard digs: [grade, chance] (cumulative, checked rarest first): anything can turn up, rarely.
 const DIG_RARE := [[5, 0.0004], [4, 0.002], [3, 0.007], [2, 0.022]]
@@ -549,6 +550,7 @@ func new_game() -> void:
 	pilot_look = DEFAULT_PILOT_LOOK.duplicate()
 	owned_controllers = ["gamepad"]
 	tips_seen = []
+	tips_log = []
 	h2h = {}
 	rivals = []
 	grudge = {}
@@ -2987,6 +2989,16 @@ func _notification(what: int) -> void:
 		flush_save()
 
 
+## Gus told you something in a fight: keep it for the pause screen's GUS'S TIPS (one per id).
+func log_tip(id: String, text: String) -> void:
+	for t in tips_log:
+		if str(t.get("id", "")) == id:
+			return
+	tips_log.append({"id": id, "text": text})
+	if tips_log.size() > 60:
+		tips_log = tips_log.slice(tips_log.size() - 60)
+
+
 func tip_once(id: String) -> bool:
 	if tips_seen.has(id):
 		return false
@@ -3056,12 +3068,11 @@ func story_dynamic(key: String) -> String:
 		"RENT_GARAGE":
 			var t := ""
 			if money < 0:
-				if wins + losses > 0:
-					t = tr("And kid, even after tonight's purse, you still owe me $%d in back rent.") % -money + " "
-				else:
-					t = tr("And kid, you still owe me $%d in back rent.") % -money + " "
-			t += (tr("Rent and food are $%d every month.") % living) if living > 0 else tr("Rent's on the house for now. Don't get used to it.")
-			return t + " " + tr("No repairs on credit. When we're in the hole, we fight with the dents.")
+				t = tr("You still owe me $%d in back rent, kid.") % -money + " "
+			t += (tr("Rent and food are $%d a month.") % living) if living > 0 else tr("Rent's on the house for now. Don't get used to it.")
+			if money < 0:
+				t += " " + tr("No repairs on credit, so for now we fight with the dents.")
+			return t
 		"PC_KEYS":
 			# only on a computer (no touchscreen): point them at the pause screen, where every key is listed
 			if DisplayServer.is_touchscreen_available():
@@ -3080,15 +3091,9 @@ func garage_tip() -> String:
 	return ""
 
 
-const TAB_TIPS := {
-	"Scrapyard": "GUS: Free junk is always lying around. Digging deeper finds better stuff, but it's beaten up, so budget for repairs.",
-	"Shop": "GUS: The dealer restocks every Sunday. Mini parts sip power, Heavy parts hit hard but drink it.",
-	"Workshop": "GUS: Design your own part here. Costs more than the dealer, but it's exactly what you want.",
-	"Moves": "GUS: Training chips teach special moves. Better heads hold more chips.",
-	"Cups": "GUS: Cups are three-week knockouts on Wednesday nights, alongside your league. Eight pilots, medals for the top three. Some come in tag teams and swarms, and your backups fight beside you then.",
-	"Season": "GUS: The calendar. League nights are every other Saturday, cup nights are Wednesdays, rent's due the last Sunday of the month. The league table's the other button. A win is a point.",
-	"Team": "GUS: Teams share one heavyweight's power, so team robots run small. Mini parts are your friend here.",
-}
+## (Every section that used to have a one-line tip now has Gus's unlock scene instead, so there
+## are none left: one explanation per thing, never two.)
+const TAB_TIPS := {}
 
 
 func tab_tip(tab: String) -> String:
@@ -4241,7 +4246,7 @@ func save_game() -> bool:
 		"owned_chips": owned_chips, "chips": chips, "circuit": circuit, "circuit_offers": circuit_offers,
 		"circuits_won": circuits_won, "pickup": pickup, "setups": setups, "custom_parts": custom_parts,
 		"year": year, "week": week, "day": day, "rank": rank, "event": {}, "leagues": leagues, "title_seeds": title_seeds, "trophies": trophies, "career_stats": career_stats,
-		"pecking_k": pecking_k(), "style": style, "style_locked": style_locked, "shop_stock": shop_stock, "chip_stock": chip_stock, "scout": scout, "wingmen": wingmen, "sending": sending, "pilot_look": pilot_look, "owned_controllers": owned_controllers, "tips_seen": tips_seen, "h2h": h2h, "rivals": rivals, "grudge": grudge, "pending_talk": pending_talk, "inbox": inbox, "inbox_seen": inbox_seen, "day_log": day_log, "tour": tour, "streak": streak, "pub_seen": pub_seen, "digs_left": digs_left, "dig_luck": dig_luck, "bills_note": bills_note, "fight_log": fight_log, "bets": bets, "world": world,
+		"pecking_k": pecking_k(), "style": style, "style_locked": style_locked, "shop_stock": shop_stock, "chip_stock": chip_stock, "scout": scout, "wingmen": wingmen, "sending": sending, "pilot_look": pilot_look, "owned_controllers": owned_controllers, "tips_seen": tips_seen, "tips_log": tips_log, "h2h": h2h, "rivals": rivals, "grudge": grudge, "pending_talk": pending_talk, "inbox": inbox, "inbox_seen": inbox_seen, "day_log": day_log, "tour": tour, "streak": streak, "pub_seen": pub_seen, "digs_left": digs_left, "dig_luck": dig_luck, "bills_note": bills_note, "fight_log": fight_log, "bets": bets, "world": world,
 	}
 	var f := FileAccess.open(slot_path(save_slot), FileAccess.WRITE)
 	if f == null:
@@ -4335,6 +4340,7 @@ func load_game(slot: int = -1) -> String:
 		pilot_look.merge(data["pilot_look"], true)
 	pilot_look = PilotArt.normalize(pilot_look)
 	tips_seen = data.get("tips_seen", []).duplicate()
+	tips_log = data.get("tips_log", []).duplicate()
 	h2h = data.get("h2h", {})
 	rivals = data.get("rivals", []).map(func(x): return int(x))
 	grudge = data.get("grudge", {})

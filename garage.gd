@@ -365,10 +365,11 @@ func _ready() -> void:
 	hz.add_child(fight_button)
 
 	show_last_result()
-	var tip := GameData.garage_tip()
-	if tip != "":
-		msg_label.text = tip if msg_label.text == "" else msg_label.text + "\n" + tip
-	say(msg_label.text.replace("\n" + tr("GUS: "), "\n"))
+	# what the fight brought home is a note (the results screen already told the story); Gus only
+	# speaks up when he has advice
+	note(msg_label.text)
+	msg_label.text = ""
+	say(GameData.garage_tip())
 	refresh()
 	# story moments play right here: what happened at the fight, and Gus's first welcome to the bay
 	var keys: Array = GameData.bay_stories
@@ -613,7 +614,53 @@ func show_last_result() -> void:
 	GameData.last_result = {}
 
 
-## Gus says something (results, tips, what just happened). During a story scene it waits its turn.
+## What just happened (bought, fitted, sold, not enough money...): a short note at the bottom of
+## the scene that fades by itself. Gus's bubbles are kept for things worth hearing from him.
+var toast: PanelContainer
+var toast_label: Label
+var toast_t := 0.0
+
+
+func note(text: String, sound: String = "") -> void:
+	text = text.trim_prefix(tr("GUS: ")).trim_prefix("GUS: ").strip_edges()
+	if sound != "":
+		Sfx.play(sound)
+	if text == "":
+		return
+	if toast == null:
+		toast = PanelContainer.new()
+		var st := GUI.box(Color(0.05, 0.05, 0.07, 0.92), 10, 8)
+		st.border_color = Color(GUI.YELLOW, 0.7)
+		st.set_border_width_all(2)
+		st.content_margin_left = 14
+		st.content_margin_right = 14
+		toast.add_theme_stylebox_override("panel", st)
+		toast.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		toast_label = UI.label("", 15, Color(0.95, 0.93, 0.85))
+		toast_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		toast_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		toast.add_child(toast_label)
+		add_child(toast)
+	toast_label.add_theme_color_override("font_color", Color(1.0, 0.6, 0.55) if sound == "error" else Color(0.95, 0.93, 0.85))
+	toast_label.text = text
+	toast_t = clampf(2.4 + text.length() * 0.04, 2.4, 8.0)
+	toast.visible = true
+	move_child(toast, -1)
+	_place_toast()
+
+
+func _place_toast() -> void:
+	if toast == null or left_col == null or preview == null:
+		return
+	var w := minf(left_col.size.x - 24.0, UI.tsz(15) * 30.0)
+	var tw := toast_label.get_theme_font("font").get_string_size(toast_label.text, HORIZONTAL_ALIGNMENT_LEFT, -1, toast_label.get_theme_font_size("font_size")).x + 32.0
+	toast.size = Vector2(minf(w, tw), 0)
+	toast.size = toast.get_combined_minimum_size().max(Vector2(minf(w, tw), 0))
+	toast.position = left_col.global_position + Vector2((left_col.size.x - toast.size.x) * 0.5, preview.size.y - toast.size.y - 14.0)
+	toast.modulate.a = clampf(toast_t * 2.5, 0.0, 1.0)
+
+
+## Gus says something worth hearing (advice, his tour, the story). During a story scene it waits its turn.
 func say(text: String, sound: String = "") -> void:
 	text = text.trim_prefix(tr("GUS: ")).trim_prefix("GUS: ").strip_edges()
 	if sound != "":
@@ -835,6 +882,10 @@ func _place_talk() -> void:
 func _process(delta: float) -> void:
 	update_jukebox()
 	update_tour()
+	if toast and toast.visible:
+		toast_t -= delta
+		toast.visible = toast_t > 0.0
+		_place_toast()
 	if detail_panel and detail_panel.visible and left_col:
 		detail_panel.position = left_col.global_position
 		detail_panel.size = left_col.size
@@ -1379,7 +1430,7 @@ func _on_test_drive(junker_id: String, try_id: String, slot: String, from: Strin
 
 
 func _on_detail_fit(uid: int, slot: String) -> void:
-	say(GameData.equip(uid, slot), "equip")
+	note(GameData.equip(uid, slot), "equip")
 	detail = {}
 	refresh()
 
@@ -1389,12 +1440,12 @@ func _on_buy_fit(id: String, slot: String) -> void:
 	var before := GameData.money
 	var text := GameData.buy(id)
 	if GameData.money >= before and GameData.part_def(id)["cost"] > 0:
-		say(text, "error")
+		note(text, "error")
 		return
 	var uid: int = GameData.next_uid - 1
 	if GameData.equipped.get(slot, -1) != uid:
 		GameData.equip(uid, slot)
-	say(tr("Bought %s and fitted it to the %s.") % [GameData.part_def(id)["name"], tr(GameData.SLOT_NAMES[slot])], "buy")
+	note(tr("Bought %s and fitted it to the %s.") % [GameData.part_def(id)["name"], tr(GameData.SLOT_NAMES[slot])], "buy")
 	Sfx.play("equip", 0.1)
 	spark_at = Time.get_ticks_msec() / 1000.0
 	detail = {}
@@ -1406,13 +1457,13 @@ func _on_buy_keep(id: String) -> void:
 	var before := GameData.money
 	var text := GameData.buy(id)
 	if GameData.money >= before and GameData.part_def(id)["cost"] > 0:
-		say(text, "error")
+		note(text, "error")
 		return
 	var uid: int = GameData.next_uid - 1
 	for sl in GameData.SLOTS:
 		if GameData.equipped.get(sl, -1) == uid:
 			GameData.unequip(sl)
-	say(tr("Bought %s. It's in Storage.") % GameData.part_def(id)["name"], "buy")
+	note(tr("Bought %s. It's in Storage.") % GameData.part_def(id)["name"], "buy")
 	detail = {}
 	refresh()
 
@@ -1465,6 +1516,15 @@ func section(text: String, parent: Control = null) -> void:
 	var l := UI.label(text, 15, Color(1.0, 0.8, 0.4))
 	l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	(parent if parent else list_box).add_child(l)
+
+
+## A row of buttons that wraps onto a second line when it doesn't fit (big text, narrow screens).
+func flow_bar(parent: Control = null) -> HFlowContainer:
+	var bar := HFlowContainer.new()
+	bar.add_theme_constant_override("h_separation", 6)
+	bar.add_theme_constant_override("v_separation", 6)
+	(parent if parent else list_box).add_child(bar)
+	return bar
 
 
 func action_bar(parent: Control = null) -> HBoxContainer:
@@ -1562,7 +1622,7 @@ func _on_sell_picked_confirmed() -> void:
 		GameData.sell(uid)
 	sell_picks = []
 	selling = false
-	say(tr("Sold for $%d.") % total, "buy")
+	note(tr("Sold for $%d.") % total, "buy")
 	refresh()
 
 
@@ -1697,15 +1757,13 @@ func job_etas() -> Array:
 # points at what to tap. Each step ends when you've done it.
 
 func tour_steps() -> Array:
+	# short on purpose: one line per stop, and only the stops you can't find by yourself
 	return [
-		{"target": "repair", "text": tr("First thing: the robot's dented. Repair all puts every dent on the job board, and the bay fixes it while time passes. It costs money, so check the price. Tap it.")},
-		{"target": "next", "text": tr("Time only moves when you say so. The big yellow button does whatever's next: WORK THE MORNING, WORK THE AFTERNOON while the bay gets on with the jobs, then the fight in the evening, or CALL IT A NIGHT. Tap it.")},
-		{"target": "rail:Parts", "text": tr("Get Parts, then the Scrapyard. One free dig a day, and you never know what's in the pile.")},
-		{"target": "dig", "text": tr("Go on, tap Dig anywhere. Mostly junk, but junk is free.")},
-		{"target": "rail:Pub", "text": tr("The Rusty Bolt, down the road. Whoever's at the bar will fight you for a few bucks.")},
-		{"target": "rail:Season", "text": tr("Season is my office. The calendar, the tables, the odds. Come and have a look.")},
-		{"target": "rail:Feed", "text": tr("Missed something I said? Everything anybody tells you ends up on BotMedia, with the town's news.")},
-		{"target": "fight", "text": tr("That's the tour. Saturday is the Open Trials, and it's everything: one win and we're in the Scrap League, and we get three Saturdays to get it. Miss all three and it's a year in the gutter. Practice with pickups at the Rusty Bolt till then.")},
+		{"target": "repair", "text": tr("The robot's dented. Repair all puts the dents on the job board. Check the price, then tap it.")},
+		{"target": "next", "text": tr("Time only moves when you press the big yellow button. The bay works on the jobs while it runs.")},
+		{"target": "rail:Parts", "text": tr("Get Parts. The scrapyard's out back, one free dig a day.")},
+		{"target": "dig", "text": tr("Tap Dig anywhere. Mostly junk, but it's free.")},
+		{"target": "fight", "text": tr("Saturday is the Open Trials. Three chances, and one win puts us in the Scrap League. Practise at the Rusty Bolt till then.")},
 	]
 
 
@@ -1720,12 +1778,6 @@ func tour_done(i: int) -> bool:
 		3:
 			return GameData.digs_left <= 0 or tab != "Parts"
 		4:
-			return tab == "Pub"
-		5:
-			return tab == "Season"
-		6:
-			return tab == "Feed"
-		7:
 			return GameData.wins + GameData.losses > 1
 	return true
 
@@ -1790,7 +1842,7 @@ func build_feed() -> void:
 	var view := seg()
 	GameData.inbox_seen = GameData.inbox.size()
 	if view == "town":
-		section(tr("BOTMEDIA NEWS. Who's top of the big leagues, who went up and down, who bought what, and what they're whispering at the docks."))
+		section(tr("Who leads the leagues, who moved, who bought what, and the talk at the docks."))
 		var news: Array = GameData.world.get("news", [])
 		if news.is_empty():
 			section(tr("Nothing yet. Give it a week."))
@@ -1918,31 +1970,31 @@ func build_jobs_view() -> void:
 
 
 func _on_cancel_job(i: int) -> void:
-	say(GameData.cancel_job(i), "sell")
+	note(GameData.cancel_job(i), "sell")
 	GameData.save_game()
 	refresh()
 
 
 func _on_hire_mechanic() -> void:
-	say(GameData.hire_mechanic(), "buy")
+	note(GameData.hire_mechanic(), "buy")
 	GameData.save_game()
 	refresh()
 
 
 func _on_fire_mechanic() -> void:
-	say(GameData.fire_mechanic(), "click")
+	note(GameData.fire_mechanic(), "click")
 	GameData.save_game()
 	refresh()
 
 
 func _on_overtime() -> void:
-	say(GameData.buy_overtime(), "buy")
+	note(GameData.buy_overtime(), "buy")
 	GameData.save_game()
 	refresh()
 
 
 func _on_rush(i: int) -> void:
-	say(GameData.rush_job(i), "repair")
+	note(GameData.rush_job(i), "repair")
 	GameData.save_game()
 	refresh()
 
@@ -2349,7 +2401,7 @@ func _on_pilot_random() -> void:
 
 func _on_controller(id: String) -> void:
 	close_popup()
-	say(GameData.buy_controller(id), "buy")
+	note(GameData.buy_controller(id), "buy")
 	refresh()
 
 
@@ -2541,7 +2593,7 @@ func build_controllers() -> void:
 ## The scrapyard: a mountain of dead robots. Dig for free (beaten-up) parts, a few digs per fight.
 func build_scrapyard_tab() -> void:
 	var bar := action_bar()
-	var info := GUI.text(tr("A mountain of dead robots. One dig a day, one part per dig, always beaten up (15-50% health). Dig anywhere for the best odds of something good, or dig for the part you need and take what the pile gives (mostly junk). Every day you leave the pile alone, the odds of a rare find go up (5% a day, up to 50%). Digging uses them up.") + "\n" + tr("Digging anywhere can also turn up a training chip, once in a long while. You can't dig for one."), 12, GUI.MUTED)
+	var info := GUI.text(tr("One dig a day, and whatever comes up is beaten up. Dig anywhere for the best odds, or dig for the part you need and take mostly junk. Every day you stay away, the odds of a rare find go up."), 12, GUI.MUTED)
 	info.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	info.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	bar.add_child(info)
@@ -2586,7 +2638,7 @@ func _on_keep_find(uid: int) -> void:
 	if p.is_empty():
 		return
 	p.erase("dug")
-	say(tr("%s is in Storage.") % GameData.part_def(p["id"])["name"], "equip")
+	note(tr("%s is in Storage.") % GameData.part_def(p["id"])["name"], "equip")
 	GameData.save_game()
 	refresh()
 
@@ -2594,7 +2646,7 @@ func _on_keep_find(uid: int) -> void:
 func _on_emergency_junk(slot: String) -> void:
 	var uid := GameData.add_part(GameData.STARTER[slot], 0.4)
 	GameData.equip(uid, slot)
-	say(tr("Gus digs a rusty %s out from under the bench. \"It'll hold. Probably.\"") % GameData.part_def(GameData.STARTER[slot])["name"], "equip")
+	note(tr("Gus digs a rusty %s out from under the bench. \"It'll hold. Probably.\"") % GameData.part_def(GameData.STARTER[slot])["name"], "equip")
 	refresh()
 
 
@@ -2602,7 +2654,7 @@ func _on_dig(kind: String = "") -> void:
 	var res := GameData.dig_scrap(kind)
 	dig_at = Time.get_ticks_msec() / 1000.0
 	dig_found = tr("Found something!") if res["part"] != "" else ""
-	say(res["text"], "buy" if res.has("chip") else ("break" if res["part"] != "" else "land"))
+	note(res["text"], "buy" if res.has("chip") else ("break" if res["part"] != "" else "land"))
 	GameData.log_day(str(res["text"]), "good" if str(res.get("grade", "")) in ["rare", "good", "chip"] else "info")
 	GameData.save_game()
 	refresh()
@@ -2755,11 +2807,11 @@ var demo_chip := ""   # the move looping at the top of the Moves tab
 
 ## Your training chips: plug them into the head (better heads have more slots), watch each move loop.
 func build_moves_tab() -> void:
-	section(tr("Training chips teach special moves. They plug into the head: slots used %d/%d (better heads have more). Inputs: → toward the enemy, ← away, ↓ down. Tap them quickly, then P or K.")
+	section(tr("Chips teach special moves. Slots used: %d/%d, better heads hold more. In the inputs, → means toward the enemy, ← away.")
 			% [GameData.active_chips().size(), GameData.chip_slots()])
 	var chip_ids: Array = GameData.owned_chips.duplicate()
 	if chip_ids.is_empty():
-		section("No chips yet. The dealer sells a chip or two in the Shop, you can order any chip made to order, and now and then the scrapyard coughs one up.")
+		section(tr("No chips yet. The dealer, Made to order and the scrapyard all have them."))
 		return
 	if demo_chip == "" or not chip_ids.has(demo_chip):
 		demo_chip = GameData.chips[0] if not GameData.chips.is_empty() else (GameData.owned_chips[0] if not GameData.owned_chips.is_empty() else chip_ids[0])
@@ -3504,7 +3556,7 @@ func _on_bet_on(on: String, pick: int, vs: int) -> void:
 		_on_bet(pick, vs)
 		return
 	var before := GameData.money
-	say(GameData.place_bet_on(on, pick, vs, bet_stake), "buy")
+	note(GameData.place_bet_on(on, pick, vs, bet_stake), "buy")
 	if GameData.money < before:
 		bet_at = Time.get_ticks_msec() / 1000.0
 	GameData.save_game()
@@ -3668,7 +3720,7 @@ func _on_stake(st: int) -> void:
 
 func _on_bet(pick: int, vs: int) -> void:
 	var before := GameData.money
-	say(GameData.place_bet(pick, vs, bet_stake), "buy")
+	note(GameData.place_bet(pick, vs, bet_stake), "buy")
 	if GameData.money < before:
 		bet_at = Time.get_ticks_msec() / 1000.0
 	GameData.save_game()
@@ -3927,7 +3979,7 @@ func _plan_do(what: String) -> void:
 		"repair":
 			_on_repair_all()
 		"overtime":
-			say(GameData.buy_overtime(), "buy")
+			note(GameData.buy_overtime(), "buy")
 			GameData.save_game()
 		"dig":
 			close_popup()
@@ -3948,7 +4000,7 @@ func _on_next_phase() -> void:
 	plan_open = false
 	close_popup()
 	if GameData.phase == 2 and not GameData.can_pass_day():
-		say(tr("Your fight is tonight."), "error")
+		note(tr("Your fight is tonight."), "error")
 		return
 	time_begin()
 	GameData.next_phase()
@@ -3971,7 +4023,7 @@ var table_div := ""   # which division's table the Standings screen shows ("" = 
 ## pilot who destroyed more parts. Top 4 go up, bottom 4 go down.
 func build_league_view() -> void:
 	var stage := table_div if table_div != "" else GameData.rank
-	var tabs := action_bar()
+	var tabs := flow_bar()
 	for st in Career.EVENTS:
 		var label := tr(Career.STAGES[st]["short"]).capitalize() + (" ●" if st == GameData.rank or (st == "title" and Career.has_player(GameData.leagues.get("title", {}))) else "")
 		var b := row_button(tabs, label, _on_table_div.bind(st), true, 0)
@@ -4269,14 +4321,14 @@ func _on_rematch() -> void:
 	GameData.pickup = {}
 	GameData.exhibition = true
 	GameData.save_game()
-	say("Booked: OVERLORD, in the Grand Hall. Hit the fight button when you're ready.", "fight")
+	note("Booked: OVERLORD, in the Grand Hall. Hit the fight button when you're ready.", "fight")
 	refresh()
 
 
 func build_team_tab() -> void:
-	section("BACKUP ROBOTS are built from your spare parts and keep their damage, just like your robot. Each one needs its own gantry, and every gantry puts the rent up. Main robot too beaten up and no cash to fix it? Use the Send button to put a backup robot in a 1-on-1 and earn some money. In cups they also fight beside you against tag teams and swarms.")
+	section(tr("Backups are built from your spare parts and keep their damage. Each one needs a gantry, and every gantry puts the rent up. Send puts one in when the main robot is too beat up."))
 	var ms := GameData.stats()
-	section("WEIGHT CLASSES: a robot fighting alone can be as heavy as its reactor allows. A team shares one heavyweight's power (%d): 2 robots get %d each, 3 get %d. Your robot now: %s, %d power. Mini parts are light, Heavy parts drink power, and a team robot over its share gets overloaded."
+	section(tr("A team shares %d power: 2 robots get %d each, 3 get %d. Your robot alone: %s, %d power.")
 			% [int(GameData.TEAM_POWER), int(GameData.team_share(2)), int(GameData.team_share(3)), tr(GameData.weight_class(ms["power_used"])), ms["power_used"]])
 	var bar := action_bar()
 	var split: bool = GameData.settings.get("team_controls", "linked") == "split"
@@ -4323,29 +4375,29 @@ func _on_team_controls() -> void:
 	var split: bool = GameData.settings.get("team_controls", "linked") == "split"
 	GameData.settings["team_controls"] = "linked" if split else "split"
 	GameData.save_settings()
-	say(tr("Team controls: %s.") % ("LINKED: all your robots follow one movement pad" if split else "SPLIT: one movement pad per robot, shared attack buttons. Move the pads in Settings > Edit controls"), "click")
+	note(tr("Team controls: %s.") % ("LINKED: all your robots follow one movement pad" if split else "SPLIT: one movement pad per robot, shared attack buttons. Move the pads in Settings > Edit controls"), "click")
 	refresh()
 
 
 func _on_buy_gantry() -> void:
-	say(GameData.buy_gantry(), "buy")
+	note(GameData.buy_gantry(), "buy")
 	GameData.save_game()
 	refresh()
 
 
 func _on_sell_gantry() -> void:
-	say(GameData.sell_gantry(), "click")
+	note(GameData.sell_gantry(), "click")
 	GameData.save_game()
 	refresh()
 
 
 func _on_build_wingman(k: int) -> void:
-	say(GameData.build_wingman(k), "equip")
+	note(GameData.build_wingman(k), "equip")
 	refresh()
 
 
 func _on_repair_wingman(k: int) -> void:
-	say(GameData.repair_wingman(k), "repair")
+	note(GameData.repair_wingman(k), "repair")
 	refresh()
 
 
@@ -4355,7 +4407,7 @@ func _on_disband_wingman(k: int) -> void:
 
 func _do_disband(k: int) -> void:
 	GameData.clear_wingman(k)
-	say(tr("%s's parts went back to your Spares.") % GameData.wingman_name(k), "click")
+	note(tr("%s's parts went back to your Spares.") % GameData.wingman_name(k), "click")
 	refresh()
 
 
@@ -4394,6 +4446,10 @@ func _on_tab(t: String) -> void:
 	var first: String = {"Storage": "storage", "Season": "season", "Parts": "scrapyard"}.get(t, "")
 	if t == "Crew":
 		first = "team" if GameData.team_unlocked() else "pilot"
+	if first == "season" and GameData.is_new("season") and not GameData.story_seen.has("dad_trophies") and GameData.story_seen.has("first_garage"):
+		GameData.mark_story_seen("unlock_season")   # Gus's first words in his office are about your dad's trophies
+	if first == "scrapyard" and GameData.tour >= 0 and GameData.is_new("scrapyard"):
+		GameData.mark_story_seen("unlock_scrapyard")   # the tour's line already said it
 	if first != "" and gus_explains(first):
 		return
 	if t == tab and t == "Bay":
@@ -4532,7 +4588,7 @@ func _on_go_workshop(kind: String) -> void:
 
 func _on_reroll() -> void:
 	var before := GameData.money
-	say(GameData.reroll_stock(), "buy" if GameData.money < before else "error")
+	note(GameData.reroll_stock(), "buy" if GameData.money < before else "error")
 	refresh()
 
 
@@ -4542,10 +4598,10 @@ func build_style_view() -> void:
 	section(tr("FIGHTING STYLE") + " · " + tr("Your style changes how ECHO fights and gives it a free signature move.").replace("ECHO", GameData.robot_name), col)
 	if GameData.style_locked:
 		section("You've already switched style since your last fight. One switch between fights. Fight with it first.", col)
-	var body := HBoxContainer.new()
-	body.add_theme_constant_override("separation", 14)
+	var body := VBoxContainer.new()
+	body.add_theme_constant_override("separation", 10)
 	col.add_child(body)
-	# left: the signature move, looping, so you know what it looks like before a fight
+	# on top: the signature move, looping, so you know what it looks like before a fight
 	var left := VBoxContainer.new()
 	body.add_child(left)
 	style_demo = MoveDemo.new()
@@ -4553,7 +4609,7 @@ func build_style_view() -> void:
 	left.add_child(style_demo)
 	style_demo_label = UI.label("", 14, Color(0.5, 0.9, 1.0))
 	style_demo_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	style_demo_label.custom_minimum_size = Vector2(400, 0)
+	style_demo_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	left.add_child(style_demo_label)
 	var list := VBoxContainer.new()
 	list.add_theme_constant_override("separation", 6)
@@ -4570,7 +4626,7 @@ func build_style_view() -> void:
 		text.add_child(UI.label(tr(st["name"]).to_upper() + ("   (current)" if id == GameData.style else ""), 17, Color(st["color"]).lightened(0.3)))
 		var d := UI.label(tr(st["desc"]), 12)
 		d.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		d.custom_minimum_size = Vector2(330, 0)
+		d.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		text.add_child(d)
 		text.add_child(UI.label(tr("Signature: %s  %s") % [tr(sig["name"]), Specials.seq_text(sig["seq"])], 12, Color(0.5, 0.9, 1.0)))
 		var btns := VBoxContainer.new()
@@ -4618,7 +4674,7 @@ func _on_pick_style(id: String) -> void:
 	GameData.style = id
 	GameData.style_locked = true
 	close_popup()
-	say(tr("Fighting style: %s. Signature move: %s.") % [tr(Catalog.STYLES[id]["name"]), tr(Specials.MOVES[Catalog.STYLES[id]["signature"]]["name"])], "equip")
+	note(tr("Fighting style: %s. Signature move: %s.") % [tr(Catalog.STYLES[id]["name"]), tr(Specials.MOVES[Catalog.STYLES[id]["signature"]]["name"])], "equip")
 	refresh()
 
 
@@ -4632,7 +4688,7 @@ func _on_open_scout() -> void:
 		var before := GameData.money
 		msg = GameData.do_scout()
 		if GameData.money == before:
-			say(msg, "error")
+			note(msg, "error")
 			open_fight_popup()
 			return
 		Sfx.play("buy")
@@ -4722,18 +4778,18 @@ func _on_fight_from_report() -> void:
 func _on_buy(id: String) -> void:
 	var before := GameData.money
 	var text := GameData.buy(id)
-	say(text, "buy" if GameData.money < before or GameData.part_def(id)["cost"] == 0 else "error")
+	note(text, "buy" if GameData.money < before or GameData.part_def(id)["cost"] == 0 else "error")
 	refresh()
 
 
 func _on_equip(uid: int, slot: String) -> void:
-	say(GameData.equip(uid, slot), "equip")
+	note(GameData.equip(uid, slot), "equip")
 	refresh()
 
 
 func _on_unequip(slot: String) -> void:
 	GameData.unequip(slot)
-	say(tr("Removed the %s. It's in Storage.") % tr(GameData.SLOT_NAMES[slot]), "equip")
+	note(tr("Removed the %s. It's in Storage.") % tr(GameData.SLOT_NAMES[slot]), "equip")
 	refresh()
 
 
@@ -4741,7 +4797,7 @@ func _on_repair(uid: int) -> void:
 	spark_at = Time.get_ticks_msec() / 1000.0
 	var before := GameData.money
 	var text := GameData.repair(uid)
-	say(text, "repair" if GameData.money < before or GameData.has_work("m") else "error")
+	note(text, "repair" if GameData.money < before or GameData.has_work("m") else "error")
 	refresh()
 
 
@@ -4750,7 +4806,7 @@ func _on_repair_all() -> void:
 	spark_at = Time.get_ticks_msec() / 1000.0
 	var before := GameData.money
 	var text := GameData.repair_all()
-	say(text, "repair" if GameData.money < before else "error")
+	note(text, "repair" if GameData.money < before else "error")
 	refresh()
 
 
@@ -4797,7 +4853,7 @@ func _on_randomize() -> void:
 		return
 	var before := bolting_left()
 	var t := GameData.randomize_robot()
-	say(t + bolting_note(before), "equip")
+	note(t + bolting_note(before), "equip")
 	Sfx.play("repair", 0.2)
 	refresh()
 
@@ -4819,7 +4875,7 @@ func bolting_note(before: float) -> String:
 
 
 func _on_save_setup(k: int) -> void:
-	say(GameData.save_setup(k), "buy")
+	note(GameData.save_setup(k), "buy")
 	refresh()
 	_on_open_setups()
 
@@ -4827,7 +4883,7 @@ func _on_save_setup(k: int) -> void:
 func _on_load_setup(k: int) -> void:
 	var before := bolting_left()
 	var t := GameData.load_setup(k)
-	say(t + bolting_note(before), "equip")
+	note(t + bolting_note(before), "equip")
 	close_popup()
 	refresh()
 
@@ -4854,7 +4910,7 @@ func _on_sell(uid: int) -> void:
 
 func _on_sell_confirmed(uid: int) -> void:
 	close_popup()
-	say(GameData.sell(uid), "sell")
+	note(GameData.sell(uid), "sell")
 	refresh()
 
 
@@ -4884,23 +4940,23 @@ func _on_chip_preview(id: String) -> void:
 func _on_buy_chip(id: String, ordered: bool = false) -> void:
 	var before := GameData.money
 	var text := GameData.buy_chip(id, ordered)
-	say(text, "buy" if GameData.money < before else "error")
+	note(text, "buy" if GameData.money < before else "error")
 	refresh()
 
 
 func _on_install_chip(id: String) -> void:
-	say(GameData.install_chip(id), "equip")
+	note(GameData.install_chip(id), "equip")
 	refresh()
 
 
 func _on_uninstall_chip(id: String) -> void:
-	say(GameData.uninstall_chip(id), "untarget")
+	note(GameData.uninstall_chip(id), "untarget")
 	refresh()
 
 
 func _on_paint(k: int) -> void:
 	GameData.paint = k
-	say(tr("Painted %s.") % tr(GameData.PAINTS[k]["name"]), "equip")
+	note(tr("Painted %s.") % tr(GameData.PAINTS[k]["name"]), "equip")
 	refresh()
 
 
@@ -4933,11 +4989,11 @@ func _on_forge() -> void:
 	var before := GameData.money
 	var text := GameData.forge_custom(ws)
 	if GameData.money < before:
-		say(text, "repair")
+		note(text, "repair")
 		Sfx.play("buy")
 		reset_workshop(ws["kind"])
 	else:
-		say(text, "error")
+		note(text, "error")
 	refresh()
 
 
@@ -4945,7 +5001,7 @@ func _on_enter_cup(k: int) -> void:
 	GameData.enter_circuit(k)
 	GameData.save_game()
 	var first: Dictionary = Career.robot_of(GameData.circuit, Career.player_opponent(GameData.circuit)) if Career.player_opponent(GameData.circuit) != -1 else {}
-	say(tr("Entered the %s! First opponent: %s.") % [GameData.circuit["name"], str(first.get("name", "?"))], "fight")
+	note(tr("Entered the %s! First opponent: %s.") % [GameData.circuit["name"], str(first.get("name", "?"))], "fight")
 	refresh()
 
 
@@ -4956,7 +5012,7 @@ func _on_abandon() -> void:
 func _do_abandon() -> void:
 	GameData.abandon_circuit()
 	GameData.save_game()
-	say("Left the cup.", "error")
+	note("Left the cup.", "error")
 	refresh()
 
 
@@ -4971,7 +5027,7 @@ func _on_send() -> void:
 		if GameData.wingman_ready(k):
 			options.append(k)
 	GameData.sending = options[(options.find(GameData.sending) + 1) % options.size()]
-	say(tr("%s will fight the next 1-on-1. %s") % [GameData.sending_name(),
+	note(tr("%s will fight the next 1-on-1. %s") % [GameData.sending_name(),
 			tr("Its damage stays on it. Your main robot sits this one out.") if GameData.sending >= 0 else ""], "click")
 	refresh()
 
@@ -5147,7 +5203,7 @@ func _on_call_off() -> void:
 	GameData.pickup = {}
 	GameData.exhibition = false
 	GameData.save_game()
-	say(tr("Called it off. No fight tonight."))
+	note(tr("Called it off. No fight tonight."))
 	refresh()
 
 
@@ -5213,7 +5269,7 @@ func _on_prefight_bet() -> void:
 	if mb.is_empty():
 		return
 	var before := GameData.money
-	say(GameData.place_bet(0, int(mb["vs"]), bet_stake), "buy")
+	note(GameData.place_bet(0, int(mb["vs"]), bet_stake), "buy")
 	if GameData.money < before:
 		bet_at = Time.get_ticks_msec() / 1000.0
 	GameData.save_game()
