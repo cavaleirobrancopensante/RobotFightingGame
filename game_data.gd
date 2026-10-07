@@ -2,7 +2,7 @@ extends Node
 
 # helper scripts, loaded by path so the game also runs without an editor scan
 ## The game's version, shown on the main menu. Bump it with every change (1.1, 1.2, ...).
-const VERSION := "1.38"
+const VERSION := "1.39"
 const Arena = preload("res://arena.gd")
 const I18n = preload("res://i18n.gd")
 const Catalog = preload("res://catalog.gd")
@@ -370,7 +370,7 @@ var last_result := {}       # handed from the fight to the garage
 var story_key := ""         # which story scene to show next
 var story_return := ""      # scene to go to after the story
 const DEFAULT_SETTINGS := {"sound": true, "music": true, "shake": true, "button_size": 1, "difficulty": 1, "layout": {}, "team_controls": "linked", "battery_saver": false, "rev": 2,
-		"start_money": START_MONEY, "living_cost": LIVING_COST, "coaching": 2, "lang": "en", "pecking": 1, "edges": 0}
+		"start_money": START_MONEY, "living_cost": LIVING_COST, "coaching": 2, "lang": "en", "pecking": 1, "edges": 0, "text": UI.TEXT_DEFAULT}
 var settings := DEFAULT_SETTINGS.duplicate(true)
 
 
@@ -4529,6 +4529,7 @@ func reset_settings() -> void:
 	settings = DEFAULT_SETTINGS.duplicate(true)
 	settings["lang"] = lang
 	save_settings()
+	UI.set_text_level(int(settings["text"]))
 	apply_performance()
 	apply_pecking()
 
@@ -4575,6 +4576,8 @@ func load_settings() -> void:
 		settings["living_cost"] = int(settings["living_cost"])
 		settings["coaching"] = int(settings["coaching"])
 		settings["lang"] = str(settings.get("lang", "en"))
+		settings["text"] = clampi(int(settings.get("text", UI.TEXT_DEFAULT)), 0, UI.TEXT_LEVELS.size() - 1)
+		UI.set_text_level(settings["text"])
 		if typeof(settings["layout"]) != TYPE_DICTIONARY:
 			settings["layout"] = {}
 		# settings from before 1.37: team fights now start with every robot on one pad

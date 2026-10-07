@@ -24,6 +24,7 @@ const COACH_NAMES := ["OFF", "A little", "Normal", "Lots (easier)"]
 var living_button: Button
 var pecking_button: Button
 var edges_button: Button
+var text_label: Label
 const EDGE_NAMES := ["OFF", "Small", "Medium", "Large"]   # dark bars down the sides, for phone buttons that never hide
 
 
@@ -107,7 +108,22 @@ func _ready() -> void:
 	errors_button = UI.button("", _on_errors, 19, Vector2(470, 50))
 	reset_button = UI.button("", _on_reset, 19, Vector2(470, 50))
 	edges_button = UI.button("", _on_edges, 19, Vector2(470, 50))
-	for b in [sound_button, music_button, shake_button, battery_button, size_button, edges_button,
+	# text size: smaller / bigger, the whole game follows (the screen rebuilds so you see it at once)
+	var text_row := HBoxContainer.new()
+	text_row.custom_minimum_size = Vector2(470, 50) * UI.SCALE
+	text_row.add_theme_constant_override("separation", 6)
+	var minus := UI.button("A−", _on_text.bind(-1), 19, Vector2(70, 50))
+	text_label = UI.label("", 19)
+	text_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	text_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	text_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	var plus := UI.button("A+", _on_text.bind(1), 19, Vector2(70, 50))
+	var lv := int(GameData.settings.get("text", UI.TEXT_DEFAULT))
+	minus.disabled = lv <= 0
+	plus.disabled = lv >= UI.TEXT_LEVELS.size() - 1
+	for c in [minus, text_label, plus]:
+		text_row.add_child(c)
+	for b in [text_row, sound_button, music_button, shake_button, battery_button, size_button, edges_button,
 			UI.button("Edit controls (move & resize)", _on_controls, 19, Vector2(470, 50)), team_button,
 			UI.button("Difficulty...", _on_difficulty, 19, Vector2(470, 50)), delete_button, errors_button, reset_button]:
 		grid.add_child(b)
@@ -121,6 +137,7 @@ func refresh() -> void:
 	music_button.text = tr("Music: %s") % tr("ON" if s["music"] else "OFF")
 	shake_button.text = tr("Screen shake: %s") % tr("ON" if s["shake"] else "OFF")
 	size_button.text = tr("Touch buttons: %s") % tr(SIZE_NAMES[s["button_size"]])
+	text_label.text = tr("Text size: %s") % tr(UI.TEXT_NAMES[clampi(int(s.get("text", UI.TEXT_DEFAULT)), 0, UI.TEXT_NAMES.size() - 1)])
 	edges_button.text = tr("Screen edges: %s") % tr(EDGE_NAMES[clampi(int(s.get("edges", 0)), 0, EDGE_NAMES.size() - 1)])
 	var n := GameData.error_count()
 	errors_button.text = tr("Error log (%d)") % n if n > 0 else tr("Error log (no errors)")
@@ -143,6 +160,15 @@ func _on_lang(lang: String) -> void:
 	GameData.save_settings()
 	Sfx.play("click")
 	get_tree().reload_current_scene()   # rebuild everything in the new language
+
+
+func _on_text(step: int) -> void:
+	var lv := clampi(int(GameData.settings.get("text", UI.TEXT_DEFAULT)) + step, 0, UI.TEXT_LEVELS.size() - 1)
+	GameData.settings["text"] = lv
+	UI.set_text_level(lv)
+	GameData.save_settings()
+	Sfx.play("click")
+	get_tree().reload_current_scene()   # rebuild every label at the new size
 
 
 func _on_reset() -> void:
@@ -256,7 +282,7 @@ func _on_errors() -> void:
 	box.editable = false
 	box.wrap_mode = TextEdit.LINE_WRAPPING_BOUNDARY
 	box.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	box.add_theme_font_size_override("font_size", 15)
+	box.add_theme_font_size_override("font_size", UI.px(15))
 	var sb := StyleBoxFlat.new()
 	sb.bg_color = Color(0.1, 0.1, 0.14)
 	sb.set_content_margin_all(10)

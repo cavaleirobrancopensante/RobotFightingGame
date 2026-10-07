@@ -90,7 +90,7 @@ func _draw() -> void:
 		# top-right corner of the scene, clear of signs, the scoreboard and the people
 		draw_body_map(Vector2(size.x - 36.0 * k, 40.0), k)
 	if interactive and spot.is_empty():   # (the garage says it in its message line instead)
-		draw_string(ThemeDB.fallback_font, Vector2(6, 22), tr("Tap a part"), HORIZONTAL_ALIGNMENT_LEFT, -1, 16, Color(1, 1, 1, 0.45))
+		draw_string(ThemeDB.fallback_font, Vector2(6, 22), tr("Tap a part"), HORIZONTAL_ALIGNMENT_LEFT, -1, preload("res://ui.gd").px(16), Color(1, 1, 1, 0.45))
 
 
 func _regions() -> Array:
@@ -188,11 +188,12 @@ func _perimeter_line(corners: Array, lengths: Array, from: float, to: float, c: 
 ## Diagnostic callouts: a line from the part, an elbow, and a little dark label with the notes.
 func _draw_callouts(part: Rect2) -> void:
 	var font: Font = callout_font if callout_font else ThemeDB.fallback_font
-	var fs := 13
+	var fs := preload("res://ui.gd").px(13)
+	var lh := fs + 4.0
 	var w := 0.0
 	for line in callouts:
 		w = maxf(w, font.get_string_size(str(line), HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x)
-	var box := Vector2(w + 16.0, callouts.size() * 17.0 + 8.0)
+	var box := Vector2(w + 16.0, callouts.size() * lh + 8.0)
 	var anchor := part.get_center()
 	var side := -1.0 if anchor.x <= _base.x + 4.0 else 1.0
 	var edge := Vector2(part.position.x if side < 0 else part.end.x, anchor.y)
@@ -228,4 +229,4 @@ func _draw_callouts(part: Rect2) -> void:
 		var c := Color(0.95, 0.95, 0.97) if i == 0 else Color(0.66, 0.67, 0.72)
 		if str(callouts[i]).begins_with("!"):
 			c = Color(1.0, 0.48, 0.35)
-		draw_string(font, pos + Vector2(8, 18 + i * 17), str(callouts[i]).trim_prefix("!"), HORIZONTAL_ALIGNMENT_LEFT, -1, fs, c)
+		draw_string(font, pos + Vector2(8, fs + 5 + i * lh), str(callouts[i]).trim_prefix("!"), HORIZONTAL_ALIGNMENT_LEFT, -1, fs, c)

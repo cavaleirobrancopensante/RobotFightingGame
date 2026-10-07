@@ -224,7 +224,7 @@ func _ready() -> void:
 	date_button = Button.new()
 	date_button.focus_mode = Control.FOCUS_NONE
 	date_button.add_theme_font_override("font", GUI.num())
-	date_button.add_theme_font_size_override("font_size", 24)
+	date_button.add_theme_font_size_override("font_size", UI.px(24))
 	var ds := GUI.box(Color(0.043, 0.055, 0.043), 18, 4)
 	ds.content_margin_left = 16
 	ds.content_margin_right = 16
@@ -339,7 +339,7 @@ func _ready() -> void:
 	root.add_child(bottom)
 	bell_button = UI.button("", _on_bell, 15, Vector2(230, 46))
 	bell_button.add_theme_font_override("font", GUI.num())
-	bell_button.add_theme_font_size_override("font_size", 22)
+	bell_button.add_theme_font_size_override("font_size", UI.px(22))
 	bottom.add_child(bell_button)
 	send_button = UI.button("", _on_send, 14, Vector2(150, 46))
 	bottom.add_child(send_button)
@@ -732,7 +732,7 @@ func _talk_show() -> void:
 		shown_name = GameData.robot_name
 	bubble.name_label.text = "" if who == "NARRATOR" else ("● " + shown_name if mode == "call" else shown_name)
 	bubble.text_label.add_theme_font_override("font", GUI.num() if who == "ECHO" else GUI.bold())
-	bubble.text_label.add_theme_font_size_override("font_size", 21 if who == "ECHO" else 17)
+	bubble.text_label.add_theme_font_size_override("font_size", UI.px(21 if who == "ECHO" else 17))
 	bubble.text_label.text = str(talk_lines[0][1])
 	bubble.text_label.visible_characters = 0
 	for c in bubble.face_slot.get_children():
@@ -1084,7 +1084,7 @@ func row_text(title: String, subtitle: String, tag: String, wrap: bool) -> VBoxC
 		rl.autowrap_mode = TextServer.AUTOWRAP_OFF
 		rl.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		rl.add_theme_font_override("normal_font", GUI.body())
-		rl.add_theme_font_size_override("normal_font_size", 11)
+		rl.add_theme_font_size_override("normal_font_size", UI.px(11))
 		rl.add_theme_color_override("default_color", Color(0.68, 0.68, 0.75))
 		rl.text = subtitle
 		info.add_child(rl)
@@ -1488,8 +1488,8 @@ func category_dropdown(entries: Array, current: String, cb: Callable, bar: HBoxC
 	bar.add_child(l)
 	var ob := OptionButton.new()
 	ob.custom_minimum_size = Vector2(260, 48)
-	ob.add_theme_font_size_override("font_size", 17)
-	ob.get_popup().add_theme_font_size_override("font_size", 22)
+	ob.add_theme_font_size_override("font_size", UI.px(17))
+	ob.get_popup().add_theme_font_size_override("font_size", UI.px(22))
 	ob.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
 	for i in shown.size():
 		ob.add_item(tr("%s (%d)") % [tr(shown[i][1]), int(shown[i][2])], i)
@@ -2945,12 +2945,12 @@ class CalDay extends Button:
 		var a := 0.5 if past else 1.0
 		var sb: StyleBoxFlat = GUI.box(Color(bg, bg.a * a), 6, 0)
 		draw_style_box(sb, r)
-		draw_string(GUI.num(), Vector2(6, 16), str(date), HORIZONTAL_ALIGNMENT_LEFT, -1, 16, Color(GUI.MUTED, a))
+		draw_string(GUI.num(), Vector2(6, 16), str(date), HORIZONTAL_ALIGNMENT_LEFT, -1, UI.px(16), Color(GUI.MUTED, a))
 		if result != "":
 			var rc: Color = GUI.GREEN if result == "W" else GUI.RED
 			var badge := Rect2(size.x - 22, 4, 18, 16)
 			draw_rect(badge, Color(rc, 0.25 * a))
-			draw_string(GUI.headb(), Vector2(badge.position.x, badge.position.y + 13), result, HORIZONTAL_ALIGNMENT_CENTER, badge.size.x, 12, Color(rc, a))
+			draw_string(GUI.headb(), Vector2(badge.position.x, badge.position.y + 13), result, HORIZONTAL_ALIGNMENT_CENTER, badge.size.x, UI.px(12), Color(rc, a))
 		var n := icons.size()
 		if n > 0:
 			var rad := minf(13.0, minf(size.x / (n * 2.6 + 0.4), size.y * 0.24))
@@ -2959,7 +2959,7 @@ class CalDay extends Button:
 			for k in n:
 				GUI.draw_event_icon(self, str(icons[k][0]), Vector2(x0 + gap * k, size.y * 0.6), rad, bool(icons[k][1]))
 		if tonight:
-			draw_string(GUI.headb(), Vector2(0, size.y - 4), tr("TONIGHT"), HORIZONTAL_ALIGNMENT_CENTER, size.x, 9, GUI.YELLOW)
+			draw_string(GUI.headb(), Vector2(0, size.y - 4), tr("TONIGHT"), HORIZONTAL_ALIGNMENT_CENTER, size.x, UI.px(9), GUI.YELLOW)
 		if past:
 			# crossed off with a red marker, like the calendar on Gus's wall
 			var red := Color(0.85, 0.16, 0.12, 0.75)
@@ -3305,7 +3305,7 @@ func name_button(text: String, wid: int, size: int = 16, col: Color = GUI.TEXT) 
 	b.focus_mode = Control.FOCUS_NONE
 	b.alignment = HORIZONTAL_ALIGNMENT_LEFT
 	b.add_theme_font_override("font", GUI.headb())
-	b.add_theme_font_size_override("font_size", size)
+	b.add_theme_font_size_override("font_size", UI.tsz(size))
 	for c in ["font_color", "font_hover_color", "font_pressed_color"]:
 		b.add_theme_color_override(c, col)
 	b.tooltip_text = tr("Pilot card")
@@ -3721,13 +3721,13 @@ class DayRuler extends Control:
 			var x1: float = lw + float(sh[2]) * sw
 			var night: bool = int(sh[1]) >= night_from
 			draw_rect(Rect2(x0 + 1, 4, x1 - x0 - 2, 22), Color(0.2, 0.2, 0.26) if not night else Color(0.12, 0.12, 0.2))
-			draw_string(f, Vector2(x0, 20), str(sh[0]), HORIZONTAL_ALIGNMENT_CENTER, x1 - x0, 11, Color(0.85, 0.85, 0.9) if not night or overtime else Color(0.5, 0.5, 0.6))
+			draw_string(f, Vector2(x0, 20), str(sh[0]), HORIZONTAL_ALIGNMENT_CENTER, x1 - x0, UI.px(11), Color(0.85, 0.85, 0.9) if not night or overtime else Color(0.5, 0.5, 0.6))
 		# an hour tick per slot
 		for k in hours + 1:
 			draw_line(Vector2(lw + k * sw, 30), Vector2(lw + k * sw, 34), Color(0.4, 0.4, 0.45), 1.0)
 		var y := 40.0
 		for r in rows:
-			draw_string(f, Vector2(0, y + 15), str(r["label"]), HORIZONTAL_ALIGNMENT_LEFT, lw - 8, 12, Color(0.85, 0.85, 0.9))
+			draw_string(f, Vector2(0, y + 15), str(r["label"]), HORIZONTAL_ALIGNMENT_LEFT, lw - 8, UI.px(12), Color(0.85, 0.85, 0.9))
 			var fill: Array = r["fill"]
 			for k in hours:
 				var cell := Rect2(lw + k * sw + 1, y + 2, sw - 2, 16)
@@ -3748,7 +3748,7 @@ class DayRuler extends Control:
 		if bell >= 0:
 			var bx := lw + bell * sw
 			draw_line(Vector2(bx, 2), Vector2(bx, size.y - 2), Color(1.0, 0.35, 0.3), 3.0)
-			draw_string(f, Vector2(bx + 4, size.y - 4), tr("BELL"), HORIZONTAL_ALIGNMENT_LEFT, -1, 11, Color(1.0, 0.45, 0.4))
+			draw_string(f, Vector2(bx + 4, size.y - 4), tr("BELL"), HORIZONTAL_ALIGNMENT_LEFT, -1, UI.px(11), Color(1.0, 0.45, 0.4))
 
 
 var plan_open := false

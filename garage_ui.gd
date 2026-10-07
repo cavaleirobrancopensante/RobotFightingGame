@@ -356,9 +356,9 @@ class RailButton extends Button:
 		var c := Vector2(size.x * 0.5, 28)
 		_icon(c, col)
 		var f: Font = font
-		var fs := 13
+		var fs := UI.px(13)
 		var txt := tr(label)
-		while fs > 9 and f.get_string_size(txt, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x > size.x - 6:
+		while fs > UI.px(9) and f.get_string_size(txt, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x > size.x - 6:
 			fs -= 1
 		draw_string(f, Vector2(0, size.y - 12), txt, HORIZONTAL_ALIGNMENT_CENTER, size.x, fs, col)
 
@@ -447,7 +447,7 @@ class TalkBox extends PanelContainer:
 		head.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		col.add_child(head)
 		name_label = Label.new()
-		name_label.add_theme_font_size_override("font_size", 14)
+		name_label.add_theme_font_size_override("font_size", UI.px(14))
 		name_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		name_label.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 		head.add_child(name_label)
@@ -457,7 +457,7 @@ class TalkBox extends PanelContainer:
 		text_label = Label.new()
 		text_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		text_label.visible_characters_behavior = TextServer.VC_CHARS_AFTER_SHAPING   # full size from the start
-		text_label.add_theme_font_size_override("font_size", 17)
+		text_label.add_theme_font_size_override("font_size", UI.px(17))
 		text_label.custom_minimum_size = Vector2(290, 0)
 		text_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		col.add_child(text_label)

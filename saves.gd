@@ -407,7 +407,7 @@ func name_row(label: String, value: String, random_cb: Callable, parent: Control
 	var edit := LineEdit.new()
 	edit.text = value
 	edit.max_length = 16
-	edit.add_theme_font_size_override("font_size", int(22 * UI.SCALE))
+	edit.add_theme_font_size_override("font_size", UI.tsz(22))
 	edit.custom_minimum_size = Vector2(0, 48 * UI.SCALE)
 	edit.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	edit.select_all_on_focus = true

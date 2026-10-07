@@ -31,6 +31,7 @@ const JUMP_SPEED := 950.0
 const BOT_SCALE := 1.3        # fighters are drawn this much bigger than in the garage
 const FIGHT_TIME := 90.0
 const UI_SCALE := 1.25
+const UIK = preload("res://ui.gd")
 const BUTTON_SCALES := [0.8, 1.0, 1.25]
 const DIFF_THINK := [1.4, 1.0, 0.7]
 const DIFF_BLOCK := [0.7, 1.0, 1.25]
@@ -383,7 +384,7 @@ var crowd_id := "fishmongers"
 
 
 func fs(size: float) -> int:
-	return int(size * UI_SCALE)
+	return UIK.tsz(size)   # the player's text size (Settings > Text size)
 
 
 func _ready() -> void:
@@ -4391,28 +4392,31 @@ func draw_show_marks(off: Vector2) -> void:
 ## The walk-in spec card: name, class and style, every part with its health blocks (1 block =
 ## 10 HP) and its numbers, special parts starred, then the special moves.
 func draw_robot_card(ci: CanvasItem, f: Fighter, left: bool, w: float, h: float, font: Font) -> void:
-	var row_h := 19.0
-	var rows := 0
+	# every height comes from the font sizes, so the card grows with Settings > Text size
+	var l1 := float(fs(14)) + 5.0      # a part's name line
+	var l2 := float(fs(12)) + 7.0      # its health and numbers under it
+	var parts_n := 0
 	for slot in GameData.SLOTS:
 		if not f.parts.get(slot, {}).is_empty():
-			rows += 1
+			parts_n += 1
 	var specials_shown: Array = []
 	for slot in special_slots(f):
 		var pid := str(f.parts[slot]["id"])
 		if not specials_shown.has(pid) and specials_shown.size() < 3:
 			specials_shown.append(pid)
-	rows += specials_shown.size()
-	var card_h := 38 + 24 + 22 + 4 + rows * row_h + row_h + 6 + row_h + 24
-	var card := Rect2(w * 0.03 if left else w * 0.55, h * 0.1, w * 0.42, card_h)
+	var head_h := fs(28) + fs(14) + fs(12) + 26.0
+	var card_h := head_h + parts_n * (l1 + l2) + specials_shown.size() * l1 + fs(12) + 10.0 + (fs(13) + 4.0) * 2.0 + 16.0
+	var top := clampf(h * 0.1, 8.0, maxf(8.0, h - card_h - 70.0))
+	var card := Rect2(w * 0.03 if left else w * 0.55, top, w * 0.42, card_h)
 	var a := clampf(card_t * 3.0, 0.0, 1.0)
 	var x := card.position.x + 16
 	var cw := card.size.x - 32
 	var gold := Color(1.0, 0.85, 0.2, a)
 	ci.draw_rect(card, Color(0.04, 0.04, 0.07, 0.86 * a))
 	ci.draw_rect(Rect2(card.position, Vector2(card.size.x, 5)), gold)
-	var y := card.position.y + 38
+	var y := card.position.y + 8 + fs(28)
 	ci.draw_string(font, Vector2(x, y), f.label, HORIZONTAL_ALIGNMENT_LEFT, cw, fs(28), Color(1, 1, 1, a))
-	y += 24
+	y += fs(14) + 8
 	var power := 0.0
 	for slot in f.parts:
 		if not f.parts[slot].is_empty():
@@ -4422,26 +4426,41 @@ func draw_robot_card(ci: CanvasItem, f: Fighter, left: bool, w: float, h: float,
 		sub += "  ·  " + tr(Catalog.STYLES[f.style]["name"]).to_upper()
 	sub += "  ·  " + tr("fight power %d") % int(f.power_max)
 	ci.draw_string(font, Vector2(x, y), sub, HORIZONTAL_ALIGNMENT_LEFT, cw, fs(14), Color(0.6, 0.85, 1.0, a))
-	y += 22
+	y += fs(12) + 10
 	ci.draw_string(font, Vector2(x, y), tr("PARTS"), HORIZONTAL_ALIGNMENT_LEFT, -1, fs(12), gold)
-	y += 4
-	var name_x := x + cw * 0.22
-	var bar_x := x + cw * 0.66
 	for slot in GameData.SLOTS:
 		var pr: Dictionary = f.parts.get(slot, {})
 		if pr.is_empty():
 			continue
 		var d := GameData.part_def(str(pr["id"]))
-		y += row_h
+		# line 1: slot and name
+		y += l1
 		var special := str(d.get("trait", "")) != "" or str(d.get("gimmick", "")) != ""
-		ci.draw_string(font, Vector2(x, y), tr(GameData.SLOT_NAMES[slot]).to_upper(), HORIZONTAL_ALIGNMENT_LEFT, name_x - x - 4, fs(11), Color(0.62, 0.62, 0.7, a))
-		ci.draw_string(font, Vector2(name_x, y), ("★ " if special else "") + tr(str(d["name"])), HORIZONTAL_ALIGNMENT_LEFT, bar_x - name_x - 6,
+		var slot_txt := tr(GameData.SLOT_NAMES[slot]).to_upper()
+		var sw := font.get_string_size(slot_txt, HORIZONTAL_ALIGNMENT_LEFT, -1, fs(11)).x
+		ci.draw_string(font, Vector2(x, y), slot_txt, HORIZONTAL_ALIGNMENT_LEFT, -1, fs(11), Color(0.62, 0.62, 0.7, a))
+		ci.draw_string(font, Vector2(x + sw + 8, y), ("★ " if special else "") + tr(str(d["name"])), HORIZONTAL_ALIGNMENT_LEFT, cw - sw - 8,
 				fs(14), gold if special else Color(1, 1, 1, a))
-		var stat := ""
+		# line 2: health blocks (1 block = 10 HP, dents show as empty blocks), HP numbers, then armor / damage / speed
+		y += l2
+		var bx := x
 		if pr.has("max_hp") and float(pr["max_hp"]) > 0.0:
-			var n := int(ceil(float(pr["max_hp"]) / 10.0))
-			var bw := minf(cw * 0.22, n * 6.0)
-			GUI.draw_blocks(ci, Rect2(bar_x, y - 10, bw, 9), n, float(pr["hp"]) / 10.0, Color(0.4, 0.95, 0.5, a), Color(0.25, 0.08, 0.08, a), false)
+			var mx := float(pr["max_hp"])
+			var hp := float(pr["hp"])
+			var n := int(ceil(mx / 10.0))
+			var bw := minf(cw * 0.34, n * 6.0)
+			var bh := float(fs(12)) * 0.7
+			GUI.draw_blocks(ci, Rect2(x, y - bh, bw, bh), n, hp / 10.0, Color(0.4, 0.95, 0.5, a), Color(0.25, 0.08, 0.08, a), false)
+			var r := hp / mx
+			var hc := Color(0.55, 0.95, 0.6, a) if r >= 0.6 else Color(1.0, 0.75, 0.3, a) if r >= 0.3 else Color(1.0, 0.4, 0.35, a)
+			var ht := "%d/%d" % [int(round(hp)), int(round(mx))]
+			if r < 0.3:
+				ht += "  " + tr("CRACKED")
+			elif r < 0.6:
+				ht += "  " + tr("DENTED")
+			ci.draw_string(font, Vector2(x + bw + 8, y), ht, HORIZONTAL_ALIGNMENT_LEFT, -1, fs(12), hc)
+			bx = x + bw + 8 + font.get_string_size(ht, HORIZONTAL_ALIGNMENT_LEFT, -1, fs(12)).x + 12
+		var stat := ""
 		if str(d.get("kind", "")) == "reactor":
 			stat = tr("out %d") % int(d["output"])
 		else:
@@ -4452,17 +4471,17 @@ func draw_robot_card(ci: CanvasItem, f: Fighter, left: bool, w: float, h: float,
 				bits.append(tr("dmg %+d") % int(d["damage"]))
 			if int(d.get("speed", 0)) != 0:
 				bits.append(tr("spd %+d") % int(d["speed"]))
-			stat = " ".join(bits)
-		ci.draw_string(font, Vector2(x, y), stat, HORIZONTAL_ALIGNMENT_RIGHT, cw, fs(11), Color(0.75, 0.75, 0.82, a))
+			stat = " · ".join(bits)
+		ci.draw_string(font, Vector2(bx, y), stat, HORIZONTAL_ALIGNMENT_RIGHT, maxf(0.0, x + cw - bx), fs(12), Color(0.75, 0.75, 0.82, a))
 	# what the starred parts do
 	for pid in specials_shown:
 		var d := GameData.part_def(pid)
 		var what := Catalog.trait_text(d).split(":")[0] if str(d.get("trait", "")) != "" else tr(Specials.GADGETS[d["gimmick"]]["name"]) if Specials.GADGETS.has(str(d.get("gimmick", ""))) else ""
-		y += row_h
+		y += l1
 		ci.draw_string(font, Vector2(x, y), "★ %s  ·  %s" % [tr(str(d["name"])), what], HORIZONTAL_ALIGNMENT_LEFT, cw, fs(13), gold)
-	y += row_h + 6
+	y += fs(12) + 14
 	ci.draw_string(font, Vector2(x, y), tr("SPECIAL MOVES"), HORIZONTAL_ALIGNMENT_LEFT, -1, fs(12), gold)
-	y += row_h
+	y += fs(13) + 6
 	var moves: Array = []
 	for id in f.specials:
 		if Specials.MOVES.has(id):
