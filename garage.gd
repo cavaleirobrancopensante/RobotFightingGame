@@ -2913,12 +2913,16 @@ func build_slot(slot: String) -> void:
 
 func build_storage() -> void:
 	var list := GameData.spares()
-	if list.is_empty():
+	var pads: Array = GameData.spare_controllers
+	if list.is_empty() and pads.is_empty():
 		section("Storage is empty. Parts you remove, extra purchases, trophies and salvage end up here.")
 		return
 	var kinds: Array = list.map(func(p): return GameData.part_def(p["id"])["kind"])
 	var top_bar := action_bar()
-	storage_filter = category_dropdown(kind_entries(kinds, "All parts"), storage_filter, _on_storage_filter, top_bar)
+	var entries := kind_entries(kinds, "All parts")
+	entries[0][2] = int(entries[0][2]) + pads.size()
+	entries.append(["controller", "Controllers", pads.size()])
+	storage_filter = category_dropdown(entries, storage_filter, _on_storage_filter, top_bar)
 	var gap := Control.new()
 	gap.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	top_bar.add_child(gap)
@@ -2953,6 +2957,18 @@ func build_storage() -> void:
 			cb.mouse_filter = Control.MOUSE_FILTER_IGNORE
 			cb.text = tr("$%d") % GameData.sell_value(p)
 			row.add_child(cb)
+	# controllers from the scrapyard sit here like parts: onto your gear shelf, or sold
+	if storage_filter == "all" or storage_filter == "controller":
+		for i in pads.size():
+			var cid: String = pads[i]
+			var icon := ControllerIcon.new()
+			icon.kind = cid
+			var owned: bool = GameData.owned_controllers.has(cid)
+			var row := make_tap_row(icon, tr(PilotArt.CONTROLLER_NAMES.get(cid, cid)), tr(GameData.CONTROLLER_INFO[cid]["desc"]) + ("  " + tr("(you have one)") if owned else ""),
+					open_controller.bind(cid), tr("CONTROLLER"))
+			if not owned:
+				row_button(row, tr("To gear"), _on_take_controller.bind(cid), true, 110)
+			row_button(row, tr("Sell $%d") % GameData.controller_sell_value(cid), _on_sell_controller.bind(cid), true, 110)
 
 
 # ---------------------------------------------------------------- popups (setups, paint)
@@ -3429,6 +3445,18 @@ func build_controllers() -> void:
 			row_button(row, "Use", _on_controller.bind(id), true, 110)
 		else:
 			row_button(row, tr("Buy $%d") % cinfo["cost"], _on_controller.bind(id), GameData.money >= int(cinfo["cost"]), 110)
+
+
+func _on_take_controller(id: String) -> void:
+	note(GameData.take_controller(id), "equip")
+	GameData.save_game()
+	refresh()
+
+
+func _on_sell_controller(id: String) -> void:
+	note(GameData.sell_spare_controller(id), "sell")
+	GameData.save_game()
+	refresh()
 
 
 ## The scrapyard: a mountain of dead robots. Dig for free (beaten-up) parts, a few digs per fight.

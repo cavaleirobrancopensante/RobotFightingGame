@@ -2,7 +2,7 @@ extends Node
 
 # helper scripts, loaded by path so the game also runs without an editor scan
 ## The game's version, shown on the main menu. Bump it with every change (1.1, 1.2, ...).
-const VERSION := "1.54"
+const VERSION := "1.55"
 const Arena = preload("res://arena.gd")
 const I18n = preload("res://i18n.gd")
 const Catalog = preload("res://catalog.gd")
@@ -277,6 +277,7 @@ const CONTROLLER_INFO := {
 }
 var pilot_look := DEFAULT_PILOT_LOOK.duplicate()   # how your pilot looks in the corner and in the story
 var owned_controllers: Array = ["gamepad"]
+var spare_controllers: Array = []   # dug-up controllers waiting in Storage (1.54): add one to your gear, or sell it
 var tips_seen: Array = []
 var opening_replay := false   # the opening cutscene was asked for again (BotMedia): back to the bay after it
 var social := {}      # BotMedia: posts, follows, your followers (social.gd)
@@ -568,6 +569,7 @@ func new_game() -> void:
 	pilot_name = "Rook"
 	pilot_look = DEFAULT_PILOT_LOOK.duplicate()
 	owned_controllers = ["gamepad"]
+	spare_controllers = []
 	tips_seen = []
 	tips_log = []
 	h2h = {}
@@ -3484,11 +3486,12 @@ func dig_scrap(kind: String = "") -> Dictionary:
 func dig_extras() -> Dictionary:
 	var r := randf()
 	if r < 0.12:
-		var free: Array = CONTROLLER_INFO.keys().filter(func(c): return not owned_controllers.has(c) and int(CONTROLLER_INFO[c]["cost"]) > 0 and int(CONTROLLER_INFO[c]["cost"]) <= 1500)
-		if not free.is_empty():
-			var cid: String = free[randi() % free.size()]
-			owned_controllers.append(cid)
-			return {"text": tr("Under a pile of tyres: a %s! Sticky buttons, but it works. It's on your gear shelf (BotMedia > Gear).") % tr(PilotArt.CONTROLLER_NAMES.get(cid, cid)), "part": "", "grade": "controller", "controller": cid}
+		# any controller can turn up; one you already own is a spare to sell
+		var all_c: Array = CONTROLLER_INFO.keys().filter(func(c): return int(CONTROLLER_INFO[c]["cost"]) > 0)
+		var cid: String = all_c[randi() % all_c.size()]
+		var cname := tr(PilotArt.CONTROLLER_NAMES.get(cid, cid))
+		spare_controllers.append(cid)   # in Storage, like a part: keep it for your gear or sell it
+		return {"text": tr("Under a pile of tyres, a controller: %s! Sticky buttons, but it works. It's in Storage.") % cname, "part": "", "grade": "controller", "controller": cid}
 	var pool: Array = []
 	if r < 0.45:
 		for id in ALL_PARTS:
@@ -3501,6 +3504,29 @@ func dig_extras() -> Dictionary:
 	if id2 == "junk_reactor":
 		return {"text": tr("A car battery, still holding a charge. Better than nothing (in Storage)."), "part": id2, "grade": "junk", "uid": uid}
 	return {"text": tr("A %s, buried under a dead robot and still humming (in Storage).") % part_def(id2)["name"], "part": id2, "grade": "good", "uid": uid}
+
+
+## What a spare controller fetches: the same share as a part.
+func controller_sell_value(id: String) -> int:
+	return int(float(CONTROLLER_INFO.get(id, {}).get("cost", 0)) * SELL_SHARE / 10.0) * 10
+
+
+## A controller from Storage onto your gear shelf (only if you don't have that one yet).
+func take_controller(id: String) -> String:
+	if not spare_controllers.has(id) or owned_controllers.has(id):
+		return ""
+	spare_controllers.erase(id)
+	owned_controllers.append(id)
+	return tr("The %s is on your gear shelf (BotMedia > Gear).") % tr(PilotArt.CONTROLLER_NAMES.get(id, id))
+
+
+func sell_spare_controller(id: String) -> String:
+	if not spare_controllers.has(id):
+		return ""
+	spare_controllers.erase(id)
+	var v := controller_sell_value(id)
+	money += v
+	return tr("Sold the spare %s for $%d.") % [tr(PilotArt.CONTROLLER_NAMES.get(id, id)), v]
 
 
 func buy_controller(id: String) -> String:
@@ -4586,7 +4612,7 @@ func save_game() -> bool:
 		"owned_chips": owned_chips, "chips": chips, "circuit": circuit, "circuit_offers": circuit_offers,
 		"circuits_won": circuits_won, "pickup": pickup, "setups": setups, "custom_parts": custom_parts,
 		"year": year, "week": week, "day": day, "rank": rank, "event": {}, "leagues": leagues, "title_seeds": title_seeds, "trophies": trophies, "career_stats": career_stats,
-		"pecking_k": pecking_k(), "style": style, "style_locked": style_locked, "shop_stock": shop_stock, "chip_stock": chip_stock, "scout": scout, "wingmen": wingmen, "sending": sending, "pilot_look": pilot_look, "owned_controllers": owned_controllers, "tips_seen": tips_seen, "tips_log": tips_log, "h2h": h2h, "rivals": rivals, "grudge": grudge, "pending_talk": pending_talk, "inbox": inbox, "inbox_seen": inbox_seen, "social": social, "contracts": contracts, "alerts_unseen": alerts_unseen, "day_log": day_log, "tour": tour, "streak": streak, "pub_seen": pub_seen, "digs_left": digs_left, "dig_luck": dig_luck, "bills_note": bills_note, "fight_log": fight_log, "bets": bets, "world": world,
+		"pecking_k": pecking_k(), "style": style, "style_locked": style_locked, "shop_stock": shop_stock, "chip_stock": chip_stock, "scout": scout, "wingmen": wingmen, "sending": sending, "pilot_look": pilot_look, "owned_controllers": owned_controllers, "spare_controllers": spare_controllers, "tips_seen": tips_seen, "tips_log": tips_log, "h2h": h2h, "rivals": rivals, "grudge": grudge, "pending_talk": pending_talk, "inbox": inbox, "inbox_seen": inbox_seen, "social": social, "contracts": contracts, "alerts_unseen": alerts_unseen, "day_log": day_log, "tour": tour, "streak": streak, "pub_seen": pub_seen, "digs_left": digs_left, "dig_luck": dig_luck, "bills_note": bills_note, "fight_log": fight_log, "bets": bets, "world": world,
 	}
 	var f := FileAccess.open(slot_path(save_slot), FileAccess.WRITE)
 	if f == null:
@@ -4713,6 +4739,10 @@ func load_game(slot: int = -1) -> String:
 		if typeof(e) == TYPE_DICTIONARY:
 			fight_log.append({"y": int(e.get("y", 1)), "w": int(e.get("w", 1)), "d": str(e.get("d", "sat")), "opp": str(e.get("opp", "?")), "won": bool(e.get("won", false)),
 					"mode": str(e.get("mode", "")), "stage": str(e.get("stage", "")), "title": str(e.get("title", ""))})
+	spare_controllers = []
+	for c in data.get("spare_controllers", []):
+		if CONTROLLER_INFO.has(str(c)):
+			spare_controllers.append(str(c))
 	owned_controllers = ["gamepad"]
 	for c in data.get("owned_controllers", []):
 		if CONTROLLER_INFO.has(str(c)) and not owned_controllers.has(str(c)):
