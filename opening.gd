@@ -22,7 +22,7 @@ const I18n = preload("res://i18n.gd")
 ## [id, seconds, camera from [x, y, zoom], camera to] (x, y = fractions of the screen)
 const SHOTS := [
 	["city", 8.0, [0.5, 0.5, 1.0], [0.62, 0.6, 1.18]],
-	["stadium", 7.0, [0.5, 0.5, 1.0], [0.5, 0.66, 1.9]],
+	["stadium", 7.0, [0.5, 0.5, 1.0], [0.5, 0.52, 1.6]],
 	# your dad's night: hard cuts, like a fight broadcast
 	["dad_face", 2.6, [0.5, 0.5, 1.0], [0.5, 0.48, 1.12]],
 	["dad_clash", 1.8, [0.5, 0.5, 1.15], [0.5, 0.5, 1.3]],
@@ -188,7 +188,7 @@ func _events() -> void:
 	var cues := {"dad_bell": ["dad_face", 0.1, "round"], "clash": ["dad_clash", 0.75, "hit_big"], "upper": ["dad_uppercut", 0.85, "uppercut"],
 			"upper2": ["dad_uppercut", 0.9, "hit_big"], "pop": ["dad_uppercut", 0.95, "break"], "ko": ["dad_uppercut", 1.2, "ko"],
 			"roar": ["dad_win", 0.0, "crowd_cheer"], "ol_hit1": ["overlord", 5.0, "hit_big"], "ol_hit2": ["overlord", 6.6, "break"],
-			"tarp": ["scrap", 3.0, "swing"], "eye": ["scrap", 8.0, "target"], "bell": ["bell", 6.8, "round"]}
+			"lever": ["scrap", 2.6, "click"], "tarp": ["scrap", 3.0, "swing"], "lamp": ["scrap", 7.2, "equip"], "eye": ["scrap", 8.0, "target"], "bell": ["bell", 6.8, "round"]}
 	for k in cues:
 		var c: Array = cues[k]
 		if sid() == str(c[0]) and t >= float(c[1]) and not _fired.has(k):
@@ -304,11 +304,12 @@ class Stage extends Control:
 				op.draw_road(self, W, H, op.t)
 			"bell":
 				op.draw_bell(self, W, H, op.t)
+		GarageArt._on = false
 
 
-## The light each shot is lit by (light.gd), for the robots and people in it.
-const SHOT_LIGHT := {"city": "neutral", "stadium": "champ_arena", "dad_face": "champ_arena", "dad_clash": "champ_arena", "dad_uppercut": "champ_arena",
-		"dad_win": "champ_arena", "overlord": "overlord", "fall": "fall", "scrap": "scrap_ring", "road": "neutral", "bell": "pub"}
+## The light each shot is lit by (light.gd), for the robots, people and props in it.
+const SHOT_LIGHT := {"city": "city", "stadium": "stadium_ext", "dad_face": "champ_arena", "dad_clash": "champ_arena", "dad_uppercut": "champ_arena",
+		"dad_win": "champ_arena", "overlord": "overlord", "fall": "fall", "scrap": "scrap_ring", "road": "road", "bell": "pub"}
 
 
 func shot_light() -> String:
@@ -332,7 +333,7 @@ func stars(ci: CanvasItem, W: float, H: float, tt: float, n: int, max_y: float) 
 
 
 ## A city skyline: far towers, then near towers with lit windows. Kane towers carry the logo.
-func skyline(ci: CanvasItem, W: float, base_y: float, scale_h: float, tt: float, far_col: Color, near_col: Color, lit: float) -> void:
+func skyline(ci: CanvasItem, W: float, base_y: float, scale_h: float, tt: float, far_col: Color, near_col: Color, lit_share: float) -> void:
 	var x := -10.0
 	var k := 0
 	while x < W + 10.0:
@@ -348,14 +349,14 @@ func skyline(ci: CanvasItem, W: float, base_y: float, scale_h: float, tt: float,
 		var kane := k % 7 == 3
 		var h := (0.12 + hsh(k + 40) * 0.16 + (0.18 if kane else 0.0)) * scale_h
 		var r := Rect2(x, base_y - h, w, h)
-		ci.draw_rect(r, near_col)
+		GarageArt._rc(ci, r, near_col)
 		# lit windows, a few flickering
 		var cols := int(w / 9.0)
 		var rows := int(h / 11.0)
 		for c in cols:
 			for rr in rows:
 				var id := k * 1000 + c * 37 + rr
-				if hsh(id) < lit:
+				if hsh(id) < lit_share:
 					var on := not (hsh(id + 3) < 0.04 and fmod(tt + hsh(id + 9) * 5.0, 3.0) < 1.0)
 					if on:
 						ci.draw_rect(Rect2(x + 4 + c * 9.0, base_y - h + 6 + rr * 11.0, 4, 5), Color(1.0, 0.82, 0.45, 0.75) if hsh(id + 5) < 0.85 else Color(0.6, 0.85, 1.0, 0.7))
@@ -364,7 +365,7 @@ func skyline(ci: CanvasItem, W: float, base_y: float, scale_h: float, tt: float,
 			var lc := Vector2(x + w * 0.5, base_y - h + 18)
 			ci.draw_rect(Rect2(lc - Vector2(11, 11), Vector2(22, 22)), Color(0.05, 0.05, 0.07))
 			ci.draw_string(GUI.headb(), lc + Vector2(-11, 8), "K", HORIZONTAL_ALIGNMENT_CENTER, 22, 20, Color(1.0, 0.25, 0.3))
-			ci.draw_line(Vector2(x + w * 0.5, base_y - h), Vector2(x + w * 0.5, base_y - h - 18), near_col, 2.0)
+			GarageArt._ln(ci, Vector2(x + w * 0.5, base_y - h), Vector2(x + w * 0.5, base_y - h - 18), near_col, 2.5)
 			if fmod(tt + k, 1.6) < 0.5:
 				ci.draw_circle(Vector2(x + w * 0.5, base_y - h - 18), 3.0, Color(1.0, 0.2, 0.2))
 				ci.draw_circle(Vector2(x + w * 0.5, base_y - h - 18), 8.0, Color(1.0, 0.2, 0.2, 0.2))
@@ -374,9 +375,9 @@ func skyline(ci: CanvasItem, W: float, base_y: float, scale_h: float, tt: float,
 
 func crane(ci: CanvasItem, foot: Vector2, h: float, reach: float, c: Color) -> void:
 	var top := foot + Vector2(0, -h)
-	ci.draw_line(foot, top, c, 4.0)
+	GarageArt._ln(ci, foot, top, c, 4.0)
 	ci.draw_line(foot + Vector2(-10, 0), top + Vector2(-3, 0), c, 2.0)
-	ci.draw_line(top + Vector2(-reach * 0.25, 0), top + Vector2(reach, 0), c, 3.0)
+	GarageArt._ln(ci, top + Vector2(-reach * 0.25, 0), top + Vector2(reach, 0), c, 3.0)
 	ci.draw_line(top + Vector2(0, -12), top + Vector2(reach, 0), c, 1.5)
 	ci.draw_line(top + Vector2(0, -12), top + Vector2(-reach * 0.25, 0), c, 1.5)
 	ci.draw_line(top + Vector2(reach * 0.8, 0), top + Vector2(reach * 0.8, h * 0.4), c, 1.0)
@@ -395,7 +396,7 @@ func stadium_dome(ci: CanvasItem, c: Vector2, w: float, h: float, tt: float, glo
 		pts.append(c + Vector2(cos(a) * w * 0.5, sin(a) * h))
 	pts.append(c + Vector2(w * 0.5, h * 0.3))
 	pts.append(c + Vector2(-w * 0.5, h * 0.3))
-	ci.draw_colored_polygon(pts, Color(0.16, 0.14, 0.2))
+	GarageArt._pg(ci, pts, Color(0.16, 0.14, 0.2))
 	for k in 12:
 		var a := PI + PI * (k + 0.5) / 12.0
 		ci.draw_circle(c + Vector2(cos(a) * w * 0.47, sin(a) * h * 0.92), 1.6, Color(1.0, 0.85, 0.5, 0.9 * glow))
@@ -409,7 +410,7 @@ func scrap_glow(ci: CanvasItem, c: Vector2, w: float, h: float, tt: float) -> vo
 	for k in 9:
 		pts.append(c + Vector2(-w * 0.6 + w * 1.2 * (k + 0.5) / 9.0, -h * (0.4 + 0.6 * hsh(k + 300)) * sin(PI * (k + 0.5) / 9.0)))
 	pts.append(c + Vector2(w * 0.6, 0))
-	ci.draw_colored_polygon(pts, Color(0.12, 0.08, 0.07))
+	GarageArt._pg(ci, pts, Color(0.12, 0.08, 0.07))
 	crane(ci, c + Vector2(w * 0.2, 0), h * 2.2, w * 0.5, Color(0.12, 0.08, 0.07))
 
 
@@ -419,19 +420,25 @@ func draw_city(ci: CanvasItem, W: float, H: float, tt: float) -> void:
 	var hz := H * 0.66
 	sky(ci, W, H, Color(0.02, 0.03, 0.09), Color(0.2, 0.1, 0.25), hz)
 	stars(ci, W, H, tt, 90, hz * 0.6)
+	lit()
 	var moon := Vector2(W * 0.84, H * 0.16)
 	ci.draw_circle(moon, H * 0.09, Color(0.9, 0.9, 1.0, 0.05))
 	ci.draw_circle(moon, H * 0.035, Color(0.92, 0.92, 0.85))
 	ci.draw_circle(moon + Vector2(H * 0.012, -H * 0.006), H * 0.03, Color(0.86, 0.86, 0.8))
 	stadium_dome(ci, Vector2(W * 0.62, hz - H * 0.13), W * 0.16, H * 0.07, tt, 1.0)
-	skyline(ci, W, hz, H, tt, Color(0.09, 0.08, 0.16), Color(0.06, 0.06, 0.11), 0.3)
+	skyline(ci, W, hz, H, tt, Color(0.09, 0.08, 0.16), Color(0.1, 0.1, 0.17), 0.3)
 	# the docks: cranes along the water on the left
 	for k in 4:
-		crane(ci, Vector2(W * (0.03 + k * 0.07), hz), H * (0.16 + 0.03 * (k % 2)), W * 0.06, Color(0.04, 0.04, 0.08))
+		crane(ci, Vector2(W * (0.03 + k * 0.07), hz), H * (0.16 + 0.03 * (k % 2)), W * 0.06, Color(0.07, 0.07, 0.12))
 	# far in the right corner: the scrapyard, glowing orange
 	scrap_glow(ci, Vector2(W * 0.95, hz), W * 0.12, H * 0.05, tt)
-	# the sea and the city's reflection
+	# the sea, the city's reflection and the moon's path on the water
 	ci.draw_rect(Rect2(0, hz, W, H - hz), Color(0.02, 0.03, 0.07))
+	for k in 26:
+		var y := hz + 6 + k * (H - hz) / 26.0
+		var half := 6.0 + k * 2.2
+		var wob := sin(tt * 1.7 + k * 0.9) * 5.0
+		ci.draw_line(Vector2(moon.x - half + wob, y), Vector2(moon.x + half + wob, y), Color(0.85, 0.9, 1.0, 0.16 - k * 0.004), 2.0)
 	for k in 60:
 		var x := hsh(k + 1200) * W
 		var y := hz + 4 + hsh(k + 1300) * (H - hz) * 0.8
@@ -441,60 +448,79 @@ func draw_city(ci: CanvasItem, W: float, H: float, tt: float) -> void:
 	for k in 6:
 		var y := hz + (H - hz) * (0.2 + k * 0.13)
 		ci.draw_line(Vector2(0, y + sin(tt + k) * 2.0), Vector2(W, y + sin(tt * 1.3 + k) * 2.0), Color(0.3, 0.35, 0.6, 0.08), 1.0)
+	ci.draw_line(Vector2(0, hz), Vector2(W, hz), Color(0.78, 0.85, 1.0, 0.25), 1.5)
 
 
 # ---------------------------------------------------------------- 2 the stadium
 
 const LEAGUE_BANNERS := [["SCRAP", "scrap", "#7a5236"], ["RUST", "rust", "#b5582a"], ["IRON", "iron", "#5f6f86"],
-		["STEEL", "steel", "#9aa6b8"], ["TITANIUM", "title", "#e0c060"]]
+		["STEEL", "steel", "#9aa6b8"], ["TITANIUM", "title", "#1c1722"]]
 
 
 func draw_stadium(ci: CanvasItem, W: float, H: float, tt: float) -> void:
-	sky(ci, W, H, Color(0.03, 0.03, 0.1), Color(0.18, 0.08, 0.2), H)
-	stars(ci, W, H, tt, 40, H * 0.3)
-	# searchlights from behind the roof
-	for k in 4:
-		var a := -PI / 2.0 + sin(tt * 0.7 + k * 1.7) * 0.6
-		var base := Vector2(W * (0.25 + k * 0.17), H * 0.3)
-		var tip := base + Vector2(cos(a), sin(a)) * H * 1.4
-		ci.draw_colored_polygon(PackedVector2Array([base, tip + Vector2(-60, 0), tip + Vector2(60, 0)]), Color(1.0, 0.95, 0.8, 0.07))
-	# the bowl: a curved roof with lights, the facade below
-	var top := H * 0.26
+	sky(ci, W, H, Color(0.03, 0.03, 0.1), Color(0.2, 0.08, 0.22), H * 0.6)
+	ci.draw_rect(Rect2(0, H * 0.6, W, H * 0.4), Color(0.2, 0.08, 0.22))
+	stars(ci, W, H, tt, 40, H * 0.25)
+	# searchlights from behind the roof, crossing
+	for k in 6:
+		var a := -PI / 2.0 + sin(tt * 0.55 + k * 1.3) * 0.55
+		var base := Vector2(W * (0.12 + k * 0.152), H * 0.24)
+		var tip := base + Vector2(cos(a), sin(a)) * H * 1.3
+		ci.draw_polygon(PackedVector2Array([base, tip + Vector2(-70, 0), tip + Vector2(70, 0)]),
+				PackedColorArray([Color(1.0, 0.95, 0.8, 0.12), Color(1.0, 0.95, 0.8, 0.0), Color(1.0, 0.95, 0.8, 0.0)]))
+	lit()
+	var eave := H * 0.3
+	var crown := H * 0.23
 	var bot := H * 0.86
-	var pts := PackedVector2Array()
+	# the roof: a long curved shell with a row of bulbs along its lip
+	var roof := PackedVector2Array()
 	for k in 33:
 		var f := float(k) / 32.0
-		pts.append(Vector2(W * (0.04 + 0.92 * f), top + H * 0.08 * (1.0 - sin(PI * f))))
-	pts.append(Vector2(W * 0.96, bot))
-	pts.append(Vector2(W * 0.04, bot))
-	ci.draw_colored_polygon(pts, Color(0.13, 0.12, 0.17))
-	for k in 32:
-		var f := (k + 0.5) / 32.0
-		var p := Vector2(W * (0.04 + 0.92 * f), top + H * 0.08 * (1.0 - sin(PI * f)) + 6)
+		roof.append(Vector2(W * (0.01 + 0.98 * f), eave - (eave - crown) * sin(PI * f)))
+	for k in range(32, -1, -1):
+		var f := float(k) / 32.0
+		roof.append(Vector2(W * (0.01 + 0.98 * f), eave + H * 0.045 - (eave - crown) * sin(PI * f) * 0.6))
+	GarageArt._pg(ci, roof, Color(0.22, 0.21, 0.27))
+	# the front wall, then its pillars
+	ci.draw_polygon(PackedVector2Array([Vector2(W * 0.02, eave + H * 0.04), Vector2(W * 0.98, eave + H * 0.04), Vector2(W * 0.98, bot), Vector2(W * 0.02, bot)]),
+			PackedColorArray([Color(0.09, 0.085, 0.12), Color(0.09, 0.085, 0.12), Color(0.16, 0.13, 0.17), Color(0.16, 0.13, 0.17)]))
+	for px in [0.02, 0.18, 0.37, 0.63, 0.82, 0.98]:
+		var pw := W * 0.026
+		GarageArt._rc(ci, Rect2(W * px - pw * 0.5, eave + H * 0.03, pw, bot - eave - H * 0.03), Color(0.24, 0.22, 0.27))
+	for k in 33:
+		var f := (k + 0.5) / 33.0
+		var p := Vector2(W * (0.01 + 0.98 * f), eave + H * 0.03 - (eave - crown) * sin(PI * f) * 0.6)
 		var on := fmod(tt * 3.0 + k * 0.4, 4.0) > 0.4
-		ci.draw_circle(p, 3.0, Color(1.0, 0.85, 0.45) if on else Color(0.5, 0.4, 0.2))
-	ci.draw_rect(Rect2(W * 0.04, top + H * 0.12, W * 0.92, 4), Color(1.0, 0.8, 0.35, 0.6))
-	# the name over the doors
-	var sign_r := Rect2(W * 0.36, top + H * 0.16, W * 0.28, H * 0.07)
-	ci.draw_rect(sign_r, Color(0.05, 0.03, 0.03))
-	ci.draw_rect(sign_r, Color(1.0, 0.3, 0.3, 0.8), false, 2.0)
-	ci.draw_string(GUI.headb(), sign_r.position + Vector2(0, sign_r.size.y * 0.72), I18n.t("KANE ARENA"), HORIZONTAL_ALIGNMENT_CENTER, sign_r.size.x, int(sign_r.size.y * 0.6), Color(1.0, 0.35, 0.35))
-	# the league banners down the front: the ladder, bottom rung to top
+		ci.draw_circle(p, 6.0, Color(1.0, 0.85, 0.45, 0.18 if on else 0.0))
+		ci.draw_circle(p, 3.0, Color(1.0, 0.88, 0.5) if on else Color(0.5, 0.4, 0.2))
+	# the name in red LED dots on top of the roof
+	var label := I18n.t("KANE ARENA")
+	var p := W * 0.27 / (label.length() * 6.0 + 2.0)
+	var sw := label.length() * 6.0 * p + p * 2.0
+	var sr := Rect2(W * 0.5 - sw * 0.5 - p, crown - p * 10.5, sw + p * 2.0, p * 9.0)
+	GarageArt._ln(ci, Vector2(sr.position.x + sr.size.x * 0.2, sr.end.y), Vector2(sr.position.x + sr.size.x * 0.2, crown + 4), Color(0.3, 0.3, 0.34), 4.0)
+	GarageArt._ln(ci, Vector2(sr.position.x + sr.size.x * 0.8, sr.end.y), Vector2(sr.position.x + sr.size.x * 0.8, crown + 4), Color(0.3, 0.3, 0.34), 4.0)
+	GarageArt._rc(ci, sr.grow(4), Color(0.2, 0.2, 0.23))
+	ci.draw_rect(sr, Color(0.05, 0.02, 0.02))
+	ci.draw_rect(sr.grow(p * 2.0), Color(1.0, 0.2, 0.2, 0.06))
+	Scoreboard.dot_text(ci, label, sr.position.x + p * 2.0, sr.position.y + p, p, sr.position.x, sr.end.x, Color(1.0, 0.25, 0.25))
+	# the doors under the Titanium banner, light spilling out onto the plaza
+	var door := Rect2(W * 0.42, bot - H * 0.12, W * 0.16, H * 0.12)
+	ci.draw_colored_polygon(PackedVector2Array([door.position + Vector2(0, door.size.y), Vector2(door.end.x, door.end.y), Vector2(door.end.x + W * 0.12, H), Vector2(door.position.x - W * 0.12, H)]), Color(1.0, 0.85, 0.55, 0.08))
+	ci.draw_rect(door, Color(1.0, 0.86, 0.58))
+	ci.draw_rect(door.grow(10), Color(1.0, 0.86, 0.58, 0.08))
+	for k in 4:
+		GarageArt._rc(ci, Rect2(door.position.x - 7 + k * door.size.x / 3.0, door.position.y - 6, 12, door.size.y + 6), Color(0.28, 0.25, 0.22))
+	GarageArt._rc(ci, Rect2(door.position.x - 12, door.position.y - 16, door.size.x + 24, 12), Color(0.3, 0.27, 0.24))
+	plaza_y = bot + 6.0
+	# the league banners: the ladder climbs from the outside in, the crown in the middle
 	for k in 5:
 		var b: Array = LEAGUE_BANNERS[k]
-		var x := W * (0.08 + k * 0.08) if k < 3 else W * (0.68 + (k - 3) * 0.12)
-		var r := Rect2(x, top + H * 0.13, W * 0.055, H * 0.34)
-		var col := Color(str(b[2]))
-		ci.draw_rect(r, col.darkened(0.25))
-		ci.draw_colored_polygon(PackedVector2Array([Vector2(r.position.x, r.end.y), Vector2(r.end.x, r.end.y), Vector2(r.get_center().x, r.end.y + H * 0.03)]), col.darkened(0.25))
-		ci.draw_rect(Rect2(r.position, Vector2(r.size.x, 4)), Color(0.9, 0.9, 0.9, 0.5))
-		GarageArt.draw_trophy(ci, Vector2(r.get_center().x, r.position.y + r.size.y * 0.55), str(b[1]), 1, 1.0)
-		ci.draw_string(GUI.headb(), Vector2(r.position.x - 10, r.position.y + 18), I18n.t(str(b[0])), HORIZONTAL_ALIGNMENT_CENTER, r.size.x + 20, 11, Color(1, 1, 1, 0.9))
-	# the doors, lit, and the queue going in
-	var door := Rect2(W * 0.42, bot - H * 0.2, W * 0.16, H * 0.2)
-	ci.draw_rect(door, Color(1.0, 0.85, 0.55))
-	ci.draw_rect(door.grow(4), Color(0.3, 0.25, 0.2), false, 4.0)
-	ci.draw_rect(Rect2(0, bot, W, H - bot), Color(0.07, 0.07, 0.09))
+		var at: Array = BANNER_AT[k]
+		draw_banner(ci, W * float(at[0]), H * 0.36, W * float(at[1]), H * float(at[2]), Color(str(b[2])), str(b[1]), I18n.t(str(b[0])), tt, k * 1.3, k == 4)
+	# the plaza and the crowd going in
+	ci.draw_rect(Rect2(0, bot, W, H - bot), Color(0.08, 0.075, 0.09))
+	ci.draw_line(Vector2(0, bot), Vector2(W, bot), Color(1.0, 0.88, 0.65, 0.3), 1.5)
 	for k in 70:
 		var lane := hsh(k + 2000)
 		var x := fmod(hsh(k) * W * 1.2 + tt * 30.0 * (1.0 if hsh(k + 3) > 0.5 else -1.0), W * 1.2) - W * 0.1
@@ -503,6 +529,7 @@ func draw_stadium(ci: CanvasItem, W: float, H: float, tt: float) -> void:
 		var s := 0.6 + lane * 0.6
 		var c := Color.from_hsv(hsh(k + 9), 0.4, 0.25 + 0.15 * lane)
 		ci.draw_rect(Rect2(x - 5 * s, y - 16 * s, 10 * s, 16 * s), c)
+		ci.draw_rect(Rect2(x - 5 * s, y - 16 * s, 10 * s, 2 * s), Color(1.0, 0.88, 0.65, 0.35))
 		ci.draw_circle(Vector2(x, y - 20 * s), 5 * s, Color(0.1, 0.08, 0.08))
 
 
@@ -787,10 +814,12 @@ func draw_overlord(ci: CanvasItem, W: float, H: float, tt: float) -> void:
 	arena_bg(ci, W, H, floor_y, tt, 0.15)
 	# the house lights go red
 	ci.draw_rect(Rect2(0, 0, W, H), Color(0.5, 0.0, 0.05, 0.28 + 0.06 * sin(tt * 4.0)))
+	lit()
 	# Kane on the big screen
 	var scr := Rect2(W * 0.4, H * 0.12, W * 0.2, H * 0.26)
-	ci.draw_rect(scr.grow(6), Color(0.08, 0.08, 0.09))
+	GarageArt._rc(ci, scr.grow(8), Color(0.16, 0.16, 0.18))
 	ci.draw_rect(scr, Color(0.12, 0.05, 0.08))
+	ci.draw_rect(scr.grow(24), Color(1.0, 0.3, 0.35, 0.05))
 	kane_face(ci, scr.get_center() + Vector2(0, -scr.size.y * 0.08), scr.size.y * 0.24, tt)
 	var sl := scr.position.y
 	while sl < scr.end.y:
@@ -809,16 +838,18 @@ func draw_overlord(ci: CanvasItem, W: float, H: float, tt: float) -> void:
 			"state": "hit" if hit1 else "idle", "blocking": tt > 3.5 and not hit1, "rot": -fall * 1.4, "eye_off": hit2})
 	PilotArt.draw_person(ci, Vector2(W * 0.1, floor_y + H * 0.17), H / 260.0, {"skin": "#b07850", "hair": "#3b1f14", "hat": "bun", "outfit": "#8e2c1c", "long_hair": true, "female": true},
 			1.0, "hold" if not hit2 else "idle", tt)
+	lit()
 	# the arm that came off, flying
 	if hit1:
 		var k := tt - 5.0
 		var p := Vector2(W * 0.4 - k * 260.0, floor_y - tall * 0.6 - 500.0 * k + 900.0 * k * k)
+		var arm_c := Color(0.25, 0.37, 0.56)
 		if p.y < floor_y:
 			ci.draw_set_transform(p, k * 9.0, Vector2.ONE)
-			ci.draw_rect(Rect2(-30, -9, 60, 18), Color(0.25, 0.37, 0.56))
+			GarageArt._rc(ci, Rect2(-30, -9, 60, 18), arm_c)
 			ci.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 		else:
-			ci.draw_rect(Rect2(p.x - 30, floor_y - 12, 60, 14), Color(0.25, 0.37, 0.56))
+			GarageArt._rc(ci, Rect2(p.x - 30, floor_y - 12, 60, 14), arm_c)
 	# OVERLORD walks in from the right, alone: nobody in its corner
 	var walk := clampf(tt / 3.2, 0.0, 1.0)
 	var ox := lerpf(W * 1.1, W * 0.6, walk)
@@ -827,11 +858,12 @@ func draw_overlord(ci: CanvasItem, W: float, H: float, tt: float) -> void:
 	RobotArt.draw(ci, Vector2(ox - lunge * 40.0, floor_y + 6), ol, {"light": shot_light(), "scale": robot_scale(ol, H * 0.52), "facing": -1, "time": tt,
 			"state": "punch" if lunge > 0.0 else "idle", "attack_limb": "arm_front" if tt < 6.0 else "arm_back", "extended": lunge > 0.0,
 			"swing": sin(tt * 6.0) * 0.4 if walk < 1.0 else 0.0})
+	lit()
 	# its empty corner: a pilot's stool and nobody on it
 	var stool := Vector2(W * 0.9, floor_y + H * 0.16)
-	ci.draw_rect(Rect2(stool + Vector2(-16, -26), Vector2(32, 6)), Color(0.3, 0.3, 0.32))
-	ci.draw_line(stool + Vector2(-12, -20), stool + Vector2(-14, 0), Color(0.3, 0.3, 0.32), 3.0)
-	ci.draw_line(stool + Vector2(12, -20), stool + Vector2(14, 0), Color(0.3, 0.3, 0.32), 3.0)
+	GarageArt._ln(ci, stool + Vector2(-12, -20), stool + Vector2(-14, 0), Color(0.3, 0.3, 0.32), 3.0)
+	GarageArt._ln(ci, stool + Vector2(12, -20), stool + Vector2(14, 0), Color(0.3, 0.3, 0.32), 3.0)
+	GarageArt._rc(ci, Rect2(stool + Vector2(-17, -27), Vector2(34, 8)), Color(0.34, 0.34, 0.36))
 	# the hits: a flash
 	for at in [5.0, 6.6]:
 		var f := 1.0 - clampf((tt - at) / 0.25, 0.0, 1.0)
@@ -846,11 +878,17 @@ const BOARD_NAMES := ["", "HAMMERHEAD", "JUGGERNAUT", "RIVET", "VOLTAGE", "SLEDG
 
 
 func draw_fall(ci: CanvasItem, W: float, H: float, tt: float) -> void:
-	ci.draw_rect(Rect2(0, 0, W, H), Color(0.06, 0.06, 0.08))
+	ci.draw_polygon(PackedVector2Array([Vector2.ZERO, Vector2(W, 0), Vector2(W, H), Vector2(0, H)]),
+			PackedColorArray([Color(0.05, 0.055, 0.07), Color(0.05, 0.055, 0.07), Color(0.1, 0.1, 0.12), Color(0.1, 0.1, 0.12)]))
+	lit()
 	# up top: the board of pilot licences, names going dark one by one (your dad's first)
 	var b := Rect2(W * 0.25, H * 0.06, W * 0.5, H * 0.46)
-	ci.draw_rect(b.grow(6), Color(0.3, 0.31, 0.33))
+	var fc := Color(0.34, 0.35, 0.38)
 	ci.draw_rect(b, Color(0.04, 0.04, 0.05))
+	GarageArt._rc(ci, Rect2(b.position.x - 12, b.position.y - 12, b.size.x + 24, 12), fc)
+	GarageArt._rc(ci, Rect2(b.position.x - 12, b.end.y, b.size.x + 24, 12), fc)
+	GarageArt._rc(ci, Rect2(b.position.x - 12, b.position.y, 12, b.size.y), fc)
+	GarageArt._rc(ci, Rect2(b.end.x, b.position.y, 12, b.size.y), fc)
 	ci.draw_string(GUI.headb(), Vector2(b.position.x, b.position.y + 26), I18n.t("PILOT LICENCES"), HORIZONTAL_ALIGNMENT_CENTER, b.size.x, 20, Color(0.9, 0.9, 0.9))
 	var row_h := (b.size.y - 44.0) / BOARD_NAMES.size()
 	for k in BOARD_NAMES.size():
@@ -860,15 +898,28 @@ func draw_fall(ci: CanvasItem, W: float, H: float, tt: float) -> void:
 		if gone:
 			ci.draw_rect(r, Color(0.02, 0.02, 0.02))
 			ci.draw_string(GUI.headb(), Vector2(r.position.x, r.get_center().y + 7), I18n.t("REVOKED"), HORIZONTAL_ALIGNMENT_RIGHT, r.size.x - 8, 18, Color(0.85, 0.15, 0.15))
+			ci.draw_rect(Rect2(r.end.x - 120, r.position.y, 120, r.size.y), Color(0.85, 0.15, 0.15, 0.06))
 		else:
 			Scoreboard.flap_row(ci, Rect2(r.position, Vector2(r.size.x * 0.7, r.size.y)), name, GUI.headb(), Color(1, 1, 1))
 	# below: the controllers dropped in a Kane bin, and your dad's empty chair with his helmet on it
 	var floor_y := H * 0.95
-	ci.draw_rect(Rect2(0, H * 0.6, W, H * 0.4), Color(0.09, 0.09, 0.11))
-	ci.draw_rect(Rect2(0, floor_y, W, H - floor_y), Color(0.05, 0.05, 0.06))
+	ci.draw_rect(Rect2(0, floor_y, W, H - floor_y), Color(0.06, 0.06, 0.07))
+	ci.draw_line(Vector2(0, floor_y), Vector2(W, floor_y), Color(0.75, 0.82, 0.95, 0.25), 1.5)
+	var chair := Vector2(W * 0.62, floor_y)
+	# a single lamp over the chair: its cable, its shade, the cone of light and the pool on the floor
+	var lamp := chair + Vector2(-4, -H * 0.36)
+	ci.draw_line(Vector2(lamp.x, H * 0.55), lamp, Color(0.2, 0.2, 0.22), 2.0)
+	ci.draw_colored_polygon(PackedVector2Array([lamp + Vector2(-8, 0), lamp + Vector2(8, 0), chair + Vector2(90, 0), chair + Vector2(-100, 0)]), Color(0.85, 0.9, 1.0, 0.07))
+	ci.draw_set_transform(chair, 0.0, Vector2(1.0, 0.16))
+	ci.draw_circle(Vector2.ZERO, 110.0, Color(0.85, 0.9, 1.0, 0.08))
+	ci.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+	GarageArt._pg(ci, PackedVector2Array([lamp + Vector2(-6, -10), lamp + Vector2(6, -10), lamp + Vector2(16, 2), lamp + Vector2(-16, 2)]), Color(0.3, 0.32, 0.36))
+	ci.draw_circle(lamp + Vector2(0, 4), 5.0, Color(1.0, 0.97, 0.88))
+	ci.draw_circle(lamp + Vector2(0, 4), 12.0, Color(1.0, 0.97, 0.88, 0.15))
 	var bin := Rect2(W * 0.3, floor_y - H * 0.16, W * 0.14, H * 0.16)
-	ci.draw_rect(bin, Color(0.25, 0.27, 0.3))
-	ci.draw_rect(Rect2(bin.position - Vector2(6, 6), Vector2(bin.size.x + 12, 8)), Color(0.35, 0.37, 0.4))
+	GarageArt._rc(ci, bin, Color(0.25, 0.27, 0.3))
+	for k in 3:
+		ci.draw_line(Vector2(bin.position.x + bin.size.x * (0.25 + k * 0.25), bin.position.y + 12), Vector2(bin.position.x + bin.size.x * (0.25 + k * 0.25), bin.end.y - 6), Color(0.18, 0.19, 0.22), 2.0)
 	ci.draw_string(GUI.headb(), Vector2(bin.position.x, bin.get_center().y + 6), "KANE", HORIZONTAL_ALIGNMENT_CENTER, bin.size.x, 16, Color(1.0, 0.3, 0.35))
 	for k in 5:
 		var at := 4.0 + k * 0.7
@@ -877,61 +928,137 @@ func draw_fall(ci: CanvasItem, W: float, H: float, tt: float) -> void:
 		var f := clampf((tt - at) / 0.6, 0.0, 1.0)
 		var p := Vector2(bin.get_center().x + (hsh(k) - 0.5) * 40.0, lerpf(H * 0.58, bin.position.y + 6, f * f))
 		PilotArt.draw_controller(ci, p, 1.3, PilotArt.CONTROLLERS[k % PilotArt.CONTROLLERS.size()], false, tt)
-	var chair := Vector2(W * 0.62, floor_y)
-	ci.draw_rect(Rect2(chair + Vector2(-26, -48), Vector2(52, 8)), Color(0.35, 0.22, 0.14))
-	ci.draw_rect(Rect2(chair + Vector2(20, -100), Vector2(8, 60)), Color(0.35, 0.22, 0.14))
-	ci.draw_line(chair + Vector2(-22, -40), chair + Vector2(-22, 0), Color(0.3, 0.2, 0.12), 4.0)
-	ci.draw_line(chair + Vector2(22, -40), chair + Vector2(22, 0), Color(0.3, 0.2, 0.12), 4.0)
-	# the helmet on the seat, the pad light still magenta
-	ci.draw_circle(chair + Vector2(-4, -62), 16.0, Color(0.2, 0.3, 0.5))
-	ci.draw_rect(Rect2(chair + Vector2(-20, -66), Vector2(32, 8)), Color(0.1, 0.1, 0.12))
+	lit()
+	GarageArt._rc(ci, Rect2(bin.position - Vector2(6, 6), Vector2(bin.size.x + 12, 10)), Color(0.36, 0.38, 0.41))
+	var wood := Color(0.38, 0.24, 0.15)
+	GarageArt._ln(ci, chair + Vector2(-22, -40), chair + Vector2(-22, 0), wood.darkened(0.15), 5.0)
+	GarageArt._ln(ci, chair + Vector2(22, -40), chair + Vector2(22, 0), wood.darkened(0.15), 5.0)
+	GarageArt._rc(ci, Rect2(chair + Vector2(20, -104), Vector2(10, 64)), wood)
+	GarageArt._rc(ci, Rect2(chair + Vector2(-28, -50), Vector2(58, 10)), wood)
+	# the helmet on the seat, the pad on the floor, its light still magenta
+	GarageArt._cr(ci, chair + Vector2(-4, -64), 16.0, Color(0.2, 0.3, 0.5))
+	GarageArt._rc(ci, Rect2(chair + Vector2(-20, -68), Vector2(32, 8)), Color(0.1, 0.1, 0.12))
 	ci.draw_circle(chair + Vector2(-60, -6), 4.0, Color("#ff00aa", 0.5 + 0.5 * sin(tt * 3.0)))
 	PilotArt.draw_controller(ci, chair + Vector2(-60, -2), 1.2, str(dad.get("controller", "arcade")), false, tt)
-	# a single light over the chair
-	ci.draw_colored_polygon(PackedVector2Array([chair + Vector2(-8, -H * 0.38), chair + Vector2(-80, 0), chair + Vector2(70, 0)]), Color(1.0, 0.95, 0.8, 0.06))
 
 
 # ---------------------------------------------------------------- 6 the scrapyard
 
 func draw_scrap(ci: CanvasItem, W: float, H: float, tt: float) -> void:
 	var floor_y := H * 0.82
-	sky(ci, W, H, Color(0.12, 0.14, 0.3), Color(0.95, 0.55, 0.35), floor_y - H * 0.2)
-	ci.draw_rect(Rect2(0, floor_y - H * 0.2, W, H * 0.2), Color(0.95, 0.55, 0.35))
-	# the city far away, the stadium among the towers
-	stadium_dome(ci, Vector2(W * 0.2, floor_y - H * 0.24), W * 0.08, H * 0.035, tt, 0.4)
-	skyline(ci, W * 0.6, floor_y - H * 0.2, H * 0.5, tt, Color(0.45, 0.3, 0.35), Color(0.35, 0.22, 0.28), 0.08)
-	# piles of dead robots and the crane over the tarp
-	GarageArt._scrap_pile(ci, Vector2(W * 0.2, floor_y), W * 0.4, H * 0.3, tt)
-	GarageArt._scrap_pile(ci, Vector2(W * 0.85, floor_y), W * 0.35, H * 0.36, tt + 3.0)
-	ci.draw_rect(Rect2(0, floor_y, W, H - floor_y), Color(0.3, 0.22, 0.17))
+	var hz := floor_y - H * 0.2
+	sky(ci, W, H, Color(0.1, 0.12, 0.28), Color(0.98, 0.58, 0.32), hz)
+	ci.draw_rect(Rect2(0, hz, W, floor_y - hz), Color(0.98, 0.58, 0.32))
+	# the sun going down behind the heaps on the right (the key light of this shot)
+	var sun := Vector2(W * 0.86, hz - H * 0.02)
+	ci.draw_circle(sun, H * 0.2, Color(1.0, 0.7, 0.4, 0.12))
+	ci.draw_circle(sun, H * 0.11, Color(1.0, 0.78, 0.5, 0.2))
+	ci.draw_circle(sun, H * 0.055, Color(1.0, 0.9, 0.65))
+	# far off: the city and the stadium in the haze
+	stadium_dome(ci, Vector2(W * 0.2, hz - H * 0.04), W * 0.08, H * 0.035, tt, 0.4)
+	ci.draw_set_transform(Vector2(-W * 0.12, 0), 0.0, Vector2.ONE)
+	skyline(ci, W * 0.62, hz, H * 0.5, tt, Color(0.62, 0.4, 0.42), Color(0.55, 0.34, 0.38), 0.05)
+	ci.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+	# far heaps, flat in the haze, with a dead robot or two on the ridge
+	var ridge := PackedVector2Array([Vector2(0, floor_y)])
+	for i in 25:
+		var f := float(i) / 24.0
+		ridge.append(Vector2(W * f, hz + H * 0.05 - H * (0.06 + 0.06 * hsh(i + 800)) * (0.6 + 0.4 * sin(f * 9.0 + 1.0))))
+	ridge.append(Vector2(W, floor_y))
+	ci.draw_colored_polygon(ridge, Color(0.42, 0.24, 0.27))
+	for i in 5:
+		var rx := W * (0.08 + i * 0.21 + hsh(i + 820) * 0.05)
+		var ry := hz - H * 0.02
+		ci.draw_rect(Rect2(rx, ry - 10, 14, 12), Color(0.42, 0.24, 0.27))
+		ci.draw_line(Vector2(rx + 7, ry), Vector2(rx + 18 + hsh(i) * 10, ry - 16), Color(0.42, 0.24, 0.27), 4.0)
+	ci.draw_polygon(PackedVector2Array([Vector2(0, hz - H * 0.05), Vector2(W, hz - H * 0.05), Vector2(W, floor_y), Vector2(0, floor_y)]),
+			PackedColorArray([Color(1.0, 0.6, 0.35, 0.0), Color(1.0, 0.6, 0.35, 0.0), Color(1.0, 0.6, 0.35, 0.3), Color(1.0, 0.6, 0.35, 0.3)]))
+	lit()
+	# the crane and its hook: the lever pulls at 2.6 s, the hook takes the tarp up from 3.0 s
 	var rc := Vector2(W * 0.5, floor_y + 4)
-	crane(ci, Vector2(W * 0.62, floor_y), H * 0.68, W * 0.2, Color(0.22, 0.16, 0.14))
 	var tall := H * 0.4
+	var ease := clampf((tt - 3.0) / 2.0, 0.0, 1.0)
+	ease = ease * ease * (3.0 - 2.0 * ease)
+	var lift := ease * H * 0.27
+	var sway := sin((tt - 3.6) * 2.6) * 26.0 * exp(-maxf(0.0, tt - 4.2) * 0.45) if tt > 3.6 else 0.0
+	var peak := Vector2(rc.x + sway * 0.25, floor_y - tall * 1.04 - lift)
+	var jib_y := H * 0.1
+	big_crane(ci, Vector2(W * 0.69, floor_y), jib_y, W * 0.26, peak + Vector2(0, -10), Color(0.72, 0.5, 0.16), tt)
+	# the heaps on either side
+	GarageArt._scrap_pile(ci, Vector2(W * 0.12, floor_y), W * 0.3, H * 0.34, tt)
+	GarageArt._scrap_pile(ci, Vector2(W * 0.95, floor_y), W * 0.28, H * 0.42, tt + 3.0)
+	# the ground: packed dirt and oil, junk lying about
+	ci.draw_polygon(PackedVector2Array([Vector2(0, floor_y), Vector2(W, floor_y), Vector2(W, H), Vector2(0, H)]),
+			PackedColorArray([Color(0.36, 0.25, 0.19), Color(0.36, 0.25, 0.19), Color(0.16, 0.11, 0.1), Color(0.16, 0.11, 0.1)]))
+	ci.draw_line(Vector2(0, floor_y), Vector2(W, floor_y), Color(1.0, 0.72, 0.42, 0.4), 1.5)
+	ci.draw_set_transform(Vector2(W * 0.64, floor_y + H * 0.08), 0.0, Vector2(1.0, 0.2))
+	ci.draw_circle(Vector2.ZERO, W * 0.07, Color(0.08, 0.06, 0.08))
+	ci.draw_circle(Vector2(W * 0.01, -W * 0.01), W * 0.05, Color(0.98, 0.58, 0.32, 0.25))
+	ci.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+	GarageArt._cr(ci, Vector2(W * 0.08, floor_y + H * 0.1), 18.0, Color(0.12, 0.12, 0.13))
+	GarageArt._cr(ci, Vector2(W * 0.08, floor_y + H * 0.1), 7.0, Color(0.4, 0.38, 0.36))
+	GarageArt._pg(ci, PackedVector2Array([Vector2(W * 0.38, floor_y + H * 0.12), Vector2(W * 0.43, floor_y + H * 0.1), Vector2(W * 0.44, floor_y + H * 0.13), Vector2(W * 0.39, floor_y + H * 0.15)]), Color(0.45, 0.35, 0.3))
+	GarageArt._rc(ci, Rect2(W * 0.88, floor_y + H * 0.02, 34, 46), Color(0.55, 0.22, 0.14))
+	# the work lamp on the crane clicks on at 7.2 s and lights ECHO up
+	var lamp := Vector2(W * 0.69 - 22.0, floor_y - H * 0.44)
+	var lamp_on := tt > 7.2 and not (tt < 7.6 and fmod(tt, 0.12) < 0.06)
+	if lamp_on:
+		ci.draw_colored_polygon(PackedVector2Array([lamp + Vector2(-4, -8), rc + Vector2(-tall * 0.55, 0), rc + Vector2(tall * 0.5, 0), lamp + Vector2(-4, 8)]), Color(1.0, 0.95, 0.8, 0.09))
+		ci.draw_set_transform(rc, 0.0, Vector2(1.0, 0.18))
+		ci.draw_circle(Vector2.ZERO, tall * 0.6, Color(1.0, 0.95, 0.8, 0.12))
+		ci.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+	# ECHO
 	var look: Dictionary = looks["echo_rust"].duplicate(true)
 	var eye_on := tt > 8.0 and not (tt < 8.6 and fmod(tt, 0.15) < 0.07)
 	if not eye_on:
 		look["eye"] = Color(0.12, 0.1, 0.1)
-	RobotArt.draw(ci, rc, look, {"light": shot_light(), "scale": robot_scale(look, tall), "facing": 1, "time": tt, "state": "hit" if tt < 9.0 else "idle", "eye_off": not eye_on})
+	var sc := robot_scale(look, tall)
+	RobotArt.draw(ci, rc, look, {"light": shot_light(), "scale": sc, "facing": 1, "time": tt, "state": "hit" if tt < 9.0 else "idle", "eye_off": not eye_on})
+	var g := RobotArt.geom(look)
+	var hc: Vector2 = (g["head"] as Rect2).get_center() * sc * float(look.get("scale", 1.0))
 	if eye_on:
-		var g := RobotArt.geom(look)
-		var hc: Vector2 = (g["head"] as Rect2).get_center() * robot_scale(look, tall) * float(look.get("scale", 1.0))
 		ci.draw_circle(rc + hc, 26.0, Color(look["eye"], 0.18 + 0.1 * sin(tt * 5.0)))
-	# the tarp: pulled off to the right between 3 and 4.5 seconds
-	var pull := clampf((tt - 3.0) / 1.5, 0.0, 1.0)
-	var tw := W * 0.2
-	var tarp_x := rc.x + pull * W * 0.22
-	var droop := 1.0 - pull * 0.8
-	var tp := PackedVector2Array([Vector2(tarp_x - tw * 0.5 * droop, floor_y + 2), Vector2(tarp_x - tw * 0.42, floor_y - tall * 0.7 * droop),
-			Vector2(tarp_x - tw * 0.1, floor_y - tall * 1.02 * droop), Vector2(tarp_x + tw * 0.2, floor_y - tall * 0.95 * droop),
-			Vector2(tarp_x + tw * 0.45, floor_y - tall * 0.6 * droop), Vector2(tarp_x + tw * 0.55 * droop + pull * 40.0, floor_y + 2)])
-	ci.draw_colored_polygon(tp, Color(0.32, 0.38, 0.3))
-	ci.draw_polyline(tp, Color(0.22, 0.26, 0.2), 2.0)
-	# you on the left, Gus on the right, both hauling on the tarp
+	lit()
+	# dust as the tarp comes off, rust flakes after
+	if tt > 3.0 and tt < 6.0:
+		var a := tt - 3.0
+		for i in 14:
+			var px := rc.x + (hsh(i + 400) - 0.5) * tall * 1.4 * (0.6 + a * 0.4)
+			var py := floor_y - 6.0 - a * 18.0 * hsh(i + 410)
+			ci.draw_circle(Vector2(px, py), 8.0 + a * 10.0 * hsh(i + 420), Color(0.75, 0.6, 0.45, 0.22 * (1.0 - a / 3.0)))
+	if tt > 3.6 and tt < 9.0:
+		for i in 16:
+			var start := 3.6 + hsh(i + 500) * 2.5
+			var a := tt - start
+			if a > 0.0 and a < 1.6:
+				var px := rc.x + (hsh(i + 510) - 0.5) * tall * 0.5 + sin(a * 4.0 + i) * 4.0
+				var py := floor_y - tall * (0.4 + 0.5 * hsh(i + 520)) + a * a * 140.0
+				if py < floor_y:
+					ci.draw_rect(Rect2(px, py, 3, 3), Color(0.6, 0.32, 0.15))
+	# the tarp, hooked to the crane
+	draw_tarp(ci, peak, floor_y, tall * 0.42, tall, lift, sway, tt)
+	# the work lamp itself
+	GarageArt._rc(ci, Rect2(lamp + Vector2(-8, -12), Vector2(26, 24)), Color(0.3, 0.3, 0.32))
+	ci.draw_circle(lamp + Vector2(-8, 0), 8.0, Color(1.0, 0.97, 0.85) if lamp_on else Color(0.35, 0.33, 0.3))
+	if lamp_on:
+		ci.draw_circle(lamp + Vector2(-8, 0), 20.0, Color(1.0, 0.95, 0.8, 0.2))
+	# you on the left, watching; Gus at the crane's controls, pulling the lever
 	var s := H / 240.0
 	var you_at := Vector2(W * 0.3, floor_y)
-	var gus_at := Vector2(W * 0.76 + pull * W * 0.04, floor_y)
-	PilotArt.draw_person(ci, you_at, s, you, 1.0, "pry" if tt < 4.6 else ("point" if tt > 9.0 else "idle"), tt)
-	PilotArt.draw_person(ci, gus_at, s, PilotArt.GUS_LOOK, -1.0, "pry" if tt < 4.6 else "idle", tt)
+	var gus_at := Vector2(W * 0.8, floor_y)
+	var box := Rect2(gus_at + Vector2(-27 * s, -20 * s), Vector2(16 * s, 20 * s))
+	GarageArt._rc(ci, box, Color(0.42, 0.42, 0.4))
+	ci.draw_rect(Rect2(box.position + Vector2(3 * s, 5 * s), Vector2(4 * s, 3 * s)), Color(0.3, 1.0, 0.4) if tt > 2.6 else Color(1.0, 0.3, 0.2))
+	ci.draw_rect(Rect2(box.position + Vector2(9 * s, 5 * s), Vector2(4 * s, 3 * s)), Color(1.0, 0.75, 0.2))
+	var pull := clampf((tt - 2.6) / 0.4, 0.0, 1.0)
+	var ang := lerpf(-0.45, 0.5, pull)
+	var pivot := Vector2(box.get_center().x, box.position.y)
+	var grip := pivot + Vector2(sin(ang), -cos(ang)) * 14.0 * s
+	GarageArt._ln(ci, pivot, grip, Color(0.5, 0.5, 0.52), 3.0)
+	GarageArt._cr(ci, grip, 3.0 * s, Color(0.85, 0.15, 0.12))
+	PilotArt.grab_at = grip
+	PilotArt.draw_person(ci, you_at, s, you, 1.0, "point" if tt > 8.3 else "idle", tt)
+	PilotArt.draw_person(ci, gus_at, s, PilotArt.GUS_LOOK, -1.0, "grab" if tt < 6.0 else "idle", tt)
 	heads["GUS"] = gus_at + Vector2(0, -68 * s)
 	heads["ECHO"] = rc + Vector2(0, -tall * 0.9)
 	ci.draw_rect(Rect2(0, 0, W, H), Color(1.0, 0.6, 0.3, 0.05))
@@ -944,30 +1071,52 @@ const RUNGS := ["GUTTER", "SCRAP", "RUST", "IRON", "STEEL", "TITANIUM"]
 
 func draw_road(ci: CanvasItem, W: float, H: float, tt: float) -> void:
 	var floor_y := H * 0.84
-	sky(ci, W, H, Color(0.05, 0.06, 0.16), Color(0.55, 0.3, 0.35), floor_y - H * 0.15)
-	ci.draw_rect(Rect2(0, floor_y - H * 0.15, W, H * 0.15), Color(0.55, 0.3, 0.35))
+	var hz := floor_y - H * 0.15
+	sky(ci, W, H, Color(0.05, 0.06, 0.16), Color(0.55, 0.3, 0.35), hz)
+	ci.draw_rect(Rect2(0, hz, W, H * 0.15), Color(0.55, 0.3, 0.35))
 	stars(ci, W, H, tt, 40, H * 0.3)
-	var dome := Vector2(W * 0.82, floor_y - H * 0.24)
-	stadium_dome(ci, dome, W * 0.14, H * 0.06, tt, 1.0)
-	skyline(ci, W, floor_y - H * 0.15, H * 0.6, tt, Color(0.2, 0.14, 0.24), Color(0.13, 0.1, 0.17), 0.2)
+	lit()
+	# Kane Hill: the stadium sits on top of the city, the stair climbs to its doors
+	var top_lit := clampf((tt - (1.6 + 5 * 1.1)) / 0.5, 0.0, 1.0)
+	var dome := Vector2(W * 0.82, H * 0.27)
+	var hill := PackedVector2Array([Vector2(W * 0.5, hz), Vector2(W * 0.6, H * 0.5), Vector2(W * 0.68, H * 0.37), Vector2(W * 0.74, H * 0.3),
+			Vector2(W * 0.92, H * 0.3), Vector2(W * 1.02, H * 0.38), Vector2(W * 1.02, hz)])
+	GarageArt._pg(ci, hill, Color(0.17, 0.12, 0.2))
+	for i in 40:
+		var hx := W * (0.56 + hsh(i + 600) * 0.44)
+		var hy := lerpf(H * 0.34, hz, hsh(i + 610))
+		if Geometry2D.is_point_in_polygon(Vector2(hx, hy), hill):
+			ci.draw_rect(Rect2(hx, hy, 3, 3), Color(1.0, 0.8, 0.45, 0.6))
+	stadium_dome(ci, dome, W * 0.15, H * 0.06, tt, 1.0 + top_lit * (0.6 + 0.3 * sin(tt * 4.0)))
+	skyline(ci, W, hz, H * 0.6, tt, Color(0.2, 0.14, 0.24), Color(0.15, 0.11, 0.19), 0.2)
 	GarageArt._scrap_pile(ci, Vector2(W * 0.2, floor_y), W * 0.45, H * 0.28, tt)
-	ci.draw_rect(Rect2(0, floor_y, W, H - floor_y), Color(0.22, 0.17, 0.14))
-	# the ladder: a path of lights from the scrapyard up to the stadium, lit rung by rung
-	var a := Vector2(W * 0.3, floor_y - H * 0.3)
-	var pts: Array = []
-	for k in RUNGS.size():
-		var f := float(k) / (RUNGS.size() - 1)
-		pts.append(a.lerp(dome + Vector2(0, -H * 0.1), f) + Vector2(0, -sin(PI * f) * H * 0.18))
-	for k in RUNGS.size():
+	ci.draw_polygon(PackedVector2Array([Vector2(0, floor_y), Vector2(W, floor_y), Vector2(W, H), Vector2(0, H)]),
+			PackedColorArray([Color(0.24, 0.18, 0.15), Color(0.24, 0.18, 0.15), Color(0.12, 0.09, 0.09), Color(0.12, 0.09, 0.09)]))
+	ci.draw_line(Vector2(0, floor_y), Vector2(W, floor_y), Color(1.0, 0.75, 0.55, 0.35), 1.5)
+	# the ladder: a stair of light from the top of the scrap heap up to the stadium, one step a league,
+	# lit step by step. It only ever climbs.
+	var a := Vector2(W * 0.26, floor_y - H * 0.29)
+	var b := Vector2(W * 0.76, dome.y + H * 0.03)
+	var n := RUNGS.size()
+	var dx := (b.x - a.x) / n
+	for k in n:
 		var at := 1.6 + k * 1.1
-		var lit := clampf((tt - at) / 0.4, 0.0, 1.0)
+		var lt := clampf((tt - at) / 0.4, 0.0, 1.0)
+		var y := lerpf(a.y, b.y, float(k) / (n - 1))
+		var x0 := a.x + dx * k
+		var x1 := x0 + dx
+		var gold := Color(1.0, 0.85, 0.4)
+		# the riser up from the step below
 		if k > 0:
-			ci.draw_line(pts[k - 1], pts[k], Color(1.0, 0.85, 0.4, 0.15 + 0.6 * lit), 3.0)
-		var c: Vector2 = pts[k]
-		ci.draw_circle(c, 18.0, Color(1.0, 0.8, 0.35, 0.15 * lit))
-		ci.draw_circle(c, 7.0, Color(1.0, 0.85, 0.4) if lit > 0.0 else Color(0.35, 0.3, 0.25))
-		if lit > 0.0:
-			ci.draw_string(GUI.headb(), c + Vector2(-60, -16), I18n.t(RUNGS[k]), HORIZONTAL_ALIGNMENT_CENTER, 120, 14, Color(1, 1, 1, lit))
+			var py := lerpf(a.y, b.y, float(k - 1) / (n - 1))
+			ci.draw_line(Vector2(x0, py), Vector2(x0, y), Color(gold, 0.2 + 0.7 * lt), 4.0)
+		# the step: dark until it's reached, then glowing
+		ci.draw_rect(Rect2(x0, y - 3, dx, 9), Color(0.2, 0.17, 0.15) if lt <= 0.0 else Color(gold, 0.3 + 0.7 * lt))
+		ci.draw_rect(Rect2(x0, y + 4, dx, 2), Color(0.5, 0.32, 0.12, 0.8 * lt))
+		ci.draw_rect(Rect2(x0, y - 3, dx, 9), Color(0.08, 0.06, 0.05), false, 1.5)
+		if lt > 0.0:
+			ci.draw_rect(Rect2(x0 - 6, y - 10, dx + 12, 20), Color(1.0, 0.8, 0.35, 0.1 * lt))
+			ci.draw_string(GUI.headb(), Vector2(x0 - 20, y - 14), I18n.t(RUNGS[k]), HORIZONTAL_ALIGNMENT_CENTER, dx + 40, 14 if k < n - 1 else 18, Color(1, 1, 1, lt) if k < n - 1 else Color(1.0, 0.88, 0.45, lt))
 	# you, controller in hand, and the robot beside you
 	var s := H / 220.0
 	var you_at := Vector2(W * 0.22, floor_y + H * 0.02)
@@ -981,28 +1130,46 @@ func draw_road(ci: CanvasItem, W: float, H: float, tt: float) -> void:
 func draw_bell(ci: CanvasItem, W: float, H: float, tt: float) -> void:
 	var floor_y := H * 0.84
 	ci.draw_rect(Rect2(0, 0, W, H), Color(0.06, 0.05, 0.08))
-	# the Rusty Bolt's brick wall and its neon sign
+	# the Rusty Bolt's brick wall, sinking into the dark toward the top
 	for row in int(floor_y / 18.0):
 		for col in int(W / 40.0) + 2:
 			var x := col * 40.0 - (20.0 if row % 2 else 0.0)
 			ci.draw_rect(Rect2(x + 1, row * 18.0 + 1, 38, 16), Color(0.22, 0.1, 0.09).lerp(Color(0.3, 0.13, 0.1), hsh(row * 100 + col)))
+	ci.draw_polygon(PackedVector2Array([Vector2(0, 0), Vector2(W, 0), Vector2(W, floor_y), Vector2(0, floor_y)]),
+			PackedColorArray([Color(0.02, 0.0, 0.02, 0.65), Color(0.02, 0.0, 0.02, 0.65), Color(0.02, 0.0, 0.02, 0.15), Color(0.02, 0.0, 0.02, 0.15)]))
+	lit()
 	var on := fmod(tt, 5.0) > 0.12 and not (fmod(tt, 5.0) > 0.3 and fmod(tt, 5.0) < 0.38)
 	var neon := Color(1.0, 0.45, 0.2) if on else Color(0.35, 0.18, 0.12)
 	var sr := Rect2(W * 0.04, H * 0.2, W * 0.36, H * 0.11)
-	ci.draw_rect(sr.grow(10), Color(neon, 0.12 if on else 0.0))
+	ci.draw_rect(sr.grow(30), Color(neon, 0.06 if on else 0.0))
+	GarageArt._rc(ci, sr.grow(8), Color(0.2, 0.16, 0.14))
 	ci.draw_rect(sr, Color(0.08, 0.05, 0.05))
 	ci.draw_rect(sr, neon, false, 3.0)
 	ci.draw_string(GUI.headb(), sr.position + Vector2(0, sr.size.y * 0.72), I18n.t("THE RUSTY BOLT"), HORIZONTAL_ALIGNMENT_CENTER, sr.size.x, int(sr.size.y * 0.5), neon)
+	# the pub's back door, warm light through its little window
+	var door := Rect2(W * 0.08, floor_y - H * 0.3, W * 0.09, H * 0.3)
+	GarageArt._rc(ci, door, Color(0.32, 0.2, 0.13))
+	ci.draw_rect(Rect2(door.position + Vector2(door.size.x * 0.25, door.size.y * 0.12), Vector2(door.size.x * 0.5, door.size.y * 0.2)), Color(1.0, 0.75, 0.4))
+	ci.draw_rect(Rect2(door.position + Vector2(door.size.x * 0.25, door.size.y * 0.12), Vector2(door.size.x * 0.5, door.size.y * 0.2)).grow(10), Color(1.0, 0.75, 0.4, 0.1))
 	# out back: the scrap ring under one bulb
 	var ring := Rect2(W * 0.5, floor_y - H * 0.34, W * 0.46, H * 0.34)
-	ci.draw_colored_polygon(PackedVector2Array([Vector2(ring.get_center().x, H * 0.12), Vector2(ring.position.x - 30, floor_y), Vector2(ring.end.x + 30, floor_y)]), Color(1.0, 0.9, 0.6, 0.08))
-	ci.draw_circle(Vector2(ring.get_center().x, H * 0.12), 7.0, Color(1.0, 0.9, 0.6))
+	var bulb := Vector2(ring.get_center().x, H * 0.14)
+	ci.draw_line(Vector2(bulb.x, 0), bulb + Vector2(0, -10), Color(0.12, 0.1, 0.1), 2.0)
+	ci.draw_colored_polygon(PackedVector2Array([bulb + Vector2(-10, 4), bulb + Vector2(10, 4), Vector2(ring.end.x + 30, floor_y), Vector2(ring.position.x - 30, floor_y)]), Color(1.0, 0.9, 0.6, 0.08))
+	ci.draw_set_transform(Vector2(bulb.x, floor_y + 6), 0.0, Vector2(1.0, 0.16))
+	ci.draw_circle(Vector2.ZERO, ring.size.x * 0.6, Color(1.0, 0.9, 0.6, 0.1))
+	ci.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+	GarageArt._pg(ci, PackedVector2Array([bulb + Vector2(-6, -12), bulb + Vector2(6, -12), bulb + Vector2(14, 2), bulb + Vector2(-14, 2)]), Color(0.3, 0.32, 0.3))
+	ci.draw_circle(bulb + Vector2(0, 5), 6.0, Color(1.0, 0.92, 0.65))
+	ci.draw_circle(bulb + Vector2(0, 5), 16.0, Color(1.0, 0.92, 0.65, 0.18))
 	for x in [ring.position.x, ring.end.x]:
-		ci.draw_rect(Rect2(x - 5, ring.position.y, 10, ring.size.y), Color(0.4, 0.3, 0.2))
+		GarageArt._rc(ci, Rect2(x - 6, ring.position.y, 12, ring.size.y), Color(0.45, 0.33, 0.22))
 	for k in 3:
 		var y := ring.position.y + 20 + k * 30
-		ci.draw_line(Vector2(ring.position.x, y), Vector2(ring.end.x, y + sin(tt + k) * 2.0), Color(0.55, 0.5, 0.4), 3.0)
-	ci.draw_rect(Rect2(0, floor_y, W, H - floor_y), Color(0.16, 0.12, 0.1))
+		GarageArt._ln(ci, Vector2(ring.position.x, y), Vector2(ring.end.x, y + sin(tt + k) * 2.0), Color(0.6, 0.55, 0.42), 3.0)
+	ci.draw_polygon(PackedVector2Array([Vector2(0, floor_y), Vector2(W, floor_y), Vector2(W, H), Vector2(0, H)]),
+			PackedColorArray([Color(0.18, 0.13, 0.11), Color(0.18, 0.13, 0.11), Color(0.08, 0.06, 0.06), Color(0.08, 0.06, 0.06)]))
+	ci.draw_line(Vector2(0, floor_y), Vector2(W, floor_y), Color(1.0, 0.76, 0.42, 0.3), 1.5)
 	# Old Pike and FENCEPOST, waiting; he waves you in
 	var s := H / 240.0
 	var pike_at := Vector2(W * 0.92, floor_y)
@@ -1019,6 +1186,225 @@ func draw_bell(ci: CanvasItem, W: float, H: float, tt: float) -> void:
 	PilotArt.draw_person(ci, gus_at, s, PilotArt.GUS_LOOK, 1.0, "point" if walk >= 1.0 else "idle", tt)
 	PilotArt.draw_person(ci, you_at, s, you, 1.0, "hold", tt)
 	heads["GUS"] = gus_at + Vector2(0, -68 * s)
+
+
+## (1.64) The props in a shot are lit plates like the rest of the game (GarageArt's painting tools:
+## a shadow side, a light edge, one dark outline). Call it again after drawing robots or people,
+## who leave their own light behind.
+func lit(set_name: String = "") -> void:
+	GarageArt._on = not RobotArt.classic
+	RobotArt._set_light(set_name if set_name != "" else shot_light(), 1.0)
+	RobotArt._grade = 2
+	RobotArt._flash = false
+
+
+## Where each league's banner hangs on the stadium's front: [x share, width share, length share of H].
+## The four leagues climb from the outside in, the Titanium banner hangs in the middle over the doors.
+const BANNER_AT := [[0.09, 0.085, 0.22], [0.27, 0.09, 0.25], [0.73, 0.09, 0.28], [0.91, 0.085, 0.31], [0.5, 0.16, 0.36]]
+
+
+var plaza_y := 0.0   # where the stadium's uplights stand (set by draw_stadium)
+
+
+## A banner's side sways in the wind more toward the bottom (f = 0 at the pole, 1 at the hem).
+func wv(tt: float, ph: float, f: float, w: float) -> float:
+	return sin(tt * 1.7 + ph + f * 3.2) * w * 0.06 * f
+
+
+## (1.64) One league banner: a gold pole with finials, the cloth swaying with a swallowtail cut, a gold
+## border, the league's trophy on a medallion, the name, tassels, and an uplight from the plaza.
+func draw_banner(ci: CanvasItem, cx: float, top: float, w: float, L: float, cloth: Color, kind: String, name: String, tt: float, ph: float, grand: bool) -> void:
+	var gold := Color(0.95, 0.76, 0.3)
+	var foot_y := plaza_y
+	# the uplight: a cone climbing the cloth from a lamp on the plaza
+	var foot := Vector2(cx, foot_y)
+	var beam := Color(1.0, 0.88, 0.62, 0.09 if grand else 0.06)
+	ci.draw_polygon(PackedVector2Array([foot + Vector2(-w * 0.12, 0), foot + Vector2(w * 0.12, 0), Vector2(cx + w * 0.75, top - 16), Vector2(cx - w * 0.75, top - 16)]),
+			PackedColorArray([Color(beam, beam.a * 0.4), Color(beam, beam.a * 0.4), Color(beam, beam.a * 0.5), Color(beam, beam.a * 0.5)]))
+	ci.draw_circle(foot, 5.0, Color(1.0, 0.92, 0.7))
+	ci.draw_circle(foot, 12.0, Color(1.0, 0.92, 0.7, 0.2))
+	# cords up to the roof, the pole and its finials
+	ci.draw_line(Vector2(cx - w * 0.55, top), Vector2(cx - w * 0.2, top - roof_cord(w)), Color(0.5, 0.45, 0.35), 1.5)
+	ci.draw_line(Vector2(cx + w * 0.55, top), Vector2(cx + w * 0.2, top - roof_cord(w)), Color(0.5, 0.45, 0.35), 1.5)
+	# the cloth
+	var pts := PackedVector2Array()
+	var n := 8
+	for i in n + 1:
+		var f := float(i) / n
+		pts.append(Vector2(cx - w * 0.5 + wv(tt, ph, f, w) - sin(tt * 2.3 + ph + f * 5.0) * f * 1.5, top + L * f))
+	pts.append(Vector2(cx + wv(tt, ph, 1.0, w), top + L * 0.86))
+	for i in range(n, -1, -1):
+		var f := float(i) / n
+		pts.append(Vector2(cx + w * 0.5 + wv(tt, ph, f, w) + sin(tt * 2.1 + ph + f * 5.0) * f * 1.5, top + L * f))
+	GarageArt._pg(ci, pts, cloth)
+	# the light from the plaza warms the lower cloth
+	var lo := PackedVector2Array()
+	var lc := PackedColorArray()
+	for q in pts:
+		lo.append(q)
+		var f := clampf((q.y - top) / L, 0.0, 1.0)
+		lc.append(Color(1.0, 0.85, 0.6, 0.16 * f * (1.4 if grand else 1.0)))
+	ci.draw_polygon(lo, lc)
+	# the gold border, set in from the edge
+	var bw := 2.5 if grand else 1.8
+	for side in [-1.0, 1.0]:
+		var line := PackedVector2Array()
+		for i in n:
+			var f := float(i) / n
+			var y := top + L * (0.08 + f * 0.74)
+			line.append(Vector2(cx + side * w * 0.38 + wv(tt, ph, (y - top) / L, w), y))
+		ci.draw_polyline(line, gold, bw)
+	var vy := top + L * 0.82
+	ci.draw_polyline(PackedVector2Array([Vector2(cx - w * 0.38 + wv(tt, ph, 0.82, w), vy), Vector2(cx + wv(tt, ph, 0.92, w), top + L * 0.74),
+			Vector2(cx + w * 0.38 + wv(tt, ph, 0.82, w), vy)]), gold, bw)
+	# the sleeve over the pole
+	GarageArt._rc(ci, Rect2(cx - w * 0.5, top - 2, w, w * 0.13), cloth.darkened(0.3))
+	ci.draw_line(Vector2(cx - w * 0.5, top + w * 0.13), Vector2(cx + w * 0.5, top + w * 0.13), gold, bw)
+	# the name
+	var fs := Scoreboard.fit_size(GUI.headb(), name, w * 0.74, int(w * (0.2 if not grand else 0.17)))
+	var ny := top + w * 0.13 + fs * 1.15
+	var nx := cx - w * 0.5 + wv(tt, ph, 0.2, w)
+	ci.draw_string(GUI.headb(), Vector2(nx + 2, ny + 2), name, HORIZONTAL_ALIGNMENT_CENTER, w, fs, Color(0, 0, 0, 0.6))
+	ci.draw_string(GUI.headb(), Vector2(nx, ny), name, HORIZONTAL_ALIGNMENT_CENTER, w, fs, gold if grand else Color(0.96, 0.94, 0.88))
+	# the medallion and the league's trophy on it
+	var mr := minf(w * 0.3, L * 0.2)
+	var mc := Vector2(cx + wv(tt, ph, 0.56, w), ny + fs * 0.45 + mr + L * 0.04)
+	GarageArt._cr(ci, mc, mr, cloth.darkened(0.35))
+	ci.draw_arc(mc, mr - 3.0, 0.0, TAU, 32, gold, bw)
+	GarageArt.draw_trophy(ci, mc + Vector2(0, mr * 0.62), kind, 1, mr / 24.0)
+	# tassels along the swallowtail
+	var tl := Vector2(cx - w * 0.5 + wv(tt, ph, 1.0, w), top + L)
+	var tm := Vector2(cx + wv(tt, ph, 1.0, w), top + L * 0.86)
+	var tr2 := Vector2(cx + w * 0.5 + wv(tt, ph, 1.0, w), top + L)
+	var steps := int(w / 7.0)
+	for i in steps + 1:
+		var f := float(i) / steps
+		for seg in [[tl, tm], [tm, tr2]]:
+			var q: Vector2 = (seg[0] as Vector2).lerp(seg[1], f)
+			ci.draw_line(q, q + Vector2(sin(tt * 3.0 + i) * 1.5, 7.0 if grand else 5.0), gold.darkened(0.15), 1.6)
+	# the pole
+	GarageArt._ln(ci, Vector2(cx - w * 0.62, top), Vector2(cx + w * 0.62, top), gold.darkened(0.1), 5.0)
+	GarageArt._cr(ci, Vector2(cx - w * 0.62, top), 5.0, gold)
+	GarageArt._cr(ci, Vector2(cx + w * 0.62, top), 5.0, gold)
+	if grand:
+		# the champion's banner glitters
+		for i in 5:
+			var ph2 := fmod(tt * 0.9 + i * 0.37, 1.0)
+			if ph2 < 0.35:
+				var sp := Vector2(cx + (hsh(i + 70) - 0.5) * w * 0.8, top + L * (0.1 + hsh(i + 90) * 0.7))
+				var r := 7.0 * sin(ph2 / 0.35 * PI)
+				ci.draw_line(sp - Vector2(r, 0), sp + Vector2(r, 0), Color(1, 0.95, 0.75, 0.9), 1.6)
+				ci.draw_line(sp - Vector2(0, r), sp + Vector2(0, r), Color(1, 0.95, 0.75, 0.9), 1.6)
+
+
+## How far up to the roof a banner's cords run.
+func roof_cord(w: float) -> float:
+	return w * 0.6
+
+
+## The scrapyard's big crane (1.64): a lattice mast and A-frame, the operator's cab, the jib reaching
+## left over the tarp with its trolley, the counterweight, the cable down to the hook, a warning light.
+func big_crane(ci: CanvasItem, foot: Vector2, top_y: float, jib_l: float, hook: Vector2, c: Color, tt: float) -> void:
+	var mw := 30.0
+	var x0 := foot.x - mw * 0.5
+	var x1 := foot.x + mw * 0.5
+	var y := foot.y
+	var step := 34.0
+	var k := 0
+	while y - step > top_y:
+		GarageArt._ln(ci, Vector2(x0 if k % 2 == 0 else x1, y), Vector2(x1 if k % 2 == 0 else x0, y - step), c.darkened(0.1), 2.5)
+		GarageArt._ln(ci, Vector2(x0, y), Vector2(x1, y), c.darkened(0.1), 2.5)
+		y -= step
+		k += 1
+	GarageArt._ln(ci, Vector2(x0, foot.y), Vector2(x0, top_y), c, 6.0)
+	GarageArt._ln(ci, Vector2(x1, foot.y), Vector2(x1, top_y), c, 6.0)
+	# the jib: bottom chord, top chord, the zigzag between
+	var jl := foot.x - jib_l
+	var jr := foot.x + jib_l * 0.32
+	var jt := top_y - 18.0
+	var xx := jl + 14.0
+	var up := true
+	while xx < jr - 18.0:
+		GarageArt._ln(ci, Vector2(xx, top_y if up else jt), Vector2(xx + 18.0, jt if up else top_y), c.darkened(0.1), 2.5)
+		xx += 18.0
+		up = not up
+	GarageArt._ln(ci, Vector2(jl, top_y), Vector2(jr, top_y), c, 6.0)
+	GarageArt._ln(ci, Vector2(jl + 14.0, jt), Vector2(jr - 6.0, jt), c, 4.0)
+	# the A-frame on top and its pendant cables out to both ends
+	var peak := Vector2(foot.x, jt - 54.0)
+	GarageArt._ln(ci, Vector2(x0, jt), peak, c, 5.0)
+	GarageArt._ln(ci, Vector2(x1, jt), peak, c, 5.0)
+	ci.draw_line(peak, Vector2(jl + 20.0, jt), Color(0.15, 0.13, 0.12), 1.5)
+	ci.draw_line(peak, Vector2(jr - 8.0, jt), Color(0.15, 0.13, 0.12), 1.5)
+	# counterweight and the operator's cab
+	GarageArt._rc(ci, Rect2(jr - 52.0, top_y + 2.0, 46.0, 34.0), Color(0.32, 0.31, 0.33))
+	var cab := Rect2(x1, top_y + 4.0, 40.0, 34.0)
+	GarageArt._rc(ci, cab, c)
+	ci.draw_rect(Rect2(cab.position + Vector2(6, 6), Vector2(26, 14)), Color(1.0, 0.75, 0.4, 0.75))
+	# the trolley, the cable and the hook block
+	GarageArt._rc(ci, Rect2(hook.x - 14.0, top_y - 2.0, 28.0, 12.0), Color(0.3, 0.3, 0.32))
+	ci.draw_line(Vector2(hook.x - 4.0, top_y + 10.0), hook + Vector2(-4, -14), Color(0.12, 0.12, 0.13), 2.0)
+	ci.draw_line(Vector2(hook.x + 4.0, top_y + 10.0), hook + Vector2(4, -14), Color(0.12, 0.12, 0.13), 2.0)
+	GarageArt._rc(ci, Rect2(hook + Vector2(-10, -16), Vector2(20, 14)), Color(0.85, 0.65, 0.15))
+	GarageArt._ac(ci, hook + Vector2(0, 6), 7.0, -0.3, PI + 0.6, 10, Color(0.35, 0.35, 0.38), 4.0)
+	# the warning light on the jib's tip
+	if fmod(tt, 1.2) < 0.5:
+		ci.draw_circle(Vector2(jl + 4.0, top_y - 6.0), 4.0, Color(1.0, 0.25, 0.2))
+		ci.draw_circle(Vector2(jl + 4.0, top_y - 6.0), 11.0, Color(1.0, 0.25, 0.2, 0.2))
+
+
+## The tarp over ECHO, hooked to the crane at its peak (1.64). Draped over the robot when lift is 0;
+## as the hook rises it slides off, bunches and hangs, swinging (sway, px at the hem).
+func draw_tarp(ci: CanvasItem, peak: Vector2, floor_y: float, half_w: float, tall: float, lift: float, sway: float, tt: float) -> void:
+	var c := Color(0.33, 0.4, 0.3)
+	var hang := clampf((lift - tall * 0.15) / (tall * 0.5), 0.0, 1.0)
+	var L := lerpf(floor_y + 2.0 - (peak.y + lift), tall * 0.62, hang)
+	var sh_w := lerpf(half_w * 0.85, half_w * 0.28, hang)
+	var mid_w := lerpf(half_w * 0.95, half_w * 0.36, hang)
+	var hem_w := lerpf(half_w * 1.12, half_w * 0.5, hang)
+	var hem_y := peak.y + L
+	var pts := PackedVector2Array()
+	var left := [[0.0, half_w * 0.08], [0.12, sh_w * 0.7], [0.24, sh_w], [0.6, mid_w], [1.0, hem_w]]
+	for q in left:
+		var y: float = peak.y + L * float(q[0])
+		pts.append(Vector2(peak.x - float(q[1]) + _tsw(y, peak.y, L, sway) + _trf(y, 0.0, peak.y, L, tt), y))
+	# the hem, ragged
+	var n := 7
+	for i in range(1, n):
+		var f := float(i) / n
+		var x := lerpf(peak.x - hem_w, peak.x + hem_w, f)
+		pts.append(Vector2(x + _tsw(hem_y, peak.y, L, sway), hem_y + sin(i * 2.3 + tt * 2.0) * 3.0 + (4.0 if i % 2 == 0 else -2.0)))
+	for i in range(left.size() - 1, -1, -1):
+		var q: Array = left[i]
+		var y: float = peak.y + L * float(q[0])
+		pts.append(Vector2(peak.x + float(q[1]) + _tsw(y, peak.y, L, sway) + _trf(y, 1.3, peak.y, L, tt), y))
+	GarageArt._pg(ci, pts, c)
+	# folds running down from the hook, a patch, the grommets along the hem
+	for f in [-0.62, -0.28, 0.1, 0.45, 0.75]:
+		var a := peak + Vector2(f * half_w * 0.1, L * 0.1)
+		var b := Vector2(peak.x + f * hem_w * 0.95 + _tsw(hem_y, peak.y, L, sway), hem_y - 2.0)
+		ci.draw_line(a, a.lerp(b, 0.5) + Vector2(f * 6.0, 0), c.darkened(0.32), 2.5)
+		ci.draw_line(a.lerp(b, 0.5) + Vector2(f * 6.0, 0), b, c.darkened(0.32), 2.5)
+		ci.draw_line(a + Vector2(3, 0), b + Vector2(4, 0), Color(c.lightened(0.2), 0.6), 1.2)
+	var pc := Vector2(peak.x - mid_w * 0.35 + _tsw(peak.y + L * 0.55, peak.y, L, sway), peak.y + L * 0.55)
+	ci.draw_colored_polygon(PackedVector2Array([pc, pc + Vector2(22, -4), pc + Vector2(26, 16), pc + Vector2(2, 20)]), c.darkened(0.15))
+	ci.draw_polyline(PackedVector2Array([pc, pc + Vector2(22, -4), pc + Vector2(26, 16), pc + Vector2(2, 20), pc]), Color(0.75, 0.7, 0.55, 0.5), 1.0)
+	for i in range(1, n):
+		var x := lerpf(peak.x - hem_w * 0.9, peak.x + hem_w * 0.9, float(i) / n)
+		ci.draw_circle(Vector2(x + _tsw(hem_y, peak.y, L, sway), hem_y - 6.0), 2.2, Color(0.75, 0.72, 0.6))
+	# the hook gathers it at the top in a rope knot
+	GarageArt._cr(ci, peak + Vector2(0, 2), 5.0, Color(0.6, 0.5, 0.32))
+	ci.draw_line(peak + Vector2(0, -8), peak + Vector2(0, 2), Color(0.6, 0.5, 0.32), 3.0)
+
+
+## How far the tarp swings at height y (more toward the hem).
+func _tsw(y: float, top: float, L: float, sway: float) -> float:
+	return sway * clampf((y - top) / maxf(L, 1.0), 0.0, 1.0)
+
+
+## The wind ruffling the tarp's sides.
+func _trf(y: float, k: float, top: float, L: float, tt: float) -> float:
+	return sin(tt * 3.4 + y * 0.05 + k) * 2.0 * clampf((y - top) / maxf(L, 1.0), 0.0, 1.0)
 
 
 # ================================================================ the words, the fades, SKIP

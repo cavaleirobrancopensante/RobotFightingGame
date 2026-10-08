@@ -40,6 +40,10 @@ const SETS := {
 	# (1.62) the opening: OVERLORD's red night, the cold empty room after the fall
 	"overlord": {"key": Color(1.0, 0.4, 0.38), "from": 0.0, "rim": Color(1.0, 0.58, 0.3, 0.6), "amb": 0.42},
 	"fall": {"key": Color(0.75, 0.82, 0.95), "from": -0.5, "rim": Color(0.5, 0.6, 0.8, 0.4), "amb": 0.42},
+	# (1.64) the opening's outdoor shots: moonlight over the city, the stadium's floodlit front, dusk on the road
+	"city": {"key": Color(0.78, 0.85, 1.0), "from": 0.6, "rim": Color(1.0, 0.6, 0.35, 0.5), "amb": 0.42},
+	"stadium_ext": {"key": Color(1.0, 0.88, 0.65), "from": 0.0, "rim": Color(0.4, 0.6, 1.0, 0.5), "amb": 0.36},
+	"road": {"key": Color(1.0, 0.75, 0.55), "from": 0.45, "rim": Color(0.55, 0.6, 1.0, 0.55), "amb": 0.4},
 	"main_event": {"key": Color(1.0, 1.0, 1.0), "from": 0.0, "rim": Color(1.0, 0.25, 0.55, 0.75), "amb": 0.36},
 }
 

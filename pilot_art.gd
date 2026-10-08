@@ -269,6 +269,10 @@ const GUS_LOOK := {"skin": "#6b4530", "hair": "#33507a", "hat": "cap", "beard": 
 ## A standing person. feet = where they stand, s = scale (1.0 is about 70px tall), dir = 1 facing right.
 ## pose: idle, wrench, type, hammer, spray, dig, point, clipboard, cheer, sit_type, hold
 ## Gus (look.gus) wears overalls and has his robot arm.
+## Where a "grab" pose puts the hands (set by the scene just before drawing).
+static var grab_at := Vector2.ZERO
+
+
 static func draw_person(ci: CanvasItem, feet: Vector2, s: float, raw: Dictionary, dir: float, pose: String, t: float, tool_color: Color = Color(0.7, 0.7, 0.75)) -> void:
 	var look := normalize(raw)
 	_begin()
@@ -365,6 +369,9 @@ static func draw_person(ci: CanvasItem, feet: Vector2, s: float, raw: Dictionary
 			# the bartender polishes a glass, round and round
 			hf = sh_f + Vector2((12 + cos(t * 6.0) * 4) * s * dir, (10 + sin(t * 6.0) * 3) * s)
 			hb = sh_b + Vector2(16 * s * dir, 10 * s)
+		"grab":
+			# (1.64) the front hand on something the scene draws (Gus's crane lever): grab_at
+			hf = grab_at
 		"lift":
 			var up := sin(t * 1.5) * 2.0
 			hf = sh_f + Vector2(8 * s * dir, (-14 + up) * s)
