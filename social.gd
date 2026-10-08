@@ -664,12 +664,13 @@ static func reply(id: int, tone: String, to: int = -1) -> void:
 		for a in ans:
 			if int(a["post"]) == id and str(a["by"]) == target:
 				waiting = true   # one answer at a time from each pilot in a thread
-		if not waiting and rng.randf() < chance:
+		if not waiting and not is_blocked(target) and rng.randf() < chance:
 			ans.append({"post": id, "to": rid, "by": target, "kind": "bite" if bite else ("warm" if tone in ["friendly", "joke"] else "cool"), "due": now_t() + 1})
 
 
 ## Answers that are due arrive (called when BotMedia opens and every morning).
 static func tick() -> void:
+	dm_tick()
 	var ans: Array = st().get("answers", [])
 	if ans.is_empty():
 		return
@@ -772,6 +773,7 @@ static func read_event(p: Dictionary, kind: String) -> void:
 ## a fan or two chatters, and now and then a pilot shows off a sponsor.
 static func daily() -> void:
 	tick()
+	dm_daily()
 	var rng := RandomNumberGenerator.new()
 	rng.seed = GameData.year * 4099 + GameData.week * 31 + GameData.day_index()
 	var day: String = GameData.day
@@ -800,3 +802,306 @@ static func daily() -> void:
 		var ids: Array = GameData.Contracts.SPONSORS.keys().filter(func(k): return k != "kane" and k != "rustybolt")
 		var sp: String = ids[rng.randi() % ids.size()]
 		post("w:%d" % int(p2["wid"]), "Proud to fight in %s colours this season.", [GameData.Contracts.SPONSORS[sp]["name"]], {"kind": "logo", "logo": sp}, [str(GameData.Contracts.SPONSORS[sp]["tag"])])
+
+
+# ---------------------------------------------------------------- posting any time (1.68)
+# New post: pick a topic from what's going on, then a tone. No daily limit; what you aim at the
+# same pilot (or the same topic) counts less each time today (day_factor).
+
+## [tone, line]; %s = the topic's name (an opponent, a part, a place in the table, a pilot, a sponsor).
+const COMPOSE := {
+	"fight_won": [["humble", "Good fight tonight, %s. Back to the bay."], ["hype", "Another one down. %s never saw it coming."],
+			["funny", "My robot is held together with tape and spite. Still won."], ["trash", "%s, go back to the scrapyard."]],
+	"fight_lost": [["humble", "%s was better. I'll be back."], ["hype", "One loss. Watch what happens next."],
+			["funny", "Lost a fight, kept my dignity. Mostly."], ["trash", "%s got lucky. Everyone saw it."]],
+	"next": [["humble", "Big one coming against %s. Respect."], ["hype", "%s, I'm coming for you."],
+			["funny", "Gus says I need sleep before fighting %s. Gus is wrong."], ["trash", "%s won't last three minutes."]],
+	"part": [["hype", "New %s on the robot. Watch this."], ["funny", "Found a %s. Gus says it's fine. Gus says that a lot."],
+			["humble", "Saving up paid off. One %s, bolted on."]],
+	"trophy": [["humble", "%s. Couldn't have done it without Gus."], ["hype", "%s. And I'm only getting started."]],
+	"table": [["humble", "%s in the table. Long way to go."], ["hype", "%s in the table and climbing."], ["funny", "%s in the table. My mum is very proud."]],
+	"pilot": [["friendly", "Shout out to %s. Class act."], ["hype", "%s is the real deal. Watch them."], ["trash", "%s is all talk."]],
+	"sponsor": [["shill", "Proud to fight in %s colours."], ["funny", "%s pays for the bolts. I pay for the dents."]],
+	"bay": [["humble", "Long night in the bay with Gus. Worth it."], ["funny", "Gus fell asleep on the welder again."], ["hype", "The robot has never looked better."]],
+	"fans": [["thanks", "Thank you for every follow. Port Ferrum, this is for you."]],
+}
+const COMPOSE_FOL := {"humble": 0.004, "hype": 0.008, "funny": 0.006, "trash": 0.01, "friendly": 0.003, "shill": 0.003, "thanks": 0.004}
+const COMPOSE_REL := {"humble": 3.0, "hype": 4.0, "friendly": 4.0, "trash": -10.0}
+const COMPOSE_TAG := {"bay": "BayLife", "part": "NewParts", "trophy": "Podium", "sponsor": "Sponsored", "fans": "ThankYou", "table": "Standings"}
+
+
+## What you could post about right now: [topic, label, arg, wid].
+static func topics() -> Array:
+	var out: Array = []
+	if not GameData.fight_log.is_empty():
+		var f: Dictionary = GameData.fight_log[-1]
+		out.append(["fight_won" if f.get("won", false) else "fight_lost", I18n.t("Your last fight"), str(f.get("opp", "?")), int(f.get("wid", -1))])
+	if GameData.fight_mode() in ["story", "circuit", "pickup"]:
+		var o: Dictionary = GameData.current_opponent(false)
+		var wid := int(o.get("wid", -1))
+		var nm := str(World.pilot(wid).get("name", o.get("name", "?"))) if wid >= 0 else str(o.get("pilot", o.get("name", "?")))
+		out.append(["next", I18n.t("Tonight's fight"), nm, wid])
+	if not GameData.inventory.is_empty():
+		var it: Dictionary = GameData.inventory[-1]
+		out.append(["part", I18n.t("Your newest part"), I18n.t(str(GameData.PARTS.get(str(it.get("id", "")), {}).get("name", "part"))), -1])
+	if not GameData.trophies.is_empty():
+		out.append(["trophy", I18n.t("Your latest trophy"), I18n.t(str(GameData.trophies[-1].get("name", "Trophy"))), -1])
+	var ev: Dictionary = GameData.event
+	if not ev.is_empty() and ev.has("table"):
+		var order: Array = GameData.Career.standings(ev)
+		var place := order.find(0)
+		if place >= 0:
+			out.append(["table", I18n.t("The league table"), "#%d" % (place + 1), -1])
+	if (st()["follows"] as Array).any(func(k): return str(k).begins_with("w:")):
+		out.append(["pilot", I18n.t("A pilot you follow"), "", -1])
+	var act: Array = GameData.Contracts.st()["active"]
+	if not act.is_empty():
+		out.append(["sponsor", I18n.t("Your sponsor"), str(GameData.Contracts.sp(str(act[0]["sp"])).get("name", "?")), -1])
+	out.append(["bay", I18n.t("The bay"), "", -1])
+	if followers() >= 500:
+		out.append(["fans", I18n.t("Your fans"), "", -1])
+	return out
+
+
+## Post it: followers and the relationship move by the tone, shrunk by today's gains.
+static func compose(topic: String, tone: String, arg: String, wid: int) -> void:
+	var line := ""
+	for c in COMPOSE.get(topic, []):
+		if c[0] == tone:
+			line = c[1]
+	if line == "":
+		return
+	var target := "w:%d" % wid if wid >= 0 else "topic:" + topic
+	var k := day_factor(target)
+	st()["followers"] = int(followers() * (1.0 + float(COMPOSE_FOL.get(tone, 0.003)) * k)) + (1 if k > 0.0 else 0)
+	if wid >= 0:
+		var move := float(COMPOSE_REL.get(tone, 0.0))
+		rel_social(wid, move, k, GameData.REL_SOCIAL_CAP)
+	var tag: String = COMPOSE_TAG.get(topic, "")
+	if topic in ["fight_won", "fight_lost", "next"]:
+		tag = tag_for(str(GameData.event.get("stage", ""))) if not GameData.event.is_empty() else "FightNight"
+	var p := post("me", line, [arg] if line.contains("%s") else [], {}, [tag] if tag != "" else [])
+	if wid >= 0:
+		p["opp_wid"] = wid
+	count_post()
+	GameData.Contracts.on_post(tone)
+
+
+# ---------------------------------------------------------------- DMs as conversations (1.68)
+# The inbox (GameData.inbox) grouped by who: Gus, each pilot ("w:<wid>"), each sponsor ("sp:<id>"),
+# the story, anyone else by name. You answer with chips (never typed); pilots write back a part of
+# the day later. Rivals sometimes DM a threat before your fight with them. Block stops a pilot's
+# messages, threats, hate mail and thread replies (st "blocked").
+
+const DM_LINES := {
+	"hi": "Hey. Good luck this week.", "fire": "Talk is cheap. See you in the ring.", "laugh": "Ha. Get some sleep.",
+	"tag": "Fancy a tag team tonight?", "rematch": "Rematch? Name the night.", "run": "What are you running these days?",
+	"sorry": "Look, I'm sorry about before.", "thanks": "Got it, Gus.", "why": "Why?", "support": "Thanks for the support.",
+}
+const DM_REL := {"hi": 2.0, "fire": -6.0, "laugh": 3.0, "sorry": 12.0, "support": 0.0}
+const DM_WARM := ["Hey yourself. Good luck too.", "Thanks. See you at the Bolt."]
+const DM_COLD := ["What do you want?", "Not now."]
+const DM_FIRE := ["Saturday. You and me.", "Keep running your mouth."]
+const DM_LAUGH := ["Whatever.", "Ha. Fine."]
+const DM_TAG_YES := "You're on. Tonight at the Bolt."
+const DM_TAG_NO := "Not tonight."
+const DM_REMATCH_YES := "Tonight then. Don't be late."
+const DM_REMATCH_NO := "Find someone your own size."
+const DM_RUN := "Running a %s these days. Why, scared?"
+const DM_SORRY_YES := "Fine. Water under the bridge."
+const DM_SORRY_NO := "Too late for that."
+const GUS_WHY := ["Because I've seen kids lose arms over less.", "Because your dad would have. Trust me.", "Because the bell doesn't wait for anyone."]
+const THREATS := ["See you tonight. Bring spare parts.", "I've watched your fights. You drop your left.", "Tonight I take something off that robot. Your pick."]
+const STORY_WHO := ["NARRATOR", "ECHO", "YOU"]
+
+
+## Which conversation an inbox entry belongs to.
+static func dm_key(e: Dictionary) -> String:
+	if e.has("dm"):
+		return str(e["dm"])
+	var kind := str(e.get("kind", "talk"))
+	if kind.begins_with("sponsor:"):
+		return "sp:" + kind.substr(8)
+	if e.has("wid"):
+		return "w:%d" % int(e["wid"])
+	var who := str(e["who"])
+	if who == "GUS":
+		return "gus"
+	if kind == "story" or who in STORY_WHO:
+		return "story"
+	return "who:" + who
+
+
+static func is_blocked(key: String) -> bool:
+	return (st().get("blocked", []) as Array).has(key)
+
+
+static func set_blocked(key: String, on: bool) -> void:
+	var b: Array = st().get("blocked", [])
+	st()["blocked"] = b
+	if on and not b.has(key):
+		b.append(key)
+	elif not on:
+		b.erase(key)
+
+
+## Conversations, newest first: [{key, last (entry), n (messages), at (index of the last one)}].
+static func conversations() -> Array:
+	var by := {}
+	var inbox: Array = GameData.inbox
+	for i in inbox.size():
+		var k := dm_key(inbox[i])
+		if is_blocked(k):
+			continue
+		if not by.has(k):
+			by[k] = {"key": k, "n": 0}
+		by[k]["n"] = int(by[k]["n"]) + 1
+		by[k]["last"] = inbox[i]
+		by[k]["at"] = i
+	var out: Array = by.values()
+	out.sort_custom(func(a, b): return int(a["at"]) > int(b["at"]))
+	return out
+
+
+## One conversation's messages, oldest first (the last n).
+static func messages(key: String, n: int = 40) -> Array:
+	var out: Array = []
+	for e in GameData.inbox:
+		if dm_key(e) == key:
+			out.append(e)
+	return out.slice(maxi(0, out.size() - n))
+
+
+## What you can answer in a conversation: [id, line, hint].
+static func dm_options(key: String) -> Array:
+	var out: Array = []
+	if key == "gus":
+		return [["thanks", DM_LINES["thanks"], ""], ["why", DM_LINES["why"], I18n.t("He'll explain.")]]
+	if key.begins_with("sp:"):
+		return [["support", DM_LINES["support"], ""]]
+	if not key.begins_with("w:"):
+		return []
+	var wid := int(key.substr(2))
+	var rel := GameData.rel_of(wid)
+	var msgs := messages(key, 1)
+	var hostile := not msgs.is_empty() and str(msgs[0]["who"]) != "YOU" and rel <= -15.0
+	if hostile:
+		out.append(["fire", DM_LINES["fire"], I18n.t("They won't like it (%d).") % int(DM_REL["fire"])])
+		out.append(["laugh", DM_LINES["laugh"], I18n.t("Cools things down (+%d).") % int(DM_REL["laugh"])])
+	else:
+		out.append(["hi", DM_LINES["hi"], I18n.t("They warm up to you (+%d).") % int(DM_REL["hi"])])
+	if GameData.can_pass_day() and GameData.fight_mode() == "open":
+		if GameData.can_team_up(wid):
+			out.append(["tag", DM_LINES["tag"], I18n.t("Books a tag team pickup tonight if they say yes.")])
+		if GameData.h2h.has(str(wid)):
+			out.append(["rematch", DM_LINES["rematch"], I18n.t("Books a pickup against them tonight if they say yes.")])
+	out.append(["run", DM_LINES["run"], I18n.t("They might tell you a part. Rivals might lie.")])
+	if rel <= -15.0 and int(st().get("sorry", {}).get(key, -99)) < World.abs_week() - 4:
+		out.append(["sorry", DM_LINES["sorry"], I18n.t("Once a month. Might patch things up (+%d).") % int(DM_REL["sorry"])])
+	return out
+
+
+## Send one. Returns {"book": "tag" / "pickup", "wid": wid} when they agree to a fight, else {}.
+static func dm_send(key: String, id: String) -> Dictionary:
+	var line: String = DM_LINES.get(id, "")
+	if line == "":
+		return {}
+	GameData.inbox.append({"y": GameData.year, "w": GameData.week, "d": GameData.day, "ph": GameData.phase, "who": "YOU", "text": I18n.t(line), "kind": "dm", "dm": key})
+	var rng := RandomNumberGenerator.new()
+	rng.seed = hash(key + id) + now_t() * 7
+	if key == "gus":
+		if id == "why":
+			_dm_answer(key, GUS_WHY[rng.randi() % GUS_WHY.size()], [], 0)
+		return {}
+	if not key.begins_with("w:"):
+		return {}
+	var wid := int(key.substr(2))
+	var rel := GameData.rel_of(wid)
+	var k := day_factor(key)
+	match id:
+		"hi":
+			rel_social(wid, DM_REL["hi"], k, GameData.REL_SOCIAL_CAP)
+			_dm_answer(key, (DM_WARM if rel > -15.0 else DM_COLD)[rng.randi() % 2], [], 1)
+		"fire":
+			rel_social(wid, DM_REL["fire"], k)
+			_dm_answer(key, DM_FIRE[rng.randi() % 2], [], 1)
+		"laugh":
+			rel_social(wid, DM_REL["laugh"], k, GameData.REL_SOCIAL_CAP)
+			_dm_answer(key, DM_LAUGH[rng.randi() % 2], [], 1)
+		"run":
+			var bot: Dictionary = World.robot(wid)
+			var ids: Array = []
+			for slot in bot.get("parts", {}):
+				ids.append(str(bot["parts"][slot]))
+			if rel <= GameData.REL_RIVAL and rng.randf() < 0.4:
+				ids = GameData.PARTS.keys()   # a rival might lie
+			var pid: String = str(ids[rng.randi() % ids.size()]) if not ids.is_empty() else ""
+			_dm_answer(key, DM_RUN, [I18n.t(str(GameData.PARTS.get(pid, {}).get("name", "something new")))], 1)
+		"sorry":
+			var so: Dictionary = st().get("sorry", {})
+			st()["sorry"] = so
+			so[key] = World.abs_week()
+			if GameData.nemeses.has(wid):
+				_dm_answer(key, DM_SORRY_NO, [], 1)
+			else:
+				GameData.rel_add(wid, DM_REL["sorry"], GameData.REL_SOCIAL_CAP)
+				_dm_answer(key, DM_SORRY_YES, [], 1)
+		"tag":
+			if GameData.can_team_up(wid) and rng.randf() < 0.5 + rel / 100.0:
+				_dm_answer(key, DM_TAG_YES, [], 0)
+				return {"book": "tag", "wid": wid}
+			_dm_answer(key, DM_TAG_NO, [], 0)
+		"rematch":
+			if rel <= GameData.REL_RIVAL or rng.randf() < 0.6:
+				_dm_answer(key, DM_REMATCH_YES, [], 0)
+				return {"book": "pickup", "wid": wid}
+			_dm_answer(key, DM_REMATCH_NO, [], 0)
+	return {}
+
+
+## Their answer: now (delay 0) or a part of the day later (delivered by tick()).
+static func _dm_answer(key: String, text: String, args: Array, delay: int) -> void:
+	if delay <= 0:
+		_dm_deliver(key, text, args)
+		return
+	var q: Array = st().get("dm_answers", [])
+	st()["dm_answers"] = q
+	q.append({"key": key, "text": text, "args": args, "due": now_t() + delay})
+
+
+static func _dm_deliver(key: String, text: String, args: Array) -> void:
+	if is_blocked(key):
+		return
+	var t := I18n.t(text)
+	if not args.is_empty():
+		t = t % args
+	if key == "gus":
+		GameData.inbox.append({"y": GameData.year, "w": GameData.week, "d": GameData.day, "ph": GameData.phase, "who": "GUS", "text": t, "kind": "dm", "dm": key})
+		return
+	var wid := int(key.substr(2))
+	GameData.inbox.append({"y": GameData.year, "w": GameData.week, "d": GameData.day, "ph": GameData.phase, "who": str(World.pilot(wid).get("name", "?")),
+			"text": t, "kind": "dm", "dm": key, "wid": wid, "look": World.look_of(wid)})
+	note("%s sent you a message.", [account(key)["name"]])
+
+
+## Morning: answers that are due, and now and then a rival's threat on the day you fight them.
+static func dm_daily() -> void:
+	var o: Dictionary = GameData.current_opponent(false) if GameData.fight_mode() in ["story", "circuit", "pickup"] else {}
+	var wid := int(o.get("wid", -1))
+	if wid >= 0 and GameData.rel_of(wid) <= GameData.REL_RIVAL and not is_blocked("w:%d" % wid):
+		var roll := float(absi(hash("%d:%d:%s:threat" % [GameData.year, GameData.week, GameData.day])) % 1000) / 1000.0
+		if roll < (0.6 if GameData.nemeses.has(wid) else 0.4):
+			_dm_deliver("w:%d" % wid, THREATS[absi(hash(str(wid) + GameData.day)) % THREATS.size()], [])
+
+
+static func dm_tick() -> void:
+	var q: Array = st().get("dm_answers", [])
+	if q.is_empty():
+		return
+	var keep: Array = []
+	for a in q:
+		if int(a["due"]) > now_t():
+			keep.append(a)
+		else:
+			_dm_deliver(str(a["key"]), str(a["text"]), a.get("args", []))
+	st()["dm_answers"] = keep

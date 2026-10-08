@@ -1917,68 +1917,141 @@ func update_tour() -> void:
 
 ## BotMedia > DMs: everything anyone ever said to you, newest first (Gus, pilots, hate mail,
 ## sponsors, the story). Nothing that pops up in a bubble is lost.
+## DMs (1.68): one row per conversation (Gus, each pilot, each sponsor, the story), newest first;
+## tap one to open the chat.
 func build_feed() -> void:
-	var view := seg()
+	var S = GameData.Social
+	S.tick()
+	var unseen_from := GameData.inbox_seen
 	GameData.inbox_seen = GameData.inbox.size()
-	# Messages: one list, with a filter (who said it)
-	var fbar := flow_bar()
-	fbar.add_child(GUI.text(tr("Show:"), 14, GUI.MUTED))
-	for f in [["all", tr("Everyone")], ["gus", tr("Gus")], ["pilots", tr("Pilots")], ["sponsors", tr("Sponsors")], ["story", tr("Story")]]:
-		var fb := row_button(fbar, str(f[1]), _on_msg_filter.bind(str(f[0])), true, 0)
-		fb.toggle_mode = true
-		fb.button_pressed = msg_filter == str(f[0])
-	view = msg_filter
-	if view == "story":
-		# the opening cutscene, any time you want to see it again
-		var ob := action_bar()
-		row_button(ob, tr("Watch the opening ▸"), _on_watch_opening, true, 0)
-	var shown := 0
-	var last_day := ""
-	for i in range(GameData.inbox.size() - 1, -1, -1):
-		var e: Dictionary = GameData.inbox[i]
-		var who := str(e["who"])
-		var kind := str(e.get("kind", "talk"))
-		match view:
-			"gus":
-				if who != "GUS":
-					continue
-			"pilots":
-				if who in ["GUS", "YOU", "NARRATOR", "ECHO"] or kind == "story" or kind.begins_with("sponsor:"):
-					continue
-			"sponsors":
-				if not kind.begins_with("sponsor:"):
-					continue
-			"story":
-				if kind != "story":
-					continue
-		var stamp := tr("%s · WEEK %d · YEAR %d") % [tr(DAY_FULL_UP[maxi(0, GameData.DAYS.find(str(e.get("d", "mon"))))]), int(e["w"]), int(e["y"])]
-		if stamp != last_day:
-			last_day = stamp
-			var h := GUI.text(stamp, 12, GUI.MUTED, "headb")
-			list_box.add_child(h)
-		var face = StoryScript.Portrait.new()
-		face.who = who
-		face.face_look = e.get("look", {})
-		face.robot_look = GameData.player_look()
-		var shown_name := who
-		if who == "YOU":
-			shown_name = GameData.pilot_name.to_upper()
-		elif who == "ECHO":
-			shown_name = GameData.robot_name
-		elif who == "NARRATOR":
-			shown_name = tr("NARRATOR")
-		if kind.begins_with("sponsor:"):
-			face.queue_free()
-			make_tap_row(Logos.LogoIcon.new(kind.substr(8), 52), shown_name, str(e["text"]), go_to.bind("Feed", "contracts"), tr("sponsor"))
-		elif e.has("wid"):
-			make_tap_row(face, shown_name, str(e["text"]), open_pilot.bind(int(e["wid"])))
-		else:
-			make_row(face, shown_name, str(e["text"]), null, {"story": tr("story"), "gus": "", "talk": ""}.get(kind, ""))
-		shown += 1
-		if shown >= 150:
-			break
-	if shown == 0:
+	var convs: Array = S.conversations()
+	if convs.is_empty():
 		section(tr("Nothing here yet."))
+		return
+	for c in convs:
+		var key := str(c["key"])
+		var last: Dictionary = c["last"]
+		var icon: Control
+		var name := str(last["who"])
+		if key.begins_with("w:"):
+			icon = avatar_for(key)
+			name = str(S.account(key)["name"]) + "  " + GameData.rel_text(int(key.substr(2)))
+		elif key.begins_with("sp:"):
+			icon = Logos.LogoIcon.new(key.substr(3), 52)
+			name = str(GameData.Contracts.sp(key.substr(3)).get("name", name))
+		else:
+			var face = StoryScript.Portrait.new()
+			face.who = "GUS" if key == "gus" else ("NARRATOR" if key == "story" else name)
+			face.face_look = last.get("look", {})
+			face.robot_look = GameData.player_look()
+			icon = face
+			name = tr("Gus") if key == "gus" else (tr("Story") if key == "story" else name)
+		var line := str(last["text"])
+		if str(last["who"]) == "YOU":
+			line = tr("You: %s") % line
+		var stamp := tr("%s · WEEK %d") % [tr(DAY_FULL_UP[maxi(0, GameData.DAYS.find(str(last.get("d", "mon"))))]), int(last["w"])]
+		var row := make_tap_row(icon, name, line + "\n" + stamp, open_dm.bind(key))
+		if int(c["at"]) >= unseen_from:
+			GUI.mark_new(row.get_parent(), true)
+
+
+## One conversation: the messages as bubbles (theirs left, yours right), then the answers you can
+## send (chips, never typed). Pilots: Pilot card and Block on top.
+func open_dm(key: String) -> void:
+	var S = GameData.Social
+	var title := tr("Gus") if key == "gus" else (tr("Story") if key == "story" else (str(S.account(key)["name"]) if key.begins_with("w:") or key.begins_with("sp:") else key.substr(4)))
+	var col := open_popup(title)
+	if key.begins_with("w:"):
+		var wid := int(key.substr(2))
+		var hb := HBoxContainer.new()
+		hb.add_theme_constant_override("separation", 8)
+		col.add_child(hb)
+		hb.add_child(UI.button(tr("Pilot card"), func(): close_popup(); open_pilot(wid), 13, Vector2(130, 38)))
+		var blocked: bool = S.is_blocked(key)
+		hb.add_child(UI.button(tr("Unblock") if blocked else tr("Block"), _on_block.bind(key, not blocked), 13, Vector2(110, 38)))
+		var rl := RichTextLabel.new()
+		rl.bbcode_enabled = true
+		rl.fit_content = true
+		rl.scroll_active = false
+		rl.text = GameData.rel_bb(wid, true)
+		rl.add_theme_font_size_override("normal_font_size", UI.tsz(13))
+		rl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		rl.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		hb.add_child(rl)
+	if key == "story":
+		var ob := HBoxContainer.new()
+		col.add_child(ob)
+		ob.add_child(UI.button(tr("Watch the opening ▸"), _on_watch_opening, 13, Vector2(0, 40)))
+	for e in S.messages(key):
+		dm_bubble(col, e)
+	for o in S.dm_options(key):
+		var b := UI.button(tr(str(o[1])) + ("\n" + str(o[2]) if str(o[2]) != "" else ""), _on_dm_send.bind(key, str(o[0])), 13, Vector2(0, 54))
+		col.add_child(b)
+	if key.begins_with("sp:"):
+		col.add_child(UI.button(tr("Contracts ›"), func(): close_popup(); go_to("Feed", "contracts"), 13, Vector2(0, 44)))
+	popup_footer.add_child(UI.button(tr("Close"), close_popup, 16, Vector2(0, 46)))
+	scroll_to_end(col)
+
+
+## One message: theirs on the left in a dark bubble, yours on the right in a yellow-edged one.
+func dm_bubble(parent: Control, e: Dictionary) -> void:
+	var mine := str(e["who"]) == "YOU"
+	var row := HBoxContainer.new()
+	parent.add_child(row)
+	if mine:
+		var sp := Control.new()
+		sp.custom_minimum_size = Vector2(60, 0)
+		sp.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		row.add_child(sp)
+	var panel := PanelContainer.new()
+	var sb := GUI.box(GUI.ROW if mine else GUI.BG, 10, 8)
+	if mine:
+		sb.border_color = GUI.YELLOW.darkened(0.3)
+		sb.border_width_right = 3
+	panel.add_theme_stylebox_override("panel", sb)
+	panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	panel.size_flags_stretch_ratio = 3.0
+	row.add_child(panel)
+	var v := VBoxContainer.new()
+	panel.add_child(v)
+	var tx := GUI.text(str(e["text"]), 14, GUI.TEXT)
+	tx.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	tx.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT if mine else HORIZONTAL_ALIGNMENT_LEFT
+	v.add_child(tx)
+	var st := GUI.text(tr("%s · WEEK %d") % [tr(DAY_FULL_UP[maxi(0, GameData.DAYS.find(str(e.get("d", "mon"))))]), int(e["w"])], 11, GUI.MUTED)
+	st.horizontal_alignment = tx.horizontal_alignment
+	v.add_child(st)
+	if not mine:
+		var sp2 := Control.new()
+		sp2.custom_minimum_size = Vector2(60, 0)
+		sp2.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		row.add_child(sp2)
+
+
+func _on_dm_send(key: String, id: String) -> void:
+	var res: Dictionary = GameData.Social.dm_send(key, id)
+	Sfx.play("click", 0.05)
+	GameData.save_game()
+	if res.get("book", "") == "tag":
+		close_popup()
+		_on_team_up(int(res["wid"]))
+		return
+	if res.get("book", "") == "pickup":
+		close_popup()
+		_on_challenge(int(res["wid"]))
+		return
+	open_dm(key)
+
+
+func _on_block(key: String, on: bool) -> void:
+	GameData.Social.set_blocked(key, on)
+	if on and not GameData.story_seen.has("gus_block"):
+		GameData.story_seen.append("gus_block")
+		say(tr("Blocked them? Fine. They'll still punch you on Saturday."))
+	note(tr("Blocked.") if on else tr("Unblocked."), "equip")
+	GameData.save_game()
+	close_popup()
+	refresh()
 
 
 var msg_filter := "all"
@@ -2313,6 +2386,8 @@ func feed_list(kind: String) -> void:
 func build_home() -> void:
 	var S = GameData.Social
 	S.tick()
+	var nb := action_bar()
+	row_button(nb, tr("New post"), open_compose, true, 160)
 	var drafts: Array = S.drafts()
 	if not drafts.is_empty():
 		# (1.63) the same card the results screen shows after a fight
@@ -2456,6 +2531,66 @@ func open_post(id: int) -> void:
 	open_thread(id, -1)
 
 
+## New post (1.68): pick a topic from what's going on, then a tone. No limit, but aiming at the same
+## pilot or topic again today counts less.
+func open_compose() -> void:
+	var S = GameData.Social
+	var col := open_popup(tr("NEW POST"))
+	col.add_child(GUI.text(tr("What about?"), 14, GUI.MUTED))
+	for t in S.topics():
+		var topic := str(t[0])
+		var sub := str(t[2])
+		var label := tr(str(t[1])) + (": " + sub if sub != "" else "")
+		if topic == "pilot":
+			col.add_child(UI.button(label + "  ›", open_compose_pilots, 14, Vector2(0, 46)))
+		else:
+			col.add_child(UI.button(label, open_compose_tone.bind(topic, sub, int(t[3])), 14, Vector2(0, 46)))
+	popup_footer.add_child(UI.button(tr("Close"), close_popup, 16, Vector2(0, 46)))
+
+
+func open_compose_pilots() -> void:
+	var S = GameData.Social
+	var col := open_popup(tr("NEW POST"))
+	col.add_child(GUI.text(tr("Which pilot?"), 14, GUI.MUTED))
+	for k in S.st()["follows"]:
+		if not str(k).begins_with("w:"):
+			continue
+		var acc: Dictionary = S.account(str(k))
+		col.add_child(UI.button(str(acc["name"]) + "  " + GameData.rel_text(int(acc.get("wid", -1))), open_compose_tone.bind("pilot", str(acc["name"]), int(acc.get("wid", -1))), 14, Vector2(0, 46)))
+	popup_footer.add_child(UI.button(tr("‹ Back"), open_compose, 16, Vector2(0, 46)))
+
+
+func open_compose_tone(topic: String, arg: String, wid: int) -> void:
+	var S = GameData.Social
+	var col := open_popup(tr("NEW POST"))
+	var target := "w:%d" % wid if wid >= 0 else "topic:" + topic
+	var k: float = S.day_factor(target, true)
+	if k < 1.0:
+		col.add_child(GUI.text(tr("You've said a lot about this today: it counts less.") if k > 0.0 else tr("Nothing more to gain on this today. Tomorrow it resets."), 12, GUI.AMBER))
+	for c in S.COMPOSE.get(topic, []):
+		var line: String = tr(str(c[1]))
+		if line.contains("%s"):
+			line = line % arg
+		var tone := str(c[0])
+		var hint: String = {"humble": tr("Humble."), "hype": tr("Hype."), "funny": tr("Funny."), "trash": tr("Trash talk."), "friendly": tr("Friendly."),
+				"shill": tr("Sponsors like it."), "thanks": tr("Fans love it.")}.get(tone, "")
+		if wid >= 0 and S.COMPOSE_REL.has(tone):
+			hint += "  " + reply_hint(tone, float(S.COMPOSE_REL[tone]), k)
+		col.add_child(UI.button(line + "\n" + hint, _on_compose.bind(topic, tone, arg, wid), 13, Vector2(0, 58)))
+	popup_footer.add_child(UI.button(tr("‹ Back"), open_compose, 16, Vector2(0, 46)))
+
+
+func _on_compose(topic: String, tone: String, arg: String, wid: int) -> void:
+	var before: int = GameData.Social.followers()
+	GameData.Social.compose(topic, tone, arg, wid)
+	var d: int = GameData.Social.followers() - before
+	close_popup()
+	note(tr("Posted. Followers %s%d.") % ["+" if d >= 0 else "", d], "equip")
+	feed_shown = 30
+	GameData.save_game()
+	refresh()
+
+
 ## A post's thread (1.67): the post, its replies (answers indented under the reply they answer), and
 ## what you can say: to the post (to = -1) or to the reply picked with its Reply button.
 func open_thread(id: int, to: int = -1) -> void:
@@ -2468,11 +2603,11 @@ func open_thread(id: int, to: int = -1) -> void:
 	post_row(p, col)
 	var th: Array = S.thread(p)
 	for r in th:
-		if int(r["to"]) >= 0:
+		if int(r["to"]) >= 0 or S.is_blocked(str(r["by"])):
 			continue
 		reply_row(p, r, col, 0, to)
 		for a in th:
-			if int(a["to"]) >= 0 and thread_root(p, a) == int(r["r"]):
+			if int(a["to"]) >= 0 and thread_root(p, a) == int(r["r"]) and not S.is_blocked(str(a["by"])):
 				reply_row(p, a, col, 1, to)
 	var more: int = S.more_replies(p)
 	if more > 0:
@@ -2635,7 +2770,9 @@ func profile_bar() -> void:
 
 func build_my_posts() -> void:
 	var S = GameData.Social
-	section(tr("Posts this week: %d. Your posts go out after fights: win, lose, the fans want to hear it.") % S.posts_this_week())
+	section(tr("Posts this week: %d.") % S.posts_this_week())
+	var nb := action_bar()
+	row_button(nb, tr("New post"), open_compose, true, 160)
 	feed_list("me")
 
 
@@ -4438,6 +4575,9 @@ func open_pilot(wid: int) -> void:
 	var bmb := UI.button(tr("BotMedia ›"), func(): close_popup(); open_account(key), 14, Vector2(0, 42))
 	bmb.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	sbar.add_child(bmb)
+	var msb := UI.button(tr("Message"), func(): close_popup(); open_dm(key), 14, Vector2(0, 42))
+	msb.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	sbar.add_child(msb)
 	# at the bar tonight? then you can take them on from here
 	if GameData.patrons_today().any(func(x): return int(x["wid"]) == wid) and GameData.can_pass_day():
 		var cb := UI.button(tr("Challenge ($%d)") % GameData.pickup_purse(str(p["tier"])), func(): close_popup(); _on_challenge(wid), 16, Vector2(0, 46))

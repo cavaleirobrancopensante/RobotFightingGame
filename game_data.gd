@@ -2,7 +2,7 @@ extends Node
 
 # helper scripts, loaded by path so the game also runs without an editor scan
 ## The game's version, shown on the main menu. Bump it with every change (1.1, 1.2, ...).
-const VERSION := "1.67"
+const VERSION := "1.68"
 const Arena = preload("res://arena.gd")
 const I18n = preload("res://i18n.gd")
 const Catalog = preload("res://catalog.gd")
@@ -2321,7 +2321,7 @@ func daily_hate_mail() -> void:
 		if r <= REL_RIVAL * 0.8 and r < best_r and not World.pilot(int(key)).get("retired", true):
 			best = int(key)
 			best_r = r
-	if best < 0:
+	if best < 0 or Social.is_blocked("w:%d" % best):
 		return
 	var roll := float(absi(hash("%d:%d:%s:mail" % [year, week, day])) % 1000) / 1000.0
 	# at most one letter every three weeks, and even then only now and then
@@ -2342,7 +2342,7 @@ func daily_hate_mail() -> void:
 func rival_taunt() -> Array:
 	var o := current_opponent()
 	var wid := int(o.get("wid", -1))
-	if wid < 0 or not is_rival(wid):
+	if wid < 0 or not is_rival(wid) or Social.is_blocked("w:%d" % wid):
 		return []
 	return [pilot_line(wid, tr(Talk.pick(Talk.TAUNT, "%d:%d:%d" % [year, week, wid])) % pilot_name)]
 
@@ -4112,7 +4112,7 @@ func record_result(won: bool, part_hp: Dictionary, destroyed: int, salvage_ids: 
 		bonus = destroyed * 50
 	var was_in_debt := money < 0
 	money += reward + bonus
-	fight_log.append({"y": year, "w": week, "d": day, "opp": str(o.get("name", "?")), "won": won, "mode": fight_mode(), "title": fight_title(),
+	fight_log.append({"y": year, "w": week, "d": day, "opp": str(o.get("name", "?")), "wid": int(o.get("wid", -1)), "won": won, "mode": fight_mode(), "title": fight_title(),
 			"stage": str(event.get("stage", "")) if fight_mode() == "story" else ("cup" if fight_mode() == "circuit" else fight_mode())})
 	if fight_log.size() > 400:
 		fight_log.pop_front()
