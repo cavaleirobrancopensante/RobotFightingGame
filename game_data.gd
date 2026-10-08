@@ -2,7 +2,7 @@ extends Node
 
 # helper scripts, loaded by path so the game also runs without an editor scan
 ## The game's version, shown on the main menu. Bump it with every change (1.1, 1.2, ...).
-const VERSION := "1.74"
+const VERSION := "1.75"
 const Arena = preload("res://arena.gd")
 const I18n = preload("res://i18n.gd")
 const Catalog = preload("res://catalog.gd")
@@ -282,6 +282,12 @@ var spare_controllers: Array = []   # dug-up controllers waiting in Storage (1.5
 var tips_seen: Array = []
 var opening_replay := false   # the opening cutscene was asked for again (BotMedia): back to the bay after it
 var social := {}      # BotMedia: posts, follows, your followers (social.gd)
+var films := {}       # (1.75) key -> a whole filmed fight (its own file, films_path(); the newest FILMS_KEEP)
+var films_dirty := false
+var clips_dirty := false
+var film_index := {}  # (1.75) key -> {clips, ko, secs}: what came of each filmed fight
+var film_pending: Array = []   # (1.75) background films still to make (survive a reload)
+var films_seen: Array = []     # (1.75) "stage:year:round" nights already picked through
 var clips := {}       # (1.74) id -> clip (clips.gd). Posted clips stay forever; "temp" ones wait on the post you haven't made yet
 var contracts := {}   # sponsor contracts and offers (contracts.gd)
 var alerts_unseen := 0   # new BotMedia alerts (the rail lights up)
@@ -611,6 +617,15 @@ func new_game() -> void:
 	day_log = {}
 	inbox_seen = 0
 	social = {}
+	clips = {}
+	clips_dirty = true
+	films = {}
+	films_dirty = true
+	film_index = {}
+	film_pending = []
+	films_seen = []
+	if get_tree() != null and get_node_or_null("/root/Film") != null:
+		get_node("/root/Film").clear()
 	contracts = {}
 	alerts_unseen = 0
 	tour = 0
@@ -2689,6 +2704,7 @@ func advance_week(n: int = 1) -> void:
 		World.week_passed(year, week, World.busy_ids())   # the rest of Port Ferrum fights and shops too
 		weekly_rumour()
 		rel_drift(0.96)
+		feuds_week()
 		Contracts.week_end()
 		if week % MONTH_WEEKS == 0:
 			money -= living_cost()   # end of the month: cost of living
@@ -2995,6 +3011,7 @@ func catch_up_leagues() -> Array:
 	if trials_over() and not leagues.has("scrap") and not leagues.is_empty():
 		build_scrap()
 	sync_event()
+	queue_night_films()   # (1.75) the night's best fights get filmed in the background
 	return lines
 
 
@@ -4863,12 +4880,24 @@ func save_game() -> bool:
 		"owned_chips": owned_chips, "chips": chips, "circuit": circuit, "circuit_offers": circuit_offers,
 		"circuits_won": circuits_won, "pickup": pickup, "setups": setups, "custom_parts": custom_parts,
 		"year": year, "week": week, "day": day, "rank": rank, "event": {}, "leagues": leagues, "title_seeds": title_seeds, "trophies": trophies, "career_stats": career_stats,
-		"pecking_k": pecking_k(), "style": style, "style_locked": style_locked, "shop_stock": shop_stock, "chip_stock": chip_stock, "scout": scout, "wingmen": wingmen, "sending": sending, "pilot_look": pilot_look, "owned_controllers": owned_controllers, "spare_controllers": spare_controllers, "tips_seen": tips_seen, "tips_log": tips_log, "h2h": h2h, "rivals": rivals, "rel": rel, "nemeses": nemeses, "pending_talk": pending_talk, "inbox": inbox, "inbox_seen": inbox_seen, "social": social, "clips": clips, "contracts": contracts, "alerts_unseen": alerts_unseen, "day_log": day_log, "tour": tour, "streak": streak, "pub_seen": pub_seen, "digs_left": digs_left, "dig_luck": dig_luck, "bills_note": bills_note, "fight_log": fight_log, "bets": bets, "world": world,
+		"pecking_k": pecking_k(), "style": style, "style_locked": style_locked, "shop_stock": shop_stock, "chip_stock": chip_stock, "scout": scout, "wingmen": wingmen, "sending": sending, "pilot_look": pilot_look, "owned_controllers": owned_controllers, "spare_controllers": spare_controllers, "tips_seen": tips_seen, "tips_log": tips_log, "h2h": h2h, "rivals": rivals, "rel": rel, "nemeses": nemeses, "pending_talk": pending_talk, "inbox": inbox, "inbox_seen": inbox_seen, "social": social, "film_index": film_index, "film_pending": film_pending, "films_seen": films_seen, "contracts": contracts, "alerts_unseen": alerts_unseen, "day_log": day_log, "tour": tour, "streak": streak, "pub_seen": pub_seen, "digs_left": digs_left, "dig_luck": dig_luck, "bills_note": bills_note, "fight_log": fight_log, "bets": bets, "world": world,
 	}
 	var f := FileAccess.open(slot_path(save_slot), FileAccess.WRITE)
 	if f == null:
 		return false
 	f.store_string(JSON.stringify(data))
+	if clips_dirty:
+		# (1.75) clips live in their own file too, written only when they change
+		var cfw := FileAccess.open(clips_path(), FileAccess.WRITE)
+		if cfw != null:
+			cfw.store_string(JSON.stringify(clips))
+			clips_dirty = false
+	if films_dirty:
+		# (1.75) whole filmed fights are big: their own file, written only when one is added
+		var ff := FileAccess.open(films_path(), FileAccess.WRITE)
+		if ff != null:
+			ff.store_string(JSON.stringify(films))
+			films_dirty = false
 	return true
 
 
@@ -4982,7 +5011,27 @@ func load_game(slot: int = -1) -> String:
 			inbox.append(e)
 	inbox_seen = mini(int(data.get("inbox_seen", inbox.size())), inbox.size())
 	social = data.get("social", {})
-	clips = data.get("clips", {})
+	clips = {}
+	if data.has("clips"):
+		clips = data["clips"]   # (a 1.74 save kept them inside; from 1.75 they have their own file)
+		clips_dirty = true
+	else:
+		var cf := FileAccess.open(clips_path(), FileAccess.READ)
+		if cf != null:
+			var cd0 = JSON.parse_string(cf.get_as_text())
+			if typeof(cd0) == TYPE_DICTIONARY:
+				clips = cd0
+		clips_dirty = false
+	film_index = data.get("film_index", {})
+	film_pending = data.get("film_pending", [])
+	films_seen = data.get("films_seen", [])
+	films = {}
+	var fl := FileAccess.open(films_path(), FileAccess.READ)
+	if fl != null:
+		var fd = JSON.parse_string(fl.get_as_text())
+		if typeof(fd) == TYPE_DICTIONARY:
+			films = fd
+	films_dirty = false
 	contracts = data.get("contracts", {})
 	alerts_unseen = int(data.get("alerts_unseen", 0))
 	tour = int(data.get("tour", -1))
@@ -5220,6 +5269,9 @@ func _fix_numbers(ev: Dictionary) -> void:
 func delete_save(slot: int = -1) -> void:
 	if has_save(slot):
 		DirAccess.remove_absolute(slot_path(save_slot if slot < 0 else slot))
+		for fp in ["user://films_%d.json" % (save_slot if slot < 0 else slot), "user://clips_%d.json" % (save_slot if slot < 0 else slot)]:
+			if FileAccess.file_exists(fp):
+				DirAccess.remove_absolute(fp)
 
 
 static func random_pilot_name() -> String:
@@ -5330,6 +5382,7 @@ func add_fresh_clips(list: Array) -> void:
 		cl["id"] = "c%d_%d_%d" % [int(Time.get_unix_time_from_system()), randi() % 100000, n]
 		cl["temp"] = true
 		clips[cl["id"]] = cl
+	clips_dirty = true
 
 
 func fresh_clip_ids() -> Array:
@@ -5348,3 +5401,289 @@ func clip(id: String) -> Dictionary:
 func keep_clip(id: String) -> void:
 	if clips.has(id):
 		clips[id].erase("temp")
+		clips_dirty = true
+
+
+# ---------------------------------------------------------------- filmed fights (1.75)
+# Fights between computer pilots are decided on the books (Career.simulate). The interesting ones
+# of each night are filmed in the background afterwards (the Film autoload; fight.gd "filming"),
+# steered to the result on the books: their best moment goes on BotMedia as a clip. Any other
+# fight of the season can be filmed when someone asks to watch it (garage.watch_past).
+
+const FILMS_KEEP := 10          # whole fights kept (watching one again shows the same fight)
+const WORLD_CLIPS_KEEP := 24    # world clips kept (unless saved); older ones fall back to a still
+const NIGHT_FILMS := 8          # fights filmed from each night
+const FILM_POST := {"ko": ["%s put %s away last night. Watch it again.", "Lights out. %s finishes %s.", "%s against %s. It didn't go the distance."],
+		"comeback": ["%s was nearly finished and came back to beat %s.", "Don't count out %s. Ask %s."],
+		"rip": ["%s took a piece of %s home last night.", "%s tore a part off %s. Somebody call a welder."],
+		"finisher": ["%s landed the big one on %s.", "The finisher. %s on %s."], "special": ["%s landed the big one on %s.", "%s pulled out the special move on %s."],
+		"down": ["%s put %s on the floor last night.", "Flat on its back. %s floors %s."], "guard": ["%s smashed straight through %s's guard."],
+		"combo": ["%s took %s apart, one hit after another."], "close": ["%s and %s went the distance."]}
+const FEUD_LINE := -40.0
+
+
+func films_path() -> String:
+	return "user://films_%d.json" % save_slot
+
+
+func clips_path() -> String:
+	return "user://clips_%d.json" % save_slot
+
+
+static func film_key(stage: String, y: int, r: int, a: int, b: int) -> String:
+	return "%s:%d:%d:%d:%d" % [stage, y, r, mini(a, b), maxi(a, b)]
+
+
+## How much a fight is worth filming: the league, the night, the table, the people you care about,
+## bad blood between them, an upset, parts flying.
+func fight_interest(ev: Dictionary, stage: String, a: int, b: int, w: int, p: int, pos: Dictionary) -> float:
+	var sc: float = float({"open": 4, "scrap": 6, "rust": 9, "iron": 13, "steel": 18, "title": 40}.get(stage, 6))
+	if str(ev.get("phase", "")) in ["finals", "playoffs"]:
+		sc += 25.0
+	var n: int = maxi(1, pos.size())
+	var top := 0
+	for id in [a, b]:
+		var k := int(pos.get(id, n))
+		if k < 4:
+			top += 1
+		elif k >= n - 6:
+			sc += 5.0
+		var wid := int(Career.pilot(ev, id).get("wid", -1))
+		if wid < 0:
+			continue
+		if absf(rel_of(wid)) >= 15.0:
+			sc += 12.0
+		if Social.follows("w:%d" % wid):
+			sc += 8.0
+		var wp := World.pilot(wid)
+		sc += log(maxf(10.0, float(wp.get("fol", 10)))) / log(10.0) * 2.5
+	if top == 2:
+		sc += 12.0
+	var wa := int(Career.pilot(ev, a).get("wid", -1))
+	var wb := int(Career.pilot(ev, b).get("wid", -1))
+	var fe := feud_of(wa, wb)
+	if fe <= FEUD_LINE:
+		sc += 20.0
+	elif fe <= -15.0:
+		sc += 8.0
+	var l := b if w == a else a
+	if World.win_chance(Career.rating_of(ev, w), Career.rating_of(ev, l)) < 0.35:
+		sc += 16.0
+	if p >= 3:
+		sc += 5.0
+	return sc
+
+
+## New nights in the results history: pick the best fights and queue them for filming.
+func queue_night_films() -> void:
+	var cands: Array = []
+	for stage in leagues:
+		var ev: Dictionary = leagues[stage]
+		var pos := {}
+		var order: Array = Career.standings(ev) if ev.has("table") else []
+		for k in order.size():
+			pos[int(order[k])] = k
+		for h in ev.get("history", []):
+			var rk := "%s:%d:%d" % [stage, year, int(h["r"])]
+			if films_seen.has(rk):
+				continue
+			films_seen.append(rk)
+			if week - int(h["w"]) > 1:
+				continue   # an old night: watchable on request, not filmed by itself
+			for x in h["list"]:
+				var a := int(x[0])
+				var b := int(x[1])
+				if not film_ok(ev, a, b, int(h["r"])):
+					continue
+				cands.append({"score": fight_interest(ev, stage, a, b, int(x[2]), int(x[3]), pos) + randf() * 4.0,
+						"spec": [stage, year, int(h["r"]), a, b, int(x[2]), int(x[3]), int(h["w"]), int(h["d"])]})
+	if films_seen.size() > 120:
+		films_seen = films_seen.slice(films_seen.size() - 120)
+	cands.sort_custom(func(x, y): return float(x["score"]) > float(y["score"]))
+	for c in cands.slice(0, NIGHT_FILMS):
+		if float(c["score"]) < 12.0:
+			break
+		film_pending.append(c["spec"])
+	if film_pending.size() > NIGHT_FILMS + 4:
+		film_pending = film_pending.slice(film_pending.size() - NIGHT_FILMS - 4)   # skipped weeks: the newest nights win
+	resume_films()
+
+
+## Computer pilots only (your own fights are recorded as you fight them), not OVERLORD (Kane keeps
+## its fights behind closed doors), not a fight you watched live.
+func film_ok(ev: Dictionary, a: int, b: int, r: int) -> bool:
+	if a == 0 or b == 0:
+		return false
+	for id in [a, b]:
+		if int(Career.pilot(ev, id).get("rival", -1)) == OPPONENTS.size() - 1:
+			return false
+	for f in ev.get("forced", []):
+		if int(f["round"]) == r and ((int(f["a"]) == a and int(f["b"]) == b) or (int(f["a"]) == b and int(f["b"]) == a)):
+			return false
+	return true
+
+
+## Hand the waiting background films to the Film autoload (after a reload too).
+func resume_films() -> void:
+	var film_node := get_node_or_null("/root/Film")
+	if film_node == null:
+		return
+	var keep: Array = []
+	for spec in film_pending:
+		if int(spec[1]) != year or week - int(spec[7]) > 2:
+			continue
+		var job := film_job(spec, false)
+		if job.is_empty():
+			continue
+		keep.append(spec)
+		if not film_node.busy_with(job["key"]):
+			film_node.add(job)
+	film_pending = keep
+	var keys: Array = []
+	for spec in keep:
+		keys.append(film_key(str(spec[0]), int(spec[1]), int(spec[2]), int(spec[3]), int(spec[4])))
+	film_node.retain(keys)
+
+
+## spec = [stage, year, round, a, b, winner, parts, week, day]
+func film_job(spec: Array, now: bool) -> Dictionary:
+	var stage := str(spec[0])
+	var ev: Dictionary = leagues.get(stage, {})
+	if ev.is_empty():
+		return {}
+	var a := int(spec[3])
+	var b := int(spec[4])
+	var oa := Career.robot_of(ev, a)
+	var ob := Career.robot_of(ev, b)
+	if oa.is_empty() or ob.is_empty():
+		return {}
+	for k in 2:
+		var o: Dictionary = [oa, ob][k]
+		if str(o.get("pilot", "")) == "":
+			o["pilot"] = str(Career.pilot(ev, [a, b][k]).get("pilot", ""))
+	var venue: Array = Arena.career_venue(stage, "")
+	return {"key": film_key(stage, int(spec[1]), int(spec[2]), a, b), "a": oa, "b": ob, "w": 0 if int(spec[5]) == a else 1,
+			"p": int(spec[6]), "arena": venue[0], "crowd": venue[1], "title": tr(str(ev.get("name", ""))).to_upper(),
+			"now": now, "bg": not now, "spec": spec}
+
+
+func store_film(key: String, film: Dictionary) -> void:
+	if film.is_empty():
+		return
+	film["fkey"] = key
+	films.erase(key)
+	films[key] = film
+	while films.size() > FILMS_KEEP:
+		films.erase(films.keys()[0])
+	films_dirty = true
+
+
+## A background film is ready: keep the fight, put its best moment (two if it had a lot in it) on
+## BotMedia as a clip, and bad blood grows between pilots who tore into each other.
+func film_done(job: Dictionary, out: Dictionary) -> void:
+	var spec: Array = job.get("spec", [])
+	var key: String = job["key"]
+	film_pending = film_pending.filter(func(sp): return film_key(str(sp[0]), int(sp[1]), int(sp[2]), int(sp[3]), int(sp[4])) != key)
+	store_film(key, out.get("film", {}))
+	var ev: Dictionary = leagues.get(str(spec[0]), {}) if not spec.is_empty() else {}
+	var wi := int(out.get("w", 0))
+	var oa: Dictionary = job["a"]
+	var ob: Dictionary = job["b"]
+	var wo: Dictionary = oa if wi == 0 else ob
+	var lo: Dictionary = ob if wi == 0 else oa
+	var wwid := int(wo.get("wid", -1))
+	var lwid := int(lo.get("wid", -1))
+	var cl: Array = out.get("clips", [])
+	var keep_n := 2 if cl.size() >= 2 and float(cl[1].get("score", 0.0)) >= 90.0 else 1
+	var ids: Array = []
+	var n := 0
+	for c in cl.slice(0, keep_n):
+		var cd: Dictionary = c
+		n += 1
+		cd["id"] = "w%d_%d_%d" % [int(Time.get_unix_time_from_system()), randi() % 100000, n]
+		cd["world"] = true
+		cd["fkey"] = key
+		cd["still"] = {"kind": "still", "wa": wwid, "wb": lwid, "won": true, "an": str(wo.get("pilot", "")), "bn": str(lo.get("pilot", "")),
+				"venue": str(job.get("arena", "scrap_ring")), "ko": str(out.get("ko", ""))}
+		clips[cd["id"]] = cd
+		ids.append(cd["id"])
+		clips_dirty = true
+	film_index[key] = {"clips": ids, "ko": str(out.get("ko", "")), "secs": float(out.get("secs", 0.0)), "spec": spec}
+	if not ids.is_empty():
+		var c0: Dictionary = clips[ids[0]]
+		var lines0: Array = FILM_POST.get(str(c0.get("kind", "")), FILM_POST["close"])
+		var line: String = lines0[absi(hash(key)) % lines0.size()]
+		var stage := str(spec[0]) if not spec.is_empty() else ""
+		var p := Social.post("botmedia", line, [str(wo.get("pilot", "?")), str(lo.get("pilot", "?"))], {"kind": "clip", "id": ids[0]},
+				[Social.tag_for(stage), "FightNight"])
+		p["likes"] = int(int(p["likes"]) * 1.6)
+		p["reposts"] = int(int(p["reposts"]) * 2.0)
+	# bad blood: a fight that tore parts off (or ended in a K.O.) leaves a mark between them
+	var rips_l: int = int((out.get("rips", [0, 0]) as Array)[1 - wi])
+	var before := feud_of(wwid, lwid)
+	var hit := 4.0 + 4.0 * rips_l + (6.0 if str(out.get("ko", "")) != "TIME!" and str(out.get("ko", "")) != "" else 0.0)
+	feud_add(wwid, lwid, -hit)
+	if before > FEUD_LINE and feud_of(wwid, lwid) <= FEUD_LINE and wwid >= 0 and lwid >= 0:
+		World.news("Bad blood between %s and %s.", [str(wo.get("pilot", "?")), str(lo.get("pilot", "?"))])
+		Social.post("w:%d" % wwid, "Told you, %s. Every time.", [str(lo.get("pilot", "?"))], {}, ["BadBlood"])
+		Social.post("w:%d" % lwid, "Enjoy it, %s. Next time I take your arm home.", [str(wo.get("pilot", "?"))], {}, ["BadBlood"])
+	prune_world_clips()
+	save_game()
+
+
+## Only the newest world clips stay (and any you saved): an older post shows its still instead.
+func prune_world_clips() -> void:
+	var world_ids: Array = []
+	for id in clips:
+		var c: Dictionary = clips[id]
+		if c.get("world", false) and not c.get("saved", false):
+			world_ids.append(id)
+	if world_ids.size() <= WORLD_CLIPS_KEEP:
+		return
+	var drop: Array = world_ids.slice(0, world_ids.size() - WORLD_CLIPS_KEEP)
+	for id in drop:
+		var still: Dictionary = clips[id].get("still", {})
+		for p in Social.st().get("posts", []):
+			var card: Dictionary = p.get("card", {})
+			if str(card.get("kind", "")) == "clip" and str(card.get("id", "")) == id:
+				p["card"] = still
+		clips.erase(id)
+	clips_dirty = true
+
+
+## (1.75) Save a clip you like: it stays for good.
+func save_clip(id: String, on: bool) -> void:
+	if clips.has(id):
+		if on:
+			clips[id]["saved"] = true
+		else:
+			clips[id].erase("saved")
+		clips_dirty = true
+		save_game()
+
+
+# Bad blood between two world pilots (-100 .. 0), kept in the world: grows when they tear into
+# each other on film, fades a little every week.
+func feud_of(a: int, b: int) -> float:
+	if a < 0 or b < 0:
+		return 0.0
+	return float(world.get("feuds", {}).get("%d:%d" % [mini(a, b), maxi(a, b)], 0.0))
+
+
+func feud_add(a: int, b: int, v: float) -> void:
+	if a < 0 or b < 0 or a == b:
+		return
+	if not world.has("feuds"):
+		world["feuds"] = {}
+	var k := "%d:%d" % [mini(a, b), maxi(a, b)]
+	world["feuds"][k] = clampf(float(world["feuds"].get(k, 0.0)) + v, -100.0, 0.0)
+
+
+func feuds_week() -> void:
+	var fd: Dictionary = world.get("feuds", {})
+	for k in fd.keys():
+		var v := float(fd[k]) * 0.97
+		if v > -3.0:
+			fd.erase(k)
+		else:
+			fd[k] = v

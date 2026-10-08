@@ -450,6 +450,20 @@ static func simulate(ev: Dictionary, a: int, b: int, rng: RandomNumberGenerator)
 	return w
 
 
+## (1.75) Every round's results are kept for the season (ev "history": [{r, w (week), d (day), list
+## [[a, b, winner, parts the winner took off, -1 = not known]]}]), so any fight can be watched later.
+static func log_results(ev: Dictionary, wk: int, d: int) -> void:
+	var res: Dictionary = ev.get("results", {})
+	if res.is_empty():
+		return
+	if not ev.has("history"):
+		ev["history"] = []
+	var list: Array = []
+	for r in res.get("list", []):
+		list.append([int(r["a"]), int(r["b"]), int(r["w"]), int(r.get("p", -1))])
+	(ev["history"] as Array).append({"r": int(res["round"]), "w": wk, "d": d, "list": list})
+
+
 static func add_result(ev: Dictionary, winner: int, loser: int, parts: int) -> void:
 	var t: Dictionary = ev["table"]
 	if not t.has(str(winner)):
@@ -467,17 +481,22 @@ static func after_player_fight(ev: Dictionary, won: bool, parts: int) -> Diction
 	rng.seed = int(ev["seed"]) * 31 + int(ev["round"]) * 977 + 5
 	var out := {"phase_changed": false, "done": false, "out": false}
 	var opp := player_opponent(ev)
+	var wk0 := week_of_round(ev)   # (1.75) the night it happened, for the results history
+	var d0 := fight_day(ev)
 	if ev["phase"] == "league":
-		add_result(ev, 0 if won else opp, opp if won else 0, parts if won else rng.randi_range(0, 3))
-		var results: Array = [{"a": 0, "b": opp, "w": 0 if won else opp}]
+		var mp: int = parts if won else rng.randi_range(0, 3)
+		add_result(ev, 0 if won else opp, opp if won else 0, mp)
+		var results: Array = [{"a": 0, "b": opp, "w": 0 if won else opp, "p": mp}]
 		# everyone else plays someone this round too (the pairings were set when the round began)
 		for pr in round_pairs(ev):
 			var a: int = pr[0]
 			var b: int = pr[1]
 			var w := simulate(ev, a, b, rng)
-			add_result(ev, w, b if w == a else a, rng.randi_range(0, 4))
-			results.append({"a": a, "b": b, "w": w})
+			var np := rng.randi_range(0, 4)   # parts the winner took off the loser
+			add_result(ev, w, b if w == a else a, np)
+			results.append({"a": a, "b": b, "w": w, "p": np})
 		ev["results"] = {"round": int(ev["round"]), "list": results}
+		log_results(ev, wk0, d0)
 		ev["round"] = int(ev["round"]) + 1
 		if ev["round"] >= ev["weeks"].size():
 			out["phase_changed"] = true
@@ -496,6 +515,7 @@ static func after_player_fight(ev: Dictionary, won: bool, parts: int) -> Diction
 		if not fm.is_empty():
 			fm["w"] = 0 if won else opp
 		play_finals_round(ev, rng)
+		log_results(ev, wk0, d0)
 		out["done"] = ev["phase"] == "done"
 		return out
 	# playoffs
@@ -510,6 +530,7 @@ static func after_player_fight(ev: Dictionary, won: bool, parts: int) -> Diction
 	for x in br["rounds"][cur_r]:
 		res.append({"a": int(x["a"]), "b": int(x["b"]), "w": int(x["w"])})
 	ev["results"] = {"round": played_round, "list": res}
+	log_results(ev, wk0, d0)
 	if ev["phase"] == "done":
 		out["done"] = true
 	elif player_opponent(ev) == -1:
@@ -524,8 +545,11 @@ static func after_player_fight(ev: Dictionary, won: bool, parts: int) -> Diction
 static func play_npc_round(ev: Dictionary) -> void:
 	var rng := RandomNumberGenerator.new()
 	rng.seed = int(ev["seed"]) * 31 + round_key(ev) * 977 + 11
+	var wk0 := week_of_round(ev)
+	var d0 := fight_day(ev)
 	if ev.get("phase", "") == "finals":
 		play_finals_round(ev, rng)
+		log_results(ev, wk0, d0)
 		return
 	if ev.get("phase", "") == "playoffs":
 		# a knockout (the Championship): this round's fights, then the next round is drawn
@@ -536,6 +560,7 @@ static func play_npc_round(ev: Dictionary) -> void:
 		for x in br["rounds"][mini(br["r"], br["rounds"].size() - 1) if ev["phase"] == "done" else maxi(0, br["r"] - 1)]:
 			res.append({"a": int(x["a"]), "b": int(x["b"]), "w": int(x["w"])})
 		ev["results"] = {"round": played, "list": res}
+		log_results(ev, wk0, d0)
 		if ev["phase"] == "done":
 			award_world(ev)
 		return
@@ -546,9 +571,11 @@ static func play_npc_round(ev: Dictionary) -> void:
 		var a: int = pr[0]
 		var b: int = pr[1]
 		var w := simulate(ev, a, b, rng)
-		add_result(ev, w, b if w == a else a, rng.randi_range(0, 4))
-		results.append({"a": a, "b": b, "w": w})
+		var np := rng.randi_range(0, 4)
+		add_result(ev, w, b if w == a else a, np)
+		results.append({"a": a, "b": b, "w": w, "p": np})
 	ev["results"] = {"round": int(ev["round"]), "list": results}
+	log_results(ev, wk0, d0)
 	ev["round"] = int(ev["round"]) + 1
 	if ev["round"] >= ev["weeks"].size():
 		finish_league(ev)

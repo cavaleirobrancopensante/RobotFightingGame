@@ -370,6 +370,8 @@ func s2w(p: Vector2) -> Vector2:
 
 
 func redraw_all() -> void:
+	if simming:
+		return   # filmed off screen: nothing to draw
 	queue_redraw()
 	if hud_canvas:
 		hud_canvas.queue_redraw()
@@ -513,6 +515,9 @@ func _ready() -> void:
 		return
 	if not replay.is_empty():
 		setup_replay()
+		return
+	if not sim.is_empty():
+		setup_sim()
 		return
 	touch_device = DisplayServer.is_touchscreen_available()
 	if GameData.fight_mode() == "open":
@@ -683,7 +688,7 @@ func _ready() -> void:
 func _exit_tree() -> void:
 	if demo_move != "":
 		Sfx.quiet = maxi(0, Sfx.quiet - 1)
-	if rec_on:
+	if rec_on and not simming:
 		Sfx.tap = Callable()
 	for f in team_p + team_c:
 		f.foe = null
@@ -698,7 +703,7 @@ func _exit_tree() -> void:
 	focus = null
 	if arena_layer:
 		arena_layer.fight = null
-	if replay.is_empty():
+	if replay.is_empty() and not simming:
 		OS.low_processor_usage_mode = true   # menus only redraw when something changes
 
 
@@ -1752,7 +1757,7 @@ func _process(delta: float) -> void:
 		redraw_all()
 		return
 	update_coach(delta)
-	if mode == "watch":
+	if mode == "watch" and not simming:
 		update_live_bets(delta)
 	rec_tick(delta)
 	if hitstop > 0.0:
@@ -1953,6 +1958,8 @@ func time_up() -> void:
 	for f in team_c:
 		score[1] += (f.ratio("torso") if f.state != "ko" else 0.0) / team_c.size()
 	var tw: Fighter = player if score[0] >= score[1] else cpu
+	if simming:
+		tw = sim_side(sim_w)   # a filmed fight goes the way the books say
 	if absf(score[0] - score[1]) < 0.12:
 		rec_mark("close", 55.0, "%s edges it at the bell", [rec_name(tw)], 1.4)
 	end_by(tw, "TIME!")
@@ -1984,6 +1991,9 @@ func bench_hp(p: Dictionary, scale: float) -> float:
 
 
 func finish_match() -> void:
+	if simming:
+		sim_finish()
+		return
 	var cut := rec_cut()
 	if not cut.is_empty():
 		GameData.add_fresh_clips(cut)
@@ -3273,12 +3283,17 @@ func damage_part(f: Fighter, slot: String, amount: float, quiet: bool = false) -
 		armor += f.gtraits.get("plating", 0.0)
 	if f.style == "striker":
 		amount *= 1.1
+	if simming:
+		amount = sim_amount(f, slot, amount)
 	p["hp"] -= amount * (1.0 - minf(armor, 75.0) / 100.0)
 	f.look_dirty = true
 	if f.spec.get("junk", "") == "dummy":
 		# the Mop Bucket never breaks: it dents, then pops back out
 		p["hp"] = maxf(p["hp"], 1.0)
 		f.spec["hit_t"] = clock
+		return
+	if p["hp"] <= 0.0 and simming and not sim_may_break(f, slot):
+		p["hp"] = 1.0   # the books say it held
 		return
 	if p["hp"] <= 0.0:
 		var overkill := -float(p["hp"]) / maxf(1.0, float(p["max_hp"]))   # how far past zero the hit went
@@ -6325,7 +6340,8 @@ func rec_start() -> void:
 		spec.erase("standout")
 		# stored as JSON, so build it back from JSON now: the clip plays exactly what was saved
 		rec_bots.append({"spec": JSON.parse_string(JSON.stringify(Clips.plain(spec))), "team": f.team, "scale": snappedf(f.scale, 0.001)})
-	Sfx.tap = rec_sound
+	if not simming:
+		Sfx.tap = rec_sound   # (a filmed fight sets it only while it runs: sim_run)
 
 
 func rec_str(s: String) -> float:
@@ -6745,6 +6761,9 @@ func draw_replay_hud() -> void:
 	if fmod(Time.get_ticks_msec() / 1000.0, 1.0) < 0.6:
 		ci.draw_circle(Vector2(rx - fs(34) * 2.0, y + 18.0), 9.0, Color(1.0, 0.2, 0.15))
 	ci.draw_string(font, Vector2(rx - fs(34) * 1.6, y + 18.0 + fs(30) * 0.36), tr("REPLAY"), HORIZONTAL_ALIGNMENT_LEFT, -1, fs(30), Color(1, 1, 1, 0.9))
+	if str(replay.get("kind", "")) == "fight":
+		# a whole fight: its clock under REPLAY
+		ci.draw_string(font, Vector2(0, y + 34.0 + fs(30)), "%d" % ceili(maxf(0.0, time_left)), HORIZONTAL_ALIGNMENT_CENTER, screen.x, fs(34), Color(1.0, 0.85, 0.2))
 	var line := Clips.title(replay)
 	var bh := float(fs(30)) + 22.0
 	ci.draw_rect(Rect2(0, screen.y - bh, screen.x, bh), Color(0, 0, 0, 0.6))
@@ -6791,3 +6810,185 @@ func close_clip() -> void:
 	if clip_view != null and is_instance_valid(clip_view):
 		clip_view.queue_free()
 	clip_view = null
+
+
+# ---------------------------------------------------------------- filming a fight off screen (1.75)
+# A fight that was decided on the books (a world pilot against a world pilot) can be filmed after
+# the fact: the Film autoload builds this scene off screen with `sim` set and steps it as fast as it
+# can (sim_run), both robots on their own brains. The result is already known, so the fight is
+# steered toward it: the side that won on the books can't be finished, the damage each side takes
+# leans until that side is ahead, the loser loses as many parts as the books say (no more), and a
+# fight that reaches the bell goes to the right robot. Out come the whole fight (to watch) and its
+# best moments (clips).
+
+var sim := {}            # {a, b (robot dicts like Career.robot_of), w (0 left / 1 right), p (parts the loser loses, -1 any), arena, crowd, title}
+var simming := false
+var sim_w := 0
+var sim_p := -1
+var sim_wq := 1          # parts the winner may lose
+var sim_k := [1.0, 1.0]  # damage each side takes, leaned by sim_steer
+var sim_steer_t := 0.0
+var sim_done := false
+var sim_out := {}
+const SIM_DT := 1.0 / 60.0
+
+
+func setup_sim() -> void:
+	simming = true
+	mode = "watch"
+	exhibition = true
+	title_text = str(sim.get("title", ""))
+	var oa: Dictionary = sim["a"]
+	var ob: Dictionary = sim["b"]
+	opp = ob
+	var fa := make_fighter(GameData.opponent_spec_from(oa, 1.0))
+	var fb := make_fighter(GameData.opponent_spec_from(ob, 1.0))
+	fa.team = 0
+	fb.team = 1
+	fb.facing = -1
+	fa.pilot_name = str(oa.get("pilot", ""))
+	fb.pilot_name = str(ob.get("pilot", ""))
+	team_p = [fa]
+	team_c = [fb]
+	for f in [fa, fb]:
+		f.scale = maxf(f.scale, BOT_SCALE)
+		f.spec["scale"] = f.scale
+		f.look_dirty = true
+	player = fa
+	cpu = fb
+	layout()
+	screen = get_viewport_rect().size
+	fa.pos = Vector2(screen.x * 0.3, floor_y)
+	fb.pos = Vector2(screen.x * 0.7, floor_y)
+	for k in 2:
+		var f: Fighter = [fa, fb][k]
+		var o: Dictionary = [oa, ob][k]
+		f.foe = [fb, fa][k]
+		f.ai = {"timer": randf() * 0.3, "plan": {}, "think": maxf(THINK_MIN, float(o.get("think", 0.4)) * THINK_K),
+				"block": minf(0.85, float(o.get("block", 0.2))), "smart": float(o.get("smart", 0.0)),
+				"special_cd": 3.0 + randf(), "gadget_cd": 1.5 + randf(), "kit": {}}
+		set_aim_level(f, GameData.pilot_aim_level(o))
+		ai_load(f)
+		ai_build_kit()
+		ai_save(f)
+		var ids := {}
+		for slot in BODY_PARTS:
+			if not f.parts[slot].is_empty():
+				ids[slot] = str(f.parts[slot]["id"])
+		f.spec["standout"] = GameData.World.standout_slot(ids)
+	assign_foes()
+	arena_id = str(sim.get("arena", "scrap_ring"))
+	crowd_id = str(sim.get("crowd", "scrappers"))
+	barrier_kind = barrier_for(arena_id)
+	cam_c = screen * 0.5
+	intro_step = "count"
+	sim_w = int(sim.get("w", 0))
+	sim_p = int(sim.get("p", -1))
+	rec_start()
+
+
+## Run the fight for up to budget_ms of real time. True once it's over (sim_out holds the result).
+func sim_run(budget_ms: float) -> bool:
+	if sim_done:
+		return true
+	var t0 := Time.get_ticks_usec()
+	var old_tap := Sfx.tap
+	Sfx.tap = rec_sound
+	Sfx.silent += 1
+	var guard := 0
+	while not sim_done and Time.get_ticks_usec() - t0 < budget_ms * 1000.0:
+		sim_steer(SIM_DT)
+		_process(SIM_DT)
+		guard += 1
+		if clock > FIGHT_TIME + 60.0 and not sim_done:
+			sim_finish()   # (never: the clock ends every fight)
+	Sfx.silent -= 1
+	Sfx.tap = old_tap
+	return sim_done
+
+
+## How far along it is, 0..1 (for a progress bar).
+func sim_progress() -> float:
+	if sim_done:
+		return 1.0
+	return clampf((FIGHT_TIME - time_left) / FIGHT_TIME, 0.0, 0.98)
+
+
+func sim_side(k: int) -> Fighter:
+	return (team_p if k == 0 else team_c)[0]
+
+
+## Twice a second: the robot that won on the books has to be ahead (the damage each side takes
+## leans until it is), and owed parts come off before the bell at the latest.
+func sim_steer(dt: float) -> void:
+	if phase != "fight":
+		return
+	sim_steer_t -= dt
+	if sim_steer_t > 0.0:
+		return
+	sim_steer_t = 0.5
+	var wf := sim_side(sim_w)
+	var lf := sim_side(1 - sim_w)
+	var lead := lf.ratio("torso") - wf.ratio("torso")
+	var li := 1 - sim_w
+	if lead > -0.08:
+		sim_k[li] = minf(3.0, sim_k[li] * 1.06)
+		sim_k[sim_w] = maxf(0.4, sim_k[sim_w] * 0.95)
+	else:
+		sim_k[li] = lerpf(sim_k[li], 1.0, 0.04)
+		sim_k[sim_w] = lerpf(sim_k[sim_w], 1.0, 0.04)
+	# the parts the books say came off: the winner goes for them as the end nears
+	if sim_p > lf.ripped.size() and lf.ratio("torso") < 0.65 and wf.target == "":
+		for s in ["arm_front", "arm_back", "leg_front", "leg_back", "arm_front2", "arm_back2"]:
+			if lf.alive(s):
+				wf.target = s
+				break
+	if sim_p > lf.ripped.size() and time_left < 12.0:
+		for s in ["arm_front", "arm_back", "leg_front", "leg_back", "arm_front2", "arm_back2", "head2"]:
+			if lf.alive(s):
+				lf.last_hitter = wf
+				lf.parts[s]["hp"] = 0.0
+				lf.look_dirty = true
+				rip_off(lf, s, 0.0)
+				break
+
+
+## Damage in a filmed fight: each side's lean, and limbs go faster while parts are still owed.
+func sim_amount(f: Fighter, slot: String, amount: float) -> float:
+	amount *= float(sim_k[f.team])
+	if f.team != sim_w and sim_p > f.ripped.size() and slot != "torso" and not slot.begins_with("head") and f.ratio("torso") < 0.65:
+		amount *= 2.5
+	return amount
+
+
+## Can this part go to zero? Not the winner's core or last head; not more of the winner's parts
+## than sim_wq; not the loser's core before the owed parts are off, and no more parts than owed.
+func sim_may_break(f: Fighter, slot: String) -> bool:
+	var winner := f.team == sim_w
+	if slot == "torso":
+		if winner:
+			return false
+		return sim_p < 0 or f.ripped.size() >= sim_p or time_left < 6.0
+	if slot.begins_with("head") and f.heads() == 0:
+		# the last head ends it, and it's a part off too: only while one is still owed
+		if winner:
+			return false
+		return sim_p < 0 or f.ripped.size() < sim_p or time_left < 6.0
+	if winner:
+		return f.ripped.size() < sim_wq
+	return sim_p < 0 or f.ripped.size() < sim_p
+
+
+func sim_finish() -> void:
+	sim_done = true
+	var fa := sim_side(0)
+	var fb := sim_side(1)
+	var film := {}
+	if rec_on and not rec_frames.is_empty():
+		film = {"v": 1, "kind": "fight", "score": 0.0, "tpl": "%s vs %s", "args": [fa.label, fb.label],
+				"arena": arena_id, "crowd": crowd_id, "scr": [screen.x, screen.y], "floor": floor_y, "bots": rec_bots,
+				"ko": ko_text, "str": rec_strs.duplicate(), "fr": Clips.encode(rec_frames, 0, rec_frames.size(), rec_bots.size()), "at": 0,
+				"wk": GameData.World.abs_week(), "d": GameData.day, "mine": false}
+	var clips := rec_cut()
+	sim_out = {"w": 0 if won else 1, "ko": ko_text, "rips": [fa.ripped.size(), fb.ripped.size()],
+			"secs": snappedf(FIGHT_TIME - time_left, 0.1), "film": film, "clips": clips}

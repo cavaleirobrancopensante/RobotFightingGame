@@ -186,6 +186,7 @@ func _ready() -> void:
 		tab = GameData.open_tab
 	GameData.open_tab = ""
 	Sfx.music("garage")
+	GameData.queue_night_films()   # (1.75) last night's big fights get filmed in the background
 	reset_workshop("arm")
 	theme = GUI.theme()
 	backdrop = Backdrop.new()
@@ -3486,6 +3487,7 @@ func _unhandled_key_input(event: InputEvent) -> void:
 
 func close_popup() -> void:
 	fight_popup_open = false
+	film_waiting = ""
 	if paint_open:
 		paint_open = false
 		set_scene_for_tab()
@@ -4354,6 +4356,26 @@ func day_events(w: int, day: int) -> Array:
 					for pr in pairs.slice(0, 3):
 						ent["matches"].append({"ev": ev, "a": int(pr[0]), "b": int(pr[1]), "bet": ent["tonight"], "on": "div:" + dstage})
 				out.append(ent)
+		# (1.75) a night that's been fought: the results, and any of them can be watched
+		if w < GameData.week or (w == GameData.week and day < GameData.day_index()):
+			for rstage in GameData.leagues:
+				var rev: Dictionary = GameData.leagues[rstage]
+				for h in rev.get("history", []):
+					if int(h["w"]) != w or int(h["d"]) != day:
+						continue
+					var mine := Career.has_player(rev)
+					var rows: Array = []
+					for x in h["list"]:
+						var spec := [rstage, y, int(h["r"]), int(x[0]), int(x[1]), int(x[2]), int(x[3]), w, day]
+						var fk := GameData.film_key(rstage, y, int(h["r"]), int(x[0]), int(x[1]))
+						if not GameData.film_ok(rev, int(x[0]), int(x[1]), int(h["r"])):
+							continue
+						if mine or GameData.film_index.has(fk) or GameData.films.has(fk):
+							rows.append({"ev": rev, "spec": spec, "filmed": GameData.film_index.has(fk) or GameData.films.has(fk)})
+					if rows.is_empty():
+						continue
+					rows.sort_custom(func(r1, r2): return int(r1["filmed"]) > int(r2["filmed"]))
+					out.append({"icon": rstage, "title": tr(str(rev.get("name", ""))).to_upper(), "text": tr("RESULTS"), "results": rows})
 		if day == 5 and w < GameData.week:
 			var lines: Array = []
 			for n in GameData.world.get("news", []):
@@ -4395,7 +4417,7 @@ func _on_cal_day(w: int, day: int) -> void:
 	# league nights have a lot on: the list scrolls
 	var n_rows := 0
 	for e0 in events:
-		n_rows += 1 + e0.get("matches", []).size()
+		n_rows += 1 + e0.get("matches", []).size() + e0.get("results", []).size()
 	if n_rows > 6:
 		var sc := ScrollContainer.new()
 		sc.custom_minimum_size = Vector2(0, minf(460.0, get_viewport_rect().size.y - 200.0))
@@ -4433,6 +4455,20 @@ func _on_cal_day(w: int, day: int) -> void:
 			b.alignment = HORIZONTAL_ALIGNMENT_LEFT
 			b.clip_text = true
 			v.add_child(b)
+		for rr in e.get("results", []):
+			# WINNER beat LOSER, and Watch (filmed fights first, marked FILMED)
+			var sp: Array = rr["spec"]
+			var rev2: Dictionary = rr["ev"]
+			var wid2 := int(sp[5])
+			var lid2 := int(sp[4]) if wid2 == int(sp[3]) else int(sp[3])
+			var rrow := HBoxContainer.new()
+			rrow.add_theme_constant_override("separation", 8)
+			v.add_child(rrow)
+			var rl := GUI.text(tr("%s beat %s") % [who(rev2, wid2), who(rev2, lid2)] + ((" · " + tr("FILMED")) if rr["filmed"] else ""), 13, GUI.TEXT)
+			rl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			rl.clip_text = true
+			rrow.add_child(rl)
+			rrow.add_child(UI.button(tr("Watch ▸"), watch_past.bind(sp), 13, Vector2(96, 36)))
 	# a later day: you can jump straight to it (it stops at a night with your own fight)
 	if (w > GameData.week or (w == GameData.week and day > GameData.day_index())) and GameData.can_pass_day():
 		var stop := GameData.next_fight_before(w, day)
@@ -6677,13 +6713,119 @@ func open_clip(id: String) -> void:
 		return
 	var col := open_popup(GameData.Clips.kind_name(c))
 	var vw := get_viewport_rect().size
-	var w := minf(vw.x * 0.86, (vw.y - 260.0) * 16.0 / 9.0)
+	var w := minf(vw.x * 0.8, (vw.y - (330.0 if c.get("world", false) else 280.0) - UI.tsz(14) * 2.0) * 16.0 / 9.0)
 	var cp = load("res://clip_player.gd").new()
 	cp.clip = c
 	cp.custom_minimum_size = Vector2(maxf(320.0, w), maxf(180.0, w * 9.0 / 16.0))
 	col.add_child(cp)
 	var t := GUI.text(GameData.Clips.title(c), 14, GUI.TEXT, "headb")
 	t.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	t.custom_minimum_size.x = cp.custom_minimum_size.x
 	col.add_child(t)
+	var extra := HBoxContainer.new()
+	extra.alignment = BoxContainer.ALIGNMENT_CENTER
+	extra.add_theme_constant_override("separation", 8)
+	if c.get("world", false):
+		# (1.75) somebody else's fight: keep the clip for good, or watch the whole thing
+		var sb := UI.button(tr("Saved ✓") if c.get("saved", false) else tr("Save clip"), func(): pass, 14, Vector2(130, 40))
+		sb.pressed.connect(func():
+			GameData.save_clip(id, not GameData.clip(id).get("saved", false))
+			sb.text = tr("Saved ✓") if GameData.clip(id).get("saved", false) else tr("Save clip"))
+		extra.add_child(sb)
+	var fk := str(c.get("fkey", ""))
+	if fk != "" and (GameData.films.has(fk) or GameData.film_index.get(fk, {}).has("spec")):
+		extra.add_child(UI.button(tr("Watch the whole fight ▸"), watch_film_key.bind(fk), 14, Vector2(0, 40)))
+	if extra.get_child_count() > 0:
+		popup_footer.add_child(extra)
 	popup_footer.add_child(cp.controls())
 	Sfx.play("click")
+
+
+# ---------------------------------------------------------------- watching filmed fights (1.75)
+
+## A fight from the books: play its film, or film it first (a bar while it's made).
+func watch_past(spec: Array) -> void:
+	var key := GameData.film_key(str(spec[0]), int(spec[1]), int(spec[2]), int(spec[3]), int(spec[4]))
+	if GameData.films.has(key):
+		open_film(key)
+		return
+	var job := GameData.film_job(spec, true)
+	if job.is_empty():
+		note(tr("That fight can't be shown any more."))
+		return
+	film_wait(key, job)
+
+
+func watch_film_key(key: String) -> void:
+	if GameData.films.has(key):
+		open_film(key)
+		return
+	var spec: Array = GameData.film_index.get(key, {}).get("spec", [])
+	if spec.is_empty():
+		return
+	watch_past(spec)
+
+
+var film_waiting := ""
+
+
+func film_wait(key: String, job: Dictionary) -> void:
+	var col := open_popup(tr("FILMING"))
+	var l := GUI.text(tr("The fight-net is putting the footage together."), 15, GUI.TEXT)
+	l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	l.custom_minimum_size.x = 520
+	col.add_child(l)
+	var bar := FilmBar.new()
+	bar.key = key
+	bar.custom_minimum_size = Vector2(0, 26)
+	col.add_child(bar)
+	film_waiting = key
+	if not Film.filmed.is_connected(_on_filmed):
+		Film.filmed.connect(_on_filmed)
+	Film.add(job)
+	Sfx.play("click")
+
+
+func _on_filmed(job: Dictionary, out: Dictionary) -> void:
+	if job.get("bg", false) and film_waiting != job["key"]:
+		return
+	var key: String = job["key"]
+	if not job.get("bg", false):
+		GameData.store_film(key, out.get("film", {}))
+		var fi: Dictionary = GameData.film_index.get(key, {})
+		fi["spec"] = job.get("spec", [])
+		fi["ko"] = str(out.get("ko", ""))
+		fi["secs"] = float(out.get("secs", 0.0))
+		GameData.film_index[key] = fi
+		GameData.save_game()
+	if film_waiting == key:
+		film_waiting = ""
+		if is_inside_tree():
+			open_film(key)
+
+
+## A whole fight in the clip player (sound, x2, again), with the result under it.
+func open_film(key: String) -> void:
+	var f: Dictionary = GameData.films.get(key, {})
+	if f.is_empty():
+		return
+	var col := open_popup(GameData.Clips.title(f))
+	var vw := get_viewport_rect().size
+	var w := minf(vw.x * 0.8, (vw.y - 250.0 - UI.tsz(14)) * 16.0 / 9.0)
+	var cp = load("res://clip_player.gd").new()
+	cp.clip = f
+	cp.custom_minimum_size = Vector2(maxf(320.0, w), maxf(180.0, w * 9.0 / 16.0))
+	col.add_child(cp)
+	popup_footer.add_child(cp.controls())
+
+
+class FilmBar extends Control:
+	var key := ""
+
+	func _process(_d: float) -> void:
+		queue_redraw()
+
+	func _draw() -> void:
+		var GUI2 = load("res://garage_ui.gd")
+		var p: float = Film.progress(key)
+		GUI2.draw_blocks(self, Rect2(0, 4, size.x, size.y - 8), 30, p * 30.0, GUI2.YELLOW)

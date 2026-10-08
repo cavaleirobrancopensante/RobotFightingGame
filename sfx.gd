@@ -85,7 +85,12 @@ func play(sound: String, pitch_jitter: float = 0.0, volume_db: float = 0.0, pitc
 
 
 ## Plays without being recorded (a clip playing its own sounds back).
+var silent := 0   # (1.75) > 0 while a fight is filmed off screen: it's heard by its recording only
+
+
 func play_raw(sound: String, pitch_jitter: float = 0.0, volume_db: float = 0.0, pitch: float = 1.0) -> void:
+	if silent > 0:
+		return
 	if not GameData.settings.get("sound", true):
 		return
 	if quiet > 0 and not MENU_SOUNDS.has(sound):
