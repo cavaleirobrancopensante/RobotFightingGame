@@ -88,6 +88,7 @@ const HITS_BY_HEIGHT := {"punch": ["uppercut", "punch", "low_punch"], "kick": ["
 
 class Fighter:
 	var label := ""
+	var pilot_name := ""   # who's at the controls (HUD)
 	var parts := {}
 	var spec := {}
 	var look := {}
@@ -483,6 +484,19 @@ func _ready() -> void:
 		f.team = 1
 		f.facing = -1
 		team_c.append(f)
+	# who's at the controls (1.56): shown under each robot's name on the HUD
+	match mode:
+		"watch":
+			team_p[0].pilot_name = str(GameData.watch_robot(0).get("pilot", ""))
+			team_c[0].pilot_name = str(GameData.watch_robot(1).get("pilot", ""))
+		"quick":
+			pass
+		"test":
+			team_p[0].pilot_name = GameData.pilot_name
+			team_c[0].pilot_name = "GUS"
+		_:
+			team_p[0].pilot_name = GameData.pilot_name
+			team_c[0].pilot_name = str(opp.get("pilot", ""))
 	for t in [team_p, team_c]:
 		if t.size() == 1:
 			t[0].scale = maxf(t[0].scale, BOT_SCALE)   # a robot fighting alone is always full size
@@ -4012,8 +4026,17 @@ func draw_hud() -> void:
 		status.append(tr("FROZEN"))
 	if not player.burns.is_empty():
 		status.append(tr("ON FIRE"))
+	# the pilots, under the robots' names
+	var pl_y := y + bh + 28 + fs(17) + 2
+	var has_pilots := false
+	if team_p.size() == 1 and player.pilot_name != "":
+		draw_string(font, Vector2(px, pl_y), tr("PILOT %s") % player.pilot_name.to_upper(), HORIZONTAL_ALIGNMENT_LEFT, -1, fs(15), Color(0.75, 0.85, 1.0))
+		has_pilots = true
+	if team_c.size() == 1 and cpu.pilot_name != "":
+		draw_string(font, Vector2(cx, pl_y), tr("PILOT %s") % cpu.pilot_name.to_upper(), HORIZONTAL_ALIGNMENT_RIGHT, w, fs(15), Color(0.75, 0.85, 1.0))
+		has_pilots = true
 	if not status.is_empty():
-		draw_string(font, Vector2(px, y + bh + 50), "  ".join(status), HORIZONTAL_ALIGNMENT_LEFT, -1, fs(16), Color(1.0, 0.5, 0.2))
+		draw_string(font, Vector2(px, (pl_y + fs(15) + 4) if has_pilots else (y + bh + 50)), "  ".join(status), HORIZONTAL_ALIGNMENT_LEFT, -1, fs(16), Color(1.0, 0.5, 0.2))
 	draw_part_maps(team_p, y, false)
 	draw_part_maps(team_c, y, true)
 	if phase == "fight" or phase == "intro":
@@ -4089,6 +4112,7 @@ func draw_results() -> void:
 	var lines: Array = []
 	if mode == "watch":
 		lines.append([tr("That's the result on the books. Bets on it pay when the round is over."), Color(0.8, 0.8, 0.85)])
+		lines.append([tr("A post about it is waiting on BotMedia."), Color(0.6, 0.85, 1.0)])
 	elif mode == "quick":
 		lines.append([tr("Quick fight, nothing saved."), Color(0.8, 0.8, 0.85)])
 	elif mode == "test":

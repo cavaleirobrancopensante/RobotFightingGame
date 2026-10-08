@@ -2277,7 +2277,7 @@ func build_home() -> void:
 		top.add_theme_constant_override("separation", 10)
 		col.add_child(top)
 		top.add_child(avatar_for("me", 40))
-		var t := GUI.text(tr("POST ABOUT TONIGHT? Pick one."), 15, GUI.YELLOW, "headb")
+		var t := GUI.text(tr("POST ABOUT THE FIGHT YOU WATCHED? Pick one.") if S.st()["draft"].get("watch", false) else tr("POST ABOUT TONIGHT? Pick one."), 15, GUI.YELLOW, "headb")
 		t.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		top.add_child(t)
 		var opp := str(S.st()["draft"].get("opp", ""))
@@ -2304,7 +2304,7 @@ func build_home() -> void:
 			b.add_child(v)
 			var warn := tone == "trash" and no_trash
 			v.add_child(GUI.text(str(names[tone]) + "  ·  " + (tr("Breaks your Harbour Mutual deal!") if warn else str(hints[tone])), 11, GUI.RED if warn or tone == "trash" else GUI.MUTED, "headb"))
-			var dt := GUI.text(tr(str(d[1])) % opp, 13, GUI.TEXT)
+			var dt := GUI.text(tr(str(d[1])) % S.draft_args(), 13, GUI.TEXT)
 			dt.clip_text = true
 			v.add_child(dt)
 		var bar := action_bar(col)

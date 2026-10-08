@@ -356,11 +356,26 @@ static func drafts() -> Array:
 	var d: Dictionary = st()["draft"]
 	if d.is_empty() or now_t() - int(d.get("at", 0)) > 9:
 		return []   # three days on, nobody cares any more
+	if d.get("watch", false):
+		# a fight you watched from ringside (1.56): winner, loser
+		return [["humble", "Watched %s beat %s from ringside. Respect to both."], ["hype", "%s over %s! Somebody put that on the big screen."],
+				["trash", "%s beat %s and still looked slow. I'd take either of them."]]
 	if d["won"]:
 		return [["humble", "Good fight, %s. I got lucky with that last one."], ["hype", "ANOTHER ONE. %s didn't know what hit them."],
 				["trash", "%s, go back to the scrapyard. I'll be here when you're ready."]]
 	return [["humble", "%s was better tonight. Back to the bay."], ["hype", "That's one loss. Watch what happens next, %s."],
 			["trash", "%s got lucky. Everyone saw it."]]
+
+
+## What fills the draft's %s: your opponent, or the winner and the loser of a fight you watched.
+static func draft_args() -> Array:
+	var d: Dictionary = st()["draft"]
+	return d.get("args", [d.get("opp", "")])
+
+
+## A fight you watched: a post waiting about it (the draft replaces any older one).
+static func watched_fight(winner: String, loser: String, wid: int, stage: String) -> void:
+	st()["draft"] = {"watch": true, "opp": winner, "args": [winner, loser], "wid": wid, "won": true, "tag": tag_for(stage), "at": now_t()}
 
 
 ## You picked a draft (or a reply): followers move, grudges move, contracts may care.
@@ -384,7 +399,7 @@ static func publish(tone: String) -> void:
 			if int(d.get("wid", -1)) >= 0:
 				GameData.grudge_bump(int(d["wid"]), 1.5)
 	s["followers"] = int(round(f))
-	post("me", text, [d["opp"]], {}, [str(d.get("tag", ""))])
+	post("me", text, draft_args(), {}, [str(d.get("tag", ""))])
 	count_post()
 	GameData.Contracts.on_post(tone)
 	s["draft"] = {}
