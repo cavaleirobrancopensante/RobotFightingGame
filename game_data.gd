@@ -2,7 +2,7 @@ extends Node
 
 # helper scripts, loaded by path so the game also runs without an editor scan
 ## The game's version, shown on the main menu. Bump it with every change (1.1, 1.2, ...).
-const VERSION := "1.81"
+const VERSION := "1.82"
 const Arena = preload("res://arena.gd")
 const I18n = preload("res://i18n.gd")
 const Catalog = preload("res://catalog.gd")
@@ -616,6 +616,8 @@ func new_game() -> void:
 	inbox = []
 	day_log = {}
 	ledger = []
+	patched_week = -1
+	gus_alerts = []
 	inbox_seen = 0
 	social = {}
 	clips = {}
@@ -1908,17 +1910,16 @@ func pickup_purse(tier: String) -> int:
 	return int(float(PICKUP_PURSE.get(tier, 120)) * k / 10.0) * 10
 
 
+const SHOW_MONEY := {"scrap": 0.15, "rust": 0.2, "iron": 0.25, "steel": 0.3, "title": 0.3}
+
+
 func loss_pay(base: int) -> int:
 	match fight_mode():
 		"pickup":
 			return -int(base * 0.5)
 		"story":
-			match str(event.get("stage", "")):
-				"scrap":
-					return -int(base * 0.25)
-				"steel", "title":
-					return int(base * 0.3)
-			return 0
+			# (1.82) league losers get show money (a loser paying out in a league kept broke pilots broke)
+			return int(base * float(SHOW_MONEY.get(str(event.get("stage", "")), 0.0)))
 		"exhibition":
 			return int(base * 0.25)
 	return 0
@@ -2563,6 +2564,70 @@ func next_day() -> void:
 		catch_up_leagues()
 	daily_hate_mail()
 	Social.daily()
+	gus_patch()
+
+
+# ---------------------------------------------------------------- (1.82) Gus's patch job
+## No credit means a broke pilot can't repair, and a wrecked robot loses, and losing keeps you broke.
+## Gus breaks that circle: on the morning of a league, Trials or cup fight, if you can't pay for the
+## repairs he patches every part up to PATCH_HP of its health for nothing, and a missing limb gets a
+## piece of junk from his bench. Once a week at most. It's ugly, but it fights.
+const PATCH_HP := 0.4
+var patched_week := -1
+## (1.82) Gus's big cards waiting for the garage: [{title, text, go}] (go: "money", "table", "contracts" or "")
+var gus_alerts: Array = []
+
+
+func gus_alert(title: String, text: String, go: String = "") -> void:
+	for a in gus_alerts:
+		if a["title"] == title:
+			return
+	gus_alerts.append({"title": title, "text": text, "go": go})
+
+
+func gus_patch() -> void:
+	if not ["story", "circuit"].has(fight_mode()):
+		return
+	if patched_week == year * 100 + week:
+		return
+	var need := repair_all_cost()
+	var empty: Array = []
+	for slot in ["arm_front", "arm_back", "leg_front", "leg_back", "head"]:
+		if slot_available(slot) and equipped_inst(slot).is_empty():
+			empty.append(slot)
+	if robot_hp_ratio() >= 0.6 and empty.is_empty():
+		return
+	if money >= need and empty.is_empty():
+		return   # you can pay for it: your call
+	var did := false
+	for slot in BODY_SLOTS:
+		var p := equipped_inst(slot)
+		if p.is_empty():
+			continue
+		var mx := float(part_def(p["id"])["hp"])
+		if float(p["hp"]) < mx * PATCH_HP:
+			p["hp"] = mx * PATCH_HP
+			did = true
+	for slot in empty:
+		var kind: String = SLOT_KIND[slot]
+		var opts: Array = STARTER_OPTIONS.get(kind, [])
+		if opts.is_empty():
+			continue
+		var uid := add_part(str(opts[0]), 0.6)
+		equipped[slot] = uid
+		if not bolted.has("m"):
+			bolted["m"] = {}
+		bolted["m"][slot] = uid   # Gus bolted it on himself, first thing
+		did = true
+	if not did:
+		return
+	patched_week = year * 100 + week
+	if not story_seen.has("gus_patch_info"):
+		mark_story_seen("gus_patch_info")
+		gus_alert(tr("I patched it up"), tr("We couldn't pay for repairs, so I patched every part to hold together and bolted junk where bits were missing. It's free, once a week, on a league night. It's ugly. Win and we fix it properly."))
+	var line := tr("Couldn't send you out like that. Patched it up on the house, junk where we're missing bits. Win us some money.")
+	pending_talk.append({"lines": [["GUS", line, {}]]})
+	log_day(tr("Gus patched the robot up for free."), "good")
 
 
 ## Is one of your own fights (a cup round, a league round) still to come this week?
@@ -4415,6 +4480,13 @@ func league_end(ev: Dictionary) -> String:
 
 
 ## Your division's year is over (playoffs included): where you'll be next year.
+const NEWCOMER_MONTHS := 1.5
+## What a league pays a pilot coming up into it: NEWCOMER_MONTHS of its running costs (the gutter's
+## Trials winners get the Scrap League's).
+func promotion_grant(to_rank: String) -> int:
+	return int(int(settings.get("living_cost", LIVING_COST)) * float(RUNNING.get(to_rank, 1.0)) * NEWCOMER_MONTHS / 10.0) * 10
+
+
 func finish_event(ev: Dictionary) -> String:
 	var idx := Career.ORDER.find(str(ev["stage"]))
 	var text := ""
@@ -4424,6 +4496,11 @@ func finish_event(ev: Dictionary) -> String:
 	elif ev.get("promoted", []).has(0) and idx < Career.ORDER.size() - 1:
 		rank = Career.ORDER[idx + 1]
 		text = tr("Promoted to the %s!") % tr(Career.STAGES[rank]["name"])
+		# (1.82) the league pays its newcomers a settling-in purse: the robot has to catch up a grade
+		var grant := promotion_grant(rank)
+		if grant > 0:
+			book("prizes", grant)
+			text += " " + tr("The league's newcomer purse: +$%d.") % grant
 		pending_stories.append("up_" + rank)
 		make_offers()
 	elif ev.get("relegated", []).has(0) and idx > 0:
@@ -4959,7 +5036,7 @@ func save_game(path: String = "") -> bool:
 		"owned_chips": owned_chips, "chips": chips, "circuit": circuit, "circuit_offers": circuit_offers,
 		"circuits_won": circuits_won, "pickup": pickup, "setups": setups, "custom_parts": custom_parts,
 		"year": year, "week": week, "day": day, "rank": rank, "event": {}, "leagues": leagues, "title_seeds": title_seeds, "trophies": trophies, "career_stats": career_stats,
-		"pecking_k": pecking_k(), "style": style, "style_locked": style_locked, "shop_stock": shop_stock, "chip_stock": chip_stock, "scout": scout, "wingmen": wingmen, "sending": sending, "pilot_look": pilot_look, "owned_controllers": owned_controllers, "spare_controllers": spare_controllers, "tips_seen": tips_seen, "tips_log": tips_log, "h2h": h2h, "rivals": rivals, "rel": rel, "nemeses": nemeses, "pending_talk": pending_talk, "inbox": inbox, "inbox_seen": inbox_seen, "social": social, "pilot_at": pilot_at, "pilot_used": pilot_used, "film_index": film_index, "film_pending": film_pending, "films_seen": films_seen, "contracts": contracts, "alerts_unseen": alerts_unseen, "day_log": day_log, "ledger": ledger, "tour": tour, "streak": streak, "pub_seen": pub_seen, "digs_left": digs_left, "dig_luck": dig_luck, "bills_note": bills_note, "fight_log": fight_log, "bets": bets, "world": world,
+		"pecking_k": pecking_k(), "style": style, "style_locked": style_locked, "shop_stock": shop_stock, "chip_stock": chip_stock, "scout": scout, "wingmen": wingmen, "sending": sending, "pilot_look": pilot_look, "owned_controllers": owned_controllers, "spare_controllers": spare_controllers, "tips_seen": tips_seen, "tips_log": tips_log, "h2h": h2h, "rivals": rivals, "rel": rel, "nemeses": nemeses, "pending_talk": pending_talk, "inbox": inbox, "inbox_seen": inbox_seen, "social": social, "pilot_at": pilot_at, "pilot_used": pilot_used, "film_index": film_index, "film_pending": film_pending, "films_seen": films_seen, "contracts": contracts, "alerts_unseen": alerts_unseen, "day_log": day_log, "ledger": ledger, "patched_week": patched_week, "gus_alerts": gus_alerts, "tour": tour, "streak": streak, "pub_seen": pub_seen, "digs_left": digs_left, "dig_luck": dig_luck, "bills_note": bills_note, "fight_log": fight_log, "bets": bets, "world": world,
 	}
 	var f := FileAccess.open(slot_path(save_slot) if path == "" else path, FileAccess.WRITE)
 	if f == null:
@@ -5082,6 +5159,8 @@ func load_game(slot: int = -1, mine: bool = false) -> String:
 	pending_talk = data.get("pending_talk", [])
 	day_log = data.get("day_log", {})
 	ledger = data.get("ledger", [])
+	patched_week = int(data.get("patched_week", -1))
+	gus_alerts = data.get("gus_alerts", [])
 	inbox = []
 	for e in data.get("inbox", []):
 		if typeof(e) == TYPE_DICTIONARY:

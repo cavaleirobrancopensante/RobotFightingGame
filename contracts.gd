@@ -418,6 +418,7 @@ static func strike(c: Dictionary, why: String) -> void:
 			var fine := int(int(c["fee"]) / 4)
 			GameData.book("sponsors", -(fine))
 			GameData.log_talk(who, I18n.t("Second time: %s. That's a $%d fine.") % [why, fine], "sponsor:" + str(c["sp"]))
+			GameData.gus_alert(I18n.t("One more and %s walks") % str(d["name"]), I18n.t("%s fined us for the second time: %s. The next broken rule tears the contract up. Check what they want on the Contracts page.") % [str(d["name"]), why], "contracts")
 		_:
 			st()["active"].erase(c)
 			st()["mood"][c["sp"]] = float(st()["mood"].get(c["sp"], 0.0)) - 0.3

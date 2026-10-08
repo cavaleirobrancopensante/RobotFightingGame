@@ -5984,6 +5984,8 @@ func marked(c: Control, feature: String) -> Control:
 
 ## A rail button. The first visit to a section Gus hasn't shown you yet plays his scene first.
 func _on_tab(t: String) -> void:
+	if t == "City" and GameData.tour >= 0 and tour_steps()[mini(GameData.tour, tour_steps().size() - 1)]["target"] == "rail:City":
+		city_pick = "scrapyard"   # (1.82) the tour's City stop: the scrapyard is already picked on the map
 	if t == "Storage":
 		go_to("Bay", "storage")   # (1.79) Storage lives in the Bay now
 		return
@@ -7515,6 +7517,35 @@ func trials_warning(go_on: Callable) -> bool:
 func check_gus_cards() -> void:
 	if gus_overlay != null and is_instance_valid(gus_overlay):
 		return
+	if overlay != null or talk_story:
+		return   # one thing at a time: a window or a story scene first
+	if not GameData.gus_alerts.is_empty():
+		var al: Dictionary = GameData.gus_alerts.pop_front()
+		var btns: Array = [[tr("Got it"), Callable(), true]]
+		match str(al.get("go", "")):
+			"money":
+				btns.append([tr("Money ›"), func(): _on_tab("Season"); season_view = "money"; refresh(), false])
+			"table":
+				btns.append([tr("Standings ›"), func(): _on_tab("Season"); season_view = "table"; refresh(), false])
+			"contracts":
+				btns.append([tr("Contracts ›"), func(): go_to("Feed", "contracts"), false])
+		gus_card(str(al["title"]), str(al["text"]), btns)
+		return
+	# the drop zone: late in the season, once a year
+	var ev: Dictionary = GameData.event
+	if not ev.is_empty() and ["scrap", "rust", "iron", "steel"].has(str(ev.get("stage", ""))) and ev.get("phase", "") == "league" and int(ev.get("round", 0)) >= 14:
+		var order := Career.standings(ev)
+		var pos := order.find(0)
+		var zn := Career.zone(ev, pos) if pos >= 0 else ""
+		var dkey := "gus_drop:%d" % GameData.year
+		if (zn == "down" or zn == "down_po") and not GameData.story_seen.has(dkey):
+			GameData.mark_story_seen(dkey)
+			var left := maxi(0, (ev["weeks"] as Array).size() - int(ev["round"]))
+			gus_card(tr("We're in the drop zone"),
+					tr("%s of %d with %d rounds to go. The bottom five go straight down, the eight above them fight for their lives in the playoffs.") % [GameData.ordinal(pos + 1), order.size(), left] + "\n\n" +
+					tr("Every league night counts now. Fix the robot before each one and skip the pickups."),
+					[[tr("Got it"), Callable(), true], [tr("Standings ›"), func(): _on_tab("Season"); season_view = "table"; refresh(), false]])
+			return
 	var month := (GameData.week - 1) / GameData.MONTH_WEEKS
 	var key := "gus_rent:%d:%d" % [GameData.year, month]
 	if GameData.weeks_to_bills() <= 1 and GameData.money < GameData.living_cost() and GameData.living_cost() > 0 and not GameData.story_seen.has(key):
