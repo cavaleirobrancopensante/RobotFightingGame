@@ -7527,12 +7527,15 @@ func check_gus_cards() -> void:
 
 ## Gus from the chest up under his work lamp (the big cards).
 class GusBust extends Control:
+	func _init() -> void:
+		clip_contents = true
+
 	func _draw() -> void:
 		var PA = load("res://pilot_art.gd")
 		var RA = load("res://robot_art.gd")
 		draw_rect(Rect2(Vector2.ZERO, size), Color(0.1, 0.09, 0.08))
-		var r := minf(size.x * 0.34, size.y * 0.24)
-		var c := Vector2(size.x * 0.5, size.y * 0.42)
+		var r := minf(size.x * 0.23, size.y * 0.2)
+		var c := Vector2(size.x * 0.5, size.y * 0.45)
 		draw_circle(c + Vector2(0, -r * 0.6), r * 2.4, Color(1.0, 0.8, 0.45, 0.06))
 		draw_circle(c + Vector2(0, -r * 0.6), r * 1.6, Color(1.0, 0.8, 0.45, 0.07))
 		var look: Dictionary = PA.GUS_LOOK
