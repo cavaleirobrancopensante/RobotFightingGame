@@ -1,8 +1,9 @@
 extends Node
+const PlayLog = preload("res://playlog.gd")   # (1.87) the playtest log
 
 # helper scripts, loaded by path so the game also runs without an editor scan
 ## The game's version, shown on the main menu. Bump it with every change (1.1, 1.2, ...).
-const VERSION := "1.86"
+const VERSION := "1.87"
 const Arena = preload("res://arena.gd")
 const I18n = preload("res://i18n.gd")
 const Catalog = preload("res://catalog.gd")
@@ -618,6 +619,7 @@ func new_game() -> void:
 	inbox = []
 	day_log = {}
 	ledger = []
+	bet_log = []
 	patched_week = -1
 	loan = {}
 	gus_alerts = []
@@ -2113,6 +2115,33 @@ func pilot_standing(wid: int) -> String:
 	return tr("hanging around the %s") % tr(str(Career.STAGES.get(str(p.get("tier", "open")), {}).get("name", "")))
 
 
+## (1.87) "#12 in the Rust League" (shown where Read used to be), "Unranked, in the gutter".
+func pilot_rank(wid: int) -> String:
+	for stage in leagues:
+		var ev: Dictionary = leagues[stage]
+		if str(ev.get("stage", stage)) in ["open", "title"] or not ev.has("table"):
+			continue
+		for e in ev.get("pilots", []):
+			if int(e.get("wid", -1)) == wid:
+				var pos: int = Career.standings(ev).find(int(e["id"])) + 1
+				return tr("#%d in the %s") % [pos, tr(str(ev["name"]))]
+	var p := World.pilot(wid)
+	var tier := str(p.get("tier", "open"))
+	if tier == "open" or p.is_empty():
+		return tr("Unranked, in the gutter")
+	return tr("In the %s") % tr(str(Career.STAGES.get(tier, {}).get("name", "")))
+
+
+## Your own place, the same way.
+func my_rank() -> String:
+	var ev: Dictionary = leagues.get(rank, {}) if rank != "open" else {}
+	if not ev.is_empty() and ev.has("table"):
+		var pos := Career.standings(ev).find(0)
+		if pos >= 0:
+			return tr("#%d in the %s") % [pos + 1, tr(str(ev["name"]))]
+	return tr("Unranked, in the gutter") if rank == "open" else tr("In the %s") % tr(str(Career.STAGES.get(rank, {}).get("name", "")))
+
+
 func ordinal(n: int) -> String:
 	var suffix := "th"
 	if n % 100 < 11 or n % 100 > 13:
@@ -2838,9 +2867,22 @@ const LEDGER_NAMES := {"fights": "Purses", "prizes": "Prizes", "salvage": "Salva
 		"sales": "Parts sold", "bets": "Bets", "parts": "Parts bought", "repairs": "Repairs & bay work",
 		"bay": "Bay upgrades", "bills": "Rent & running costs", "scout": "Scouting", "loan": "Loan", "other": "Other"}
 var ledger: Array = []
+## (1.87) Every bet once it's settled, newest last (the last BET_LOG_KEEP): {y, w, d, what, pick, vs,
+## stake, odds, won, pay, spec (a fight you can watch again: see watch_past), live}.
+var bet_log: Array = []
+const BET_LOG_KEEP := 80
+
+
+func log_bet(what: String, pick: String, vs: String, stake: int, odds: float, won: bool, pay: int, spec: Array = [], live: bool = false) -> void:
+	bet_log.append({"y": year, "w": week, "d": day_index(), "what": what, "pick": pick, "vs": vs, "stake": stake,
+			"odds": snappedf(odds, 0.01), "won": won, "pay": pay, "spec": spec, "live": live})
+	while bet_log.size() > BET_LOG_KEEP:
+		bet_log.pop_front()
 
 
 func book(cat: String, amount: int) -> void:
+	if amount != 0 and not world.is_empty():
+		PlayLog.add("money", "%s %+d (cash %d)" % [cat, amount, money + amount])
 	# (1.84) a loan takes its cut of whatever you win or earn first
 	if amount > 0 and not loan.is_empty() and GARNISH_CATS.has(cat):
 		var cut := mini(int(loan["owed"]), int(amount * LOAN_GARNISH))
@@ -3496,13 +3538,16 @@ func settle_self_bets(won: bool) -> Dictionary:
 		if b["on"] != "self":
 			continue
 		out["staked"] += b["stake"]
+		var opp_n := str(current_opponent(false).get("pilot", current_opponent(false).get("name", "?")))
 		if won:
 			var pay := int(b["stake"] * b["odds"])
 			book("bets", pay)
 			out["paid"] += pay
 			out["lines"].append(tr("Bet on %s: +$%d") % [pilot_name, pay])
+			log_bet("self", pilot_name, opp_n, int(b["stake"]), float(b["odds"]), true, pay)
 		else:
 			out["lines"].append(tr("Bet on %s: lost $%d") % [pilot_name, b["stake"]])
+			log_bet("self", pilot_name, opp_n, int(b["stake"]), float(b["odds"]), false, 0)
 	bets = bets.filter(func(b): return b["on"] != "self")
 	return out
 
@@ -3549,13 +3594,26 @@ func settle_bets(on: String, ev: Dictionary) -> Dictionary:
 				winner = int(x["w"])
 		out["staked"] += b["stake"]
 		var who: String = pilot_name if b["pick"] == 0 else str(Career.pilot(ev, b["pick"]).get("pilot", "?"))
+		var vs_n: String = pilot_name if b["vs"] == 0 else str(Career.pilot(ev, b["vs"]).get("pilot", "?"))
+		# a fight between two computer pilots in a league can be filmed again later (Watch)
+		var spec: Array = []
+		var stg := str(ev.get("stage", ""))
+		if is_same(leagues.get(stg, {}), ev) and b["pick"] != 0 and b["vs"] != 0 and winner >= 0:
+			var parts := 1
+			for x in res["list"]:
+				if (int(x["a"]) == b["pick"] and int(x["b"]) == b["vs"]) or (int(x["b"]) == b["pick"] and int(x["a"]) == b["vs"]):
+					parts = int(x.get("p", 1))
+			spec = [stg, year, int(res["round"]), int(b["pick"]), int(b["vs"]), winner, parts]
+		var what := "cup" if on == "cup" else "league"
 		if winner == b["pick"]:
 			var pay := int(b["stake"] * b["odds"])
 			book("bets", pay)
 			out["paid"] += pay
 			out["lines"].append(tr("Bet on %s: +$%d") % [who, pay])
+			log_bet(what, who, vs_n, int(b["stake"]), float(b["odds"]), true, pay, spec)
 		else:
 			out["lines"].append(tr("Bet on %s: lost $%d") % [who, b["stake"]])
+			log_bet(what, who, vs_n, int(b["stake"]), float(b["odds"]), false, 0, spec)
 	bets = keep
 	return out
 
@@ -4622,6 +4680,7 @@ func finish_event(ev: Dictionary) -> String:
 			book("prizes", grant)
 			text += " " + tr("The league's newcomer purse: +$%d.") % grant
 		pending_stories.append("up_" + rank)
+		Social.st()["promo"] = {"to": rank, "aw": abs_week()}   # (1.87) a moment to post about
 		make_offers()
 	elif ev.get("relegated", []).has(0) and idx > 0:
 		rank = Career.ORDER[idx - 1]
@@ -5148,6 +5207,7 @@ func save_mine() -> bool:
 
 
 func save_game(path: String = "") -> bool:
+	PlayLog.flush()
 	var data := {
 		"version": SAVE_VERSION, "pilot_name": pilot_name, "robot_name": robot_name,
 		"saved_at": Time.get_datetime_string_from_system(false, true), "money": money, "inventory": inventory, "equipped": equipped,
@@ -5156,7 +5216,7 @@ func save_game(path: String = "") -> bool:
 		"owned_chips": owned_chips, "chips": chips, "circuit": circuit, "circuit_offers": circuit_offers,
 		"circuits_won": circuits_won, "pickup": pickup, "setups": setups, "custom_parts": custom_parts,
 		"year": year, "week": week, "day": day, "rank": rank, "event": {}, "leagues": leagues, "title_seeds": title_seeds, "trophies": trophies, "career_stats": career_stats,
-		"pecking_k": pecking_k(), "style": style, "style_locked": style_locked, "shop_stock": shop_stock, "chip_stock": chip_stock, "scout": scout, "wingmen": wingmen, "sending": sending, "pilot_look": pilot_look, "owned_controllers": owned_controllers, "spare_controllers": spare_controllers, "tips_seen": tips_seen, "tips_log": tips_log, "h2h": h2h, "rivals": rivals, "rel": rel, "nemeses": nemeses, "pending_talk": pending_talk, "inbox": inbox, "inbox_seen": inbox_seen, "social": social, "pilot_at": pilot_at, "places_been": places_been, "pilot_used": pilot_used, "film_index": film_index, "film_pending": film_pending, "films_seen": films_seen, "contracts": contracts, "alerts_unseen": alerts_unseen, "day_log": day_log, "ledger": ledger, "patched_week": patched_week, "loan": loan, "gus_alerts": gus_alerts, "tour": tour, "streak": streak, "pub_seen": pub_seen, "digs_left": digs_left, "dig_luck": dig_luck, "bills_note": bills_note, "fight_log": fight_log, "bets": bets, "world": world,
+		"pecking_k": pecking_k(), "style": style, "style_locked": style_locked, "shop_stock": shop_stock, "chip_stock": chip_stock, "scout": scout, "wingmen": wingmen, "sending": sending, "pilot_look": pilot_look, "owned_controllers": owned_controllers, "spare_controllers": spare_controllers, "tips_seen": tips_seen, "tips_log": tips_log, "h2h": h2h, "rivals": rivals, "rel": rel, "nemeses": nemeses, "pending_talk": pending_talk, "inbox": inbox, "inbox_seen": inbox_seen, "social": social, "pilot_at": pilot_at, "places_been": places_been, "pilot_used": pilot_used, "film_index": film_index, "film_pending": film_pending, "films_seen": films_seen, "contracts": contracts, "alerts_unseen": alerts_unseen, "day_log": day_log, "ledger": ledger, "bet_log": bet_log, "patched_week": patched_week, "loan": loan, "gus_alerts": gus_alerts, "tour": tour, "streak": streak, "pub_seen": pub_seen, "digs_left": digs_left, "dig_luck": dig_luck, "bills_note": bills_note, "fight_log": fight_log, "bets": bets, "world": world,
 	}
 	var f := FileAccess.open(slot_path(save_slot) if path == "" else path, FileAccess.WRITE)
 	if f == null:
@@ -5279,6 +5339,7 @@ func load_game(slot: int = -1, mine: bool = false) -> String:
 	pending_talk = data.get("pending_talk", [])
 	day_log = data.get("day_log", {})
 	ledger = data.get("ledger", [])
+	bet_log = data.get("bet_log", [])
 	patched_week = int(data.get("patched_week", -1))
 	loan = data.get("loan", {})
 	gus_alerts = data.get("gus_alerts", [])

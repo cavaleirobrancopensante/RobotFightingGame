@@ -1,4 +1,5 @@
 extends Node2D
+const PlayLog = preload("res://playlog.gd")   # (1.87) the playtest log
 const Light = preload("res://light.gd")
 
 # helper scripts, loaded by path so the game also runs without an editor scan
@@ -131,6 +132,7 @@ class Fighter:
 	var scan_on = null       # the enemy being scanned
 	var ai_level := 3        # CPU pilots: 1 rookie .. 5 champion
 	var ai_rattled := false  # a bad run has got to the pilot (their Read is down for now)
+	var rank_text := ""      # (1.87) "#12 in the Rust League", on the walk-in card
 	var aim_acc := 0.0       # extra share of hits that go to the aimed part (aim level)
 	var stance_swap := false # switched stance: the right side leads
 	var daze_t := 0.0        # guard smashed open: arms flung wide, wobbling
@@ -375,7 +377,11 @@ func redraw_all() -> void:
 		return   # filmed off screen: nothing to draw
 	queue_redraw()
 	if hud_canvas:
-		hud_canvas.queue_redraw()
+		# (1.87) while the fight runs the glass redraws 30 times a second, the ring 60
+		hud_skip = not hud_skip
+		if phase != "fight" or paused or tut_pause or not hud_skip:
+			hud_canvas.queue_redraw()
+var hud_skip := false
 var floor_y := 420.0
 var font: Font
 var clock := 0.0
@@ -553,6 +559,9 @@ func _ready() -> void:
 		_:
 			team_p[0].pilot_name = GameData.pilot_name
 			team_c[0].pilot_name = str(opp.get("pilot", ""))
+			team_p[0].rank_text = GameData.my_rank()
+	if not simming and mode != "replay" and mode != "demo":
+		PlayLog.add("fight start", "%s: %s vs %s (%s)" % [mode, team_p[0].label, team_c[0].label, team_c[0].pilot_name])
 	for t in [team_p, team_c]:
 		if t.size() == 1:
 			t[0].scale = maxf(t[0].scale, BOT_SCALE)   # a robot fighting alone is always full size
@@ -592,6 +601,8 @@ func _ready() -> void:
 				"special_cd": 3.0 + randf(), "gadget_cd": 1.5 + randf(), "kit": {}}
 		set_aim_level(f, GameData.pilot_aim_level(opp) if diff >= 1 else maxi(1, GameData.pilot_aim_level(opp) - 1))
 		f.ai_rattled = bool(opp.get("rattled", false))
+		if int(opp.get("wid", -1)) >= 0:
+			f.rank_text = GameData.pilot_rank(int(opp["wid"]))
 		ai_load(f)
 		ai_build_kit()
 		ai_save(f)
@@ -607,6 +618,8 @@ func _ready() -> void:
 			set_aim_level(f, GameData.pilot_aim_level(src))
 			f.ai_rattled = bool(src.get("rattled", false))
 			f.pilot_name = str(src.get("pilot", ""))
+			if int(src.get("wid", -1)) >= 0:
+				f.rank_text = GameData.pilot_rank(int(src["wid"]))
 			f.foe = team_c[0]
 			ai_load(f)
 			ai_build_kit()
@@ -615,6 +628,7 @@ func _ready() -> void:
 		var foes: Array = GameData.pickup.get("foes", [])
 		for k in mini(foes.size(), team_c.size()):
 			team_c[k].pilot_name = str(GameData.World.pilot(int(foes[k])).get("name", ""))
+			team_c[k].rank_text = GameData.pilot_rank(int(foes[k]))
 	if mode == "test":
 		# Gus's Junkers: each one has a silly habit instead of a brain, and there's no clock
 		for f in team_c:
@@ -638,6 +652,8 @@ func _ready() -> void:
 					"special_cd": 3.0 + randf(), "gadget_cd": 1.5 + randf(), "kit": {}}
 			set_aim_level(f, GameData.pilot_aim_level(left_o))
 			f.ai_rattled = bool(left_o.get("rattled", false))
+			if int(left_o.get("wid", -1)) >= 0:
+				f.rank_text = GameData.pilot_rank(int(left_o["wid"]))
 			ai_load(f)
 			ai_build_kit()
 			ai_save(f)
@@ -711,9 +727,7 @@ func _exit_tree() -> void:
 	cpu = null
 	focus = null
 	if arena_layer:
-		arena_layer.fight = null
-		if arena_layer.painter:
-			arena_layer.painter.fight = null
+		arena_layer.forget()
 	if replay.is_empty() and not simming:
 		OS.low_processor_usage_mode = true   # menus only redraw when something changes
 
@@ -818,6 +832,8 @@ func _input(event: InputEvent) -> void:
 		return
 	if clip_view != null and is_instance_valid(clip_view):
 		return   # a clip is playing over the results: its own buttons take the taps
+	if GUI.confirm_layer != null and is_instance_valid(GUI.confirm_layer) and not GUI.confirm_layer.is_queued_for_deletion():
+		return   # (1.87) "Post this?" is open: Back must only close it
 	# taps on the BotMedia card on the results screen belong to its buttons, not "tap to leave"
 	if post_card != null and is_instance_valid(post_card) and (event is InputEventScreenTouch or event is InputEventMouseButton) \
 			and post_card.get_global_rect().has_point(event.position):
@@ -2006,6 +2022,9 @@ func finish_match() -> void:
 	if simming:
 		sim_finish()
 		return
+	if mode != "replay" and mode != "demo":
+		PlayLog.add("fight over", "%s %s vs %s, %s, %ds left, core %d%% vs %d%%" % [mode, player.label if player else "?", cpu.label if cpu else "?",
+				"WON" if won else "LOST", int(time_left), roundi(player.ratio("torso") * 100) if player else 0, roundi(cpu.ratio("torso") * 100) if cpu else 0])
 	var cut := rec_cut()
 	if not cut.is_empty():
 		GameData.add_fresh_clips(cut)
@@ -3632,50 +3651,84 @@ func draw_hitboxes(off: Vector2) -> void:
 ## shows that texture: one quad a frame instead of ~1800 draw calls. A bit bigger than the screen
 ## (PAD) and drawn at CACHE_RES so the camera's zoom stays sharp.
 class ArenaLayer extends Node2D:
+	## (1.83) The arena painted into textures instead of ~1800 draw calls a frame.
+	## (1.87) In three layers so the slow parts aren't repainted with the crowd: the back (sky,
+	## walls, stands) and the front (the dark fall to the ring, lamps, floor, ropes, posts, beams)
+	## four times a second, the crowd between them ARENA_FPS times a second. The see-through layers
+	## are shown premultiplied, so their soft edges and beams keep their colour.
 	var fight: Node2D
-	var sv: SubViewport = null
-	var painter: ArenaPainter = null
+	var svs: Array = []        # [back, crowd, front] SubViewports
+	var painters: Array = []
+	var painter: ArenaPainter = null   # (kept for the clean-up in _exit_tree)
+	var tick := 0
 	const PAD := 40.0
-	const CACHE_RES := 1.0
+	const PARTS := ["back", "crowd", "front"]
 
 	func _build() -> void:
 		var scr: Vector2 = fight.screen
-		sv = SubViewport.new()
-		sv.disable_3d = true
-		sv.transparent_bg = false
-		sv.size = Vector2i(((scr + Vector2(PAD, PAD) * 2.0) * CACHE_RES).ceil())
-		sv.render_target_update_mode = SubViewport.UPDATE_ONCE
-		painter = ArenaPainter.new()
-		painter.fight = fight
-		painter.position = Vector2(PAD, PAD) * CACHE_RES
-		painter.scale = Vector2(CACHE_RES, CACHE_RES)
-		sv.add_child(painter)
-		add_child(sv)
+		for i in PARTS.size():
+			var sv := SubViewport.new()
+			sv.disable_3d = true
+			sv.transparent_bg = i > 0
+			sv.size = Vector2i((scr + Vector2(PAD, PAD) * 2.0).ceil())
+			sv.render_target_update_mode = SubViewport.UPDATE_ONCE
+			var pt := ArenaPainter.new()
+			pt.fight = fight
+			pt.part = PARTS[i]
+			pt.position = Vector2(PAD, PAD)
+			sv.add_child(pt)
+			add_child(sv)
+			var show := Sprite2D.new()
+			show.centered = false
+			show.position = -Vector2(PAD, PAD)
+			show.texture = sv.get_texture()
+			if i > 0:
+				var mat := CanvasItemMaterial.new()
+				mat.blend_mode = CanvasItemMaterial.BLEND_MODE_PREMULT_ALPHA
+				show.material = mat
+			add_child(show)
+			svs.append(sv)
+			painters.append(pt)
+		painter = painters[0]
 		queue_redraw()
 
-	## Paint the arena again (the crowd moves, lamps flicker).
+	## Paint the arena again (the crowd moves every time, the rest every fourth time).
 	func refresh() -> void:
 		if fight == null or fight.simming:
 			return   # filming off screen: nothing is ever drawn
-		if sv == null:
+		if svs.is_empty():
 			_build()
-		painter.queue_redraw()
-		sv.render_target_update_mode = SubViewport.UPDATE_ONCE
+			for i in svs.size():
+				_paint(i)
+			return
+		tick += 1
+		_paint(1)
+		if tick % 4 == 1:
+			_paint(0)
+		elif tick % 4 == 3:
+			_paint(2)
+
+	func _paint(i: int) -> void:
+		painters[i].queue_redraw()
+		svs[i].render_target_update_mode = SubViewport.UPDATE_ONCE
+
+	func forget() -> void:
+		fight = null
+		for pt in painters:
+			pt.fight = null
 
 	func _draw() -> void:
-		if sv != null:
-			var scr: Vector2 = fight.screen
-			draw_texture_rect(sv.get_texture(), Rect2(-Vector2(PAD, PAD), scr + Vector2(PAD, PAD) * 2.0), false)
-		elif fight:
+		if svs.is_empty() and fight:
 			fight.draw_arena(self)
 
 
 class ArenaPainter extends Node2D:
 	var fight: Node2D
+	var part := ""
 
 	func _draw() -> void:
 		if fight:
-			fight.draw_arena(self)
+			fight.draw_arena(self, part)
 
 
 var arena_layer: ArenaLayer
@@ -3684,13 +3737,18 @@ var arena_redraw_t := 0.0
 const ARENA_FPS := 15.0
 
 
-func draw_arena(ci: CanvasItem) -> void:
+## part: "" = everything, or one of the ArenaLayer's layers ("back", "crowd", "front").
+func draw_arena(ci: CanvasItem, part: String = "") -> void:
 	var off := Vector2.ZERO
 	var lit := Arena.noir()
-	ci.draw_rect(Rect2(Vector2(-40, -40), screen + Vector2(80, 80)), Color(0.07, 0.07, 0.11))
-	Arena.draw_backdrop(ci, arena_id, screen, floor_y, clock, off)
-	Arena.draw_dim(ci, arena_id, screen, floor_y, clock)
-	Arena.draw_crowd(ci, crowd, crowd_id, screen, clock, cheer, off, fight_light())
+	if part == "" or part == "back":
+		ci.draw_rect(Rect2(Vector2(-40, -40), screen + Vector2(80, 80)), Color(0.07, 0.07, 0.11))
+		Arena.draw_backdrop(ci, arena_id, screen, floor_y, clock, off)
+		Arena.draw_dim(ci, arena_id, screen, floor_y, clock)
+	if part == "" or part == "crowd":
+		Arena.draw_crowd(ci, crowd, crowd_id, screen, clock, cheer, off, fight_light())
+	if part != "" and part != "front":
+		return
 	var top := screen.y * 0.24
 	var ar: Dictionary = Arena.ARENAS[arena_id]
 	if lit:
@@ -5635,9 +5693,13 @@ func demo_reset() -> void:
 	dummy.foe = me
 	player = me
 	cpu = dummy
-	var gap := screen.x * (0.24 if Specials.MOVES[demo_move].get("ranged", false) else 0.17)
+	var gap := screen.x * 0.17
 	me.pos = Vector2(screen.x * 0.5 - gap, floor_y)
 	dummy.pos = Vector2(screen.x * 0.5 + gap * 0.6, floor_y)
+	if Specials.MOVES[demo_move].has("projectile"):
+		# (1.87) a thrown move needs the width of the ring, or the bolt starts inside the dummy
+		me.pos.x = screen.x * 0.15
+		dummy.pos.x = screen.x * 0.8
 	projectiles.clear()
 	debris.clear()
 	popups.clear()
@@ -6029,9 +6091,9 @@ func draw_robot_card(ci: CanvasItem, f: Fighter, left: bool, w: float, h: float,
 	ci.draw_string(font, Vector2(x, y), sub, HORIZONTAL_ALIGNMENT_LEFT, cw, fs(14), Color(0.6, 0.85, 1.0, a))
 	y += fs(12) + 10
 	ci.draw_string(font, Vector2(x, y), tr("PARTS"), HORIZONTAL_ALIGNMENT_LEFT, -1, fs(12), gold)
-	if f.team == 1 or mode == "watch":
-		# the pilot's Read (and RATTLED after a bad run), right of the PARTS header
-		var rd := tr("READ %s") % GameData.aim_dots(f.ai_level) + ("  " + tr("RATTLED") if f.ai_rattled else "")
+	if f.team == 1 or mode == "watch" or f.rank_text != "":
+		# (1.87) the pilot's place in the rankings (and RATTLED after a bad run), right of the PARTS header
+		var rd := f.rank_text.to_upper() + ("  " + tr("RATTLED") if f.ai_rattled else "")
 		ci.draw_string(font, Vector2(x, y), rd, HORIZONTAL_ALIGNMENT_RIGHT, cw, fs(13), Color(1.0, 0.5, 0.4, a) if f.ai_rattled else Color(0.6, 0.85, 1.0, a))
 	for slot in GameData.SLOTS:
 		var pr: Dictionary = f.parts.get(slot, {})
@@ -6387,10 +6449,20 @@ func settle_live_bets() -> void:
 	var big := false
 	var a: Fighter = team_p[0]
 	var b: Fighter = team_c[0]
+	# (1.87) the bet history keeps the fight, so it can be watched again
+	var spec: Array = []
+	var wt: Dictionary = GameData.watching
+	var wev: Dictionary = GameData.watch_event()
+	if not wt.is_empty() and not wev.is_empty() and is_same(GameData.leagues.get(str(wev.get("stage", "")), {}), wev):
+		spec = [str(wev["stage"]), GameData.year, int(wt["round"]), int(wt["a"]), int(wt["b"]), int(wt["a"]) if won else int(wt["b"]), 1]
 	for bt in live_bets:
 		var f: Fighter = a if int(bt["side"]) == 0 else b
 		var name := f.pilot_name if f.pilot_name != "" else f.label
+		var fo: Fighter = b if int(bt["side"]) == 0 else a
+		var oname := fo.pilot_name if fo.pilot_name != "" else fo.label
 		out["staked"] += int(bt["stake"])
+		var bwon := (int(bt["side"]) == 0) == won
+		GameData.log_bet("live", name, oname, int(bt["stake"]), float(bt["odds"]), bwon, int(int(bt["stake"]) * float(bt["odds"])) if bwon else 0, spec, true)
 		if (int(bt["side"]) == 0) == won:
 			var pay := int(int(bt["stake"]) * float(bt["odds"]))
 			GameData.book("bets", pay)
@@ -6434,6 +6506,8 @@ var rp_frames: Array = []
 var rp_t := 0.0
 var rp_frame := -1
 var rp_hold := 0.0
+var rp_once := false   # (1.87) play once, then stay on the last frame
+var rp_done := false
 var rp_speed := 1.0            # the clip player's x2
 var rp_mute := false           # ...and its mute
 
@@ -6711,10 +6785,15 @@ func replay_process(delta: float) -> void:
 		return
 	var d := delta * rp_speed
 	var last := rp_frames.size() - 1
-	if rp_hold > 0.0:
+	if rp_done:
+		pass   # (1.87) played once: it stays on the last frame
+	elif rp_hold > 0.0:
 		rp_hold -= delta
 		if rp_hold <= 0.0:
-			rp_restart()
+			if rp_once:
+				rp_done = true
+			else:
+				rp_restart()
 	else:
 		rp_t += d
 	var fp := rp_t * Clips.FPS
@@ -6880,6 +6959,15 @@ func draw_replay_hud() -> void:
 	ci.draw_rect(Rect2(0, screen.y - bh, screen.x, bh), Color(0, 0, 0, 0.6))
 	ci.draw_rect(Rect2(0, screen.y - bh, 10.0, bh), GUI.YELLOW)
 	ci.draw_string(font, Vector2(26.0, screen.y - 14.0), line, HORIZONTAL_ALIGNMENT_LEFT, screen.x - 52.0, fs(30), GUI.YELLOW)
+	if rp_done:
+		# (1.87) it played once: a play button in the middle, tap to see it again
+		var c := screen * 0.5
+		var r := screen.y * 0.11
+		ci.draw_rect(Rect2(Vector2.ZERO, screen), Color(0, 0, 0, 0.35))
+		ci.draw_circle(c, r, Color(0, 0, 0, 0.6))
+		ci.draw_arc(c, r, 0, TAU, 48, GUI.YELLOW, 5.0)
+		ci.draw_colored_polygon(PackedVector2Array([c + Vector2(-r * 0.32, -r * 0.45), c + Vector2(r * 0.5, 0), c + Vector2(-r * 0.32, r * 0.45)]), GUI.YELLOW)
+		ci.draw_string(font, Vector2(0, c.y + r + fs(30) + 8.0), tr("TAP TO PLAY AGAIN"), HORIZONTAL_ALIGNMENT_CENTER, screen.x, fs(30), Color.WHITE)
 
 
 # ---- watching a clip from the results screen

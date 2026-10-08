@@ -1,4 +1,5 @@
 extends RefCounted
+const PlayLog = preload("res://playlog.gd")   # (1.87) the playtest log
 ## Small helpers for building menus in code, sized for a phone screen.
 ## SCALE makes every font and button bigger at once (1.25 = 25% bigger).
 
@@ -47,7 +48,7 @@ static func button(text: String, callback: Callable, size: int = 26, min_size: V
 	b.add_theme_font_size_override("font_size", tsz(size))
 	b.custom_minimum_size = min_size * SCALE
 	b.focus_mode = Control.FOCUS_NONE
-	b.pressed.connect(func(): Sfx.play("click", 0.05))
+	b.pressed.connect(func(): Sfx.play("click", 0.05); PlayLog.add("tap", b.text))
 	b.pressed.connect(callback)
 	return b
 

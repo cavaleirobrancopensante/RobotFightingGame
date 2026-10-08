@@ -129,7 +129,8 @@ func _ready() -> void:
 		text_row.add_child(c)
 	for b in [text_row, sound_button, music_button, shake_button, battery_button, fastfight_button, size_button, edges_button,
 			UI.button("Edit controls (move & resize)", _on_controls, 19, Vector2(470, 50)), team_button,
-			UI.button("Difficulty...", _on_difficulty, 19, Vector2(470, 50)), delete_button, errors_button, reset_button]:
+			UI.button("Difficulty...", _on_difficulty, 19, Vector2(470, 50)), delete_button, errors_button, reset_button,
+			UI.button("Copy playtest log", _on_copy_log, 19, Vector2(470, 50))]:
 		grid.add_child(b)
 	grid.add_child(UI.button("Back", _on_back, 19, Vector2(470, 50)))
 	refresh()
@@ -262,6 +263,41 @@ func _on_size() -> void:
 
 
 ## Every error the game has hit, with a one-tap "Copy all" so it can be pasted anywhere.
+## (1.87) Everything the game wrote down while you played, to the clipboard, ready to paste.
+func _on_copy_log() -> void:
+	var PlayLog = load("res://playlog.gd")
+	PlayLog.flush()
+	var text: String = PlayLog.full_text(GameData.error_catcher.snapshot())
+	DisplayServer.clipboard_set(text)
+	var n: int = PlayLog.lines.size()
+	var col := VBoxContainer.new()
+	var ov := ColorRect.new()
+	ov.color = Color(0, 0, 0, 0.75)
+	ov.set_anchors_preset(Control.PRESET_FULL_RECT)
+	ov.mouse_filter = Control.MOUSE_FILTER_STOP
+	add_child(ov)
+	var c := CenterContainer.new()
+	c.set_anchors_preset(Control.PRESET_FULL_RECT)
+	ov.add_child(c)
+	col.add_theme_constant_override("separation", 12)
+	col.custom_minimum_size = Vector2(560, 0)
+	c.add_child(col)
+	var l := UI.label(tr("Copied the playtest log: %d lines. Paste it into your message to Claude.") % n, 20, Color(0.6, 1.0, 0.6))
+	l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	col.add_child(l)
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 10)
+	col.add_child(row)
+	var ok := UI.button("OK", func(): ov.queue_free(), 19, Vector2(0, 52))
+	ok.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.add_child(ok)
+	var clr := UI.button("Clear the log", func():
+		PlayLog.clear()
+		ov.queue_free(), 19, Vector2(0, 52))
+	clr.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.add_child(clr)
+
+
 func _on_errors() -> void:
 	Sfx.play("click")
 	GameData.flush_error_log()

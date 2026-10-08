@@ -1,4 +1,5 @@
 extends Control
+const PlayLog = preload("res://playlog.gd")   # (1.87) the playtest log
 
 # helper scripts, loaded by path so the game also runs without an editor scan
 const Catalog = preload("res://catalog.gd")
@@ -692,6 +693,7 @@ var toast_t := 0.0
 
 func note(text: String, sound: String = "") -> void:
 	text = text.trim_prefix(tr("GUS: ")).trim_prefix("GUS: ").strip_edges()
+	PlayLog.add("note" if sound != "error" else "note!", text)
 	if sound != "":
 		Sfx.play(sound)
 	if text == "":
@@ -1059,6 +1061,8 @@ func refresh() -> void:
 	# keep the scroll position when the same view is rebuilt (e.g. tapping + in the workshop)
 	var view := tab + "/" + seg() + "/" + selected + "/" + shop_kind
 	var keep := scroll.scroll_vertical if view == last_view else 0
+	if view != last_view:
+		PlayLog.add("screen", tab + "/" + seg() + ("/" + selected if selected != "" else ""))
 	last_view = view
 	for c in list_box.get_children():
 		c.queue_free()
@@ -1268,6 +1272,7 @@ func make_tap_row(icon: Control, title: String, subtitle: String, cb: Callable, 
 	b.custom_minimum_size = Vector2(0, 62)
 	b.focus_mode = Control.FOCUS_NONE
 	b.pressed.connect(func(): Sfx.play("click", 0.05))
+	b.pressed.connect(func(): PlayLog.add("row", title))
 	b.pressed.connect(cb)
 	var n := GUI.box(GUI.ROW, 10, 4)
 	GUI.mark_new(b, sel)   # the open row: the same marching stripes as the part picked on the gantry
@@ -1730,6 +1735,15 @@ func _on_pick_sell(on: bool, uid: int) -> void:
 		sell_picks.append(uid)
 	elif not on:
 		sell_picks.erase(uid)
+	refresh()
+
+
+func _on_pick_many(uids: Array, on: bool) -> void:
+	for u in uids:
+		if on and not sell_picks.has(u):
+			sell_picks.append(u)
+		elif not on:
+			sell_picks.erase(u)
 	refresh()
 
 
@@ -2445,18 +2459,30 @@ func post_card(card: Dictionary, parent: Control) -> void:
 		h.add_child(pp)
 		pp.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		if str(card.get("kind", "")) == "clip":
-			# (1.79) clips play on their own in the feed, muted, while they're on screen
+			# (1.87) a clip is only as wide as its picture (16:9), so there's room beside it to swipe
+			pp.size_flags_horizontal = Control.SIZE_FILL
+			pp.custom_minimum_size.x = roundf(pp.custom_minimum_size.y * 16.0 / 9.0)
+			panel.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+			# (1.79) clips play on their own in the feed, muted, while they're on screen; (1.87) once
 			var ac := AutoClip.new()
 			ac.cid = str(card.get("id", ""))
 			ac.set_anchors_preset(Control.PRESET_FULL_RECT)
 			ac.mouse_filter = Control.MOUSE_FILTER_IGNORE
 			pp.add_child(ac)
-			panel.mouse_filter = Control.MOUSE_FILTER_STOP
+			panel.mouse_filter = Control.MOUSE_FILTER_PASS
 			panel.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
 			var cid := str(card.get("id", ""))
+			var down := [Vector2.INF]
 			panel.gui_input.connect(func(e):
-				if (e is InputEventMouseButton and e.pressed and e.button_index == MOUSE_BUTTON_LEFT) or (e is InputEventScreenTouch and not e.pressed):
-					open_clip(cid))
+				# a tap opens it; a swipe that starts or ends on it only scrolls
+				if (e is InputEventMouseButton and e.button_index == MOUSE_BUTTON_LEFT) or e is InputEventScreenTouch:
+					if e.pressed:
+						down[0] = e.global_position if e is InputEventMouseButton else e.position
+					elif down[0] != Vector2.INF:
+						var at: Vector2 = e.global_position if e is InputEventMouseButton else e.position
+						if at.distance_to(down[0]) < 14.0:
+							open_clip(cid)
+						down[0] = Vector2.INF)
 		return
 	match str(card.get("kind", "")):
 		"result":
@@ -2469,9 +2495,8 @@ func post_card(card: Dictionary, parent: Control) -> void:
 			var cols := [Color(1.0, 0.84, 0.3), Color(0.8, 0.82, 0.86), Color(0.85, 0.55, 0.3)]
 			for i in mini(3, names.size()):
 				h.add_child(GUI.text("%d. %s" % [i + 1, names[i]], 13, cols[i], "headb"))
-		"read":
-			h.add_child(GUI.text(tr("READ"), 12, GUI.MUTED, "headb"))
-			h.add_child(GUI.readout(GameData.aim_dots(int(card.get("dots", 1))), 18, GUI.GREEN))
+		"rank":
+			h.add_child(GUI.text(GameData.pilot_rank(int(card.get("wid", -1))), 14, GUI.YELLOW, "headb"))
 		"rattled":
 			h.add_child(GUI.text(tr("RATTLED"), 14, GUI.RED, "headb"))
 		"logo":
@@ -2699,7 +2724,7 @@ func account_header(key: String) -> void:
 	col.add_child(GUI.text("@" + str(acc["handle"]), 12, GUI.MUTED))
 	col.add_child(GUI.readout(tr("%s FOLLOWERS") % S.fol_text(int(acc["fol"])), 20, GUI.GREEN))
 	if acc.has("wid"):
-		var line := tr("Read %s") % GameData.aim_dots(GameData.World.read_dots(float(acc["read"])))
+		var line := GameData.pilot_rank(int(acc["wid"]))
 		if acc.get("rattled", false):
 			line += "  " + tr("RATTLED")
 		col.add_child(GUI.text(line, 13, GUI.RED if acc.get("rattled", false) else GUI.TEXT))
@@ -2944,11 +2969,32 @@ func reply_row(p: Dictionary, r: Dictionary, parent: Control, depth: int, sel: i
 	var acts := HBoxContainer.new()
 	acts.add_theme_constant_override("separation", 12)
 	col.add_child(acts)
+	# (1.87) replies can be liked too
+	var lb := Button.new()
+	lb.flat = true
+	lb.focus_mode = Control.FOCUS_NONE
+	lb.custom_minimum_size = Vector2(76, 34)
 	var lh := HBoxContainer.new()
+	lh.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	lh.add_theme_constant_override("separation", 4)
-	lh.add_child(Glyph.new("like", GUI.MUTED, 16))
-	lh.add_child(GUI.text(S.fol_text(int(r.get("likes", 0))), 12, GUI.MUTED))
-	acts.add_child(lh)
+	lh.position = Vector2(4, 7)
+	lb.add_child(lh)
+	var on0: bool = r.get("liked", false)
+	var lg := Glyph.new("liked" if on0 else "like", GUI.RED if on0 else GUI.MUTED, 18)
+	lh.add_child(lg)
+	var lc := GUI.text(S.fol_text(int(r.get("likes", 0))), 12, GUI.RED if on0 else GUI.MUTED)
+	lh.add_child(lc)
+	lb.pressed.connect(func():
+		S.toggle_reply_like(r)
+		var on: bool = r.get("liked", false)
+		lg.kind = "liked" if on else "like"
+		lg.col = GUI.RED if on else GUI.MUTED
+		lg.queue_redraw()
+		lc.text = S.fol_text(int(r.get("likes", 0)))
+		lc.add_theme_color_override("font_color", GUI.RED if on else GUI.MUTED)
+		Sfx.play("click", 0.05)
+		GameData.save_game())
+	acts.add_child(lb)
 	if by != "me":
 		var b := UI.button(tr("Reply"), _on_pick_reply.bind(int(p["id"]), int(r["r"])), 12, Vector2(76, 30))
 		acts.add_child(b)
@@ -3060,6 +3106,7 @@ func update_tv(r: Rect2, host: Control) -> void:
 	if tv_player == null or not is_instance_valid(tv_player):
 		tv_player = load("res://clip_player.gd").new()
 		tv_player.playlist = clips
+		tv_player.loop = true   # (1.87) the TV goes round, even with one clip
 		tv_player.lowres = true
 		tv_player.muted = true
 		tv_player.custom_minimum_size = Vector2(4, 4)
@@ -3473,7 +3520,7 @@ func build_slot(slot: String) -> void:
 	if GameData.unlocked("shop"):
 		row_button(more, "Dealer's stock", _on_go_shop.bind(kind), true, 200)
 	else:
-		row_button(more, "Dig in the Scrapyard", go_to.bind("Parts", "scrap"), true, 220)
+		row_button(more, tr("Dig in the Scrapyard") + dig_tag(), go_to.bind("Parts", "scrap"), true, 260)
 	if GameData.CUSTOM_KINDS.has(kind) and GameData.unlocked("workshop"):
 		row_button(more, "Order your own part", _on_go_workshop.bind(kind), true, 270)
 
@@ -3503,8 +3550,21 @@ func build_storage() -> void:
 		sb.add_theme_color_override("font_color", GUI.AMBER)
 		row_button(top_bar, "Cancel", _on_select_mode, true, 90)
 		section("Tick the parts to sell, then tap Sell.")
+		# (1.87) quick picks: everything in this filter, or only the wrecks
+		var shown: Array = []
+		var wrecks: Array = []
+		for p in list:
+			if storage_filter == "all" or GameData.part_def(p["id"])["kind"] == storage_filter:
+				shown.append(p["uid"])
+				if GameData.is_wreck(p):
+					wrecks.append(p["uid"])
+		var qb := flow_bar()
+		var all_on := not shown.is_empty() and shown.all(func(u): return sell_picks.has(u))
+		row_button(qb, tr("Untick all") if all_on else tr("Tick all shown (%d)") % shown.size(), _on_pick_many.bind(shown, not all_on), not shown.is_empty(), 190)
+		if not wrecks.is_empty():
+			row_button(qb, tr("Tick the wrecks (%d)") % wrecks.size(), _on_pick_many.bind(wrecks, true), true, 190)
 	else:
-		row_button(top_bar, "Select", _on_select_mode, true, 90)
+		row_button(top_bar, tr("Sell several"), _on_select_mode, true, 140)
 	for p in list:
 		var d := GameData.part_def(p["id"])
 		if storage_filter != "all" and d["kind"] != storage_filter:
@@ -3542,6 +3602,7 @@ func build_storage() -> void:
 
 func open_popup(title: String) -> VBoxContainer:
 	close_popup()
+	PlayLog.add("window", title)
 	overlay = ColorRect.new()
 	(overlay as ColorRect).color = Color(0, 0, 0, 0.6)
 	overlay.set_anchors_preset(Control.PRESET_FULL_RECT)
@@ -4050,7 +4111,7 @@ func build_scrapyard_tab() -> void:
 	if GameData.digs_left <= 0:
 		row_button(bar, tr("Dug today. Back tomorrow"), _on_dig.bind(""), false, 270)
 	else:
-		dig_button = row_button(bar, tr("Dig anywhere"), _on_dig.bind(""), true, 150)
+		dig_button = row_button(bar, tr("Dig anywhere") + dig_tag(), _on_dig.bind(""), true, 200)
 		GUI.mark_new(dig_button, true)   # today's dig is waiting
 		var kinds := flow_bar()
 		kinds.add_child(UI.label(tr("Dig for:"), 16, Color(1.0, 0.8, 0.4)))
@@ -4789,6 +4850,7 @@ func build_bets() -> void:
 		section(tr("YOUR OPEN BETS"))
 		for x in GameData.bets:
 			section("  " + bet_line(x))
+	bet_history_button()
 	# every board the bookies have up tonight: the league tables, the cup, your own pickup
 	var boards: Array = []
 	for x in GameData.league_night():
@@ -4886,10 +4948,11 @@ func open_pilot(wid: int) -> void:
 	info.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	info.add_theme_constant_override("separation", 4)
 	row.add_child(info)
-	info.add_child(GUI.text(GameData.pilot_standing(wid), 16, GUI.YELLOW, "headb"))
+	info.add_child(GUI.text(GameData.pilot_rank(wid), 16, GUI.YELLOW, "headb"))
 	info.add_child(GUI.text(tr("Career record %d-%d · this season %d-%d") % [int(p.get("w", 0)), int(p.get("l", 0)), int(p.get("sw", 0)), int(p.get("sl", 0))], 14, GUI.TEXT))
 	var wo: Dictionary = W.robot(wid)
-	info.add_child(GUI.text(tr("Read %s") % GameData.aim_dots(GameData.pilot_aim_level(wo)) + ("  " + tr("RATTLED") if wo.get("rattled", false) else ""), 14, GUI.RED if wo.get("rattled", false) else GUI.TEXT))
+	if wo.get("rattled", false):
+		info.add_child(GUI.text(tr("RATTLED: off their game after a bad run."), 14, GUI.RED))
 	info.add_child(GUI.text(tr("%s followers on BotMedia") % GameData.Social.fol_text(GameData.Social.pilot_fol(p)), 14, GUI.CYAN))
 	var h: Array = GameData.h2h.get(str(wid), [0, 0])
 	if int(h[0]) + int(h[1]) > 0:
@@ -5471,7 +5534,7 @@ func open_day_plan() -> void:
 		dt.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		dt.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		r3.add_child(dt)
-		GUI.mark_new(row_button(r3, tr("Dig now"), _plan_do.bind("dig"), true, 170), true)
+		GUI.mark_new(row_button(r3, tr("Dig now") + dig_tag(), _plan_do.bind("dig"), true, 200), true)
 	var unread := GameData.inbox.size() - GameData.inbox_seen
 	if unread > 0:
 		var r4 := action_bar(todo)
@@ -5545,6 +5608,11 @@ func open_day_plan() -> void:
 	var no := UI.button(tr("Not yet"), close_popup, 17, Vector2(0, 52))
 	no.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	row.add_child(no)
+	if not evening and mode != "open" and not GameData.current_opponent().is_empty():
+		# (1.87) a fight tonight: straight to the Bell Check, where FIGHT TONIGHT runs the day
+		var jump := UI.button(tr("Skip to the fight ›"), func(): close_popup(); open_fight_popup(), 17, Vector2(0, 52))
+		jump.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		row.add_child(jump)
 	var go := UI.button(fight_button.text, _on_next_phase, 18, Vector2(0, 52))
 	go.add_theme_font_override("font", GUI.stencil())
 	var fs := GUI.box(GUI.YELLOW, 8, 4)
@@ -6788,9 +6856,10 @@ func open_fight_popup() -> void:
 	opp_line.add_child(name_button(tr("%s, piloted by %s") % [o.get("name", "?"), who_p] if who_p != "" else str(o.get("name", "?")), int(o.get("wid", -1)), 18, GUI.YELLOW))
 	opp_line.add_child(GUI.readout(tr("Purse $%d") % GameData.current_reward(), 20, GUI.AMBER))
 	if who_p != "" or o.has("wid"):
-		col.add_child(GUI.text(tr("Their Read %s: how fast they aim and find your weak spots.") % GameData.aim_dots(GameData.pilot_aim_level(o)), 14, GUI.TEXT))
+		if o.has("wid") and int(o["wid"]) >= 0:
+			col.add_child(GUI.text(tr("Ranked: %s") % GameData.pilot_rank(int(o["wid"])), 14, GUI.TEXT))
 		if o.get("rattled", false):
-			col.add_child(GUI.text(tr("RATTLED: a bad run has got to them. Their Read is down for now."), 14, GUI.GREEN))
+			col.add_child(GUI.text(tr("RATTLED: a bad run has got to them. They're off their game for now."), 14, GUI.GREEN))
 	if GameData.is_tag():
 		# your tag partner, and what a tag team means for your robot
 		var ally := int(GameData.pickup.get("ally", -1))
@@ -6881,6 +6950,59 @@ func _on_call_off() -> void:
 	GameData.save_game()
 	note(tr("Called it off. No fight tonight."))
 	refresh()
+
+
+## (1.87) A row that opens every bet you've placed and how it went.
+func bet_history_button() -> void:
+	var log: Array = GameData.bet_log
+	if log.is_empty():
+		return
+	var won := 0
+	var net := 0
+	for e in log:
+		if e.get("won", false):
+			won += 1
+		net += int(e.get("pay", 0)) - int(e.get("stake", 0))
+	var r := action_bar()
+	var t := GUI.text(tr("BET HISTORY: %d bets, %d won, net %s") % [log.size(), won, ("+" if net >= 0 else "") + GameData.money_text(net)], 14, GUI.GREEN if net >= 0 else GUI.RED, "headb")
+	t.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	t.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	r.add_child(t)
+	row_button(r, tr("Bet history ›"), open_bet_history, true, 160)
+
+
+func open_bet_history() -> void:
+	var col := open_popup(tr("BET HISTORY"))
+	col.custom_minimum_size.x = 640
+	var log: Array = GameData.bet_log
+	var what_names := {"league": tr("League"), "cup": tr("Cup"), "self": tr("Your fight"), "live": tr("Live")}
+	for i in range(log.size() - 1, -1, -1):
+		var e: Dictionary = log[i]
+		var won: bool = e.get("won", false)
+		var panel := PanelContainer.new()
+		panel.add_theme_stylebox_override("panel", GUI.box(GUI.ROW, 8, 8))
+		col.add_child(panel)
+		var row := HBoxContainer.new()
+		row.add_theme_constant_override("separation", 10)
+		panel.add_child(row)
+		var v := VBoxContainer.new()
+		v.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		v.add_theme_constant_override("separation", 2)
+		row.add_child(v)
+		var when := tr("%s, week %d") % [tr(DAY_NAMES[int(e.get("d", 5))]), int(e.get("w", 1))]
+		v.add_child(GUI.text("%s · %s" % [what_names.get(str(e.get("what", "")), "?"), when], 12, GUI.MUTED, "headb"))
+		var l := GUI.text(tr("%s to beat %s") % [str(e.get("pick", "?")), str(e.get("vs", "?"))], 15, GUI.TEXT, "headb")
+		l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		v.add_child(l)
+		v.add_child(GUI.text(tr("$%d at %.2fx") % [int(e.get("stake", 0)), float(e.get("odds", 1.0))], 13, GUI.MUTED))
+		var res := GUI.readout(tr("WON +$%d") % int(e.get("pay", 0)) if won else tr("LOST $%d") % int(e.get("stake", 0)), 18, GUI.GREEN if won else GUI.RED)
+		res.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		row.add_child(res)
+		var spec: Array = e.get("spec", [])
+		if not spec.is_empty():
+			var wb := UI.button(tr("Watch ▸"), func(): close_popup(); watch_past(spec), 13, Vector2(96, 40))
+			wb.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+			row.add_child(wb)
 
 
 ## Bet on yourself right in the pre-fight window: pick a stake, tap Bet.
@@ -7166,7 +7288,7 @@ func build_city() -> void:
 		if pl == GameData.pilot_at or not GameData.places_been.has(pl) or GameData.place_locked(pl) != "":
 			continue
 		var h := GameData.travel_hours(GameData.pilot_at, pl)
-		var qb := UI.button("%s ▸ %s" % [tr(str(GameData.PLACES[pl]["name"])), hours_text(h)], _on_city_quick.bind(pl), 13, Vector2(0, 40))
+		var qb := UI.button("%s ▸ %s%s" % [tr(str(GameData.PLACES[pl]["name"])), hours_text(h), dig_tag() if pl == "scrapyard" else ""], _on_city_quick.bind(pl), 13, Vector2(0, 40))
 		qb.add_theme_stylebox_override("normal", GUI.box(Color(0.04, 0.05, 0.07, 0.88), 8, 6))
 		city_quick.add_child(qb)
 		quick += 1
@@ -7241,7 +7363,7 @@ func fill_city_card() -> void:
 	city_card.add_child(bar)
 	if place == GameData.pilot_at:
 		bar.add_child(GUI.text(tr("You're here."), 14, GUI.GREEN, "headb"))
-		bar.add_child(UI.button(tr("Go in ▸"), enter_place.bind(place), 15, Vector2(0, 46)))
+		bar.add_child(UI.button(tr("Go in ▸") + (dig_tag() if place == "scrapyard" else ""), enter_place.bind(place), 15, Vector2(0, 46)))
 		return
 	if lock != "":
 		bar.add_child(GUI.text(tr(lock), 14, GUI.MUTED))
@@ -7254,7 +7376,14 @@ func fill_city_card() -> void:
 	wl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	wl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	bar.add_child(wl)
-	bar.add_child(UI.button(tr("Go ▸ %s") % hours_text(h), _on_city_go.bind(place), 15, Vector2(0, 46)))
+	bar.add_child(UI.button(tr("Go ▸ %s") % hours_text(h) + (dig_tag() if place == "scrapyard" else ""), _on_city_go.bind(place), 15, Vector2(0, 46)))
+
+
+## (1.87) " · FIND 45%" on every button that leads to a dig (" · DUG TODAY" once it's spent).
+func dig_tag() -> String:
+	if GameData.digs_left <= 0:
+		return " · " + tr("DUG TODAY")
+	return " · " + tr("FIND %d%%") % roundi(GameData.dig_luck * 100)
 
 
 func _on_city_go(place: String) -> void:
@@ -7409,6 +7538,7 @@ func build_money_view() -> void:
 		bl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		list_box.add_child(bl)
 	loan_box()
+	bet_history_button()
 	section(tr("THE LAST 8 WEEKS"))
 	var ch := MoneyChart.new()
 	var vals: Array = []
@@ -7470,9 +7600,15 @@ class AutoClip extends Control:
 	var cid := ""
 	var player: Control = null
 
+	var done := false   # (1.87) it played once; the poster (with its play button) shows again
+
 	func _process(_d: float) -> void:
 		var on := is_visible_in_tree() and _on_screen()
-		if on and player == null and playing < 2:
+		if player != null and player.finished():
+			_stop()
+			done = true
+			return
+		if on and player == null and playing < 2 and not done:
 			var c: Dictionary = GameData.clip(cid)
 			if c.is_empty():
 				set_process(false)
@@ -7524,6 +7660,7 @@ var gus_overlay: Control = null
 ## buttons: [[label, Callable (or empty: just close), main (the yellow one)], ...]
 func gus_card(title: String, text: String, buttons: Array) -> void:
 	close_gus_card()
+	PlayLog.add("gus card", title)
 	Sfx.voice("GUS")
 	var ov := ColorRect.new()
 	ov.color = Color(0, 0, 0, 0.78)
@@ -7645,6 +7782,24 @@ func check_gus_cards() -> void:
 					tr("%s of %d with %d rounds to go. The bottom five go straight down, the eight above them fight for their lives in the playoffs.") % [GameData.ordinal(pos + 1), order.size(), left] + "\n\n" +
 					tr("Every league night counts now. Fix the robot before each one and skip the pickups."),
 					[[tr("Got it"), Callable(), true], [tr("Standings ›"), func(): _on_tab("Season"); season_view = "table"; refresh(), false]])
+			return
+	# (1.87) broke with a fight coming: Gus brings up Lucky Varga, the last door left
+	if GameData.loan.is_empty() and GameData.loan_block() == "" and GameData.loan_max() > 0:
+		var fix := GameData.repair_all_cost()
+		var broke := GameData.money < 0 or (fix > 0 and GameData.money < fix and GameData.money < GameData.loan_max() / 4)
+		var lkey := "gus_loan:%d:%d" % [GameData.year, GameData.week]
+		var di := GameData.day_index() + 6
+		var fday := GameData.next_fight_before(GameData.week + di / 7, di % 7)
+		if broke and fday != "" and not GameData.story_seen.has(lkey):
+			GameData.mark_story_seen(lkey)
+			GameData.mark_story_seen("loan_warned")
+			var money_line := tr("We're %s in the hole.") % GameData.money_text(-GameData.money) if GameData.money < 0 \
+					else tr("We've got %s and the robot needs %s of repairs.") % [GameData.money_text(GameData.money), GameData.money_text(fix)]
+			gus_card(tr("There's one door left, kid"),
+					tr("We fight %s. %s") % [fday, money_line] + "\n\n" +
+					tr("I hate saying it. Lucky Varga lends money down at the docks, up to $%d. We pay back %d%% more in %d weeks, and he takes half of every purse until then.") % [GameData.loan_max(), int(GameData.LOAN_FEE * 100), GameData.LOAN_WEEKS] + "\n\n" +
+					tr("Your dad never went to him. But we might have to."),
+					[[tr("See Varga ›"), func(): _on_tab("Season"); season_view = "money"; refresh(), true], [tr("Not yet"), Callable(), false]])
 			return
 	var month := (GameData.week - 1) / GameData.MONTH_WEEKS
 	var key := "gus_rent:%d:%d" % [GameData.year, month]

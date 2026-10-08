@@ -26,6 +26,7 @@ const CYAN := Color(0.43, 0.88, 1.0)
 const HP_UNIT := 25.0                           # one block in a health bar = 25 HP, always
 
 static var _fonts := {}
+static var confirm_layer: CanvasLayer = null   # (1.87) the "Post this?" layer while it's open: the fight ignores taps
 
 
 static func _file(path: String) -> Font:
@@ -814,6 +815,7 @@ static func confirm_post(host: Node, text_bb: String, hint: String, media: Strin
 	var layer := CanvasLayer.new()
 	layer.layer = 40
 	host.get_tree().root.add_child(layer)
+	confirm_layer = layer
 	var dim := ColorRect.new()
 	dim.color = Color(0, 0, 0, 0.7)
 	dim.set_anchors_preset(Control.PRESET_FULL_RECT)
@@ -1127,8 +1129,14 @@ class PostPic extends Control:
 				_room(W, H, Color(0.22, 0.17, 0.14), Color(1.0, 0.75, 0.45))
 				var PI_ = load("res://part_icon.gd")
 				var d: Dictionary = GameData.part_def(str(pic.get("id", "")))
-				if not d.is_empty():
+				if d.is_empty():
+					pass
+				elif str(d.get("kind", "")) in ["head", "torso", "arm", "leg"]:
 					PI_.draw_part_at(self, Vector2(W * 0.5, H * 0.55), H * 0.7, d, float(pic.get("hp", 1.0)), 0.0)
+				else:
+					# (1.87) reactors and back gear have no limb drawing: the shop icon, big, on the spot
+					var bs := H * 0.62
+					PI_.draw_part(self, Rect2(Vector2(W * 0.5 - bs * 0.5, H * 0.86 - bs), Vector2(bs, bs)), d, float(pic.get("hp", 1.0)))
 
 	## (1.74) A clip's poster: the venue, both robots as they stood at the moment, a big play button,
 	## the length, and what happens. Tapping it plays the clip (the post row opens the player).

@@ -1,4 +1,5 @@
 extends RefCounted
+const PlayLog = preload("res://playlog.gd")   # (1.87) the playtest log
 ## BotMedia, Port Ferrum's social network: accounts, posts, follows, likes, followers.
 ## Design: "Robot Fighting · Pilot Skill & BotMedia Study". Every post comes from something that
 ## really happened (a result, a table, a purchase, a Read change, a grudge, a contract), voiced by
@@ -123,6 +124,8 @@ static func follow(key: String, on: bool) -> void:
 
 ## Post something. text is an English template (translated when shown); args fill its %s / %d.
 static func post(by: String, text: String, args: Array = [], card: Dictionary = {}, tags: Array = [], mention: bool = false, ctx: String = "") -> Dictionary:
+	if by == "me":
+		PlayLog.add("post", (text % args) if args.size() > 0 and text.count("%") >= args.size() else text)
 	var s := st()
 	var rng := RandomNumberGenerator.new()
 	rng.seed = int(s["next"]) * 977 + GameData.year
@@ -222,6 +225,26 @@ static func toggle_like(id: int) -> void:
 		if wid >= 0 and str(seen.get(str(wid), "")) != today:
 			seen[str(wid)] = today
 			GameData.rel_add(wid, REL_LIKE, GameData.REL_SOCIAL_CAP)
+
+
+## (1.87) A like on a reply in a thread: kept on the reply; a pilot's reply warms them like a post does.
+static func toggle_reply_like(r: Dictionary) -> void:
+	if r.get("liked", false):
+		r.erase("liked")
+		r["likes"] = maxi(0, int(r.get("likes", 0)) - 1)
+		return
+	r["liked"] = true
+	r["likes"] = int(r.get("likes", 0)) + 1
+	var by := str(r.get("by", ""))
+	if not by.begins_with("w:"):
+		return
+	var wid := int(by.substr(2))
+	var seen: Dictionary = st().get("rel_like", {})
+	st()["rel_like"] = seen
+	var today := "%d:%d:%s" % [GameData.year, GameData.week, GameData.day]
+	if str(seen.get(str(wid), "")) != today:
+		seen[str(wid)] = today
+		GameData.rel_add(wid, REL_LIKE, GameData.REL_SOCIAL_CAP)
 
 
 ## What a like, a repost, a reply or a post does to what's between you (1.58).
@@ -939,16 +962,15 @@ static func read_event(p: Dictionary, kind: String) -> void:
 	if GameData.world.is_empty():
 		return
 	var key := "w:%d" % int(p["wid"])
-	var dots := World.read_dots(World.read_of(p))
 	var big: bool = str(p.get("tier", "")) in ["iron", "steel"] or follows(key)
 	match kind:
 		"up":
 			if big or randf() < 0.3:
 				post(key, ["Sparring paid off. I'm reading fights better than ever.", "Something clicked this month. Watch me.",
-						"Better every week. Ask my last opponent."][int(p["wid"]) % 3], [], {"kind": "read", "dots": dots}, ["ReadUp"], false, "pilot_readup")
+						"Better every week. Ask my last opponent."][int(p["wid"]) % 3], [], {"kind": "rank", "wid": int(p["wid"])}, ["OnTheRise"], false, "pilot_readup")
 		"down":
 			if big:
-				post("botmedia", "%s has lost a step. Read down to %d dots.", [p["name"], dots], {"kind": "read", "dots": dots}, ["ReadDown"], false, "news_slump")
+				post("botmedia", "%s has lost a step.", [p["name"]], {"kind": "rank", "wid": int(p["wid"])}, ["LostAStep"], false, "news_slump")
 		"rattled":
 			if big or randf() < 0.35:
 				post(fan_key(int(p["wid"]) + GameData.week), "%s looks RATTLED. Three bad nights and counting.", [p["name"]], {"kind": "rattled"},
@@ -1013,10 +1035,25 @@ const COMPOSE := {
 	"sponsor": [["shill", "Proud to fight in %s colours."], ["funny", "%s pays for the bolts. I pay for the dents."]],
 	"bay": [["humble", "Long night in the bay with Gus. Worth it."], ["funny", "Gus fell asleep on the welder again."], ["hype", "The robot has never looked better."]],
 	"fans": [["thanks", "Thank you for every follow. Port Ferrum, this is for you."]],
+	# (1.87) moments from the season
+	"first_league": [["humble", "First night in the %s. Nervous. Ready."], ["hype", "The %s starts tonight. So do I."],
+			["funny", "First %s fight tonight. Gus has ironed his overalls."]],
+	"trials": [["humble", "The Open Trials: %s. Every fight counts."], ["hype", "Trials record %s. Not done yet."],
+			["funny", "Trials %s. My robot and I are both running on hope."]],
+	"promoted": [["humble", "Up to the %s. Thank you, Gus. Thank you, everyone."], ["hype", "%s, here we come. Make room."],
+			["funny", "Promoted to the %s. Rent's going up, apparently."]],
+	"streak": [["humble", "%s wins in a row. Not getting comfortable."], ["hype", "%s in a row. Who's next?"],
+			["funny", "%s wins in a row and the robot still squeaks."]],
+	"comeback": [["humble", "Lost last time, won tonight. Back on track against %s."], ["hype", "Down, then up. %s found that out."],
+			["funny", "Bounced back against %s. Gus bounced too, mostly off the ceiling."]],
+	"rival": [["humble", "Tonight it's %s. No words needed."], ["hype", "%s, tonight we settle it."], ["trash", "%s, enjoy the walk-in. It's the best part of your night."]],
+	"new_sponsor": [["shill", "Signed with %s. Proud to wear their colours."], ["thanks", "Big thanks to %s for backing the bay."],
+			["funny", "%s are paying for the bolts now. Gus is thrilled."]],
 }
 const COMPOSE_FOL := {"humble": 0.004, "hype": 0.008, "funny": 0.006, "trash": 0.01, "friendly": 0.003, "shill": 0.003, "thanks": 0.004}
 const COMPOSE_REL := {"humble": 3.0, "hype": 4.0, "friendly": 4.0, "trash": -10.0}
-const COMPOSE_TAG := {"bay": "BayLife", "part": "NewParts", "trophy": "Podium", "sponsor": "Sponsored", "fans": "ThankYou", "table": "Standings"}
+const COMPOSE_TAG := {"bay": "BayLife", "part": "NewParts", "trophy": "Podium", "sponsor": "Sponsored", "fans": "ThankYou", "table": "Standings",
+		"first_league": "Debut", "trials": "OpenTrials", "promoted": "MovingUp", "streak": "OnFire", "comeback": "Comeback", "rival": "BadBlood", "new_sponsor": "Sponsored"}
 
 
 ## The picture a composed post carries (1.70).
@@ -1032,7 +1069,14 @@ static func compose_pic(topic: String) -> Dictionary:
 			if not GameData.trophies.is_empty():
 				var t: Dictionary = GameData.trophies[-1]
 				return {"kind": "trophy", "t": str(t.get("kind", "scrap")), "medal": int(t.get("medal", 1))}
-		"bay", "sponsor", "fans":
+		"comeback", "streak":
+			return st().get("last_pic", {})
+		"promoted":
+			if not GameData.trophies.is_empty():
+				var t2: Dictionary = GameData.trophies[-1]
+				return {"kind": "trophy", "t": str(t2.get("kind", "scrap")), "medal": int(t2.get("medal", 1))}
+			return {"kind": "shot", "look": GameData.player_look()}
+		"bay", "sponsor", "fans", "first_league", "trials", "rival", "new_sponsor":
 			return {"kind": "shot", "look": GameData.player_look()}
 	return {}
 
@@ -1064,6 +1108,39 @@ static func topics() -> Array:
 	var act: Array = GameData.Contracts.st()["active"]
 	if not act.is_empty():
 		out.append(["sponsor", I18n.t("Your sponsor"), str(GameData.Contracts.sp(str(act[0]["sp"])).get("name", "?")), -1])
+	# (1.87) moments: they come first in the list when they're there
+	var moments: Array = []
+	var mode := GameData.fight_mode()
+	if mode == "story" and not ev.is_empty():
+		var stg := str(ev.get("stage", ""))
+		if stg == "open":
+			var rec: Array = GameData.Career.trials_record(ev, 0)
+			moments.append(["trials", I18n.t("The Open Trials"), "%d-%d" % [int(rec[0]), int(rec[1])], -1])
+		elif stg in ["scrap", "rust", "iron", "steel"] and not GameData.fight_log.any(func(e): return GameData.log_stage(e) == stg):
+			moments.append(["first_league", I18n.t("Your first league night"), I18n.t(str(ev.get("name", ""))), -1])
+	if mode in ["story", "circuit", "pickup"]:
+		var o2: Dictionary = GameData.current_opponent(false)
+		var w2 := int(o2.get("wid", -1))
+		if w2 >= 0 and GameData.rel_of(w2) <= -40.0:
+			moments.append(["rival", I18n.t("Your rival tonight"), str(World.pilot(w2).get("name", "?")), w2])
+	var promo: Dictionary = st().get("promo", {})
+	if not promo.is_empty() and GameData.abs_week() - int(promo.get("aw", 0)) <= 3:
+		moments.append(["promoted", I18n.t("Your promotion"), I18n.t(str(GameData.Career.STAGES.get(str(promo.get("to", "")), {}).get("name", ""))), -1])
+	var streak := 0
+	for i in range(GameData.fight_log.size() - 1, -1, -1):
+		if not GameData.fight_log[i].get("won", false):
+			break
+		streak += 1
+	if streak >= 3:
+		moments.append(["streak", I18n.t("Your winning streak"), str(streak), -1])
+	var fl: Array = GameData.fight_log
+	if fl.size() >= 2 and fl[-1].get("won", false) and not fl[-2].get("won", false):
+		moments.append(["comeback", I18n.t("Bouncing back"), str(fl[-1].get("opp", "?")), int(fl[-1].get("wid", -1))])
+	for c in act:
+		if GameData.abs_week() - int(c.get("signed_aw", -99)) <= 2:
+			moments.append(["new_sponsor", I18n.t("Your new sponsor"), str(GameData.Contracts.sp(str(c["sp"])).get("name", "?")), -1])
+			break
+	out = moments + out
 	out.append(["bay", I18n.t("The bay"), "", -1])
 	if followers() >= 500:
 		out.append(["fans", I18n.t("Your fans"), "", -1])

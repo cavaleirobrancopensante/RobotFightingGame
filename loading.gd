@@ -1,4 +1,5 @@
 extends CanvasLayer
+const PlayLog = preload("res://playlog.gd")   # (1.87) the playtest log
 ## Scene changes go through here: Loading.go("res://garage.tscn").
 ## A loading cover (LOADING... and a block bar) shows only when the scene is slow to open: the
 ## first time a heavy scene loads, or whenever it took a noticeable moment last time. Quick
@@ -92,6 +93,7 @@ func run(work: Callable) -> void:
 
 
 func go(path: String) -> void:
+	PlayLog.add("scene", path.get_file())
 	if busy:
 		return
 	var slow: bool = float(took.get(path, 1.0 if HEAVY.has(path) else 0.0)) > SLOW

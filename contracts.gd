@@ -348,6 +348,7 @@ static func sign(id: int) -> String:
 	for k in ["want", "patience", "ceiling", "k", "asks", "played", "sleeping", "expires", "reply"]:
 		c.erase(k)
 	c["fought_week"] = false
+	c["signed_aw"] = GameData.abs_week()   # (1.87) "Your new sponsor" on BotMedia for two weeks
 	s["active"].append(c)
 	GameData.book("sponsors", int(c["sign"]))
 	for r in c["reqs"]:

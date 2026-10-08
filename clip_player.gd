@@ -14,6 +14,7 @@ var muted := false
 var fast := false
 var playlist: Array = []   # (1.76) more than one: each plays once, then the next (the Rusty Bolt's TV)
 var pi := 0
+var loop := false          # (1.87) the TV: go round forever
 var lowres := false        # (1.76) drawn at a third of the size (a small screen doesn't need more)
 
 
@@ -59,10 +60,23 @@ func _process(_d: float) -> void:
 		restart()
 
 
+## (1.87) A single clip plays once and stops on its last frame (Again, or a tap, plays it again);
+## a playlist (the Rusty Bolt's TV) moves on instead.
+func finished() -> bool:
+	return fight != null and fight.rp_done
+
+
+func _gui_input(e: InputEvent) -> void:
+	if finished() and ((e is InputEventMouseButton and e.pressed and e.button_index == MOUSE_BUTTON_LEFT) or (e is InputEventScreenTouch and e.pressed)):
+		restart()
+		accept_event()
+
+
 func restart() -> void:
 	if fight != null:
 		fight.queue_free()
 	fight = FightScene.instantiate()
+	fight.rp_once = playlist.size() <= 1 and not loop
 	fight.replay = clip
 	fight.rp_mute = muted
 	fight.rp_speed = 2.0 if fast else 1.0
