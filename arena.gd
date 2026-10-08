@@ -946,3 +946,50 @@ static func draw_beams(ci: CanvasItem, id: String, screen: Vector2, floor_y: flo
 			PackedColorArray([Color(dark, 0.5), Color(dark, 0.0), Color(dark, 0.0), Color(dark, 0.5)]))
 	ci.draw_polygon(PackedVector2Array([Vector2(screen.x - sw, -40), Vector2(screen.x + 40, -40), Vector2(screen.x + 40, screen.y + 40), Vector2(screen.x - sw, screen.y + 40)]),
 			PackedColorArray([Color(dark, 0.0), Color(dark, 0.5), Color(dark, 0.5), Color(dark, 0.0)]))
+
+
+## A whole ring scene for screens outside the fight (the main menu, the opening's arena shots):
+## backdrop, the crowd, the floor and a ring of posts and ropes, all in the venue's light (1.62).
+## plain = no centre markings on the floor (the menu sits there). wl / wr = where the posts stand.
+static func draw_ring_scene(ci: CanvasItem, id: String, crowd_id: String, crowd: Array, screen: Vector2, floor_y: float, t: float, cheer: float, wl: float, wr: float, plain: bool = true) -> void:
+	var ar: Dictionary = ARENAS[id]
+	ci.draw_rect(Rect2(Vector2(-10, -10), screen + Vector2(20, 20)), Color(0.07, 0.07, 0.11))
+	draw_backdrop(ci, id, screen, floor_y, t, Vector2.ZERO)
+	draw_dim(ci, id, screen, floor_y, t)
+	draw_crowd(ci, crowd, crowd_id, screen, t, cheer, Vector2.ZERO, id)
+	var lit := noir()
+	var lc := Color(ar["light"])
+	for k in 14:
+		var lp := Vector2(screen.x * (k + 0.5) / 14.0, screen.y * 0.21)
+		if lit:
+			ci.draw_circle(lp, 11.0, Color(lc, 0.1))
+			ci.draw_circle(lp, 4.0, Color(lc, 0.85))
+		else:
+			ci.draw_circle(lp, 5.0, Color(lc, 0.45))
+	if plain:
+		ci.draw_rect(Rect2(-10, floor_y, screen.x + 20, screen.y - floor_y + 10), Color(ar["floor"]).darkened(0.3 if lit else 0.0))
+	else:
+		draw_floor(ci, id, screen, floor_y, t, Vector2.ZERO)
+	draw_floor_light(ci, id, screen, floor_y, t)
+	var key := key_of(id)
+	if lit:
+		RA._set_light(id if Light.SETS.has(id) else "fight", 1.0)
+		RA._grade = 3
+		RA._flash = false
+	for k in 3:
+		var y := floor_y - 70.0 - k * 50.0
+		var y2 := y + sin(t + k) * 1.5
+		if lit:
+			ci.draw_line(Vector2(wl, y), Vector2(wr, y2), OUTLINE, 6.5)
+			ci.draw_line(Vector2(wl, y), Vector2(wr, y2), Color(ar["rope"]).darkened(0.25), 4.0)
+			ci.draw_line(Vector2(wl, y - 1.0), Vector2(wr, y2 - 1.0), Color(key, 0.5), 1.3)
+		else:
+			ci.draw_line(Vector2(wl, y), Vector2(wr, y2), Color(ar["rope"]), 4.0)
+	for x in [wl, wr]:
+		var post := Rect2(x - 8, floor_y - 190, 16, 190)
+		if lit:
+			RA._plate(ci, RA._chamfer(post, 3.0), Color(ar["post"]))
+			RA._plate(ci, RA._chamfer(Rect2(x - 11, floor_y - 200, 22, 13), 3.0), Color(ar["rope"]))
+		else:
+			ci.draw_rect(post, Color(ar["post"]))
+	draw_beams(ci, id, screen, floor_y, t)

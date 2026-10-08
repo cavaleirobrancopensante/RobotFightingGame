@@ -2,7 +2,7 @@ extends Node
 
 # helper scripts, loaded by path so the game also runs without an editor scan
 ## The game's version, shown on the main menu. Bump it with every change (1.1, 1.2, ...).
-const VERSION := "1.61"
+const VERSION := "1.62"
 const Arena = preload("res://arena.gd")
 const I18n = preload("res://i18n.gd")
 const Catalog = preload("res://catalog.gd")
@@ -5213,7 +5213,7 @@ func reset_settings() -> void:
 
 ## Settings > Robot look: the new lit style or the old flat one (only while the restyle is under way).
 func apply_look() -> void:
-	RobotArt.classic = bool(settings.get("classic_look", false))
+	RobotArt.classic = false   # (1.62) the Classic look switch is gone: the art restyle is done
 
 
 func set_language(lang: String) -> void:

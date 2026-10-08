@@ -37,6 +37,9 @@ const SETS := {
 	"shop": {"key": Color(0.88, 0.94, 1.0), "from": 0.0, "rim": Color(0.35, 0.65, 1.0, 0.6), "amb": 0.32},
 	"scrap": {"key": Color(1.0, 0.7, 0.42), "from": 0.6, "rim": Color(0.62, 0.48, 0.95, 0.55), "amb": 0.36},
 	"phone": {"key": Color(0.72, 0.86, 1.0), "from": 0.25, "rim": Color(1.0, 0.75, 0.45, 0.45), "amb": 0.42},
+	# (1.62) the opening: OVERLORD's red night, the cold empty room after the fall
+	"overlord": {"key": Color(1.0, 0.4, 0.38), "from": 0.0, "rim": Color(1.0, 0.58, 0.3, 0.6), "amb": 0.42},
+	"fall": {"key": Color(0.75, 0.82, 0.95), "from": -0.5, "rim": Color(0.5, 0.6, 0.8, 0.4), "amb": 0.42},
 	"main_event": {"key": Color(1.0, 1.0, 1.0), "from": 0.0, "rim": Color(1.0, 0.25, 0.55, 0.75), "amb": 0.36},
 }
 

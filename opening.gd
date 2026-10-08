@@ -276,7 +276,7 @@ class Stage extends Control:
 	var op
 
 	func _draw() -> void:
-		PilotArt.light = ""   # the opening keeps its own look until its restyle (1.62)
+		PilotArt.light = op.shot_light()   # (1.62) every shot has its own light
 		var W := size.x
 		var H := size.y
 		if W < 10.0:
@@ -304,6 +304,15 @@ class Stage extends Control:
 				op.draw_road(self, W, H, op.t)
 			"bell":
 				op.draw_bell(self, W, H, op.t)
+
+
+## The light each shot is lit by (light.gd), for the robots and people in it.
+const SHOT_LIGHT := {"city": "neutral", "stadium": "champ_arena", "dad_face": "champ_arena", "dad_clash": "champ_arena", "dad_uppercut": "champ_arena",
+		"dad_win": "champ_arena", "overlord": "overlord", "fall": "fall", "scrap": "scrap_ring", "road": "neutral", "bell": "pub"}
+
+
+func shot_light() -> String:
+	return SHOT_LIGHT.get(str(SHOTS[shot][0]), "neutral")
 
 
 static func hsh(k: int) -> float:
@@ -503,18 +512,7 @@ func arena_bg(ci: CanvasItem, W: float, H: float, floor_y: float, tt: float, che
 	var screen := Vector2(W, H)
 	if crowd.is_empty() or crowd.size() < 2:
 		crowd = Arena.make_crowd("champ_fans", screen)
-	ci.draw_rect(Rect2(Vector2.ZERO, screen), Color(0.07, 0.07, 0.11))
-	Arena.draw_backdrop(ci, "champ_arena", screen, floor_y, tt, Vector2.ZERO)
-	Arena.draw_crowd(ci, crowd, "champ_fans", screen, tt, cheer, Vector2.ZERO)
-	var ar: Dictionary = Arena.ARENAS["champ_arena"]
-	ci.draw_rect(Rect2(0, floor_y, W, H - floor_y), Color(ar["floor"]))
-	var wl := W * 0.07
-	var wr := W * 0.93
-	for x in [wl, wr]:
-		ci.draw_rect(Rect2(x - 6, floor_y - 190, 12, 190), Color(ar["post"]))
-	for k in 3:
-		var y := floor_y - 70.0 - k * 50.0
-		ci.draw_line(Vector2(wl, y), Vector2(wr, y + sin(tt + k) * 1.5), Color(ar["rope"]), 4.0)
+	Arena.draw_ring_scene(ci, "champ_arena", "champ_fans", crowd, screen, floor_y, tt, cheer, W * 0.07, W * 0.93)
 
 
 func robot_scale(look: Dictionary, tall_px: float) -> float:
@@ -665,8 +663,8 @@ func draw_dad_clash(ci: CanvasItem, W: float, H: float, tt: float) -> void:
 	var hf := hand_at(foe, "arm_front", "punch", Vector2.ZERO, sf, -1)
 	var be := mid - he - Vector2(apart, 0)
 	var bf := mid - hf + Vector2(apart, 0)
-	RobotArt.draw(ci, bf, foe, {"scale": sf, "facing": -1, "time": tt, "state": "punch", "attack_limb": "arm_front", "extended": ext})
-	RobotArt.draw(ci, be, echo, {"scale": se, "facing": 1, "time": tt, "state": "punch", "attack_limb": "arm_front", "extended": ext})
+	RobotArt.draw(ci, bf, foe, {"light": shot_light(), "scale": sf, "facing": -1, "time": tt, "state": "punch", "attack_limb": "arm_front", "extended": ext})
+	RobotArt.draw(ci, be, echo, {"light": shot_light(), "scale": se, "facing": 1, "time": tt, "state": "punch", "attack_limb": "arm_front", "extended": ext})
 	var f := 1.0 - clampf((tt - hit) / 0.5, 0.0, 1.0)
 	if tt >= hit:
 		starburst(ci, mid, H * 0.42, f, Color(1.0, 0.85, 0.4))
@@ -702,11 +700,11 @@ func draw_dad_uppercut(ci: CanvasItem, W: float, H: float, tt: float) -> void:
 	fb += Vector2(stagger * W * 0.06, 0) + sh
 	var neck := fb + Vector2(-hr.get_center().x * fk, (hr.end.y) * fk)
 	if tt < hit:
-		RobotArt.draw(ci, fb, foe, {"scale": sf, "facing": -1, "time": tt, "state": "punch", "attack_limb": "arm_front", "extended": tt > 0.45 and tt < 0.75})
+		RobotArt.draw(ci, fb, foe, {"light": shot_light(), "scale": sf, "facing": -1, "time": tt, "state": "punch", "attack_limb": "arm_front", "extended": tt > 0.45 and tt < 0.75})
 	else:
 		foe["parts"]["head"]["alive"] = false
-		RobotArt.draw(ci, fb, foe, {"scale": sf, "facing": -1, "time": tt, "state": "hit", "rot": stagger * 0.3, "eye_off": true})
-	RobotArt.draw(ci, eb, echo, {"scale": se, "facing": 1, "time": tt, "state": "uppercut" if ext else "idle", "attack_limb": "arm_back",
+		RobotArt.draw(ci, fb, foe, {"light": shot_light(), "scale": sf, "facing": -1, "time": tt, "state": "hit", "rot": stagger * 0.3, "eye_off": true})
+	RobotArt.draw(ci, eb, echo, {"light": shot_light(), "scale": se, "facing": 1, "time": tt, "state": "uppercut" if ext else "idle", "attack_limb": "arm_back",
 			"extended": ext, "crouch": dip > 0.5 and not ext})
 	if tt < hit:
 		return
@@ -746,10 +744,10 @@ func draw_dad_win(ci: CanvasItem, W: float, H: float, tt: float) -> void:
 	# SLEDGE flat on its back without a head; the TV lies by the ropes, still fizzing
 	var foe: Dictionary = looks["foe_a"].duplicate(true)
 	foe["parts"]["head"]["alive"] = false
-	RobotArt.draw(ci, Vector2(W * 0.68, floor_y - 6), foe, {"scale": robot_scale(foe, tall), "facing": -1, "time": tt, "state": "ko", "rot": 1.4, "eye_off": true})
+	RobotArt.draw(ci, Vector2(W * 0.68, floor_y - 6), foe, {"light": shot_light(), "scale": robot_scale(foe, tall), "facing": -1, "time": tt, "state": "ko", "rot": 1.4, "eye_off": true})
 	tv_head(ci, Vector2(W * 0.86, floor_y - 18), 34.0, 0.4, tt, true)
 	# ECHO, the fist up
-	RobotArt.draw(ci, Vector2(W * 0.42, floor_y + 6), looks["echo_dad"], {"scale": robot_scale(looks["echo_dad"], tall), "facing": 1, "time": tt,
+	RobotArt.draw(ci, Vector2(W * 0.42, floor_y + 6), looks["echo_dad"], {"light": shot_light(), "scale": robot_scale(looks["echo_dad"], tall), "facing": 1, "time": tt,
 			"state": "uppercut", "attack_limb": "arm_back", "extended": true})
 	# your dad in the corner, both arms up
 	var df := Vector2(W * 0.12, floor_y + H * 0.17)
@@ -807,7 +805,7 @@ func draw_overlord(ci: CanvasItem, W: float, H: float, tt: float) -> void:
 	if hit1:
 		fl["parts"]["arm_front"]["alive"] = false
 	var fall := clampf((tt - 6.6) / 0.5, 0.0, 1.0)
-	RobotArt.draw(ci, Vector2(W * 0.36 - fall * 40.0, floor_y + 6 - fall * 8.0), fl, {"scale": robot_scale(fl, tall), "facing": 1, "time": tt,
+	RobotArt.draw(ci, Vector2(W * 0.36 - fall * 40.0, floor_y + 6 - fall * 8.0), fl, {"light": shot_light(), "scale": robot_scale(fl, tall), "facing": 1, "time": tt,
 			"state": "hit" if hit1 else "idle", "blocking": tt > 3.5 and not hit1, "rot": -fall * 1.4, "eye_off": hit2})
 	PilotArt.draw_person(ci, Vector2(W * 0.1, floor_y + H * 0.17), H / 260.0, {"skin": "#b07850", "hair": "#3b1f14", "hat": "bun", "outfit": "#8e2c1c", "long_hair": true, "female": true},
 			1.0, "hold" if not hit2 else "idle", tt)
@@ -826,7 +824,7 @@ func draw_overlord(ci: CanvasItem, W: float, H: float, tt: float) -> void:
 	var ox := lerpf(W * 1.1, W * 0.6, walk)
 	var lunge := (1.0 if (tt > 4.8 and tt < 5.3) or (tt > 6.4 and tt < 6.9) else 0.0)
 	var ol: Dictionary = looks["overlord"]
-	RobotArt.draw(ci, Vector2(ox - lunge * 40.0, floor_y + 6), ol, {"scale": robot_scale(ol, H * 0.52), "facing": -1, "time": tt,
+	RobotArt.draw(ci, Vector2(ox - lunge * 40.0, floor_y + 6), ol, {"light": shot_light(), "scale": robot_scale(ol, H * 0.52), "facing": -1, "time": tt,
 			"state": "punch" if lunge > 0.0 else "idle", "attack_limb": "arm_front" if tt < 6.0 else "arm_back", "extended": lunge > 0.0,
 			"swing": sin(tt * 6.0) * 0.4 if walk < 1.0 else 0.0})
 	# its empty corner: a pilot's stool and nobody on it
@@ -913,7 +911,7 @@ func draw_scrap(ci: CanvasItem, W: float, H: float, tt: float) -> void:
 	var eye_on := tt > 8.0 and not (tt < 8.6 and fmod(tt, 0.15) < 0.07)
 	if not eye_on:
 		look["eye"] = Color(0.12, 0.1, 0.1)
-	RobotArt.draw(ci, rc, look, {"scale": robot_scale(look, tall), "facing": 1, "time": tt, "state": "hit" if tt < 9.0 else "idle", "eye_off": not eye_on})
+	RobotArt.draw(ci, rc, look, {"light": shot_light(), "scale": robot_scale(look, tall), "facing": 1, "time": tt, "state": "hit" if tt < 9.0 else "idle", "eye_off": not eye_on})
 	if eye_on:
 		var g := RobotArt.geom(look)
 		var hc: Vector2 = (g["head"] as Rect2).get_center() * robot_scale(look, tall) * float(look.get("scale", 1.0))
@@ -975,7 +973,7 @@ func draw_road(ci: CanvasItem, W: float, H: float, tt: float) -> void:
 	var you_at := Vector2(W * 0.22, floor_y + H * 0.02)
 	PilotArt.draw_person(ci, you_at, s, you, 1.0, "hold", tt)   # "hold" draws the controller in your hands
 	var look: Dictionary = looks["echo_rust"]
-	RobotArt.draw(ci, Vector2(W * 0.34, floor_y + 4), look, {"scale": robot_scale(look, H * 0.36), "facing": 1, "time": tt})
+	RobotArt.draw(ci, Vector2(W * 0.34, floor_y + 4), look, {"light": shot_light(), "scale": robot_scale(look, H * 0.36), "facing": 1, "time": tt})
 
 
 # ---------------------------------------------------------------- 8 the bell
@@ -1010,13 +1008,13 @@ func draw_bell(ci: CanvasItem, W: float, H: float, tt: float) -> void:
 	var pike_at := Vector2(W * 0.92, floor_y)
 	PilotArt.draw_person(ci, pike_at, s, {"skin": "#d8b49a", "hair": "#b8b8b8", "hat": "cap", "beard": "long", "beard_color": "#cfcfcf", "outfit": "#5b4a38"},
 			-1.0, "cheer" if fmod(tt, 1.2) < 0.6 else "idle", tt)
-	RobotArt.draw(ci, Vector2(W * 0.8, floor_y + 4), pike_look, {"scale": robot_scale(pike_look, H * 0.36), "facing": -1, "time": tt})
+	RobotArt.draw(ci, Vector2(W * 0.8, floor_y + 4), pike_look, {"light": shot_light(), "scale": robot_scale(pike_look, H * 0.36), "facing": -1, "time": tt})
 	# you and Gus walk in from the left, ECHO behind you
 	var walk := clampf(tt / 3.0, 0.0, 1.0)
 	var gus_at := Vector2(lerpf(-W * 0.05, W * 0.3, walk), floor_y)
 	var you_at := Vector2(lerpf(-W * 0.12, W * 0.38, walk), floor_y)
 	var look: Dictionary = looks["echo_rust"]
-	RobotArt.draw(ci, Vector2(lerpf(-W * 0.25, W * 0.55, walk), floor_y + 4), look, {"scale": robot_scale(look, H * 0.4), "facing": 1, "time": tt,
+	RobotArt.draw(ci, Vector2(lerpf(-W * 0.25, W * 0.55, walk), floor_y + 4), look, {"light": shot_light(), "scale": robot_scale(look, H * 0.4), "facing": 1, "time": tt,
 			"swing": sin(tt * 7.0) * 0.5 if walk < 1.0 else 0.0})
 	PilotArt.draw_person(ci, gus_at, s, PilotArt.GUS_LOOK, 1.0, "point" if walk >= 1.0 else "idle", tt)
 	PilotArt.draw_person(ci, you_at, s, you, 1.0, "hold", tt)

@@ -40,36 +40,14 @@ class ArenaBackdrop extends Control:
 		var floor_y := screen.y * 0.8
 		if crowd.is_empty():
 			crowd = Arena.make_crowd(CROWD_ID, screen)
-		draw_rect(Rect2(Vector2.ZERO, screen), Color(0.07, 0.07, 0.11))
-		Arena.draw_backdrop(self, ARENA_ID, screen, floor_y, t, Vector2.ZERO)
-		Arena.draw_crowd(self, crowd, CROWD_ID, screen, t, 0.6 + 0.4 * sin(t * 0.7), Vector2.ZERO)
-		var ar: Dictionary = Arena.ARENAS[ARENA_ID]
-		var lc := Color(ar["light"])
-		for k in 14:
-			draw_circle(Vector2(screen.x * (k + 0.5) / 14.0, screen.y * 0.21), 5.0, Color(lc, 0.45))
-		# plain ring canvas (no centre logo: the menu sits there)
-		draw_rect(Rect2(0, floor_y, screen.x, screen.y - floor_y), Color(ar["floor"]))
-		draw_line(Vector2(0, floor_y), Vector2(screen.x, floor_y), Color(ar["floor"]).lightened(0.15), 2.0)
-		# the ring: corner posts and three ropes
-		var wl := screen.x * 0.07
-		var wr := screen.x * 0.93
-		for x in [wl, wr]:
-			draw_rect(Rect2(x - 6, floor_y - 190, 12, 190), Color(ar["post"]))
-		for k in 3:
-			var y := floor_y - 70.0 - k * 50.0
-			draw_line(Vector2(wl, y), Vector2(wr, y + sin(t + k) * 1.5), Color(ar["rope"]), 4.0)
-		# spotlights sweeping the ring
-		for k in 2:
-			var cx := screen.x * (0.5 + 0.3 * sin(t * 0.4 + k * PI))
-			draw_colored_polygon(PackedVector2Array([Vector2(screen.x * (0.3 + 0.4 * k), 0), Vector2(cx - 90, floor_y), Vector2(cx + 90, floor_y)]),
-					Color(lc, 0.06))
+		Arena.draw_ring_scene(self, ARENA_ID, CROWD_ID, crowd, screen, floor_y, t, 0.6 + 0.4 * sin(t * 0.7), screen.x * 0.07, screen.x * 0.93)
 		# two robots squaring off
 		for k in looks.size():
 			var g := RobotArt.geom(looks[k])
 			var tall: float = -(g["head"] as Rect2).position.y + 30.0
 			var sc: float = screen.y * 0.5 / tall / float(looks[k].get("scale", 1.0))
 			RobotArt.draw(self, Vector2(screen.x * (0.17 if k == 0 else 0.83), floor_y + 6), looks[k],
-					{"scale": sc, "facing": 1 if k == 0 else -1, "time": t + k})
+					{"scale": sc, "facing": 1 if k == 0 else -1, "time": t + k, "light": ARENA_ID})
 		# darken the middle a touch so the menu reads
 		draw_rect(Rect2(screen.x * 0.3, 0, screen.x * 0.4, screen.y), Color(0, 0, 0, 0.35))
 
