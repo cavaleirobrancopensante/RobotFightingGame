@@ -2,7 +2,7 @@ extends Node
 
 # helper scripts, loaded by path so the game also runs without an editor scan
 ## The game's version, shown on the main menu. Bump it with every change (1.1, 1.2, ...).
-const VERSION := "1.73"
+const VERSION := "1.74"
 const Arena = preload("res://arena.gd")
 const I18n = preload("res://i18n.gd")
 const Catalog = preload("res://catalog.gd")
@@ -30,6 +30,7 @@ const Career = preload("res://career.gd")
 const World = preload("res://world.gd")
 const Social = preload("res://social.gd")
 const Contracts = preload("res://contracts.gd")
+const Clips = preload("res://clips.gd")
 const PILOT_NAMES := ["Rook", "Marisol", "Dex", "Kit", "Juno", "Tavi", "Bram", "Nia", "Otto", "Zara", "Lio", "Mags",
 		"Finn", "Ines", "Cass", "Rafa", "Wren", "Bo", "Sully", "Pia", "Grit", "Nova", "Ash", "Teo"]
 const ROBOT_FIRST := ["ECHO", "RUSTY", "BOLT", "PISTON", "SPARKY", "TANK", "GIZMO", "COPPER", "TORQUE", "DYNAMO",
@@ -281,6 +282,7 @@ var spare_controllers: Array = []   # dug-up controllers waiting in Storage (1.5
 var tips_seen: Array = []
 var opening_replay := false   # the opening cutscene was asked for again (BotMedia): back to the bay after it
 var social := {}      # BotMedia: posts, follows, your followers (social.gd)
+var clips := {}       # (1.74) id -> clip (clips.gd). Posted clips stay forever; "temp" ones wait on the post you haven't made yet
 var contracts := {}   # sponsor contracts and offers (contracts.gd)
 var alerts_unseen := 0   # new BotMedia alerts (the rail lights up)
 var tips_log: Array = []   # Gus's fight tips as he said them ({"id", "text"}, oldest first): the pause screen lists them
@@ -4861,7 +4863,7 @@ func save_game() -> bool:
 		"owned_chips": owned_chips, "chips": chips, "circuit": circuit, "circuit_offers": circuit_offers,
 		"circuits_won": circuits_won, "pickup": pickup, "setups": setups, "custom_parts": custom_parts,
 		"year": year, "week": week, "day": day, "rank": rank, "event": {}, "leagues": leagues, "title_seeds": title_seeds, "trophies": trophies, "career_stats": career_stats,
-		"pecking_k": pecking_k(), "style": style, "style_locked": style_locked, "shop_stock": shop_stock, "chip_stock": chip_stock, "scout": scout, "wingmen": wingmen, "sending": sending, "pilot_look": pilot_look, "owned_controllers": owned_controllers, "spare_controllers": spare_controllers, "tips_seen": tips_seen, "tips_log": tips_log, "h2h": h2h, "rivals": rivals, "rel": rel, "nemeses": nemeses, "pending_talk": pending_talk, "inbox": inbox, "inbox_seen": inbox_seen, "social": social, "contracts": contracts, "alerts_unseen": alerts_unseen, "day_log": day_log, "tour": tour, "streak": streak, "pub_seen": pub_seen, "digs_left": digs_left, "dig_luck": dig_luck, "bills_note": bills_note, "fight_log": fight_log, "bets": bets, "world": world,
+		"pecking_k": pecking_k(), "style": style, "style_locked": style_locked, "shop_stock": shop_stock, "chip_stock": chip_stock, "scout": scout, "wingmen": wingmen, "sending": sending, "pilot_look": pilot_look, "owned_controllers": owned_controllers, "spare_controllers": spare_controllers, "tips_seen": tips_seen, "tips_log": tips_log, "h2h": h2h, "rivals": rivals, "rel": rel, "nemeses": nemeses, "pending_talk": pending_talk, "inbox": inbox, "inbox_seen": inbox_seen, "social": social, "clips": clips, "contracts": contracts, "alerts_unseen": alerts_unseen, "day_log": day_log, "tour": tour, "streak": streak, "pub_seen": pub_seen, "digs_left": digs_left, "dig_luck": dig_luck, "bills_note": bills_note, "fight_log": fight_log, "bets": bets, "world": world,
 	}
 	var f := FileAccess.open(slot_path(save_slot), FileAccess.WRITE)
 	if f == null:
@@ -4980,6 +4982,7 @@ func load_game(slot: int = -1) -> String:
 			inbox.append(e)
 	inbox_seen = mini(int(data.get("inbox_seen", inbox.size())), inbox.size())
 	social = data.get("social", {})
+	clips = data.get("clips", {})
 	contracts = data.get("contracts", {})
 	alerts_unseen = int(data.get("alerts_unseen", 0))
 	tour = int(data.get("tour", -1))
@@ -5310,3 +5313,38 @@ func load_settings() -> void:
 		if int(data.get("rev", 1)) < 3:
 			settings["layout"] = {}
 		settings["rev"] = 3
+
+
+# ---------------------------------------------------------------- clips (1.74)
+
+## A fight's best moments (fight.rec_cut): they wait, marked temp, for the post about it. A new
+## fight's clips replace the last fight's unposted ones; a posted clip is kept for good.
+func add_fresh_clips(list: Array) -> void:
+	for id in clips.keys():
+		if clips[id].get("temp", false):
+			clips.erase(id)
+	var n := 0
+	for c in list:
+		var cl: Dictionary = c
+		n += 1
+		cl["id"] = "c%d_%d_%d" % [int(Time.get_unix_time_from_system()), randi() % 100000, n]
+		cl["temp"] = true
+		clips[cl["id"]] = cl
+
+
+func fresh_clip_ids() -> Array:
+	var out: Array = []
+	for id in clips:
+		if clips[id].get("temp", false):
+			out.append(id)
+	out.sort_custom(func(a, b): return float(clips[a].get("score", 0.0)) > float(clips[b].get("score", 0.0)))
+	return out
+
+
+func clip(id: String) -> Dictionary:
+	return clips.get(id, {})
+
+
+func keep_clip(id: String) -> void:
+	if clips.has(id):
+		clips[id].erase("temp")

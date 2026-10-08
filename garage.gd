@@ -2334,11 +2334,18 @@ func post_card(card: Dictionary, parent: Control) -> void:
 	var h := HBoxContainer.new()
 	h.add_theme_constant_override("separation", 10)
 	panel.add_child(h)
-	if str(card.get("kind", "")) in ["still", "shot", "trophy", "part"]:
-		# (1.70) a picture, drawn live from its recipe
+	if str(card.get("kind", "")) in ["still", "shot", "trophy", "part", "clip"]:
+		# (1.70) a picture, drawn live from its recipe; (1.74) a clip's poster plays it when tapped
 		panel.add_theme_stylebox_override("panel", GUI.box(GUI.BG, 8, 0))
 		h.add_child(GUI.PostPic.new(card))
 		h.get_child(0).size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		if str(card.get("kind", "")) == "clip":
+			panel.mouse_filter = Control.MOUSE_FILTER_STOP
+			panel.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+			var cid := str(card.get("id", ""))
+			panel.gui_input.connect(func(e):
+				if (e is InputEventMouseButton and e.pressed and e.button_index == MOUSE_BUTTON_LEFT) or (e is InputEventScreenTouch and not e.pressed):
+					open_clip(cid))
 		return
 	match str(card.get("kind", "")):
 		"result":
@@ -2403,6 +2410,7 @@ func build_home() -> void:
 		var card := GUI.DraftCard.new()
 		card.avatar = avatar_for("me", 40)
 		card.posted.connect(_on_publish)
+		card.watch_clip.connect(open_clip)
 		card.skipped.connect(_on_skip_post)
 		list_box.add_child(card)
 		card.build()
@@ -6659,3 +6667,23 @@ func _start_fight() -> void:
 func _go_fight() -> void:
 	GameData.flush_save()
 	Loading.go("res://fight.tscn")
+
+
+## (1.74) A clip in a window: it loops, with sound on / off, x1 / x2 and Again under it.
+func open_clip(id: String) -> void:
+	var c: Dictionary = GameData.clip(id)
+	if c.is_empty():
+		note(tr("That clip is gone."))
+		return
+	var col := open_popup(GameData.Clips.kind_name(c))
+	var vw := get_viewport_rect().size
+	var w := minf(vw.x * 0.86, (vw.y - 260.0) * 16.0 / 9.0)
+	var cp = load("res://clip_player.gd").new()
+	cp.clip = c
+	cp.custom_minimum_size = Vector2(maxf(320.0, w), maxf(180.0, w * 9.0 / 16.0))
+	col.add_child(cp)
+	var t := GUI.text(GameData.Clips.title(c), 14, GUI.TEXT, "headb")
+	t.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	col.add_child(t)
+	popup_footer.add_child(cp.controls())
+	Sfx.play("click")

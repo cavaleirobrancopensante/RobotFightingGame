@@ -486,7 +486,13 @@ static func publish(tone: String) -> void:
 			if tone != "trash_w":
 				rel_social(w2, REL_TRASH, k2)
 	s["followers"] = int(round(f))
-	var mine := post("me", text, draft_args(), d.get("pic", {}), [str(d.get("tag", ""))])
+	var pic: Dictionary = d.get("pic", {})
+	if str(pic.get("kind", "")) == "clip":
+		GameData.keep_clip(str(pic.get("id", "")))   # (1.74) a posted clip is kept for good
+	var mine := post("me", text, draft_args(), pic, [str(d.get("tag", ""))])
+	if str(pic.get("kind", "")) == "clip":
+		mine["likes"] = int(mine["likes"] * 1.6)   # people stop scrolling for a clip
+		mine["reposts"] = int(mine["reposts"] * 2.0)
 	if not watched and w1 >= 0:
 		mine["opp_wid"] = w1   # your opponent can turn up in the thread
 	count_post()

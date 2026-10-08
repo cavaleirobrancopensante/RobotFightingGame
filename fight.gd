@@ -465,6 +465,7 @@ var shake := 0.0
 # Demo mode (set before the scene enters the tree): a little looping showcase of one special move,
 # shown in the garage. Your robot does the move on a training dummy, over and over.
 var demo_move := ""
+var replay := {}            # (1.74) set before adding to the tree: play this clip instead of a fight
 var demo_specs: Array = []
 var demo_t := 0.0
 var demo_fired := false
@@ -509,6 +510,9 @@ func _ready() -> void:
 	font = ThemeDB.fallback_font
 	if demo_move != "":
 		setup_demo()
+		return
+	if not replay.is_empty():
+		setup_replay()
 		return
 	touch_device = DisplayServer.is_touchscreen_available()
 	if GameData.fight_mode() == "open":
@@ -671,6 +675,7 @@ func _ready() -> void:
 	Sfx.music(WALKIN_MUSIC.get(barrier_kind, "walkin_arena") if intro_step == "show" else fight_track)
 	Sfx.play("crowd_cheer", 0.0, -9.0)   # the crowd warms up quietly; it gets loud on big moments
 	cheer = 3.0
+	rec_start()
 
 
 ## Robots point at each other (foe), which would keep them alive forever after the fight.
@@ -678,6 +683,8 @@ func _ready() -> void:
 func _exit_tree() -> void:
 	if demo_move != "":
 		Sfx.quiet = maxi(0, Sfx.quiet - 1)
+	if rec_on:
+		Sfx.tap = Callable()
 	for f in team_p + team_c:
 		f.foe = null
 		f.ai.clear()
@@ -691,7 +698,8 @@ func _exit_tree() -> void:
 	focus = null
 	if arena_layer:
 		arena_layer.fight = null
-	OS.low_processor_usage_mode = true   # menus only redraw when something changes
+	if replay.is_empty():
+		OS.low_processor_usage_mode = true   # menus only redraw when something changes
 
 
 ## A computer pilot's aim level: its timers run faster or slower, and it lands more of its aimed hits.
@@ -790,8 +798,10 @@ func layout() -> void:
 # ---------------------------------------------------------------- input
 
 func _input(event: InputEvent) -> void:
-	if demo_move != "":
+	if demo_move != "" or not replay.is_empty():
 		return
+	if clip_view != null and is_instance_valid(clip_view):
+		return   # a clip is playing over the results: its own buttons take the taps
 	# taps on the BotMedia card on the results screen belong to its buttons, not "tap to leave"
 	if post_card != null and is_instance_valid(post_card) and (event is InputEventScreenTouch or event is InputEventMouseButton) \
 			and post_card.get_global_rect().has_point(event.position):
@@ -1731,6 +1741,9 @@ func _process(delta: float) -> void:
 	if demo_move != "":
 		demo_process(delta)
 		return
+	if not replay.is_empty():
+		replay_process(delta)
+		return
 	layout()
 	if tut_pause:
 		redraw_all()
@@ -1741,6 +1754,7 @@ func _process(delta: float) -> void:
 	update_coach(delta)
 	if mode == "watch":
 		update_live_bets(delta)
+	rec_tick(delta)
 	if hitstop > 0.0:
 		hitstop -= delta
 		redraw_all()
@@ -1888,7 +1902,7 @@ func update_effects(delta: float) -> void:
 			d["vel"].y *= -0.35
 			d["vel"].x *= 0.6
 			d["rv"] *= 0.5
-			if absf(d["vel"].y) > 120.0:
+			if absf(d["vel"].y) > 120.0 and replay.is_empty():
 				Sfx.play("land", 0.3, -10.0)
 			if d.get("lie", false) and absf(d["vel"].y) < 60.0:
 				# settles flat on the floor
@@ -1899,25 +1913,28 @@ func update_effects(delta: float) -> void:
 	for p in popups:
 		p["t"] += delta
 	popups = popups.filter(func(p): return p["t"] < 1.4)
+	# (smoke and sparks that come from a robot's state are marked _r: a clip makes its own from the
+	# recorded state, so they aren't stored)
 	for f in all_fighters():
 		if f.state == "ko":
 			continue
 		for slot in BODY_PARTS:
 			if slot != "torso" and f.alive(slot) and f.ratio(slot) < 0.3 and randf() < delta * 2.5:
-				smoke.append({"pos": to_world_point(f, RobotArt.part_center(f.get_look(), slot)), "t": 0.0, "dark": false, "k": 0.6})
+				smoke.append({"pos": to_world_point(f, RobotArt.part_center(f.get_look(), slot)), "t": 0.0, "dark": false, "k": 0.6, "_r": 1})
 		# a hurt core smokes: a wisp under half, thick black smoke and sparks under a quarter
 		if f.alive("torso"):
 			var cr: float = f.ratio("torso")
 			var top: Vector2 = to_world_point(f, Vector2(randf_range(-12, 12), RobotArt.geom(f.get_look())["top"] + 6.0))
 			if cr < 0.25:
 				if randf() < delta * 14.0:
-					smoke.append({"pos": top, "t": 0.0, "dark": true, "k": 1.6})
+					smoke.append({"pos": top, "t": 0.0, "dark": true, "k": 1.6, "_r": 1})
 				if randf() < delta * 3.0:
 					add_spark(top + Vector2(randf_range(-20, 20), randf_range(-10, 20)), Color(1.0, 0.75, 0.3), 9.0)
+					sparks[-1]["_r"] = 1
 			elif cr < 0.5 and randf() < delta * 4.0:
-				smoke.append({"pos": top, "t": 0.0, "dark": false, "k": 0.8})
+				smoke.append({"pos": top, "t": 0.0, "dark": false, "k": 0.8, "_r": 1})
 		if f.burn_t > 0.0 and randf() < delta * 6.0:
-			smoke.append({"pos": f.pos + Vector2(-f.facing * 20.0, -90.0 * f.scale), "t": 0.0, "dark": true})
+			smoke.append({"pos": f.pos + Vector2(-f.facing * 20.0, -90.0 * f.scale), "t": 0.0, "dark": true, "_r": 1})
 	for s in smoke:
 		s["t"] += delta
 		s["pos"] += Vector2(randf_range(-10, 10), -40.0) * delta
@@ -1935,7 +1952,10 @@ func time_up() -> void:
 		score[0] += (f.ratio("torso") if f.state != "ko" else 0.0) / team_p.size()
 	for f in team_c:
 		score[1] += (f.ratio("torso") if f.state != "ko" else 0.0) / team_c.size()
-	end_by(player if score[0] >= score[1] else cpu, "TIME!")
+	var tw: Fighter = player if score[0] >= score[1] else cpu
+	if absf(score[0] - score[1]) < 0.12:
+		rec_mark("close", 55.0, "%s edges it at the bell", [rec_name(tw)], 1.4)
+	end_by(tw, "TIME!")
 
 
 func end_by(winner: Fighter, title: String) -> void:
@@ -1964,6 +1984,9 @@ func bench_hp(p: Dictionary, scale: float) -> float:
 
 
 func finish_match() -> void:
+	var cut := rec_cut()
+	if not cut.is_empty():
+		GameData.add_fresh_clips(cut)
 	if mode == "watch":
 		var hp := [{}, {}]
 		var torn := [[], []]
@@ -2779,6 +2802,7 @@ func update_fighter(f: Fighter, o: Fighter, i: Dictionary, delta: float) -> void
 				f.vel.x *= 0.3
 			if f.state == "hit" and f.knocked:
 				# launched: it lands flat on its back
+				rec_mark("down", 45.0, "%s puts %s on the floor", [rec_name(f.last_hitter), rec_name(f)])
 				f.knocked = false
 				f.state = "down"
 				f.timer = 0.55
@@ -2976,6 +3000,12 @@ func apply_hit(att: Fighter, d: Fighter, a: Dictionary, at: Vector2) -> void:
 	if att.state == "special" and not att.special_moment and Specials.MOVES.has(att.special_id) and Specials.MOVES[att.special_id]["seq"].size() >= 5:
 		att.special_moment = true   # a finisher that lands: a short cinematic with its name
 		big_moment("finisher", d, 1.5, tr(Specials.MOVES[att.special_id]["name"]).to_upper())
+	if att.state == "special" and Specials.MOVES.has(att.special_id):
+		var ai_k := all_fighters().find(att)
+		if clock - float(rec_sp_last.get(ai_k, -10.0)) > 1.5:
+			rec_sp_last[ai_k] = clock
+			var seq: int = Specials.MOVES[att.special_id]["seq"].size()
+			rec_mark("special", 22.0 + 8.0 * seq, "%s lands %s on %s", [rec_name(att), tr(Specials.MOVES[att.special_id]["name"]).to_upper(), rec_name(d)])
 	var touched: Array = a.get("touched", [])
 	var slot := choose_part(att, d, a.get("zone", "punch"), a.get("sure_aim", false), touched)
 	var hit_at := to_world_point(d, RobotArt.part_center(d.get_look(), slot))
@@ -3010,6 +3040,7 @@ func apply_hit(att: Fighter, d: Fighter, a: Dictionary, at: Vector2) -> void:
 		d.blocking = false
 		popup(tr("GUARD BROKEN!"), d.pos + Vector2(0, -220.0 * d.scale), Color(1.0, 0.6, 0.3))
 		d.daze_t = 0.6
+		rec_mark("guard", 35.0, "%s smashes through %s's guard", [rec_name(att), rec_name(d)])
 		Sfx.play("break", 0.1)
 		shake = maxf(shake, 14.0)
 	# evasion: a clean miss
@@ -3055,6 +3086,8 @@ func apply_hit(att: Fighter, d: Fighter, a: Dictionary, at: Vector2) -> void:
 		# still reeling, or only just recovered (a slightly late press still counts)
 		if att.combo_timer > 0.0 and (d.state == "hit" or clock - d.recovered_at < 0.35):
 			att.combo += 1
+			if att.combo >= 4:
+				rec_mark("combo", 25.0 + 6.0 * att.combo, "%s lands a %s hit combo on %s", [rec_name(att), str(att.combo), rec_name(d)])
 		else:
 			att.combo = 1
 		att.combo_timer = 1.25 + att.ctrl.get("combo", 0.0)
@@ -3310,6 +3343,7 @@ func rip_off(f: Fighter, slot: String, overkill: float = 0.0) -> void:
 		big_moment("rip", f, 1.0)
 	else:
 		hitstop = maxf(hitstop, 0.1)
+	rec_mark("rip", 70.0 if (aimed or last_limb or strong) else 50.0, "%s tears off %s's %s", [rec_name(hitter), rec_name(f), PART_LABELS[slot]], 2.0)
 	popup(tr("%s LOST!") % tr(PART_LABELS[slot]) if f.team == 0 else tr("%s DESTROYED!") % tr(PART_LABELS[slot]), at,
 			Color(1.0, 0.3, 0.2) if f.team == 0 else Color(1.0, 0.85, 0.2))
 	if f.blocking and f.arms() == 0:
@@ -3350,6 +3384,12 @@ func knockout(att: Fighter, d: Fighter, why: String) -> void:
 	shake = 18.0
 	hitstop = 0.22
 	slowmo = 1.3
+	# (1.74) the K.O. is always a clip; from the brink it's a comeback
+	var ak := all_fighters().find(att)
+	if float(rec_low.get(ak, 1.0)) < 0.25:
+		rec_mark("comeback", 180.0, "%s comes back from the brink to knock out %s", [rec_name(att), rec_name(d)], 3.2)
+	else:
+		rec_mark("ko", 135.0, "%s knocks out %s", [rec_name(att), rec_name(d)], 3.2)
 	Sfx.play("ko")
 	# the knockout always plays in full, longer when a playoff or the title is on the line
 	var big := mode == "story" and (str(GameData.event.get("phase", "")) == "finals" or str(GameData.event.get("stage", "")) == "title")
@@ -3361,6 +3401,8 @@ func knockout(att: Fighter, d: Fighter, why: String) -> void:
 ## only, and at most one every MOMENT_GAP seconds; a second one inside the gap is a quick beat
 ## (a heavier hit-freeze and shake) instead. KOs always play.
 func big_moment(kind: String, on: Fighter, dur: float, name: String = "") -> void:
+	if kind == "finisher" and on != null and on.last_hitter != null:
+		rec_mark("finisher", 85.0, "%s lands %s on %s", [rec_name(on.last_hitter), name, rec_name(on)], dur + 0.8)
 	if kind != "ko" and clock - last_moment_at < MOMENT_GAP:
 		hitstop = maxf(hitstop, 0.12)
 		shake = maxf(shake, 14.0)
@@ -3481,7 +3523,10 @@ func draw_ui(c: CanvasItem) -> void:
 	if demo_move != "" or player == null:
 		return
 	ci = c
-	_draw_ui()
+	if not replay.is_empty():
+		draw_replay_hud()
+	else:
+		_draw_ui()
 	ci = self
 
 
@@ -5311,7 +5356,7 @@ const GUS_LOOK := {"skin": "#6b4530", "hair": "#33507a", "hat": "cap", "beard": 
 
 
 func gus_here() -> bool:
-	return mode != "quick" and mode != "watch" and mode != "demo" and mode != "test"   # (in a test drive he pilots the Junker)
+	return mode != "replay" and mode != "quick" and mode != "watch" and mode != "demo" and mode != "test"   # (in a test drive he pilots the Junker)
 
 
 ## Gus stands just behind your pilot in the corner, looking over their shoulder (so he never
@@ -6045,7 +6090,10 @@ func show_post_card() -> void:
 				"an": player.pilot_name if player.pilot_name != "" else str(player.spec.get("name", "")),
 				"bn": cpu.pilot_name if cpu.pilot_name != "" else str(cpu.spec.get("name", "")), "ko": ko_text}
 		GameData.Social.st()["draft"]["pic"] = pic
+		GameData.Social.st()["draft"]["photo"] = pic
 		GameData.Social.st()["last_pic"] = pic
+		# (1.74) the best moments of the fight can go up instead of the photo
+		GameData.Social.st()["draft"]["clips"] = GameData.fresh_clip_ids()
 	var holder := ScrollContainer.new()
 	holder.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	holder.position = Vector2(screen.x * 0.61, screen.y * 0.22)
@@ -6055,6 +6103,7 @@ func show_post_card() -> void:
 	card.custom_minimum_size = Vector2(holder.size.x - 6.0, 0)
 	card.posted.connect(_on_results_post)
 	card.skipped.connect(_on_results_skip)
+	card.watch_clip.connect(open_clip)
 	holder.add_child(card)
 	hud_layer.add_child(holder)
 	card.build()
@@ -6233,3 +6282,512 @@ func settle_live_bets() -> void:
 	if live_bar:
 		live_bar.visible = false
 	GameData.save_game()
+
+
+# ---------------------------------------------------------------- clips (1.74)
+# Your fights and the fights you watch are kept as the moves the robots made (clips.gd), 15 frames
+# a second. Moments worth showing are marked with a score as they happen; at the bell the best
+# three become clips you can post. A clip plays back in this same scene ("replay"): the robots are
+# put in the recorded states and drawn as usual, the sparks, smoke and flying parts pop up again
+# and the sounds play again.
+
+const Clips = preload("res://clips.gd")
+var rec_on := false
+var rec_t := 0.0
+var rec_next := 0.0
+var rec_frames: Array = []     # [world, [fighters], events, sounds, projectiles], full states
+var rec_strs: Array = [""]
+var rec_sidx := {"": 0}
+var rec_ev: Array = []
+var rec_snd: Array = []
+var rec_marks: Array = []      # [{at (frame), kind, score, tpl, args, post}]
+var rec_low := {}              # robot index -> its lowest core share so far (comebacks)
+var rec_bots: Array = []
+var rec_sp_last := {}          # robot index -> clock of the last special marked
+var rp_frames: Array = []
+var rp_t := 0.0
+var rp_frame := -1
+var rp_hold := 0.0
+var rp_speed := 1.0            # the clip player's x2
+var rp_mute := false           # ...and its mute
+
+
+func rec_start() -> void:
+	if mode in ["quick", "test", "demo", "replay"] or not replay.is_empty():
+		return
+	rec_on = true
+	rec_bots = []
+	for f in all_fighters():
+		var spec: Dictionary = f.spec.duplicate(true)
+		spec["parts"] = f.parts.duplicate(true)
+		spec["hp_scale"] = 1.0
+		spec.erase("ai_src")
+		spec.erase("standout")
+		# stored as JSON, so build it back from JSON now: the clip plays exactly what was saved
+		rec_bots.append({"spec": JSON.parse_string(JSON.stringify(Clips.plain(spec))), "team": f.team, "scale": snappedf(f.scale, 0.001)})
+	Sfx.tap = rec_sound
+
+
+func rec_str(s: String) -> float:
+	if not rec_sidx.has(s):
+		rec_sidx[s] = rec_strs.size()
+		rec_strs.append(s)
+	return float(rec_sidx[s])
+
+
+func _rec_col(c) -> String:
+	return (c as Color).to_html() if c is Color else str(c)
+
+
+func _r1(v: float) -> float:
+	return snappedf(v, 0.1)
+
+
+## Anything new in the effects since the last look (marked so it's only taken once).
+func rec_scan() -> void:
+	for s in sparks:
+		if not s.has("_r"):
+			s["_r"] = 1
+			rec_ev.append(["s", _r1(s["pos"].x), _r1(s["pos"].y), _rec_col(s["color"]), _r1(float(s["size"]))])
+	for r in rings:
+		if not r.has("_r"):
+			r["_r"] = 1
+			rec_ev.append(["r", _r1(r["pos"].x), _r1(r["pos"].y), _rec_col(r["color"]), _r1(float(r["r"]))])
+	for p in popups:
+		if not p.has("_r"):
+			p["_r"] = 1
+			rec_ev.append(["p", str(p["text"]), _r1(p["pos"].x), _r1(p["pos"].y), _rec_col(p["color"])])
+	for s in smoke:
+		if not s.has("_r"):
+			s["_r"] = 1
+			rec_ev.append(["k", _r1(s["pos"].x), _r1(s["pos"].y), 1 if s.get("dark", false) else 0, _r1(float(s.get("k", 1.0)))])
+	for d in debris:
+		if not d.has("_r"):
+			d["_r"] = 1
+			var sz: Vector2 = d["size"]
+			rec_ev.append(["d", _r1(d["pos"].x), _r1(d["pos"].y), _r1(d["vel"].x), _r1(d["vel"].y), snappedf(float(d["rot"]), 0.01), _r1(float(d["rv"])),
+					_r1(sz.x), _r1(sz.y), _rec_col(d.get("color", "#888888")), str((d["def"] as Dictionary).get("id", "")) if d.has("def") else "",
+					1 if d.get("lie", false) else 0, _r1(float(d.get("life", -1.0)))])
+
+
+func rec_sound(sound: String, jit: float, vol: float, pitch: float) -> void:
+	if not rec_on or (phase != "fight" and phase != "ko"):
+		return
+	if sound.begins_with("talk") or sound.begins_with("voice") or sound == "click":
+		return   # the pilots aren't in the clip
+	var e: Array = [sound, snappedf(jit, 0.01), snappedf(vol, 0.1), snappedf(pitch, 0.01)]
+	while e.size() > 1 and float(e[-1]) == [0.0, 0.0, 0.0, 1.0][e.size() - 1]:
+		e.pop_back()   # defaults are left off
+	rec_snd.append(e)
+
+
+func rec_tick(delta: float) -> void:
+	if not rec_on or (phase != "fight" and phase != "ko"):
+		return
+	rec_scan()
+	var fs_all := all_fighters()
+	if phase == "fight":
+		for k in fs_all.size():
+			rec_low[k] = minf(float(rec_low.get(k, 1.0)), fs_all[k].ratio("torso"))
+	rec_t += delta
+	if rec_t < rec_next:
+		return
+	# one frame per 1/15 s of real time; a slow device writes the same frame more than once, so the
+	# clip keeps real time (the marks are frame numbers)
+	var n := 0
+	while rec_t >= rec_next and n < 6:
+		rec_next += 1.0 / Clips.FPS
+		n += 1
+	if rec_next < rec_t:
+		rec_next = rec_t + 1.0 / Clips.FPS
+	for k in n:
+		rec_frame(fs_all)
+
+
+func rec_frame(fs_all: Array) -> void:
+	var w := PackedFloat32Array([clock, moment_t, rec_str(moment_kind), rec_str(moment_name),
+			float(fs_all.find(moment_on)) if moment_on != null else -1.0, shake, time_left])
+	var fr: Array = []
+	for f in fs_all:
+		fr.append(rec_state(f))
+	var pj: Array = []
+	for p in projectiles:
+		pj.append([str(p["kind"]), fs_all.find(p["owner"]), roundf(p["pos"].x), roundf(p["pos"].y), roundf(p["vel"].x),
+				1 if p.get("returning", false) else 0, snappedf(float(p.get("spin", 0.0)), 0.1), str(p.get("slot", ""))])
+	rec_frames.append([w, fr, rec_ev, rec_snd, pj])
+	rec_ev = []
+	rec_snd = []
+
+
+func rec_state(f: Fighter) -> PackedFloat32Array:
+	var a := PackedFloat32Array()
+	a.resize(Clips.N)
+	a[0] = f.pos.x
+	a[1] = f.pos.y
+	a[2] = f.vel.x
+	a[3] = f.vel.y
+	a[4] = f.facing
+	a[5] = rec_str(f.state)
+	a[6] = f.timer
+	a[7] = rec_str(f.attack_limb)
+	a[8] = 1.0 if f.on_ground else 0.0
+	a[9] = f.walk_phase
+	a[10] = rec_str(f.special_id)
+	a[11] = 1.0 if f.blocking else 0.0
+	a[12] = f.squash
+	a[13] = f.roll_a
+	var bits := 0
+	for k in ARM_SLOTS.size():
+		if f.fist_out.has(ARM_SLOTS[k]):
+			bits |= 1 << k
+	a[14] = bits
+	a[15] = f.daze_t
+	a[16] = f.charge_t
+	a[17] = f.burn_t
+	a[18] = f.aim_ang
+	a[19] = f.stun_t
+	a[20] = f.shield_t
+	a[21] = 1.0 if f.crouching else 0.0
+	a[22] = 1.0 if f.flash > 0.0 else 0.0
+	a[23] = f.over_t
+	a[24] = f.jet_t
+	a[25] = f.boost_t
+	a[26] = 1.0 if f.stance_swap else 0.0
+	a[27] = f.power
+	for k in BODY_PARTS.size():
+		var p: Dictionary = f.parts[BODY_PARTS[k]]
+		a[Clips.HP0 + k] = float(p["hp"]) if not p.is_empty() else -1.0
+	return a
+
+
+## Something worth a clip just happened. Marks closer together than Clips.GAP are one moment
+## (the better one counts, and a moment with more going on scores a little higher).
+func rec_mark(kind: String, score: float, tpl: String, args: Array, post: float = Clips.POST) -> void:
+	if not rec_on or (phase != "fight" and phase != "ko"):
+		return
+	var at := rec_frames.size()
+	for m in rec_marks:
+		if absi(int(m["at"]) - at) < int(Clips.GAP * Clips.FPS):
+			if score > float(m["score"]):
+				var extra := float(m["score"]) * 0.15
+				m.merge({"at": at, "kind": kind, "score": score + extra, "tpl": tpl, "args": args, "post": maxf(post, float(m["post"]))}, true)
+			else:
+				m["score"] = float(m["score"]) + score * 0.15
+			return
+	rec_marks.append({"at": at, "kind": kind, "score": score, "tpl": tpl, "args": args, "post": post})
+
+
+func rec_name(f: Fighter) -> String:
+	return f.label if f != null else "?"
+
+
+## The bell: the best marks become clips (GameData.add_fresh_clips keeps them for the post).
+func rec_cut() -> Array:
+	if not rec_on:
+		return []
+	rec_on = false
+	Sfx.tap = Callable()
+	var marks := rec_marks.duplicate()
+	var out: Array = []
+	var n := rec_frames.size()
+	var seen := {}
+	while out.size() < Clips.KEEP and not marks.is_empty():
+		# the best mark left, but the same thing twice counts for less (three of one special is dull)
+		var bi := 0
+		var bs := -1.0
+		for k in marks.size():
+			var sc := float(marks[k]["score"]) * pow(0.45, int(seen.get(str(marks[k]["kind"]) + str(marks[k]["args"]), 0)))
+			if sc > bs:
+				bs = sc
+				bi = k
+		var m: Dictionary = marks[bi]
+		marks.remove_at(bi)
+		seen[str(m["kind"]) + str(m["args"])] = int(seen.get(str(m["kind"]) + str(m["args"]), 0)) + 1
+		var at: int = clampi(int(m["at"]), 0, n - 1)
+		var from := maxi(0, at - int(Clips.PRE * Clips.FPS))
+		var to := mini(n, at + int(float(m["post"]) * Clips.FPS))
+		if to - from < int(Clips.FPS * 1.5):
+			continue
+		var clip := {"v": 1, "kind": m["kind"], "score": snappedf(float(m["score"]), 0.1), "tpl": m["tpl"], "args": m["args"],
+				"arena": arena_id, "crowd": crowd_id, "scr": [screen.x, screen.y], "floor": floor_y, "bots": rec_bots,
+				"ko": ko_text, "str": rec_strs.duplicate(), "fr": Clips.encode(rec_frames, from, to, rec_bots.size()), "at": at - from,
+				"wk": GameData.World.abs_week(), "d": GameData.day, "mine": mode != "watch"}
+		out.append(clip)
+	rec_frames = []
+	return out
+
+
+# ---- playing a clip back
+
+func setup_replay() -> void:
+	mode = "replay"
+	screen = get_viewport_rect().size
+	floor_y = float(replay.get("floor", screen.y * 0.68))
+	wall_l = screen.x * 0.07
+	wall_r = screen.x * 0.93
+	arena_id = str(replay.get("arena", "scrap_ring"))
+	crowd_id = str(replay.get("crowd", "scrappers"))
+	crowd = Arena.make_crowd(crowd_id, screen)
+	barrier_kind = barrier_for(arena_id)
+	barrier_gone = true
+	rec_strs = replay.get("str", [""])
+	rp_frames = Clips.decode(replay)
+	team_p = []
+	team_c = []
+	for b in replay.get("bots", []):
+		var f := make_fighter(b["spec"])
+		f.team = int(b.get("team", 0))
+		f.scale = float(b.get("scale", f.scale))
+		f.spec["scale"] = f.scale
+		f.look_dirty = true
+		(team_p if f.team == 0 else team_c).append(f)
+	if team_p.is_empty() or team_c.is_empty():
+		return
+	player = team_p[0]
+	cpu = team_c[0]
+	for f in team_p:
+		f.foe = cpu
+	for f in team_c:
+		f.foe = player
+	ko_text = str(replay.get("ko", ""))
+	phase = "fight"
+	intro_step = "count"
+	fight_called = true
+	cam_c = screen * 0.5
+	hud_layer = CanvasLayer.new()
+	hud_layer.layer = 3
+	add_child(hud_layer)
+	hud_canvas = HudCanvas.new()
+	hud_canvas.fight = self
+	hud_layer.add_child(hud_canvas)
+	arena_layer = ArenaLayer.new()
+	arena_layer.fight = self
+	arena_layer.show_behind_parent = true
+	add_child(arena_layer)
+	rp_restart()
+
+
+func rp_restart() -> void:
+	rp_t = 0.0
+	rp_frame = -1
+	rp_hold = 0.0
+	sparks.clear()
+	rings.clear()
+	popups.clear()
+	smoke.clear()
+	debris.clear()
+	projectiles.clear()
+
+
+func replay_process(delta: float) -> void:
+	if player == null or rp_frames.is_empty():
+		return
+	var d := delta * rp_speed
+	var last := rp_frames.size() - 1
+	if rp_hold > 0.0:
+		rp_hold -= delta
+		if rp_hold <= 0.0:
+			rp_restart()
+	else:
+		rp_t += d
+	var fp := rp_t * Clips.FPS
+	var i := mini(int(fp), last)
+	var a := clampf(fp - i, 0.0, 1.0) if i < last else 0.0
+	if i >= last and rp_hold <= 0.0:
+		rp_hold = 1.4   # hold the last frame a moment, then go round again
+	while rp_frame < i:
+		rp_frame += 1
+		rp_events(rp_frames[rp_frame])
+	rp_apply(i, a)
+	update_effects(d)
+	update_camera(d)
+	arena_redraw_t -= delta
+	if arena_redraw_t <= 0.0 and arena_layer:
+		arena_redraw_t = 1.0 / ARENA_FPS
+		arena_layer.queue_redraw()
+	redraw_all()
+
+
+func _rp_s(v: float) -> String:
+	var k := int(v)
+	return str(rec_strs[k]) if k >= 0 and k < rec_strs.size() else ""
+
+
+func rp_apply(i: int, a: float) -> void:
+	var f0: Array = rp_frames[i]
+	var f1: Array = rp_frames[mini(i + 1, rp_frames.size() - 1)]
+	var w0: PackedFloat32Array = f0[0]
+	var w1: PackedFloat32Array = f1[0]
+	var fs_all := all_fighters()
+	clock = lerpf(w0[0], w1[0], a)
+	moment_t = lerpf(w0[1], w1[1], a)
+	moment_kind = _rp_s(w0[2])
+	moment_name = _rp_s(w0[3])
+	var on := int(w0[4])
+	moment_on = fs_all[on] if on >= 0 and on < fs_all.size() and moment_t > 0.0 else null
+	shake = w0[5] if GameData.settings.get("shake", true) else 0.0
+	time_left = w0[6]
+	for b in mini(fs_all.size(), (f0[1] as Array).size()):
+		var f: Fighter = fs_all[b]
+		var s0: PackedFloat32Array = f0[1][b]
+		var s1: PackedFloat32Array = f1[1][b]
+		var same := s0[5] == s1[5]
+		var v := func(k: int) -> float:
+			return lerpf(s0[k], s1[k], a) if same else s0[k]
+		f.pos = Vector2(v.call(0), v.call(1))
+		# the speed from where it was and where it's going (only its direction and size matter to the drawing)
+		var pv: PackedFloat32Array = s0
+		var nx: PackedFloat32Array = s1
+		if i + 1 >= rp_frames.size() and i > 0:
+			pv = rp_frames[i - 1][1][b]
+			nx = s0
+		f.vel = Vector2(nx[0] - pv[0], nx[1] - pv[1]) * Clips.FPS
+		f.facing = -1 if s0[4] < 0.0 else 1
+		f.state = _rp_s(s0[5])
+		if f.state == "":
+			f.state = "idle"
+		f.timer = v.call(6)
+		f.attack_limb = _rp_s(s0[7])
+		f.on_ground = s0[8] > 0.5
+		f.walk_phase = v.call(9)
+		f.special_id = _rp_s(s0[10])
+		if f.state == "special" and not Specials.MOVES.has(f.special_id):
+			f.state = "idle"
+		f.blocking = s0[11] > 0.5
+		f.squash = maxf(0.0, v.call(12))
+		f.roll_a = v.call(13)
+		f.fist_out = {}
+		var bits := int(s0[14])
+		for k in ARM_SLOTS.size():
+			if bits & (1 << k):
+				f.fist_out[ARM_SLOTS[k]] = true
+		f.daze_t = maxf(0.0, v.call(15))
+		f.charge_t = maxf(0.0, v.call(16))
+		f.burn_t = maxf(0.0, v.call(17))
+		f.aim_ang = v.call(18)
+		f.stun_t = maxf(0.0, v.call(19))
+		f.shield_t = maxf(0.0, v.call(20))
+		f.crouching = s0[21] > 0.5
+		f.flash = 0.05 if s0[22] > 0.5 else 0.0
+		f.over_t = maxf(0.0, v.call(23))
+		f.jet_t = maxf(0.0, v.call(24))
+		f.boost_t = maxf(0.0, v.call(25))
+		f.stance_swap = s0[26] > 0.5
+		f.power = maxf(0.0, v.call(27))
+		for k in BODY_PARTS.size():
+			var hp: float = s0[Clips.HP0 + k]
+			var p: Dictionary = f.parts[BODY_PARTS[k]]
+			if hp < -0.5 or p.is_empty():
+				continue
+			hp = maxf(0.0, hp)
+			if absf(float(p["hp"]) - hp) > 0.01:
+				p["hp"] = hp
+				f.look_dirty = true
+
+
+## A new frame: what popped up then, and its sounds.
+func rp_events(fr: Array) -> void:
+	var fs_all := all_fighters()
+	for e in fr[2]:
+		var ev: Array = e
+		match str(ev[0]):
+			"s":
+				sparks.append({"pos": Vector2(ev[1], ev[2]), "t": 0.0, "color": Color(str(ev[3])), "size": float(ev[4])})
+			"r":
+				rings.append({"pos": Vector2(ev[1], ev[2]), "t": 0.0, "color": Color(str(ev[3])), "r": float(ev[4])})
+			"p":
+				popups.append({"text": str(ev[1]), "pos": Vector2(ev[2], ev[3]), "t": 0.0, "color": Color(str(ev[4]))})
+			"k":
+				smoke.append({"pos": Vector2(ev[1], ev[2]), "t": 0.0, "dark": int(ev[3]) == 1, "k": float(ev[4])})
+			"d":
+				var dd := {"pos": Vector2(ev[1], ev[2]), "vel": Vector2(ev[3], ev[4]), "rot": float(ev[5]), "rv": float(ev[6]),
+						"size": Vector2(ev[7], ev[8]), "color": Color(str(ev[9]))}
+				if str(ev[10]) != "":
+					dd["def"] = GameData.part_def(str(ev[10]))
+				if int(ev[11]) == 1:
+					dd["lie"] = true
+				if float(ev[12]) >= 0.0:
+					dd["life"] = float(ev[12])
+					dd["shard"] = true
+				debris.append(dd)
+	if not rp_mute:
+		for s in fr[3]:
+			var sa: Array = s
+			Sfx.play_raw(str(sa[0]), float(sa[1]) if sa.size() > 1 else 0.0, float(sa[2]) if sa.size() > 2 else 0.0, float(sa[3]) if sa.size() > 3 else 1.0)
+	if fr[4] == null:
+		for p in projectiles:
+			p["pos"] += p["vel"] / Clips.FPS   # nothing new: they fly on
+		return
+	projectiles = []
+	for p in fr[4]:
+		var o: int = int(p[1])
+		if o < 0 or o >= fs_all.size():
+			continue
+		projectiles.append({"kind": str(p[0]), "owner": fs_all[o], "pos": Vector2(p[2], p[3]), "vel": Vector2(p[4], 0.0),
+				"returning": int(p[5]) == 1, "spin": float(p[6]), "slot": str(p[7])})
+
+
+## Over a clip: a slim score line on top, REPLAY, and what happened along the bottom.
+func draw_replay_hud() -> void:
+	if moment_t > 0.0:
+		draw_moment_caption()
+		return
+	var w := screen.x * 0.36
+	var y := screen.y * 0.04
+	for k in 5:
+		ci.draw_rect(Rect2(0, k * screen.y * 0.03, screen.x, screen.y * 0.03 + 1), Color(0, 0, 0, 0.32 * (1.0 - k / 5.0)))
+	draw_team_bars(team_p, 30.0, y, w, 34.0, false)
+	draw_team_bars(team_c, screen.x - 30.0 - w, y, w, 34.0, true)
+	ci.draw_string(font, Vector2(30.0, y + 34.0 + fs(30)), player.label, HORIZONTAL_ALIGNMENT_LEFT, w, fs(30), Color.WHITE)
+	ci.draw_string(font, Vector2(screen.x - 30.0 - w, y + 34.0 + fs(30)), cpu.label, HORIZONTAL_ALIGNMENT_RIGHT, w, fs(30), Color.WHITE)
+	# REPLAY, with a blinking red dot, between the bars
+	var rx := screen.x * 0.5
+	if fmod(Time.get_ticks_msec() / 1000.0, 1.0) < 0.6:
+		ci.draw_circle(Vector2(rx - fs(34) * 2.0, y + 18.0), 9.0, Color(1.0, 0.2, 0.15))
+	ci.draw_string(font, Vector2(rx - fs(34) * 1.6, y + 18.0 + fs(30) * 0.36), tr("REPLAY"), HORIZONTAL_ALIGNMENT_LEFT, -1, fs(30), Color(1, 1, 1, 0.9))
+	var line := Clips.title(replay)
+	var bh := float(fs(30)) + 22.0
+	ci.draw_rect(Rect2(0, screen.y - bh, screen.x, bh), Color(0, 0, 0, 0.6))
+	ci.draw_rect(Rect2(0, screen.y - bh, 10.0, bh), GUI.YELLOW)
+	ci.draw_string(font, Vector2(26.0, screen.y - 14.0), line, HORIZONTAL_ALIGNMENT_LEFT, screen.x - 52.0, fs(30), GUI.YELLOW)
+
+
+# ---- watching a clip from the results screen
+
+var clip_view: CanvasLayer = null
+
+
+func open_clip(id: String) -> void:
+	var c: Dictionary = GameData.clip(id)
+	if c.is_empty():
+		return
+	close_clip()
+	var lay := CanvasLayer.new()
+	lay.layer = 8
+	add_child(lay)
+	var bg := ColorRect.new()
+	bg.color = Color(0, 0, 0, 0.85)
+	bg.set_anchors_preset(Control.PRESET_FULL_RECT)
+	bg.mouse_filter = Control.MOUSE_FILTER_STOP
+	lay.add_child(bg)
+	var col := VBoxContainer.new()
+	col.set_anchors_preset(Control.PRESET_FULL_RECT)
+	col.offset_left = 24
+	col.offset_right = -24
+	col.offset_top = 16
+	col.offset_bottom = -16
+	col.add_theme_constant_override("separation", 8)
+	bg.add_child(col)
+	var cp = load("res://clip_player.gd").new()
+	cp.clip = c
+	cp.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	col.add_child(cp)
+	col.add_child(cp.controls(close_clip))
+	clip_view = lay
+	Sfx.play("click")
+
+
+func close_clip() -> void:
+	if clip_view != null and is_instance_valid(clip_view):
+		clip_view.queue_free()
+	clip_view = null

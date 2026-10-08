@@ -803,6 +803,7 @@ class EventIcon extends Control:
 class DraftCard extends PanelContainer:
 	signal posted(tone: String)
 	signal skipped
+	signal watch_clip(id: String)
 	var avatar: Control = null
 	var row_h := 58.0
 	var wrap := false   # narrow places (the results screen): the lines wrap and the rows grow
@@ -831,6 +832,27 @@ class DraftCard extends PanelContainer:
 			var pp = load("res://garage_ui.gd").PostPic.new(S.st()["draft"]["pic"])
 			pp.custom_minimum_size = Vector2(0, 150)
 			col.add_child(pp)
+			# (1.74) the photo, or one of the fight's best moments
+			var dr: Dictionary = S.st()["draft"]
+			var ids: Array = (dr.get("clips", []) as Array).filter(func(i): return not GameData.clip(str(i)).is_empty())
+			if not ids.is_empty():
+				var cur: Dictionary = dr["pic"]
+				var pick := HFlowContainer.new()
+				pick.add_theme_constant_override("h_separation", 6)
+				pick.add_theme_constant_override("v_separation", 6)
+				col.add_child(pick)
+				var opts: Array = [["photo", tr("PHOTO")]]
+				for i in ids:
+					opts.append([str(i), tr("CLIP") + ": " + GameData.Clips.kind_name(GameData.clip(str(i)))])
+				for o in opts:
+					var on: bool = (o[0] == "photo" and str(cur.get("kind", "")) != "clip") or str(cur.get("id", "")) == o[0]
+					var b: Button = UI.button(str(o[1]), _pick_media.bind(str(o[0])), 11, Vector2(0, 34))
+					if on:
+						b.add_theme_color_override("font_color", YELLOW)
+						b.add_theme_stylebox_override("normal", G.box(YELLOW.darkened(0.7), 8, 6))
+					pick.add_child(b)
+				if str(cur.get("kind", "")) == "clip":
+					pick.add_child(UI.button("▶ " + tr("Watch"), func(): watch_clip.emit(str(cur.get("id", ""))), 11, Vector2(0, 34)))
 		var t: Label = G.text(tr("POST ABOUT THE FIGHT YOU WATCHED? Pick one.") if watched else tr("POST ABOUT TONIGHT? Pick one."), 15, YELLOW, "headb")
 		t.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		t.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -911,6 +933,17 @@ class DraftCard extends PanelContainer:
 		sp.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		bar.add_child(sp)
 		bar.add_child(UI.button(tr("Say nothing"), func(): skipped.emit(), 12, Vector2(130, 32)))
+
+	func _pick_media(which: String) -> void:
+		var dr: Dictionary = GameData.Social.st()["draft"]
+		if dr.is_empty():
+			return
+		if which == "photo":
+			dr["pic"] = dr.get("photo", {})
+		else:
+			dr["pic"] = {"kind": "clip", "id": which}
+		Sfx.play("click")
+		build()
 
 
 ## (1.70) A picture on a BotMedia post, drawn live from a small recipe (never stored as an image):
@@ -993,12 +1026,88 @@ class PostPic extends Control:
 			"trophy":
 				_room(W, H, Color(0.2, 0.08, 0.1), Color(1.0, 0.9, 0.65))
 				GA.draw_trophy(self, Vector2(W * 0.5, H * 0.82), str(pic.get("t", "scrap")), int(pic.get("medal", 1)), H / 42.0)
+			"clip":
+				_clip_poster(W, H)
 			"part":
 				_room(W, H, Color(0.22, 0.17, 0.14), Color(1.0, 0.75, 0.45))
 				var PI_ = load("res://part_icon.gd")
 				var d: Dictionary = GameData.part_def(str(pic.get("id", "")))
 				if not d.is_empty():
 					PI_.draw_part_at(self, Vector2(W * 0.5, H * 0.55), H * 0.7, d, float(pic.get("hp", 1.0)), 0.0)
+
+	## (1.74) A clip's poster: the venue, both robots as they stood at the moment, a big play button,
+	## the length, and what happens. Tapping it plays the clip (the post row opens the player).
+	var _poster: Array = []
+
+	func _clip_poster(W: float, H: float) -> void:
+		var C = load("res://clips.gd")
+		var RA = load("res://robot_art.gd")
+		var AR = load("res://arena.gd")
+		var c: Dictionary = GameData.clip(str(pic.get("id", "")))
+		if c.is_empty():
+			draw_rect(Rect2(0, 0, W, H), Color(0.06, 0.06, 0.08))
+			draw_string(load("res://garage_ui.gd").headb(), Vector2(0, H * 0.5), tr("Clip unavailable"), HORIZONTAL_ALIGNMENT_CENTER, W, UI.px(14), MUTED)
+			return
+		var vid := str(c.get("arena", "scrap_ring"))
+		if not AR.ARENAS.has(vid):
+			vid = "scrap_ring"
+		var cid := str(c.get("crowd", VENUE_CROWD.get(vid, "locals")))
+		if crowd.is_empty():
+			crowd = AR.make_crowd(cid, size)
+		var floor_y := H * 0.84
+		AR.draw_ring_scene(self, vid, cid, crowd, size, floor_y, 1.0, 0.7, W * 0.03, W * 0.97)
+		if _poster.is_empty():
+			var frames: Array = C.decode(c)
+			if not frames.is_empty():
+				_poster = frames[clampi(int(c.get("at", 0)), 0, frames.size() - 1)]
+		var strs: Array = c.get("str", [""])
+		var bots: Array = c.get("bots", [])
+		if not _poster.is_empty():
+			var states: Array = _poster[1]
+			var xs: Array = []
+			for k in mini(bots.size(), states.size()):
+				xs.append(float((states[k] as PackedFloat32Array)[0]))
+			var mid: float = (float(xs.min()) + float(xs.max())) * 0.5 if not xs.is_empty() else 576.0
+			# one zoom for both: the taller robot fills most of the picture's height
+			var k_s := 10.0
+			for k in mini(bots.size(), states.size()):
+				var sp0: Dictionary = (bots[k]["spec"] as Dictionary).duplicate()
+				sp0["scale"] = float(bots[k].get("scale", 1.0))
+				var lk: Dictionary = GameData.look_from_spec(sp0)
+				k_s = minf(k_s, _scale(lk, H * 0.8))
+			for k in mini(bots.size(), states.size()):
+				var st: PackedFloat32Array = states[k]
+				var spec: Dictionary = (bots[k]["spec"] as Dictionary).duplicate(true)
+				var parts: Dictionary = spec.get("parts", {})
+				var slots := ["head", "head2", "torso", "arm_front", "arm_back", "arm_front2", "arm_back2", "leg_front", "leg_back"]
+				for j in slots.size():
+					if parts.has(slots[j]) and not (parts[slots[j]] as Dictionary).is_empty() and st[C.HP0 + j] > -0.5:
+						parts[slots[j]]["hp"] = maxf(0.0, st[C.HP0 + j])
+				spec["scale"] = float(bots[k].get("scale", 1.0))
+				var look: Dictionary = GameData.look_from_spec(spec)
+				var stn := str(strs[int(st[5])]) if int(st[5]) < strs.size() else "idle"
+				if stn == "special" or stn == "":
+					stn = "punch"
+				var x := W * 0.5 + (st[0] - mid) * k_s
+				var y := floor_y + (st[1] - float(c.get("floor", 440.0))) * k_s
+				var opts := {"scale": k_s, "facing": -1 if st[4] < 0.0 else 1, "state": stn, "extended": true,
+						"attack_limb": str(strs[int(st[7])]) if int(st[7]) < strs.size() else "", "time": 0.5 + k, "light": vid}
+				if stn == "ko":
+					opts["rot"] = -opts["facing"] * PI / 2.0
+					opts["eye_off"] = true
+				RA.draw(self, Vector2(x, y), look, opts)
+		# the play button and the length
+		draw_rect(Rect2(0, 0, W, H), Color(0, 0, 0, 0.18))
+		var cc := Vector2(W * 0.5, H * 0.45)
+		var r := minf(W, H) * 0.14
+		draw_circle(cc, r, Color(0, 0, 0, 0.55))
+		draw_arc(cc, r, 0, TAU, 40, Color(1, 1, 1, 0.85), 3.0)
+		draw_colored_polygon(PackedVector2Array([cc + Vector2(-r * 0.32, -r * 0.45), cc + Vector2(r * 0.5, 0), cc + Vector2(-r * 0.32, r * 0.45)]), Color(1, 1, 1, 0.95))
+		var secs := int(round(C.length(c)))
+		var G = load("res://garage_ui.gd")
+		draw_string(G.headb(), Vector2(W - 70, 22), "0:%02d" % secs, HORIZONTAL_ALIGNMENT_RIGHT, 60, UI.px(13), Color(1, 1, 1, 0.9))
+		draw_string(G.headb(), Vector2(10, 22), C.kind_name(c), HORIZONTAL_ALIGNMENT_LEFT, W * 0.6, UI.px(13), YELLOW)
+		_caption(W, H, C.title(c), "")
 
 	## A plain backdrop with a cone of light from above and a floor.
 	func _room(W: float, H: float, wall: Color, lamp: Color) -> void:

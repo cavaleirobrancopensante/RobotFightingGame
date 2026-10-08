@@ -75,7 +75,17 @@ func voice(who: String) -> void:
 	play(v[0], 0.06, VOICE_DB, float(v[1]))
 
 
+var tap := Callable()   # (1.74) a fight being recorded hears every sound (fight.rec_sound)
+
+
 func play(sound: String, pitch_jitter: float = 0.0, volume_db: float = 0.0, pitch: float = 1.0) -> void:
+	if tap.is_valid():
+		tap.call(sound, pitch_jitter, volume_db, pitch)
+	play_raw(sound, pitch_jitter, volume_db, pitch)
+
+
+## Plays without being recorded (a clip playing its own sounds back).
+func play_raw(sound: String, pitch_jitter: float = 0.0, volume_db: float = 0.0, pitch: float = 1.0) -> void:
 	if not GameData.settings.get("sound", true):
 		return
 	if quiet > 0 and not MENU_SOUNDS.has(sound):
