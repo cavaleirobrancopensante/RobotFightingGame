@@ -826,6 +826,11 @@ class DraftCard extends PanelContainer:
 		if avatar:
 			top.add_child(avatar)
 		var watched: bool = S.st()["draft"].get("watch", false)
+		if not (S.st()["draft"].get("pic", {}) as Dictionary).is_empty():
+			# (1.70) the picture that goes with it
+			var pp = load("res://garage_ui.gd").PostPic.new(S.st()["draft"]["pic"])
+			pp.custom_minimum_size = Vector2(0, 150)
+			col.add_child(pp)
 		var t: Label = G.text(tr("POST ABOUT THE FIGHT YOU WATCHED? Pick one.") if watched else tr("POST ABOUT TONIGHT? Pick one."), 15, YELLOW, "headb")
 		t.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		t.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -905,3 +910,107 @@ class DraftCard extends PanelContainer:
 		sp.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		bar.add_child(sp)
 		bar.add_child(UI.button(tr("Say nothing"), func(): skipped.emit(), 12, Vector2(130, 32)))
+
+
+## (1.70) A picture on a BotMedia post, drawn live from a small recipe (never stored as an image):
+##   still: {kind, a, b (robot looks) or wa, wb (world pilots, looked up when drawn), venue, won
+##          (the left one won), an, bn (names), ko}: the two robots after the bell, the winner
+##          standing, the loser down, in the venue's light;
+##   shot: {kind, look}: your robot front on under Gus's lamp;
+##   trophy: {kind, t (trophy kind), medal}; part: {kind, id, hp}.
+class PostPic extends Control:
+	var pic := {}
+	var crowd: Array = []
+	const VENUE_CROWD := {"scrap_ring": "scrappers", "regional_hall": "locals", "regional_final": "final_night", "champ_arena": "champ_fans", "champ_gala": "high_society"}
+
+	func _init(p: Dictionary = {}) -> void:
+		pic = p
+		clip_contents = true
+		mouse_filter = Control.MOUSE_FILTER_IGNORE
+		custom_minimum_size = Vector2(0, 220)
+		resized.connect(func(): crowd = []; queue_redraw())
+
+	func _look(key_look: String, key_wid: String) -> Dictionary:
+		if pic.has(key_look):
+			return pic[key_look]
+		var wid := int(pic.get(key_wid, -1))
+		if wid < 0:
+			return {}
+		var bot: Dictionary = GameData.World.robot(wid)
+		return GameData.look_from_spec(GameData.opponent_spec_from(bot, 1.0)) if not bot.is_empty() else {}
+
+	func _scale(look: Dictionary, tall_px: float) -> float:
+		var RA = load("res://robot_art.gd")
+		var g: Dictionary = RA.geom(look)
+		return tall_px / (-(g["head"] as Rect2).position.y + 30.0) / float(look.get("scale", 1.0))
+
+	func _draw() -> void:
+		var W := size.x
+		var H := size.y
+		if W < 20.0:
+			return
+		var RA = load("res://robot_art.gd")
+		var AR = load("res://arena.gd")
+		var GA = load("res://garage_art.gd")
+		match str(pic.get("kind", "")):
+			"still":
+				var vid := str(pic.get("venue", "scrap_ring"))
+				if not AR.ARENAS.has(vid):
+					vid = "scrap_ring"
+				var cid: String = VENUE_CROWD.get(vid, "locals")
+				if crowd.is_empty():
+					crowd = AR.make_crowd(cid, size)
+				var floor_y := H * 0.84
+				AR.draw_ring_scene(self, vid, cid, crowd, size, floor_y, 1.0, 0.7, W * 0.03, W * 0.97)
+				var la := _look("a", "wa")
+				var lb := _look("b", "wb")
+				var left_won: bool = pic.get("won", true)
+				var tall := H * 0.66
+				for k in 2:
+					var look: Dictionary = la if k == 0 else lb
+					if look.is_empty():
+						continue
+					var winner := (k == 0) == left_won
+					var x := W * (0.42 if k == 0 else 0.6)
+					var opts := {"scale": _scale(look, tall), "facing": 1 if k == 0 else -1, "time": 0.6 + k, "light": vid}
+					if winner:
+						opts["state"] = "idle"
+						RA.draw(self, Vector2(x, floor_y + 4), look, opts)
+					else:
+						opts["rot"] = 1.35 if k == 1 else -1.35
+						opts["eye_off"] = true
+						RA.draw(self, Vector2(x + (30.0 if k == 1 else -30.0), floor_y - 4), look, opts)
+				_caption(W, H, ("%s  " % tr("WIN")) + str(pic.get("an" if left_won else "bn", "")) + "  " + tr("beat") + "  " + str(pic.get("bn" if left_won else "an", "")), str(pic.get("ko", "")))
+			"shot":
+				_room(W, H, Color(0.16, 0.15, 0.17), Color(1.0, 0.8, 0.45))
+				var look: Dictionary = pic.get("look", {})
+				if not look.is_empty():
+					var g: Dictionary = RA.front_geom(look)
+					var head: Rect2 = g["head"]
+					var sc := H * 1.0 / (-head.position.y + 60.0)
+					RA.draw_front(self, Vector2(W * 0.5, H * 0.05 + (-head.position.y) * sc), look, {"scale": sc, "light": "bay", "time": 0.4})
+			"trophy":
+				_room(W, H, Color(0.2, 0.08, 0.1), Color(1.0, 0.9, 0.65))
+				GA.draw_trophy(self, Vector2(W * 0.5, H * 0.82), str(pic.get("t", "scrap")), int(pic.get("medal", 1)), H / 42.0)
+			"part":
+				_room(W, H, Color(0.22, 0.17, 0.14), Color(1.0, 0.75, 0.45))
+				var PI_ = load("res://part_icon.gd")
+				var d: Dictionary = GameData.part_def(str(pic.get("id", "")))
+				if not d.is_empty():
+					PI_.draw_part_at(self, Vector2(W * 0.5, H * 0.55), H * 0.7, d, float(pic.get("hp", 1.0)), 0.0)
+
+	## A plain backdrop with a cone of light from above and a floor.
+	func _room(W: float, H: float, wall: Color, lamp: Color) -> void:
+		draw_rect(Rect2(0, 0, W, H), wall)
+		draw_rect(Rect2(0, H * 0.84, W, H * 0.16), wall.darkened(0.45))
+		draw_colored_polygon(PackedVector2Array([Vector2(W * 0.46, 0), Vector2(W * 0.54, 0), Vector2(W * 0.72, H * 0.86), Vector2(W * 0.28, H * 0.86)]), Color(lamp, 0.1))
+		draw_set_transform(Vector2(W * 0.5, H * 0.86), 0.0, Vector2(1.0, 0.16))
+		draw_circle(Vector2.ZERO, W * 0.2, Color(lamp, 0.14))
+		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+
+	func _caption(W: float, H: float, line: String, sub: String) -> void:
+		var G = load("res://garage_ui.gd")
+		var fs: int = UI.px(13)
+		var h := fs + 12.0
+		draw_rect(Rect2(0, H - h, W, h), Color(0, 0, 0, 0.6))
+		draw_string(G.headb(), Vector2(10, H - 7), line + ("   " + sub if sub != "" else ""), HORIZONTAL_ALIGNMENT_LEFT, W - 20, fs, YELLOW)

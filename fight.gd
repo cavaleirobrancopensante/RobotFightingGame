@@ -6004,6 +6004,13 @@ func results_width() -> float:
 func show_post_card() -> void:
 	if mode in ["quick", "test", "demo"] or GameData.Social.drafts().is_empty():
 		return
+	# (1.70) the picture that goes with the post: both robots as the bell left them
+	if player != null and cpu != null:
+		var pic := {"kind": "still", "a": player.get_look().duplicate(true), "b": cpu.get_look().duplicate(true), "venue": arena_id, "won": won,
+				"an": player.pilot_name if player.pilot_name != "" else str(player.spec.get("name", "")),
+				"bn": cpu.pilot_name if cpu.pilot_name != "" else str(cpu.spec.get("name", "")), "ko": ko_text}
+		GameData.Social.st()["draft"]["pic"] = pic
+		GameData.Social.st()["last_pic"] = pic
 	var holder := ScrollContainer.new()
 	holder.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	holder.position = Vector2(screen.x * 0.61, screen.y * 0.22)

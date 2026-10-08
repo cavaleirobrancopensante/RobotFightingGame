@@ -2334,6 +2334,12 @@ func post_card(card: Dictionary, parent: Control) -> void:
 	var h := HBoxContainer.new()
 	h.add_theme_constant_override("separation", 10)
 	panel.add_child(h)
+	if str(card.get("kind", "")) in ["still", "shot", "trophy", "part"]:
+		# (1.70) a picture, drawn live from its recipe
+		panel.add_theme_stylebox_override("panel", GUI.box(GUI.BG, 8, 0))
+		h.add_child(GUI.PostPic.new(card))
+		h.get_child(0).size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		return
 	match str(card.get("kind", "")):
 		"result":
 			h.add_child(GUI.text(tr("WIN"), 13, GUI.GREEN, "headb"))

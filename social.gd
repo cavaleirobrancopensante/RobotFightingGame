@@ -338,6 +338,9 @@ static func fol_change(f: int, won: bool, destroyed: int, intact: int, lost_part
 
 
 ## Two world pilots fought: followers move, and the notable ones make a noise.
+const STAGE_VENUE := {"open": "scrap_ring", "scrap": "scrap_ring", "rust": "regional_hall", "iron": "regional_final", "steel": "champ_arena", "title": "champ_gala", "cup": "regional_hall"}
+
+
 static func world_fight(rng: RandomNumberGenerator, winner: Dictionary, loser: Dictionary, stage: String) -> void:
 	if winner.is_empty() or loser.is_empty():
 		return
@@ -350,7 +353,8 @@ static func world_fight(rng: RandomNumberGenerator, winner: Dictionary, loser: D
 	if dl - dw >= 2 and stage != "pickup":
 		var tag := tag_for(stage)
 		post("w:%d" % int(winner["wid"]), ["Nobody gave me a chance against %s. Nobody.", "Write it down: I beat %s.",
-				"Who's laughing now, %s?"][rng.randi() % 3], [loser["name"]], {"kind": "result", "a": winner["name"], "b": loser["name"]}, [tag, "UpsetOfTheWeek"])
+				"Who's laughing now, %s?"][rng.randi() % 3], [loser["name"]], {"kind": "still", "wa": int(winner["wid"]), "wb": int(loser["wid"]), "won": true, "an": winner["name"], "bn": loser["name"],
+				"venue": STAGE_VENUE.get(stage, "scrap_ring")}, [tag, "UpsetOfTheWeek"])
 		post(fan_key(rng.randi()), ["%s just beat %s. I need to sit down.", "Upset of the week: %s over %s.",
 				"My bet slip is crying. %s beat %s."][rng.randi() % 3], [winner["name"], loser["name"]], {}, ["UpsetOfTheWeek"])
 
@@ -476,7 +480,7 @@ static func publish(tone: String) -> void:
 			if tone != "trash_w":
 				rel_social(w2, REL_TRASH, k2)
 	s["followers"] = int(round(f))
-	var mine := post("me", text, draft_args(), {}, [str(d.get("tag", ""))])
+	var mine := post("me", text, draft_args(), d.get("pic", {}), [str(d.get("tag", ""))])
 	if not watched and w1 >= 0:
 		mine["opp_wid"] = w1   # your opponent can turn up in the thread
 	count_post()
@@ -830,6 +834,24 @@ const COMPOSE_REL := {"humble": 3.0, "hype": 4.0, "friendly": 4.0, "trash": -10.
 const COMPOSE_TAG := {"bay": "BayLife", "part": "NewParts", "trophy": "Podium", "sponsor": "Sponsored", "fans": "ThankYou", "table": "Standings"}
 
 
+## The picture a composed post carries (1.70).
+static func compose_pic(topic: String) -> Dictionary:
+	match topic:
+		"fight_won", "fight_lost":
+			return st().get("last_pic", {})
+		"part":
+			if not GameData.inventory.is_empty():
+				var it: Dictionary = GameData.inventory[-1]
+				return {"kind": "part", "id": str(it.get("id", "")), "hp": GameData.hp_ratio(it)}
+		"trophy":
+			if not GameData.trophies.is_empty():
+				var t: Dictionary = GameData.trophies[-1]
+				return {"kind": "trophy", "t": str(t.get("kind", "scrap")), "medal": int(t.get("medal", 1))}
+		"bay", "sponsor", "fans":
+			return {"kind": "shot", "look": GameData.player_look()}
+	return {}
+
+
 ## What you could post about right now: [topic, label, arg, wid].
 static func topics() -> Array:
 	var out: Array = []
@@ -880,7 +902,7 @@ static func compose(topic: String, tone: String, arg: String, wid: int) -> void:
 	var tag: String = COMPOSE_TAG.get(topic, "")
 	if topic in ["fight_won", "fight_lost", "next"]:
 		tag = tag_for(str(GameData.event.get("stage", ""))) if not GameData.event.is_empty() else "FightNight"
-	var p := post("me", line, [arg] if line.contains("%s") else [], {}, [tag] if tag != "" else [])
+	var p := post("me", line, [arg] if line.contains("%s") else [], compose_pic(topic), [tag] if tag != "" else [])
 	if wid >= 0:
 		p["opp_wid"] = wid
 	count_post()
