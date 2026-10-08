@@ -2,7 +2,7 @@ extends Node
 
 # helper scripts, loaded by path so the game also runs without an editor scan
 ## The game's version, shown on the main menu. Bump it with every change (1.1, 1.2, ...).
-const VERSION := "1.78"
+const VERSION := "1.79"
 const Arena = preload("res://arena.gd")
 const I18n = preload("res://i18n.gd")
 const Catalog = preload("res://catalog.gd")
@@ -615,6 +615,7 @@ func new_game() -> void:
 	pending_talk = []
 	inbox = []
 	day_log = {}
+	ledger = []
 	inbox_seen = 0
 	social = {}
 	clips = {}
@@ -826,7 +827,7 @@ func reroll_cost() -> int:
 func reroll_stock() -> String:
 	if money < reroll_cost():
 		return tr("Restocking costs $%d.") % reroll_cost()
-	money -= reroll_cost()
+	book("parts", -(reroll_cost()))
 	roll_stock()
 	return "The dealer wheeled in a fresh load of parts."
 
@@ -934,7 +935,7 @@ func buy(id: String) -> String:
 	var d := part_def(id)
 	if money < d["cost"]:
 		return "Not enough money."
-	money -= d["cost"]
+	book("parts", -(d["cost"]))
 	shop_stock.erase(id)
 	Contracts.on_buy()
 	var uid := add_part(id)
@@ -1000,7 +1001,7 @@ func repair(uid: int) -> String:
 		return "Already in perfect shape." if repair_job(uid).is_empty() else "It's already on the bench."
 	if not can_repair(c):
 		return "Not enough cash. No repairs on credit. Fight with the dents and win some money."
-	money -= c
+	book("repairs", -(c))
 	var h := queue_repair(p, c)
 	return tr("%s is on the bench: $%d, about %s of work.") % [part_def(p["id"])["name"], c, hours_text(h)]
 
@@ -1025,7 +1026,7 @@ func repair_all() -> String:
 		var p := equipped_inst(slot)
 		if not p.is_empty() and repair_cost(p) > 0:
 			h += queue_repair(p, repair_cost(p))
-	money -= c
+	book("repairs", -(c))
 	return tr("Everything's on the job board: $%d, about %s of work.") % [c, hours_text(h)]
 
 
@@ -1195,7 +1196,7 @@ func cancel_job(i: int) -> String:
 		return ""
 	var j: Dictionary = jobs[i]
 	var back := job_refund(j)
-	money += back
+	book("repairs", back)
 	jobs.remove_at(i)
 	var p := inst(int(j["uid"]))
 	return tr("Called off: %s. $%d back for the hours not worked.") % [part_def(p["id"])["name"] if not p.is_empty() else "?", back]
@@ -1363,7 +1364,7 @@ func buy_overtime() -> String:
 	var c := overtime_cost()
 	if money < c:
 		return tr("Overtime tonight costs $%d.") % c
-	money -= c
+	book("repairs", -(c))
 	overtime = true
 	return tr("The crew works through the night: $%d, 8 more hours on the board.") % c
 
@@ -1388,7 +1389,7 @@ func rush_job(idx: int) -> String:
 	var c := rush_cost(jobs[idx])
 	if money < c:
 		return tr("A rush job costs $%d.") % c
-	money -= c
+	book("repairs", -(c))
 	jobs[idx]["rush"] = true
 	return tr("Rush job: twice as fast, $%d.") % c
 
@@ -1437,7 +1438,7 @@ func sell(uid: int) -> String:
 	for j in jobs:
 		if int(j["uid"]) == uid:
 			v += job_refund(j)
-	money += v
+	book("sales", v)
 	inventory.erase(p)
 	jobs = jobs.filter(func(j): return int(j["uid"]) != uid)
 	return tr("Sold %s for $%d.") % [part_def(p["id"])["name"], v]
@@ -1593,7 +1594,7 @@ func buy_chip(id: String, ordered: bool = false) -> String:
 	var price := chip_price(id, ordered)
 	if money < price:
 		return "Not enough money."
-	money -= price
+	book("parts", -(price))
 	chip_stock.erase(id)
 	owned_chips.append(id)
 	if chips.size() < chip_slots():
@@ -1854,7 +1855,7 @@ func do_scout() -> String:
 	var cost := scout_cost()
 	if money < cost:
 		return tr("Scouting costs $%d.") % cost
-	money -= cost
+	book("scout", -(cost))
 	var o := current_opponent()
 	scout = {"key": scout_key(), "spied_back": false, "change": {}}
 	if randf() < 0.3:
@@ -2035,6 +2036,8 @@ func patrons_today() -> Array:
 	for p in night_patrons(year, yw, yd):
 		if out.size() >= n:
 			break
+		if World.look_of(int(p["wid"])).get("female", false):
+			continue   # (1.79) the ones sleeping it off on the floor are the men
 		var q: Dictionary = p.duplicate()
 		q["hungover"] = true
 		out.append(q)
@@ -2653,6 +2656,53 @@ const DAY_FULL := ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Satu
 
 ## Every line anyone says to you goes in the inbox (Messages): kind = story / talk (pilots,
 ## hate mail, pub) / gus (his remarks on what you do) / news.
+## (1.79) The money book: every dollar in or out, with what it was for. ledger = [[y, w, d, cat, amount]],
+## the last LEDGER_WEEKS weeks kept (Season > Money reads it back). Same day + same cat are merged.
+const LEDGER_WEEKS := 16
+const LEDGER_CATS := ["fights", "prizes", "salvage", "sponsors", "sales", "bets", "parts", "repairs", "bay", "bills", "scout", "other"]
+const LEDGER_NAMES := {"fights": "Purses", "prizes": "Prizes", "salvage": "Salvage bonus", "sponsors": "Sponsors",
+		"sales": "Parts sold", "bets": "Bets", "parts": "Parts bought", "repairs": "Repairs & bay work",
+		"bay": "Bay upgrades", "bills": "Rent & running costs", "scout": "Scouting", "other": "Other"}
+var ledger: Array = []
+
+
+func book(cat: String, amount: int) -> void:
+	money += amount
+	if amount == 0:
+		return
+	var d := day_index()
+	if not ledger.is_empty():
+		var l: Array = ledger[-1]
+		if int(l[0]) == year and int(l[1]) == week and int(l[2]) == d and str(l[3]) == cat and (int(l[4]) < 0) == (amount < 0):
+			l[4] = int(l[4]) + amount
+			return
+	ledger.append([year, week, d, cat, amount])
+	var oldest := (year * 53 + week) - LEDGER_WEEKS
+	while not ledger.is_empty() and int(ledger[0][0]) * 53 + int(ledger[0][1]) < oldest:
+		ledger.pop_front()
+
+
+## Money in / out by category between two weeks (inclusive), as {cat: [in, out]} plus "_net".
+func ledger_sum(y0: int, w0: int, y1: int, w1: int) -> Dictionary:
+	var out := {}
+	var net := 0
+	for l in ledger:
+		var k := int(l[0]) * 53 + int(l[1])
+		if k < y0 * 53 + w0 or k > y1 * 53 + w1:
+			continue
+		var c := str(l[3])
+		if not out.has(c):
+			out[c] = [0, 0]
+		var a := int(l[4])
+		if a >= 0:
+			out[c][0] += a
+		else:
+			out[c][1] -= a
+		net += a
+	out["_net"] = net
+	return out
+
+
 ## The day book: everything that happened, day by day (the calendar's day pop-up reads it back).
 ## "y/w/d" -> [{"ph": phase, "text": ..., "c": "good"/"bad"/"info"}]. The last DAY_LOG_DAYS days are kept.
 const DAY_LOG_DAYS := 120
@@ -2711,7 +2761,7 @@ func advance_week(n: int = 1) -> void:
 		feuds_week()
 		Contracts.week_end()
 		if week % MONTH_WEEKS == 0:
-			money -= living_cost()   # end of the month: cost of living
+			book("bills", -(living_cost()))   # end of the month: cost of living
 			bills_note += living_cost()
 			var fees := Contracts.month_end()
 			if fees > 0:
@@ -2807,7 +2857,7 @@ func buy_bay_upgrade() -> String:
 	var c := bay_price()
 	if money < c:
 		return tr("The %s costs $%d. No credit at Gus's.") % [tr(BAY_NAMES[bay_level + 1]), c]
-	money -= c
+	book("bay", -(c))
 	bay_level += 1
 	return tr("Gus installs the %s: $%d. Parts heal %d%% a day now, and the rent goes up $%d a month.") % [tr(BAY_NAMES[bay_level]), c, int(round(passive_rate() * 100.0)), bay_rent()]
 
@@ -2828,7 +2878,7 @@ func buy_gantry() -> String:
 	var c := gantry_price()
 	if money < c:
 		return tr("A gantry costs $%d. No credit at Gus's.") % c
-	money -= c
+	book("bay", -(c))
 	gantries += 1
 	return tr("Gus bolts a new gantry into the crew bay. $%d, and the rent goes up $%d a month.") % [c, gantry_rent()]
 
@@ -2840,7 +2890,7 @@ func sell_gantry() -> String:
 		return "Take the backup robot off that gantry first (Disband)."
 	gantries -= 1
 	var back := gantry_price() / 2
-	money += back
+	book("bay", back)
 	return tr("Gus unbolts a gantry and sells it on for $%d. The rent goes back down.") % back
 
 
@@ -2905,6 +2955,15 @@ func tier_pick(stage: String, mine: bool) -> Array:
 		wids.append(int(p["wid"]))
 	wids.shuffle()
 	return wids
+
+
+## (1.79) You're in this year's Open Trials and still fighting for a place (not in, not out yet).
+func trials_pending() -> bool:
+	if rank != "open" or trials_over():
+		return false
+	var tr_ev: Dictionary = leagues.get("open", {})
+	var rec: Array = Career.trials_record(tr_ev, 0)
+	return int(rec[0]) < 2 and int(rec[1]) < 2
 
 
 func trials_over() -> bool:
@@ -3217,7 +3276,7 @@ func place_bet_on(on: String, pick: int, vs: int, stake: int) -> String:
 	if money < stake:
 		return tr("You need $%d in cash to place that bet.") % stake
 	var o := Career.odds(ev, pick, vs)
-	money -= stake
+	book("bets", -(stake))
 	bets.append({"on": on, "round": Career.round_key(ev), "pick": pick, "vs": vs, "stake": stake, "odds": o})
 	var who: String = pilot_name if pick == 0 else str(Career.pilot(ev, pick).get("pilot", "?"))
 	return tr("$%d on %s at %.2fx, pays $%d if they win.") % [stake, who, o, int(stake * o)]
@@ -3242,7 +3301,7 @@ func self_odds() -> float:
 func refund_self_bets() -> void:
 	for b in bets:
 		if b["on"] == "self":
-			money += int(b["stake"])
+			book("bets", int(b["stake"]))
 	bets = bets.filter(func(b): return b["on"] != "self")
 
 
@@ -3254,7 +3313,7 @@ func settle_self_bets(won: bool) -> Dictionary:
 		out["staked"] += b["stake"]
 		if won:
 			var pay := int(b["stake"] * b["odds"])
-			money += pay
+			book("bets", pay)
 			out["paid"] += pay
 			out["lines"].append(tr("Bet on %s: +$%d") % [pilot_name, pay])
 		else:
@@ -3273,7 +3332,7 @@ func place_bet(pick: int, vs: int, stake: int) -> String:
 		if money < stake:
 			return tr("You need $%d in cash to place that bet.") % stake
 		var so := self_odds()
-		money -= stake
+		book("bets", -(stake))
 		bets.append({"on": "self", "round": 0, "pick": 0, "vs": -1, "stake": stake, "odds": so})
 		return tr("$%d on %s at %.2fx, pays $%d if they win.") % [stake, pilot_name, so, int(stake * so)]
 	var ev := bet_event()
@@ -3284,7 +3343,7 @@ func place_bet(pick: int, vs: int, stake: int) -> String:
 	if money < stake:
 		return tr("You need $%d in cash to place that bet.") % stake
 	var o := Career.odds(ev, pick, vs)
-	money -= stake
+	book("bets", -(stake))
 	bets.append({"on": bet_target(), "round": Career.round_key(ev), "pick": pick, "vs": vs, "stake": stake, "odds": o})
 	var who: String = pilot_name if pick == 0 else str(Career.pilot(ev, pick).get("pilot", "?"))
 	return tr("$%d on %s at %.2fx, pays $%d if they win.") % [stake, who, o, int(stake * o)]
@@ -3307,7 +3366,7 @@ func settle_bets(on: String, ev: Dictionary) -> Dictionary:
 		var who: String = pilot_name if b["pick"] == 0 else str(Career.pilot(ev, b["pick"]).get("pilot", "?"))
 		if winner == b["pick"]:
 			var pay := int(b["stake"] * b["odds"])
-			money += pay
+			book("bets", pay)
 			out["paid"] += pay
 			out["lines"].append(tr("Bet on %s: +$%d") % [who, pay])
 		else:
@@ -3795,7 +3854,7 @@ func sell_spare_controller(id: String) -> String:
 		return ""
 	spare_controllers.erase(id)
 	var v := controller_sell_value(id)
-	money += v
+	book("sales", v)
 	return tr("Sold the spare %s for $%d.") % [tr(PilotArt.CONTROLLER_NAMES.get(id, id)), v]
 
 
@@ -3806,7 +3865,7 @@ func buy_controller(id: String) -> String:
 		return tr("Your pilot picks up the %s.") % tr(PilotArt.CONTROLLER_NAMES[id])
 	if money < int(info["cost"]):
 		return tr("The %s costs $%d.") % [tr(PilotArt.CONTROLLER_NAMES[id]), info["cost"]]
-	money -= int(info["cost"])
+	book("parts", -(int(info["cost"])))
 	owned_controllers.append(id)
 	pilot_look["controller"] = id
 	return tr("Bought the %s! %s") % [tr(PilotArt.CONTROLLER_NAMES[id]), tr(info["desc"])]
@@ -3892,7 +3951,7 @@ func repair_wingman(k: int) -> String:
 		return tr("%s is in perfect shape.") % wingman_name(k)
 	if not can_repair(c):
 		return tr("Repairing %s costs $%d.") % [wingman_name(k), c]
-	money -= c
+	book("repairs", -(c))
 	var h := 0.0
 	for slot in wingmen[k]:
 		var p := inst(int(wingmen[k][slot]))
@@ -4134,7 +4193,8 @@ func record_result(won: bool, part_hp: Dictionary, destroyed: int, salvage_ids: 
 	if salvage_ids.is_empty():
 		bonus = destroyed * 50
 	var was_in_debt := money < 0
-	money += reward + bonus
+	book("fights", reward)
+	book("salvage", bonus)
 	fight_log.append({"y": year, "w": week, "d": day, "opp": str(o.get("name", "?")), "wid": int(o.get("wid", -1)), "won": won, "mode": fight_mode(), "title": fight_title(),
 			"stage": str(event.get("stage", "")) if fight_mode() == "story" else ("cup" if fight_mode() == "circuit" else fight_mode())})
 	if fight_log.size() > 400:
@@ -4330,11 +4390,11 @@ func league_end(ev: Dictionary) -> String:
 	if m > 0:
 		Contracts.podium(m)
 		var prize: int = info["prizes"][m - 1]
-		money += prize
+		book("prizes", prize)
 		trophies.append(trophy_record(ev, ev["stage"], m))
 		text += tr(". Prize $%d and a trophy for the office wall!") % prize
 	elif pos == 3:
-		money += Career.fourth_prize(ev["stage"])
+		book("prizes", Career.fourth_prize(ev["stage"]))
 		text += tr(". Fourth place pays $%d.") % Career.fourth_prize(ev["stage"])
 	else:
 		text += "."
@@ -4389,7 +4449,7 @@ func finish_title(ev: Dictionary) -> String:
 	if m > 0:
 		Contracts.podium(m)
 		var prize: int = info["prizes"][m - 1]
-		money += prize
+		book("prizes", prize)
 		trophies.append(trophy_record(ev, "title", m))
 		text += tr(". Prize $%d and a trophy for the office wall!") % prize
 	if m == 1:
@@ -4409,7 +4469,7 @@ func finish_cup() -> String:
 	Social.podium(circuit, "cup")
 	if m > 0:
 		var prize: int = int(int(circuit["prize"]) * [0, 1.0, 0.5, 0.3][m])
-		money += prize
+		book("prizes", prize)
 		trophies.append(trophy_record(circuit, "cup", m))
 		text += tr(", $%d") % prize
 		if m == 1:
@@ -4719,7 +4779,7 @@ func forge_custom(cfg: Dictionary) -> String:
 	var d := custom_def(cfg)
 	if money < d["cost"]:
 		return tr("Not enough money. This design costs $%d.") % d["cost"]
-	money -= d["cost"]
+	book("parts", -(d["cost"]))
 	d["id"] = "custom_%d_%d" % [Time.get_unix_time_from_system(), randi() % 100000]
 	custom_parts.append(d)
 	PARTS[d["id"]] = d
@@ -4840,6 +4900,16 @@ static func slot_path(slot: int) -> String:
 	return "user://save_%d.json" % slot
 
 
+## (1.79) Your own save in a slot (Menu > Save game), kept apart from the autosave that's written
+## after every change. Loading it rolls the slot back to that moment.
+static func mine_path(slot: int) -> String:
+	return "user://save_%d_mine.json" % slot
+
+
+func has_mine(slot: int = -1) -> bool:
+	return FileAccess.file_exists(mine_path(save_slot if slot < 0 else slot))
+
+
 func has_save(slot: int = -1) -> bool:
 	return FileAccess.file_exists(slot_path(save_slot if slot < 0 else slot))
 
@@ -4852,10 +4922,10 @@ func any_save() -> bool:
 
 
 ## Short description of a save file for the save-slot screen ({} if empty).
-func slot_info(slot: int) -> Dictionary:
-	if not has_save(slot):
+func slot_info(slot: int, mine: bool = false) -> Dictionary:
+	if not (has_mine(slot) if mine else has_save(slot)):
 		return {}
-	var f := FileAccess.open(slot_path(slot), FileAccess.READ)
+	var f := FileAccess.open(mine_path(slot) if mine else slot_path(slot), FileAccess.READ)
 	if f == null:
 		return {}
 	var data = JSON.parse_string(f.get_as_text())
@@ -4875,7 +4945,12 @@ func migrate_old_save() -> void:
 		DirAccess.rename_absolute(OLD_SAVE_PATH, slot_path(1))
 
 
-func save_game() -> bool:
+## Save your own copy (the autosave goes on as always).
+func save_mine() -> bool:
+	return save_game(mine_path(save_slot))
+
+
+func save_game(path: String = "") -> bool:
 	var data := {
 		"version": SAVE_VERSION, "pilot_name": pilot_name, "robot_name": robot_name,
 		"saved_at": Time.get_datetime_string_from_system(false, true), "money": money, "inventory": inventory, "equipped": equipped,
@@ -4884,9 +4959,9 @@ func save_game() -> bool:
 		"owned_chips": owned_chips, "chips": chips, "circuit": circuit, "circuit_offers": circuit_offers,
 		"circuits_won": circuits_won, "pickup": pickup, "setups": setups, "custom_parts": custom_parts,
 		"year": year, "week": week, "day": day, "rank": rank, "event": {}, "leagues": leagues, "title_seeds": title_seeds, "trophies": trophies, "career_stats": career_stats,
-		"pecking_k": pecking_k(), "style": style, "style_locked": style_locked, "shop_stock": shop_stock, "chip_stock": chip_stock, "scout": scout, "wingmen": wingmen, "sending": sending, "pilot_look": pilot_look, "owned_controllers": owned_controllers, "spare_controllers": spare_controllers, "tips_seen": tips_seen, "tips_log": tips_log, "h2h": h2h, "rivals": rivals, "rel": rel, "nemeses": nemeses, "pending_talk": pending_talk, "inbox": inbox, "inbox_seen": inbox_seen, "social": social, "pilot_at": pilot_at, "pilot_used": pilot_used, "film_index": film_index, "film_pending": film_pending, "films_seen": films_seen, "contracts": contracts, "alerts_unseen": alerts_unseen, "day_log": day_log, "tour": tour, "streak": streak, "pub_seen": pub_seen, "digs_left": digs_left, "dig_luck": dig_luck, "bills_note": bills_note, "fight_log": fight_log, "bets": bets, "world": world,
+		"pecking_k": pecking_k(), "style": style, "style_locked": style_locked, "shop_stock": shop_stock, "chip_stock": chip_stock, "scout": scout, "wingmen": wingmen, "sending": sending, "pilot_look": pilot_look, "owned_controllers": owned_controllers, "spare_controllers": spare_controllers, "tips_seen": tips_seen, "tips_log": tips_log, "h2h": h2h, "rivals": rivals, "rel": rel, "nemeses": nemeses, "pending_talk": pending_talk, "inbox": inbox, "inbox_seen": inbox_seen, "social": social, "pilot_at": pilot_at, "pilot_used": pilot_used, "film_index": film_index, "film_pending": film_pending, "films_seen": films_seen, "contracts": contracts, "alerts_unseen": alerts_unseen, "day_log": day_log, "ledger": ledger, "tour": tour, "streak": streak, "pub_seen": pub_seen, "digs_left": digs_left, "dig_luck": dig_luck, "bills_note": bills_note, "fight_log": fight_log, "bets": bets, "world": world,
 	}
-	var f := FileAccess.open(slot_path(save_slot), FileAccess.WRITE)
+	var f := FileAccess.open(slot_path(save_slot) if path == "" else path, FileAccess.WRITE)
 	if f == null:
 		return false
 	f.store_string(JSON.stringify(data))
@@ -4906,12 +4981,12 @@ func save_game() -> bool:
 
 
 ## Returns "" on success, or an error message.
-func load_game(slot: int = -1) -> String:
+func load_game(slot: int = -1, mine: bool = false) -> String:
 	if slot > 0:
 		save_slot = slot
-	if not has_save():
+	if not (has_mine() if mine else has_save()):
 		return "No save file."
-	var f := FileAccess.open(slot_path(save_slot), FileAccess.READ)
+	var f := FileAccess.open(mine_path(save_slot) if mine else slot_path(save_slot), FileAccess.READ)
 	if f == null:
 		return "Couldn't open the save file."
 	var data = JSON.parse_string(f.get_as_text())
@@ -5006,6 +5081,7 @@ func load_game(slot: int = -1) -> String:
 				rel[str(key)] = maxf(-100.0, v)
 	pending_talk = data.get("pending_talk", [])
 	day_log = data.get("day_log", {})
+	ledger = data.get("ledger", [])
 	inbox = []
 	for e in data.get("inbox", []):
 		if typeof(e) == TYPE_DICTIONARY:
@@ -5193,6 +5269,8 @@ func load_game(slot: int = -1) -> String:
 		setups[k] = saved_setups[k]
 	if champion and circuit.is_empty() and circuit_offers.is_empty():
 		make_offers()
+	if mine:
+		save_game()   # the slot rolls back to your save: the autosave follows
 	return ""
 
 
@@ -5275,7 +5353,7 @@ func _fix_numbers(ev: Dictionary) -> void:
 func delete_save(slot: int = -1) -> void:
 	if has_save(slot):
 		DirAccess.remove_absolute(slot_path(save_slot if slot < 0 else slot))
-		for fp in ["user://films_%d.json" % (save_slot if slot < 0 else slot), "user://clips_%d.json" % (save_slot if slot < 0 else slot)]:
+		for fp in ["user://films_%d.json" % (save_slot if slot < 0 else slot), "user://clips_%d.json" % (save_slot if slot < 0 else slot), mine_path(save_slot if slot < 0 else slot)]:
 			if FileAccess.file_exists(fp):
 				DirAccess.remove_absolute(fp)
 

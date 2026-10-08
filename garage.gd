@@ -251,6 +251,13 @@ func _ready() -> void:
 	title_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	top.add_child(title_label)
 	money_label = GUI.readout("", 32, GUI.AMBER)
+	money_label.mouse_filter = Control.MOUSE_FILTER_STOP
+	money_label.tooltip_text = tr("Where the money went")
+	money_label.gui_input.connect(func(e):
+		if (e is InputEventMouseButton and e.pressed and e.button_index == MOUSE_BUTTON_LEFT) or (e is InputEventScreenTouch and not e.pressed):
+			_on_tab("Season")
+			season_view = "money"
+			refresh())
 	top.add_child(money_label)
 
 	var mid := HBoxContainer.new()
@@ -409,7 +416,7 @@ func _ready() -> void:
 ## The rail's sections, as they unlock. "Parts" is shown as Get Parts.
 func tab_list() -> Array:
 	# in the order of a day: the robot, its parts, the week's plan, the town, your phone, the crew
-	var t := ["Bay", "Storage"]
+	var t := ["Bay"]   # (1.79) Storage is a toggle in the Bay
 	if GameData.unlocked("season"):
 		t.append("Season")
 	t += ["City", "Feed"]   # (1.77) the City holds the scrapyard, Parts-R-Us and the Rusty Bolt
@@ -420,9 +427,10 @@ func tab_list() -> Array:
 
 const SECTION_LABELS := {"Bay": "Bay", "Storage": "Storage", "Parts": "Get Parts", "Pub": "Rusty Bolt", "Feed": "BotMedia", "Season": "Season", "Crew": "Crew", "City": "City"}
 const SECTION_ICONS := {"Bay": "bay", "Storage": "storage", "Parts": "parts", "Pub": "pub", "Feed": "feed", "Season": "season", "Crew": "crew", "City": "city"}
-const CITY_TABS := ["City", "Parts", "Pub"]   # places out in the city: the rail lights City for all of them
+const CITY_TABS := ["City", "Parts", "Pub"]
+const HOME_TABS := ["Bay", "Crew"]   # (1.79) Gus's bay and crew bay: only when you're there   # places out in the city: the rail lights City for all of them
 ## Where each feature lives now: [section, toggle]. Gus's unlock scene returns you there.
-const FEATURE_PLACE := {"scrapyard": ["Parts", "scrap"], "storage": ["Storage", ""], "style": ["Bay", "style"],
+const FEATURE_PLACE := {"scrapyard": ["Parts", "scrap"], "storage": ["Bay", "storage"], "style": ["Bay", "style"],
 		"shop": ["Parts", "dealer"], "season": ["Season", "calendar"], "scout": ["", "scout"], "moves": ["Bay", "chips"],
 		"cups": ["Season", "cups"], "team": ["Crew", "backups"], "workshop": ["Bay", "order"], "pilot": ["Feed", "gear"],
 		"paint": ["Bay", "style"], "setups": ["Bay", "setups"], "randomize": ["Bay", "robot"]}
@@ -434,6 +442,7 @@ func segs_of(t: String) -> Array:
 	match t:
 		"Bay":
 			out.append(["robot", tr("Robot"), ""])
+			out.append(["storage", tr("Storage"), "storage"])   # (1.79) was its own section
 			out.append(["jobs", tr("Job board %d") % GameData.jobs.size() if not GameData.jobs.is_empty() else tr("Job board"), ""])
 			if GameData.unlocked("moves"):
 				out.append(["chips", tr("Chips %d/%d") % [GameData.active_chips().size(), GameData.chip_slots()], "moves"])
@@ -451,6 +460,7 @@ func segs_of(t: String) -> Array:
 			if GameData.cups_unlocked():
 				out.append(["cups", tr("Cups"), "cups"])
 			out.append(["pilots", tr("Pilots"), ""])
+			out.append(["money", tr("Money"), ""])
 		"Feed":
 			# BotMedia: the feed, Explore, Alerts, your DMs and your profile (Looks, Gear and
 			# Contracts open from the profile; hidden = no button on the bar)
@@ -529,6 +539,7 @@ func build_rail() -> void:
 		b.kind = SECTION_ICONS[t]
 		b.label = tr(SECTION_LABELS[t])
 		b.on = t == tab or (t == "City" and CITY_TABS.has(tab))
+		b.off = HOME_TABS.has(t) and away_from_bay()
 		GUI.mark_new(b, section_new(t) or (t == "City" and (section_new("Parts") or section_new("Pub"))))
 		b.font = GUI.head()
 		b.pressed.connect(func(): Sfx.play("click", 0.05); _on_tab(t))
@@ -573,8 +584,8 @@ func build_seg_bar() -> void:
 			pt.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 			tabs_box.add_child(pt)
 			return
-	if list.is_empty() or tab == "Storage":
-		var t := GUI.text(tr("STORAGE") if tab == "Storage" else tr(SECTION_LABELS[tab]).to_upper(), 18, GUI.TEXT, "headb")
+	if list.is_empty():
+		var t := GUI.text(tr(SECTION_LABELS[tab]).to_upper(), 18, GUI.TEXT, "headb")
 		t.custom_minimum_size = Vector2(0, 40)
 		t.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 		t.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -1021,6 +1032,11 @@ func refresh() -> void:
 	body_map.queue_redraw()
 	if not tab_list().has(tab) and not CITY_TABS.has(tab):
 		tab = "Bay"
+	if away_from_bay() and HOME_TABS.has(tab):
+		# (1.79) out in the city: you stay where you are (the bay opens when you're back)
+		tab = {"pub": "Pub", "partsrus": "Parts", "scrapyard": "Parts"}.get(GameData.pilot_at, "City")
+		if tab == "Parts":
+			segs_on["Parts"] = "dealer" if GameData.pilot_at == "partsrus" else "scrap"
 	set_seg(seg())
 	# (1.77) the City: the map takes the left side (wider), the panel on the right says what's where
 	var in_city := tab == "City"
@@ -1052,6 +1068,8 @@ func refresh() -> void:
 					build_order()
 				"jobs":
 					build_jobs_view()
+				"storage":
+					build_storage()
 				_:
 					if selected == "":
 						build_overview()
@@ -1116,6 +1134,8 @@ func refresh() -> void:
 	build_detail()
 	GameData.request_save()
 	scroll.set_deferred("scroll_vertical", keep)
+	if gus_overlay == null and GameData.tour < 0:
+		check_gus_cards.call_deferred()
 
 
 func refresh_stats() -> void:
@@ -1747,6 +1767,9 @@ func _on_sell_picked_confirmed() -> void:
 
 ## Jump to a section (and one of its toggles).
 func go_to(t: String, key: String = "") -> void:
+	if t == "Storage":
+		t = "Bay"
+		key = "storage"
 	# (1.77) a place out in the city: going there takes the pilot's time
 	var place := place_of(t, key)
 	var passed := 0
@@ -1897,7 +1920,7 @@ func tour_steps() -> Array:
 		{"target": "next", "text": tr("Time only moves when you press the big yellow button. The bay works on the jobs while it runs.")},
 		{"target": "rail:City", "text": tr("The City, on your tablet. The scrapyard's down at the Docks, an hour away. One dig a day.")},
 		{"target": "dig", "text": tr("Tap Dig anywhere. Some days there's nothing, but it's free.")},
-		{"target": "fight", "text": tr("Saturday is the Open Trials. Two wins put us in the Scrap League, two losses and we're out. Practise at the Rusty Bolt.")},
+		{"target": "fight", "text": tr("Saturday is the Open Trials. Two wins put us in the Scrap League, two losses and we're out. Practise on my junkers at the scrapyard.")},
 	]
 
 
@@ -2389,9 +2412,16 @@ func post_card(card: Dictionary, parent: Control) -> void:
 	if str(card.get("kind", "")) in ["still", "shot", "trophy", "part", "clip"]:
 		# (1.70) a picture, drawn live from its recipe; (1.74) a clip's poster plays it when tapped
 		panel.add_theme_stylebox_override("panel", GUI.box(GUI.BG, 8, 0))
-		h.add_child(GUI.PostPic.new(card))
-		h.get_child(0).size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		var pp := GUI.PostPic.new(card)
+		h.add_child(pp)
+		pp.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		if str(card.get("kind", "")) == "clip":
+			# (1.79) clips play on their own in the feed, muted, while they're on screen
+			var ac := AutoClip.new()
+			ac.cid = str(card.get("id", ""))
+			ac.set_anchors_preset(Control.PRESET_FULL_RECT)
+			ac.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			pp.add_child(ac)
 			panel.mouse_filter = Control.MOUSE_FILTER_STOP
 			panel.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
 			var cid := str(card.get("id", ""))
@@ -2970,7 +3000,7 @@ var tv_player: Control = null
 
 func update_tv(r: Rect2, host: Control) -> void:
 	var clips: Array = GameData.clips_week(8) if scene == "pub" and r.size.x > 10.0 else []
-	var want := not clips.is_empty() and GameData.headline_match().is_empty()
+	var want := not clips.is_empty()   # (1.79) clips fill the screen even on a night with a headline fight
 	if not want:
 		if tv_player != null and is_instance_valid(tv_player):
 			tv_player.queue_free()
@@ -3557,7 +3587,7 @@ func patron_info() -> Dictionary:
 ## What's on the pub TV: tonight's headline league fight, or the table on quiet nights.
 func tv_info() -> Dictionary:
 	var hm := GameData.headline_match()
-	if hm.is_empty() and tv_player != null and is_instance_valid(tv_player) and not (tv_player.clip as Dictionary).is_empty():
+	if (hm.is_empty() or not GameData.watch_time(hm["ev"])) and tv_player != null and is_instance_valid(tv_player) and not (tv_player.clip as Dictionary).is_empty():
 		# (1.76) the week's best clips on a loop
 		return {"live": false, "title": tr("BEST OF THE WEEK") + " · " + GameData.Clips.kind_name(tv_player.clip), "a": GameData.Clips.title(tv_player.clip), "b": ""}
 	if not hm.is_empty():
@@ -3815,7 +3845,7 @@ func body_health() -> Dictionary:
 func set_scene_for_tab() -> void:
 	match tab:
 		"Bay":
-			scene = {"chips": "moves", "style": "paint", "order": "workshop"}.get(seg(), "build")
+			scene = {"chips": "moves", "style": "paint", "order": "workshop", "storage": "storage"}.get(seg(), "build")
 		"City":
 			scene = "phone"   # your pilot, looking at the map on the tablet
 		"Storage":
@@ -4250,6 +4280,7 @@ func build_cups_tab() -> void:
 
 var season_view := "calendar"   # Season tab: "calendar" (main) or "table" (league table / bracket)
 var cal_month := -1              # month shown on the calendar (0-12); -1 = this month
+var money_range := "week"        # (1.79) Season > Money: "week", "last" (last week) or "month" (the last 4 weeks)
 var cal_seen_month := -1         # the month it was when the page was last turned to "now"
 
 const MONTH_NAMES := ["JANUARY", "FEBRUARY", "MARCH", "APRIL", "MAY", "JUNE", "JULY", "AUGUST", "SEPTEMBER",
@@ -4272,6 +4303,8 @@ func build_season_tab() -> void:
 			build_jukebox()
 		"cups":
 			build_cups_tab()
+		"money":
+			build_money_view()
 		_:
 			build_league_view()
 
@@ -4931,7 +4964,9 @@ func build_pub_cards() -> void:
 
 ## Challenge the pilot at the bar: tonight's pickup fight is against them.
 ## A tag team pickup with a pilot at the bar (1.58): two of you against two of them.
-func _on_team_up(wid: int) -> void:
+func _on_team_up(wid: int, sure: bool = false) -> void:
+	if not sure and trials_warning(_on_team_up.bind(wid, true)):
+		return
 	var err := GameData.start_tag(wid)
 	if err != "":
 		note(err, "error")
@@ -4941,7 +4976,9 @@ func _on_team_up(wid: int) -> void:
 	open_fight_popup()
 
 
-func _on_challenge(wid: int = -1) -> void:
+func _on_challenge(wid: int = -1, sure: bool = false) -> void:
+	if not sure and trials_warning(_on_challenge.bind(wid, true)):
+		return
 	GameData.start_pickup(wid)
 	GameData.save_game()
 	refresh()
@@ -5947,6 +5984,16 @@ func marked(c: Control, feature: String) -> Control:
 
 ## A rail button. The first visit to a section Gus hasn't shown you yet plays his scene first.
 func _on_tab(t: String) -> void:
+	if t == "Storage":
+		go_to("Bay", "storage")   # (1.79) Storage lives in the Bay now
+		return
+	if away_from_bay() and HOME_TABS.has(t):
+		# (1.79) you're out in the city: the bay is where Gus is, not where you are
+		note(tr("You're at %s. The City map takes you back to the bay.") % tr(str(GameData.PLACES[GameData.pilot_at]["name"])), "error")
+		tab = "City"
+		city_pick = "home"
+		refresh()
+		return
 	var first: String = {"Storage": "storage", "Season": "season", "Parts": "scrapyard"}.get(t, "")
 	if t == "Crew":
 		first = "team" if GameData.team_unlocked() else "pilot"
@@ -6536,9 +6583,38 @@ func _do_abandon() -> void:
 	refresh()
 
 
+## (1.79) The Menu: your own save (apart from the autosave after every change), load it back, or
+## leave for the main menu.
 func _on_menu() -> void:
-	GameData.save_game()   # leaving always saves
-	get_tree().change_scene_to_file("res://main.tscn")
+	GameData.save_game()
+	var col := open_popup(tr("MENU"))
+	var a := GUI.text(tr("The game saves itself after everything you do (the autosave). Save game keeps a copy of your own you can go back to."), 15, GUI.MUTED)
+	a.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	a.custom_minimum_size.x = UI.px(15) * 26
+	col.add_child(a)
+	var mi := GameData.slot_info(GameData.save_slot, true)
+	var ml := GUI.text(tr("YOUR SAVE: %s  ·  %s  ·  %s") % [mi["progress"], GameData.money_text(mi["money"]), mi["saved"]] if not mi.is_empty() and not mi.get("broken", false) else tr("No save of your own in this slot yet."), 15, GUI.GREEN if not mi.is_empty() else GUI.MUTED)
+	ml.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	col.add_child(ml)
+	var sv := UI.button(tr("Save game"), func():
+		if GameData.save_mine():
+			Sfx.play("buy")
+			close_popup()
+			note(tr("Saved. Menu > Load your save brings you back to this moment."))
+		else:
+			Sfx.play("error")
+			note(tr("Couldn't write the save file.")), 19, Vector2(0, 56))
+	col.add_child(sv)
+	if not mi.is_empty() and not mi.get("broken", false):
+		col.add_child(UI.button(tr("Load your save"), func():
+			confirm(tr("LOAD YOUR SAVE?"), tr("Everything since %s is lost: the slot goes back to your save.") % str(mi["saved"]), tr("Load it"), func():
+				Loading.run(func():
+					if GameData.load_game(GameData.save_slot, true) == "":
+						Loading.go("res://garage.tscn"))), 19, Vector2(0, 56)))
+	col.add_child(UI.button(tr("Main menu"), func():
+		GameData.save_game()   # leaving always saves
+		close_popup()
+		get_tree().change_scene_to_file("res://main.tscn"), 19, Vector2(0, 56)))
 
 
 func _on_send() -> void:
@@ -6997,6 +7073,8 @@ func hours_text(h: float) -> String:
 
 ## Which city place a section / view is (going there costs time), "" for Gus's building.
 func place_of(t: String, key: String = "") -> String:
+	if HOME_TABS.has(t) and away_from_bay():
+		return "home"   # (1.79) a shortcut into the bay walks you back first
 	if t == "Pub":
 		return "pub"
 	if t == "Parts":
@@ -7037,7 +7115,7 @@ func _on_city_pick(place: String) -> void:
 	fill_city_card()
 
 
-const PLACE_TEXT := {"home": "Gus's building: the bay, storage and the office. You can call Gus from anywhere, so the bay never needs you here.",
+const PLACE_TEXT := {"home": "Gus's building: the bay, storage, the workshop and the office. You have to be here to work on your robot.",
 		"pub": "The Rusty Bolt. Scrap and Rust pilots drinking. Pick a fight, place bets, play the jukebox.",
 		"partsrus": "Parts-R-Us. New parts at your grade, a couple one grade up. New stock on Sundays.",
 		"scrapyard": "The Scrapyard. Mountains of dead robots. One dig a day, an hour of digging.",
@@ -7073,8 +7151,7 @@ func fill_city_card() -> void:
 	city_card.add_child(bar)
 	if place == GameData.pilot_at:
 		bar.add_child(GUI.text(tr("You're here."), 14, GUI.GREEN, "headb"))
-		if place != "home":
-			bar.add_child(UI.button(tr("Go in ▸"), enter_place.bind(place), 15, Vector2(0, 46)))
+		bar.add_child(UI.button(tr("Go in ▸"), enter_place.bind(place), 15, Vector2(0, 46)))
 		return
 	if lock != "":
 		bar.add_child(GUI.text(tr(lock), 14, GUI.MUTED))
@@ -7128,3 +7205,348 @@ func enter_place(place: String) -> void:
 		_:
 			tab = "Bay"
 	refresh()
+
+# ---------------------------------------------------------------- (1.79) Season > Money
+
+## Where the money went: cash, the next bills, in and out by category for this week / last week /
+## the last four weeks, and a chart of the last eight weeks.
+func build_money_view() -> void:
+	var cash := GUI.readout(GameData.money_text(GameData.money), 40, GUI.RED if GameData.money < 0 else GUI.AMBER)
+	list_box.add_child(cash)
+	var wk := GameData.weeks_to_bills()
+	var bills := GUI.text(tr("Rent & running costs: $%d at the end of the month (%s).") % [GameData.living_cost(),
+			tr("this week") if wk <= 1 else tr("in %d weeks") % wk], 15, GUI.RED if GameData.money < GameData.living_cost() else GUI.MUTED)
+	bills.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	list_box.add_child(bills)
+	var fees := GameData.Contracts.monthly_total()
+	if fees > 0:
+		var sl := GUI.text(tr("Sponsors pay $%d on the same day.") % fees, 15, GUI.GREEN)
+		sl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		list_box.add_child(sl)
+	if GameData.mechanics > 0:
+		var ml := GUI.text(tr("Of that, your mechanics' wages: $%d.") % (GameData.mechanics * GameData.mechanic_wage()), 13, GUI.MUTED)
+		ml.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		list_box.add_child(ml)
+	var bar := flow_bar()
+	for r in [["week", tr("This week")], ["last", tr("Last week")], ["month", tr("Last 4 weeks")]]:
+		var b := row_button(bar, r[1], func(): money_range = r[0]; refresh(), true, 140)
+		if money_range == r[0]:
+			b.add_theme_color_override("font_color", GUI.YELLOW)
+	var y0 := GameData.year
+	var w0 := GameData.week
+	var y1 := GameData.year
+	var w1 := GameData.week
+	match money_range:
+		"last":
+			w0 -= 1
+			w1 -= 1
+		"month":
+			w0 -= 3
+	if w0 < 1:
+		w0 += Career.WEEKS_PER_YEAR
+		y0 -= 1
+	if w1 < 1:
+		w1 += Career.WEEKS_PER_YEAR
+		y1 -= 1
+	var sum := GameData.ledger_sum(y0, w0, y1, w1)
+	var net := int(sum["_net"])
+	var tot_in := 0
+	var tot_out := 0
+	var rows: Array = []
+	for c in GameData.LEDGER_CATS:
+		if sum.has(c):
+			rows.append(c)
+			tot_in += int(sum[c][0])
+			tot_out += int(sum[c][1])
+	if rows.is_empty():
+		section(tr("Nothing in or out yet."))
+	else:
+		var grid := GridContainer.new()
+		grid.columns = 3
+		grid.add_theme_constant_override("h_separation", 18)
+		grid.add_theme_constant_override("v_separation", 4)
+		var gm := MarginContainer.new()
+		gm.add_theme_constant_override("margin_right", 24)   # clear of the scroll bar
+		gm.add_child(grid)
+		list_box.add_child(gm)
+		var cell := func(t: String, col: Color, right: bool, big: bool = false):
+			var l: Label = GUI.readout(t, 24 if big else 20, col) if right else GUI.text(t, 15, col, "headb" if big else "body")
+			if right:
+				l.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+			else:
+				l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+				l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+				l.custom_minimum_size.x = UI.px(15) * 6
+			grid.add_child(l)
+		cell.call("", GUI.MUTED, false)
+		cell.call(tr("IN"), GUI.GREEN, true)
+		cell.call(tr("OUT"), GUI.RED, true)
+		for c in rows:
+			var a: Array = sum[c]
+			cell.call(tr(GameData.LEDGER_NAMES[c]), GUI.TEXT, false)
+			cell.call("+$%d" % int(a[0]) if int(a[0]) > 0 else "", GUI.GREEN, true)
+			cell.call("-$%d" % int(a[1]) if int(a[1]) > 0 else "", GUI.RED, true)
+		cell.call(tr("TOTAL"), GUI.YELLOW, false, true)
+		cell.call("+$%d" % tot_in, GUI.GREEN, true, true)
+		cell.call("-$%d" % tot_out, GUI.RED, true, true)
+		var nl := GUI.readout((tr("NET %s") % GameData.money_text(net)) if net < 0 else (tr("NET %s") % ("+" + GameData.money_text(net))), 30, GUI.RED if net < 0 else GUI.GREEN)
+		list_box.add_child(nl)
+		# the biggest thing in and out
+		var best_in := ""
+		var best_out := ""
+		for c in rows:
+			if int(sum[c][0]) > 0 and (best_in == "" or int(sum[c][0]) > int(sum[best_in][0])):
+				best_in = c
+			if int(sum[c][1]) > 0 and (best_out == "" or int(sum[c][1]) > int(sum[best_out][1])):
+				best_out = c
+		var bits: Array = []
+		if best_in != "":
+			bits.append(tr("Most money came from %s.") % tr(GameData.LEDGER_NAMES[best_in]).to_lower())
+		if best_out != "":
+			bits.append(tr("Most went on %s.") % tr(GameData.LEDGER_NAMES[best_out]).to_lower())
+		var bl := GUI.text(" ".join(bits), 14, GUI.MUTED)
+		bl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		list_box.add_child(bl)
+	section(tr("THE LAST 8 WEEKS"))
+	var ch := MoneyChart.new()
+	var vals: Array = []
+	var labels: Array = []
+	for k in range(7, -1, -1):
+		var y := GameData.year
+		var w := GameData.week - k
+		if w < 1:
+			w += Career.WEEKS_PER_YEAR
+			y -= 1
+		vals.append(int(GameData.ledger_sum(y, w, y, w)["_net"]))
+		labels.append(tr("WK %d") % w)
+	ch.vals = vals
+	ch.labels = labels
+	ch.custom_minimum_size = Vector2(0, UI.px(14) * 9)
+	list_box.add_child(ch)
+
+
+## Eight weeks of money: a column per week, up green, down red, the line in the middle is $0.
+class MoneyChart extends Control:
+	var vals: Array = []
+	var labels: Array = []
+
+	func _draw() -> void:
+		var U = load("res://ui.gd")
+		var f := ThemeDB.fallback_font
+		var fs: int = U.px(11)
+		var top := float(fs) + 4.0
+		var bot := size.y - float(fs) - 6.0
+		var mid := (top + bot) * 0.5
+		var mx := 1.0
+		for v in vals:
+			mx = maxf(mx, absf(float(v)))
+		var n := maxi(1, vals.size())
+		var cw := size.x / n
+		draw_line(Vector2(0, mid), Vector2(size.x, mid), Color(0.6, 0.6, 0.67, 0.5), 1.0)
+		for i in vals.size():
+			var v := float(vals[i])
+			var h := (bot - top) * 0.5 * absf(v) / mx
+			var x := i * cw + cw * 0.18
+			var col := Color(0.553, 1.0, 0.651) if v >= 0 else Color(1.0, 0.478, 0.353)
+			var r := Rect2(x, mid - h if v >= 0 else mid, cw * 0.64, maxf(1.0, h))
+			draw_rect(r, col * Color(1, 1, 1, 0.75))
+			draw_rect(r, col, false, 1.0)
+			if v != 0:
+				var t := ("+$%d" if v > 0 else "-$%d") % int(absf(v))
+				if absf(v) >= 1000:
+					t = ("+$%.1fk" if v > 0 else "-$%.1fk") % (absf(v) / 1000.0)
+				var ty := r.position.y - 3.0 if v >= 0 else r.end.y + fs
+				draw_string(f, Vector2(i * cw, ty), t, HORIZONTAL_ALIGNMENT_CENTER, cw, fs, col)
+			draw_string(f, Vector2(i * cw, size.y - 2.0), str(labels[i]), HORIZONTAL_ALIGNMENT_CENTER, cw, fs,
+					Color(0.95, 0.76, 0.19) if i == vals.size() - 1 else Color(0.6, 0.6, 0.67))
+
+
+## (1.79) A clip in the feed that plays by itself, muted, while it's on screen (two at most at once,
+## a third waits; a clip scrolled away stops and frees its player).
+class AutoClip extends Control:
+	static var playing := 0
+	var cid := ""
+	var player: Control = null
+
+	func _process(_d: float) -> void:
+		var on := is_visible_in_tree() and _on_screen()
+		if on and player == null and playing < 2:
+			var c: Dictionary = GameData.clip(cid)
+			if c.is_empty():
+				set_process(false)
+				return
+			player = load("res://clip_player.gd").new()
+			player.clip = c
+			player.lowres = true
+			player.muted = true
+			player.custom_minimum_size = Vector2(4, 4)
+			player.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			player.set_anchors_preset(Control.PRESET_FULL_RECT)
+			add_child(player)
+			playing += 1
+		elif not on and player != null:
+			_stop()
+
+	func _on_screen() -> bool:
+		var r := get_global_rect()
+		var p := get_parent()
+		while p != null:
+			if p is ScrollContainer:
+				return (p as Control).get_global_rect().intersects(r)
+			p = p.get_parent()
+		return get_viewport_rect().intersects(r)
+
+	func _stop() -> void:
+		if player != null:
+			player.queue_free()
+			player = null
+			playing -= 1
+
+	func _exit_tree() -> void:
+		_stop()
+
+
+## (1.79) Out in the city (not at Gus's building): the Bay and the crew bay are greyed out.
+func away_from_bay() -> bool:
+	return GameData.pilot_at != "home"
+
+
+# ---------------------------------------------------------------- (1.79) Gus's big cards
+# Bubbles are for the tour, tips and the story. When Gus has something you really need to hear
+# (a choice that can cost you the year), he gets the whole screen: his face big on the left, what
+# he means on the right, and the choice in big buttons.
+
+var gus_overlay: Control = null
+
+
+## buttons: [[label, Callable (or empty: just close), main (the yellow one)], ...]
+func gus_card(title: String, text: String, buttons: Array) -> void:
+	close_gus_card()
+	Sfx.voice("GUS")
+	var ov := ColorRect.new()
+	ov.color = Color(0, 0, 0, 0.78)
+	ov.set_anchors_preset(Control.PRESET_FULL_RECT)
+	ov.mouse_filter = Control.MOUSE_FILTER_STOP
+	add_child(ov)
+	gus_overlay = ov
+	var vp := get_viewport_rect().size
+	var panel := PanelContainer.new()
+	var sb := GUI.box(Color(0.075, 0.075, 0.095), 16, 0)
+	sb.border_color = GUI.YELLOW
+	sb.set_border_width_all(3)
+	panel.add_theme_stylebox_override("panel", sb)
+	panel.position = vp * 0.06
+	panel.size = vp * 0.88
+	ov.add_child(panel)
+	var outer := VBoxContainer.new()
+	outer.add_theme_constant_override("separation", 0)
+	panel.add_child(outer)
+	var strip := GUI.HazardStrip.new()
+	strip.custom_minimum_size = Vector2(0, 14)
+	outer.add_child(strip)
+	var m := MarginContainer.new()
+	for k in ["margin_left", "margin_right", "margin_top", "margin_bottom"]:
+		m.add_theme_constant_override(k, 22)
+	m.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	outer.add_child(m)
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 24)
+	m.add_child(row)
+	var face := GusBust.new()
+	face.custom_minimum_size = Vector2(minf(vp.x * 0.26, 300.0), 0)
+	face.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	row.add_child(face)
+	var col := VBoxContainer.new()
+	col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	col.add_theme_constant_override("separation", 14)
+	row.add_child(col)
+	col.add_child(GUI.text(tr("GUS"), 16, GUI.MUTED, "headb"))
+	var t := GUI.text(title, 30, GUI.YELLOW, "stencil")
+	t.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	col.add_child(t)
+	var sc := ScrollContainer.new()
+	sc.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	sc.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	col.add_child(sc)
+	var body := GUI.text(text, 21, GUI.TEXT)
+	body.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	body.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	sc.add_child(body)
+	var bar := HFlowContainer.new()
+	bar.add_theme_constant_override("h_separation", 12)
+	bar.add_theme_constant_override("v_separation", 10)
+	col.add_child(bar)
+	for b in buttons:
+		var cb: Callable = b[1]
+		var btn := UI.button(str(b[0]), func():
+			Sfx.play("click")
+			close_gus_card()
+			if cb.is_valid():
+				cb.call(), 19, Vector2(maxf(220.0, vp.x * 0.2), 60))
+		if b.size() > 2 and b[2]:
+			btn.add_theme_color_override("font_color", Color(0.08, 0.08, 0.08))
+			btn.add_theme_color_override("font_hover_color", Color(0.08, 0.08, 0.08))
+			for st in ["normal", "hover", "pressed"]:
+				btn.add_theme_stylebox_override(st, GUI.box(GUI.YELLOW if st != "hover" else GUI.YELLOW.lightened(0.15), 10, 8))
+		bar.add_child(btn)
+	GameData.log_talk("GUS", text, "gus")
+
+
+func close_gus_card() -> void:
+	if gus_overlay != null and is_instance_valid(gus_overlay):
+		gus_overlay.queue_free()
+	gus_overlay = null
+
+
+## Booking a fight before the Open Trials are decided: Gus wants a word first. true = he's asking
+## (go_on runs if you fight anyway).
+func trials_warning(go_on: Callable) -> bool:
+	if not GameData.trials_pending():
+		return false
+	var rec: Array = Career.trials_record(GameData.leagues.get("open", {}), 0)
+	gus_card(tr("A fight before the Trials?"),
+			tr("Kid, whatever breaks tonight is still broken on Saturday. Two losses at the Trials and we sit out a whole year in the gutter.") + "\n\n" +
+			tr("Our Trials record: %d-%d. A pickup pays a little. The Trials pay for a year.") % [int(rec[0]), int(rec[1])],
+			[[tr("You're right, Gus"), Callable(), true], [tr("Fight anyway"), go_on, false]])
+	return true
+
+
+## The few things Gus stops everything for (once each): rent due this week that we can't pay.
+func check_gus_cards() -> void:
+	if gus_overlay != null and is_instance_valid(gus_overlay):
+		return
+	var month := (GameData.week - 1) / GameData.MONTH_WEEKS
+	var key := "gus_rent:%d:%d" % [GameData.year, month]
+	if GameData.weeks_to_bills() <= 1 and GameData.money < GameData.living_cost() and GameData.living_cost() > 0 and not GameData.story_seen.has(key):
+		GameData.mark_story_seen(key)
+		gus_card(tr("The rent's due Sunday"),
+				tr("Rent and running costs: $%d. We've got %s. Whatever we're short goes on what we owe, and in debt nobody repairs on credit.") % [GameData.living_cost(), GameData.money_text(GameData.money)] + "\n\n" +
+				tr("Win a fight, sell a spare part, or skip the repairs we don't need."),
+				[[tr("Got it"), Callable(), true], [tr("Money ›"), func(): _on_tab("Season"); season_view = "money"; refresh(), false]])
+
+
+## Gus from the chest up under his work lamp (the big cards).
+class GusBust extends Control:
+	func _draw() -> void:
+		var PA = load("res://pilot_art.gd")
+		var RA = load("res://robot_art.gd")
+		draw_rect(Rect2(Vector2.ZERO, size), Color(0.1, 0.09, 0.08))
+		var r := minf(size.x * 0.34, size.y * 0.24)
+		var c := Vector2(size.x * 0.5, size.y * 0.42)
+		draw_circle(c + Vector2(0, -r * 0.6), r * 2.4, Color(1.0, 0.8, 0.45, 0.06))
+		draw_circle(c + Vector2(0, -r * 0.6), r * 1.6, Color(1.0, 0.8, 0.45, 0.07))
+		var look: Dictionary = PA.GUS_LOOK
+		var outfit := Color(look["outfit"])
+		var body := PackedVector2Array([Vector2(c.x - r * 2.0, size.y), Vector2(c.x - r * 1.7, c.y + r * 1.3), Vector2(c.x - r * 0.5, c.y + r * 1.0),
+				Vector2(c.x + r * 0.5, c.y + r * 1.0), Vector2(c.x + r * 1.7, c.y + r * 1.3), Vector2(c.x + r * 2.0, size.y)])
+		PA.light = "bay"
+		RA._set_light("bay", 1)
+		RA._plate(self, body, outfit)
+		# overall straps and a pocket
+		for side in [-1.0, 1.0]:
+			draw_line(Vector2(c.x + side * r * 0.75, c.y + r * 1.1), Vector2(c.x + side * r * 0.6, size.y), outfit.darkened(0.35), maxf(3.0, r * 0.12))
+			draw_circle(Vector2(c.x + side * r * 0.72, c.y + r * 1.6), r * 0.07, Color(0.8, 0.7, 0.4))
+		draw_rect(Rect2(c.x - r * 0.35, c.y + r * 1.8, r * 0.7, r * 0.5), outfit.darkened(0.2))
+		draw_rect(Rect2(c.x - r * 0.3, c.y + r * 0.75, r * 0.6, r * 0.4), Color(look["skin"]).darkened(0.15))
+		PA.draw_head(self, c, r, look, 0.0, 0.0)
+		PA.light = "neutral"

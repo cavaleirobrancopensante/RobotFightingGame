@@ -569,52 +569,58 @@ static func _pub_counter_x(size: Vector2) -> float:
 ## Behind the bar: the neon sign, bottles, the TV with tonight's fights, the bartender and the counter.
 static func _pub_back(ci: CanvasItem, size: Vector2, floor_y: float, t: float, info: Dictionary) -> void:
 	var s := clampf(size.y / 300.0, 0.6, 1.3)
+	# the TV: big on the wall, 16:9 (1.79). The week's clips play on it (garage.update_tv lays a player
+	# over tv_rect); with nothing to show it's the fight net's test card.
+	var tvw := minf(size.x * 0.86, size.y * 0.36 * 16.0 / 9.0)
+	var tvh := tvw * 9.0 / 16.0
+	var tv := Rect2((size.x - tvw) * 0.5, maxf(size.y * 0.11, 64.0), tvw, tvh)   # under the top strip
+	info["tv_rect"] = tv   # (1.76) the week's best clips play on it (garage.update_tv)
+	_ln(ci, Vector2(tv.position.x + tv.size.x * 0.3, tv.position.y - 4), Vector2(tv.position.x + tv.size.x * 0.3, 0), Color(0.2, 0.2, 0.22), 3.0)
+	_ln(ci, Vector2(tv.position.x + tv.size.x * 0.7, tv.position.y - 4), Vector2(tv.position.x + tv.size.x * 0.7, 0), Color(0.2, 0.2, 0.22), 3.0)
+	_rc(ci, tv.grow(6), Color(0.1, 0.1, 0.11))
+	ci.draw_rect(tv, Color(0.04, 0.07, 0.1))
+	var lf := ThemeDB.fallback_font
+	var lfs := int(clampf(tv.size.y / 9.0, 10, 22))
+	ci.draw_string(lf, Vector2(tv.position.x, tv.get_center().y), "PORT FERRUM", HORIZONTAL_ALIGNMENT_CENTER, tv.size.x, lfs, Color(0.55, 1.0, 0.65, 0.7))
+	ci.draw_string(lf, Vector2(tv.position.x, tv.get_center().y + lfs * 1.2), "FIGHT NET", HORIZONTAL_ALIGNMENT_CENTER, tv.size.x, lfs, Color(0.95, 0.76, 0.19, 0.7))
+	var scl := tv.position.y
+	while scl < tv.end.y:
+		ci.draw_line(Vector2(tv.position.x, scl), Vector2(tv.end.x, scl), Color(0, 0, 0, 0.25), 1.0)
+		scl += 3.0
+	ci.draw_circle(Vector2(tv.end.x - 6, tv.end.y + 3), 1.5, Color(0.3, 1.0, 0.4))
+	var tvi: Dictionary = info.get("tv", {})
+	if tvi.get("live", false) or tvi.is_empty():
+		pass
+	if not tvi.is_empty():
+		# the channel's banner along the bottom of the screen: which league, who's fighting
+		var band := Rect2(tv.position.x - 6, tv.end.y + 6, tv.size.x + 12, 26 * s)
+		_rc(ci, band, Color(0.05, 0.05, 0.08))
+		_rc(ci, Rect2(band.position, Vector2(4, band.size.y)), Color(1.0, 0.8, 0.2))
+		var f := ThemeDB.fallback_font
+		var fs := int(10 * s)
+		var ttl := str(tvi.get("title", ""))
+		if tvi.get("live", false):
+			ci.draw_circle(band.position + Vector2(12, 7 * s), 3.0 * s, Color(1, 0.3, 0.3) if fmod(t, 1.0) < 0.6 else Color(0.5, 0.2, 0.2))
+			ci.draw_string(f, band.position + Vector2(8, 11 * s), "      " + ttl, HORIZONTAL_ALIGNMENT_LEFT, band.size.x - 12, fs, Color(1.0, 0.8, 0.2))
+		else:
+			ci.draw_string(f, band.position + Vector2(8, 11 * s), ttl, HORIZONTAL_ALIGNMENT_LEFT, band.size.x - 12, fs, Color(1.0, 0.8, 0.2))
+		var who := str(tvi.get("a", "")) + ("  vs  " + str(tvi["b"]) if str(tvi.get("b", "")) != "" else "")
+		ci.draw_string(f, band.position + Vector2(8, 22 * s), who, HORIZONTAL_ALIGNMENT_LEFT, band.size.x - 12, fs, Color(0.9, 0.9, 0.95))
 	# neon sign, flickering now and then
 	var on := fmod(t, 7.0) > 0.12 and not (fmod(t, 7.0) > 0.3 and fmod(t, 7.0) < 0.38)
 	var neon := Color(1.0, 0.45, 0.2) if on else Color(0.35, 0.18, 0.12)
-	var sign_r := Rect2(size.x * 0.06, size.y * 0.06, size.x * 0.44, 34 * s)
+	var sign_r := Rect2(size.x * 0.04, tv.end.y + 46 * s, size.x * 0.44, 30 * s)   # under the TV, over the jukebox
 	_rc(ci, sign_r.grow(6), Color(neon.r, neon.g, neon.b, 0.12 if on else 0.0))
 	_rc(ci, sign_r, Color(0.08, 0.05, 0.05))
 	_rc(ci, sign_r, neon, false, 2.0)
 	ci.draw_string(ThemeDB.fallback_font, sign_r.position + Vector2(0, sign_r.size.y * 0.72), I18n.t("THE RUSTY BOLT"),
 			HORIZONTAL_ALIGNMENT_CENTER, sign_r.size.x, int(14 * s), neon)
-	# the TV: two little robots slugging it out
-	var tv := Rect2(size.x * 0.56, size.y * 0.05, size.x * 0.27, size.y * 0.19)
-	info["tv_rect"] = tv   # (1.76) the week's best clips play on it (garage.update_tv)
-	_rc(ci, tv.grow(4), Color(0.1, 0.1, 0.11))
-	_rc(ci, tv, Color(0.06, 0.12, 0.16))
-	_ln(ci, Vector2(tv.get_center().x, tv.position.y - 4), Vector2(tv.get_center().x, 0), Color(0.2, 0.2, 0.22), 3.0)
-	var ring_y := tv.end.y - 8
-	_ln(ci, Vector2(tv.position.x + 4, ring_y), Vector2(tv.end.x - 4, ring_y), Color(0.5, 0.5, 0.55), 2.0)
-	var gap := 18.0 + 10.0 * absf(sin(t * 1.3))
-	var mid := tv.get_center().x + sin(t * 0.7) * 10.0
-	for k in 2:
-		var dirk := -1.0 if k == 0 else 1.0
-		var bx := mid + dirk * gap
-		var c := Color(0.9, 0.55, 0.25) if k == 0 else Color(0.4, 0.7, 1.0)
-		_rc(ci, Rect2(bx - 5, ring_y - 26, 10, 16), c)
-		_rc(ci, Rect2(bx - 4, ring_y - 34, 8, 7), c.lightened(0.2))
-		_ln(ci, Vector2(bx - 3, ring_y - 10), Vector2(bx - 3, ring_y), c, 2.0)
-		_ln(ci, Vector2(bx + 3, ring_y - 10), Vector2(bx + 3, ring_y), c, 2.0)
-		var jab := maxf(0.0, sin(t * 5.0 + k * 1.7)) * 9.0
-		_ln(ci, Vector2(bx, ring_y - 22), Vector2(bx - dirk * (8 + jab), ring_y - 22), c, 3.0)
-	var tvi: Dictionary = info.get("tv", {})
-	if tvi.get("live", false) or tvi.is_empty():
-		ci.draw_string(ThemeDB.fallback_font, tv.position + Vector2(4, 11), "LIVE", HORIZONTAL_ALIGNMENT_LEFT, -1, 10, Color(1, 0.3, 0.3) if fmod(t, 1.0) < 0.6 else Color(0.5, 0.2, 0.2))
-	if not tvi.is_empty():
-		# the channel's banner along the bottom of the screen: which league, who's fighting
-		var band := Rect2(tv.position.x, tv.end.y - 2, tv.size.x, 26 * s)
-		_rc(ci, band, Color(0.05, 0.05, 0.08))
-		_rc(ci, Rect2(band.position, Vector2(4, band.size.y)), Color(1.0, 0.8, 0.2))
-		var f := ThemeDB.fallback_font
-		var fs := int(10 * s)
-		ci.draw_string(f, band.position + Vector2(8, 11 * s), str(tvi.get("title", "")), HORIZONTAL_ALIGNMENT_LEFT, band.size.x - 12, fs, Color(1.0, 0.8, 0.2))
-		var who := str(tvi.get("a", "")) + ("  vs  " + str(tvi["b"]) if str(tvi.get("b", "")) != "" else "")
-		ci.draw_string(f, band.position + Vector2(8, 22 * s), who, HORIZONTAL_ALIGNMENT_LEFT, band.size.x - 12, fs, Color(0.9, 0.9, 0.95))
 	# shelves of bottles behind the bar
 	var cx := _pub_counter_x(size)
-	for row in 2:
-		var y := size.y * (0.36 + row * 0.13)
+	var shelf0 := maxf(size.y * 0.36, tv.end.y + 66 * s)   # below the TV and its banner
+	var shelves := clampi(int((floor_y - 70 * s - shelf0) / (size.y * 0.12)) + 1, 1, 2)
+	for row in shelves:
+		var y := shelf0 + size.y * row * 0.12
 		_rc(ci, Rect2(cx, y, size.x - cx, 4), Color(0.35, 0.22, 0.12))
 		var k := 0
 		var x := cx + 8.0
@@ -858,10 +864,12 @@ static func _phone_closeup(ci: CanvasItem, size: Vector2, t: float, info: Dictio
 	# eyes on the screen: lids half down, pupils low
 	if str(look.get("glasses", "none")) in ["none", "round"]:
 		for side in [-1.0, 1.0]:
+			# (1.79) plain shapes (no outlines): the white again, the iris low, the lid half down over it
 			var e := c + Vector2(side * r * 0.33, -r * 0.08)
-			_rc(ci, Rect2(e.x - r * 0.16, e.y - r * 0.17, r * 0.32, r * 0.15), skin)
-			_ln(ci, Vector2(e.x - r * 0.15, e.y - r * 0.02), Vector2(e.x + r * 0.15, e.y - r * 0.02), skin.darkened(0.45), maxf(1.5, r * 0.04))
-			_cr(ci, e + Vector2(0, r * 0.06), r * 0.075, Color(look.get("eyes", "#5b3a1e")))
+			ci.draw_circle(e, r * 0.14, Color.WHITE)
+			ci.draw_circle(e + Vector2(0, r * 0.07), r * 0.075, Color(look.get("eyes", "#5b3a1e")))
+			ci.draw_rect(Rect2(e.x - r * 0.16, e.y - r * 0.17, r * 0.32, r * 0.16), skin)
+			ci.draw_line(Vector2(e.x - r * 0.15, e.y - r * 0.01), Vector2(e.x + r * 0.15, e.y - r * 0.01), skin.darkened(0.5), maxf(1.5, r * 0.045))
 	# glow from the screen on the face
 	_cr(ci, c + Vector2(0, r * 0.45), r * 0.95, Color(0.45, 0.75, 1.0, 0.12 + 0.03 * sin(t * 3.0)))
 	# arms come up from the elbows to the phone held in front of the chest

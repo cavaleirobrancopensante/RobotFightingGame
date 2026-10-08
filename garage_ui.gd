@@ -445,6 +445,7 @@ class RailButton extends Button:
 	var kind := "bay"
 	var label := ""
 	var on := false
+	var off := false   # (1.79) greyed out: you're not there
 	var star := false
 	var font: Font = ThemeDB.fallback_font
 
@@ -454,7 +455,7 @@ class RailButton extends Button:
 		custom_minimum_size = Vector2(80, 76)
 
 	func _draw() -> void:
-		var col := Color(0.6, 0.6, 0.67)
+		var col := Color(0.6, 0.6, 0.67, 0.35 if off else 1.0)
 		if on:
 			draw_style_box(_box(), Rect2(Vector2.ZERO, size))
 			draw_rect(Rect2(0, 8, 4, size.y - 16), Color(0.95, 0.76, 0.19))
@@ -811,6 +812,7 @@ class DraftCard extends PanelContainer:
 	signal watch_clip(id: String)
 	var avatar: Control = null
 	var row_h := 58.0
+	var _sent := false
 	var wrap := false   # narrow places (the results screen): the lines wrap and the rows grow
 
 	func build() -> void:
@@ -824,7 +826,7 @@ class DraftCard extends PanelContainer:
 		sb.set_border_width_all(2)
 		add_theme_stylebox_override("panel", sb)
 		var col := VBoxContainer.new()
-		col.add_theme_constant_override("separation", 6)
+		col.add_theme_constant_override("separation", 10 if wrap else 6)
 		add_child(col)
 		var top := HBoxContainer.new()
 		top.add_theme_constant_override("separation", 10)
@@ -835,7 +837,7 @@ class DraftCard extends PanelContainer:
 		if not (S.st()["draft"].get("pic", {}) as Dictionary).is_empty():
 			# (1.70) the picture that goes with it
 			var pp = load("res://garage_ui.gd").PostPic.new(S.st()["draft"]["pic"])
-			pp.custom_minimum_size = Vector2(0, 150)
+			pp.custom_minimum_size = Vector2(0, 190 if wrap else 150)
 			col.add_child(pp)
 			# (1.74) the photo, or one of the fight's best moments
 			var dr: Dictionary = S.st()["draft"]
@@ -851,13 +853,13 @@ class DraftCard extends PanelContainer:
 					opts.append([str(i), tr("CLIP") + ": " + GameData.Clips.kind_name(GameData.clip(str(i)))])
 				for o in opts:
 					var on: bool = (o[0] == "photo" and str(cur.get("kind", "")) != "clip") or str(cur.get("id", "")) == o[0]
-					var b: Button = UI.button(str(o[1]), _pick_media.bind(str(o[0])), 11, Vector2(0, 34))
+					var b: Button = UI.button(str(o[1]), _pick_media.bind(str(o[0])), 13, Vector2(0, 44))
 					if on:
 						b.add_theme_color_override("font_color", YELLOW)
 						b.add_theme_stylebox_override("normal", G.box(YELLOW.darkened(0.7), 8, 6))
 					pick.add_child(b)
 				if str(cur.get("kind", "")) == "clip":
-					pick.add_child(UI.button("▶ " + tr("Watch"), func(): watch_clip.emit(str(cur.get("id", ""))), 11, Vector2(0, 34)))
+					pick.add_child(UI.button("▶ " + tr("Watch"), func(): watch_clip.emit(str(cur.get("id", ""))), 13, Vector2(0, 44)))
 		var t: Label = G.text(tr("POST ABOUT THE FIGHT YOU WATCHED? Pick one.") if watched else tr("POST ABOUT TONIGHT? Pick one."), 15, YELLOW, "headb")
 		t.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		t.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -892,9 +894,21 @@ class DraftCard extends PanelContainer:
 				pc.add_theme_stylebox_override("panel", G.box(BG, 8, 8))
 				pc.mouse_filter = Control.MOUSE_FILTER_STOP
 				pc.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+				# (1.79) a tap, not a drag: the card scrolls under your thumb without posting by accident
+				var down := {"at": Vector2(-1, -1)}
 				pc.gui_input.connect(func(e):
-					if (e is InputEventMouseButton and e.pressed and e.button_index == MOUSE_BUTTON_LEFT) or (e is InputEventScreenTouch and e.pressed):
-						posted.emit(tone))
+					var press: bool = (e is InputEventMouseButton and e.button_index == MOUSE_BUTTON_LEFT) or e is InputEventScreenTouch
+					if not press:
+						return
+					if e.pressed:
+						down["at"] = e.position
+						pc.add_theme_stylebox_override("panel", G.box(BG.lightened(0.1), 8, 8))
+					else:
+						pc.add_theme_stylebox_override("panel", G.box(BG, 8, 8))
+						if down["at"].x >= 0.0 and (e.position - down["at"]).length() < 14.0 and not _sent:
+							_sent = true
+							posted.emit(tone)
+						down["at"] = Vector2(-1, -1))
 				pc.add_child(v)
 				row = pc
 			else:
@@ -912,7 +926,7 @@ class DraftCard extends PanelContainer:
 				row = b
 			col.add_child(row)
 			var warn := tone.begins_with("trash") and no_trash
-			var hl: Label = G.text(str(names[tone]) + "  ·  " + (tr("Breaks your Harbour Mutual deal!") if warn else str(hints[tone])), 11, RED if warn or tone.begins_with("trash") else MUTED, "headb")
+			var hl: Label = G.text(str(names[tone]) + "  ·  " + (tr("Breaks your Harbour Mutual deal!") if warn else str(hints[tone])), 13 if wrap else 11, RED if warn or tone.begins_with("trash") else MUTED, "headb")
 			if wrap:
 				hl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 			else:
@@ -927,8 +941,8 @@ class DraftCard extends PanelContainer:
 			dt.clip_contents = true
 			dt.add_theme_font_override("normal_font", G.body())
 			dt.add_theme_font_override("bold_font", G.headb())
-			dt.add_theme_font_size_override("normal_font_size", UI.tsz(13))
-			dt.add_theme_font_size_override("bold_font_size", UI.tsz(13))
+			dt.add_theme_font_size_override("normal_font_size", UI.tsz(15 if wrap else 13))
+			dt.add_theme_font_size_override("bold_font_size", UI.tsz(15 if wrap else 13))
 			dt.add_theme_color_override("default_color", TEXT)
 			dt.text = tr(str(d[1])) % bb_args
 			v.add_child(dt)
@@ -937,7 +951,7 @@ class DraftCard extends PanelContainer:
 		var sp := Control.new()
 		sp.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		bar.add_child(sp)
-		bar.add_child(UI.button(tr("Say nothing"), func(): skipped.emit(), 12, Vector2(130, 32)))
+		bar.add_child(UI.button(tr("Say nothing"), func(): skipped.emit(), 14 if wrap else 12, Vector2(170, 46) if wrap else Vector2(130, 32)))
 
 	func _pick_media(which: String) -> void:
 		var dr: Dictionary = GameData.Social.st()["draft"]

@@ -349,7 +349,7 @@ static func sign(id: int) -> String:
 		c.erase(k)
 	c["fought_week"] = false
 	s["active"].append(c)
-	GameData.money += int(c["sign"])
+	GameData.book("sponsors", int(c["sign"]))
 	for r in c["reqs"]:
 		if r["kind"] == "paint":
 			GameData.paint = int(r["paint"])   # the crew repaints it for free
@@ -410,13 +410,13 @@ static func strike(c: Dictionary, why: String) -> void:
 			if randf() < FIRST_FINE_CHANCE:
 				# some sponsors don't do friendly reminders (1.53)
 				var fine1 := int(int(c["fee"]) / 4)
-				GameData.money -= fine1
+				GameData.book("sponsors", -(fine1))
 				GameData.log_talk(who, I18n.t("We don't do reminders: %s. That's a $%d fine. Next time it's worse.") % [why, fine1], "sponsor:" + str(c["sp"]))
 			else:
 				GameData.log_talk(who, I18n.t("A friendly reminder: %s. Don't make us say it twice.") % why, "sponsor:" + str(c["sp"]))
 		2:
 			var fine := int(int(c["fee"]) / 4)
-			GameData.money -= fine
+			GameData.book("sponsors", -(fine))
 			GameData.log_talk(who, I18n.t("Second time: %s. That's a $%d fine.") % [why, fine], "sponsor:" + str(c["sp"]))
 		_:
 			st()["active"].erase(c)
@@ -471,7 +471,7 @@ static func after_fight(won: bool, ripped: int, forfeited: bool) -> int:
 			o["fee"] = int(o["fee"] * f)
 			o["want"] = float(o["want"]) + (0.1 if won else -0.1)
 			o["sleeping"] = false
-	GameData.money += paid
+	GameData.book("sponsors", paid)
 	return paid
 
 
@@ -479,7 +479,7 @@ static func podium(medal: int) -> int:
 	var paid := 0
 	for c in st()["active"]:
 		paid += int(c["podium"]) / medal
-	GameData.money += paid
+	GameData.book("sponsors", paid)
 	return paid
 
 
@@ -530,7 +530,7 @@ static func month_end() -> int:
 		if st()["active"].has(c):
 			paid += int(c["fee"])
 	st()["dealer_buys"] = 0
-	GameData.money += paid
+	GameData.book("sponsors", paid)
 	return paid
 
 

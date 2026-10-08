@@ -126,6 +126,7 @@ class Fighter:
 	var scan_time := 4.0
 	var aim_cd := 0.0        # seconds until this robot can aim again
 	var scan_t := 0.0        # scanning progress (seconds)
+	var auto_hold := 0.0     # (1.79) auto-aim stands back this long after you take the crosshair off by hand
 	var weak := ""           # the enemy part the scan found (hits there do WEAK_BONUS more)
 	var scan_on = null       # the enemy being scanned
 	var ai_level := 3        # CPU pilots: 1 rookie .. 5 champion
@@ -968,6 +969,7 @@ func handle_tap(p: Vector2) -> bool:
 	if player.target == slot and who == cpu:
 		for f in team_p:
 			f.target = ""
+			f.auto_hold = 4.0
 		Sfx.play("untarget")
 	elif player.aim_cd > 0.0:
 		# the head isn't ready: the crosshair icon is still filling
@@ -2102,7 +2104,7 @@ func quit_fight() -> void:
 	Sfx.play("error")
 	if mode == "watch":
 		for b in live_bets:
-			GameData.money += int(b["stake"])   # walked out: your live bets come back
+			GameData.book("bets", int(b["stake"]))   # walked out: your live bets come back
 		live_bets = []
 		GameData.watching = {}   # walked out: the round will decide it on paper
 		Loading.go("res://garage.tscn")
@@ -2265,6 +2267,16 @@ func update_aim(f: Fighter, delta: float) -> void:
 			if f.team == 0 and f == player:
 				popup(tr("WEAK SPOT FOUND"), visual_point(o, RobotArt.part_center(o.get_look(), wp)) + Vector2(0, -40), Color(1.0, 0.9, 0.2))
 				Sfx.play("target", 0.1, -6.0)
+	# (1.79) auto-aim (Settings > Difficulty): the crosshair goes on the weak spot by itself when the
+	# head is ready, unless you've aimed somewhere else by hand
+	f.auto_hold = maxf(0.0, f.auto_hold - delta)
+	if f == player and f.weak != "" and f.target != f.weak and f.aim_cd <= 0.0 and f.auto_hold <= 0.0 \
+			and (f.target == "" or not o.alive(f.target)) and mode != "watch" and mode != "replay" and sim.is_empty() \
+			and int(GameData.settings.get("auto_aim", 0)) == 1:
+		for t in team_p:
+			t.target = f.weak
+			t.aim_cd = t.aim_time
+		Sfx.play("target", 0.1, -8.0)
 
 
 ## Switch stance: the other side leads (0.3 s, a little power). Anyone aiming at a limb that just
@@ -4336,7 +4348,10 @@ func draw_results() -> void:
 	var title := tr("VICTORY!") if won else tr("DEFEAT")
 	if mode == "watch":
 		title = tr("%s WINS") % str(result.get("winner", "?"))
-	ci.draw_string(font, Vector2(0, y), title, HORIZONTAL_ALIGNMENT_CENTER, res_w, fs(72 if mode != "watch" else 54), Color(1.0, 0.85, 0.2) if won or mode == "watch" else Color(0.9, 0.3, 0.3))
+	var tsz := fs(72 if mode != "watch" else 54)
+	while tsz > 20 and font.get_string_size(title, HORIZONTAL_ALIGNMENT_LEFT, -1, tsz).x > res_w - 30.0:
+		tsz -= 2
+	ci.draw_string(font, Vector2(0, y), title, HORIZONTAL_ALIGNMENT_CENTER, res_w, tsz, Color(1.0, 0.85, 0.2) if won or mode == "watch" else Color(0.9, 0.3, 0.3))
 	y += 60.0
 	var lines: Array = []
 	if mode == "watch":
@@ -4371,11 +4386,18 @@ func draw_results() -> void:
 	if result.get("event_done", "") != "":
 		lines.append([tr("SEASON OVER: %s") % result["event_done"], Color(1.0, 0.5, 0.2)])
 	for l in lines:
-		ci.draw_string(font, Vector2(0, y), l[0], HORIZONTAL_ALIGNMENT_CENTER, res_w, fs(24), l[1])
+		var lsz := fs(24)
+		while lsz > 11 and font.get_string_size(str(l[0]), HORIZONTAL_ALIGNMENT_LEFT, -1, lsz).x > res_w - 30.0:
+			lsz -= 1
+		ci.draw_string(font, Vector2(0, y), l[0], HORIZONTAL_ALIGNMENT_CENTER, res_w, lsz, l[1])
 		y += 38.0
 	y = draw_result_cards(y)
 	if mode not in ["quick", "test", "watch"]:
-		ci.draw_string(font, Vector2(0, y + 6), tr("The night goes by. Tomorrow morning, back in the bay."), HORIZONTAL_ALIGNMENT_CENTER, res_w, fs(18), Color(0.6, 0.85, 1.0))
+		var nsz := fs(18)
+		var ntx := tr("The night goes by. Tomorrow morning, back in the bay.")
+		while nsz > 10 and font.get_string_size(ntx, HORIZONTAL_ALIGNMENT_LEFT, -1, nsz).x > res_w - 30.0:
+			nsz -= 1
+		ci.draw_string(font, Vector2(0, y + 6), ntx, HORIZONTAL_ALIGNMENT_CENTER, res_w, nsz, Color(0.6, 0.85, 1.0))
 	if phase_timer > 1.0:
 		# one clear way out (a tap anywhere does the same)
 		var label: String = {"quick": tr("BACK TO THE MENU"), "test": tr("BACK TO THE SCRAPYARD")}.get(mode, tr("BACK TO THE BAY"))
@@ -6091,7 +6113,7 @@ var post_card: Control = null   # the BotMedia card on the results screen's righ
 
 ## The results text centres in this width (the post card takes the right side while it's up).
 func results_width() -> float:
-	return screen.x * 0.6 if post_card != null and is_instance_valid(post_card) else screen.x
+	return screen.x * 0.5 if post_card != null and is_instance_valid(post_card) else screen.x
 
 
 ## After your own fight (or one you watched): the post waiting on BotMedia, right there, the same
@@ -6111,11 +6133,27 @@ func show_post_card() -> void:
 		GameData.Social.st()["draft"]["clips"] = GameData.fresh_clip_ids()
 	var holder := ScrollContainer.new()
 	holder.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-	holder.position = Vector2(screen.x * 0.61, screen.y * 0.22)
-	holder.size = Vector2(screen.x * 0.37, screen.y * 0.66)
+	# (1.79) a bigger card with a thick scroll bar a thumb can grab; the results move over to the left
+	holder.position = Vector2(screen.x * 0.51, screen.y * 0.05)
+	holder.size = Vector2(screen.x * 0.47, screen.y * 0.9)
+	var vb := holder.get_v_scroll_bar()
+	vb.custom_minimum_size = Vector2(22, 0)
+	var track := StyleBoxFlat.new()
+	track.bg_color = Color(1, 1, 1, 0.08)
+	track.set_corner_radius_all(11)
+	track.content_margin_left = 22
+	var grab := StyleBoxFlat.new()
+	grab.bg_color = Color(0.95, 0.76, 0.19, 0.85)
+	grab.set_corner_radius_all(11)
+	var grab_hi := grab.duplicate()
+	grab_hi.bg_color = Color(1.0, 0.85, 0.3)
+	vb.add_theme_stylebox_override("scroll", track)
+	vb.add_theme_stylebox_override("grabber", grab)
+	vb.add_theme_stylebox_override("grabber_highlight", grab_hi)
+	vb.add_theme_stylebox_override("grabber_pressed", grab_hi)
 	var card := GUI.DraftCard.new()
 	card.wrap = true
-	card.custom_minimum_size = Vector2(holder.size.x - 6.0, 0)
+	card.custom_minimum_size = Vector2(holder.size.x - 30.0, 0)
 	card.posted.connect(_on_results_post)
 	card.skipped.connect(_on_results_skip)
 	card.watch_clip.connect(open_clip)
@@ -6262,7 +6300,7 @@ func _on_live_bet(side: int) -> void:
 	var stake: int = GameData.stakes()[live_stake_i]
 	if GameData.money < stake:
 		return
-	GameData.money -= stake
+	GameData.book("bets", -(stake))
 	live_bets.append({"side": side, "stake": stake, "odds": live_odds[side]})
 	Sfx.play("buy", 0.05)
 	live_t = 0.0
@@ -6283,7 +6321,7 @@ func settle_live_bets() -> void:
 		out["staked"] += int(bt["stake"])
 		if (int(bt["side"]) == 0) == won:
 			var pay := int(int(bt["stake"]) * float(bt["odds"]))
-			GameData.money += pay
+			GameData.book("bets", pay)
 			out["paid"] += pay
 			out["lines"].append(tr("Live bet on %s at %.2fx: +$%d") % [name, float(bt["odds"]), pay])
 			# (1.76) stricter: long odds, or a month's running costs won at 2 to 1 or better

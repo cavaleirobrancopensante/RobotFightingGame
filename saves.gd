@@ -74,7 +74,17 @@ func show_slots() -> void:
 		else:
 			text.add_child(UI.label(tr("Slot %d: %s & %s") % [slot, info["pilot"], info["robot"]], 20))
 			var cups := tr(", %d cups") % info["cups"] if info["cups"] > 0 else ""
-			text.add_child(UI.label(tr("%s%s  ·  %s  ·  saved %s") % [info["progress"], cups, GameData.money_text(info["money"]), info["saved"]], 14, Color(0.72, 0.72, 0.78)))
+			text.add_child(UI.label(tr("AUTOSAVE: %s%s  ·  %s  ·  %s") % [info["progress"], cups, GameData.money_text(info["money"]), info["saved"]], 14, Color(0.72, 0.72, 0.78)))
+			var mi := GameData.slot_info(slot, true)
+			if not mi.is_empty() and not mi.get("broken", false) and mode != "new":
+				var mrow := HBoxContainer.new()
+				mrow.add_theme_constant_override("separation", 8)
+				text.add_child(mrow)
+				var ml := UI.label(tr("YOUR SAVE: %s  ·  %s  ·  %s") % [mi["progress"], GameData.money_text(mi["money"]), mi["saved"]], 14, Color(0.55, 1.0, 0.65))
+				ml.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+				ml.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+				mrow.add_child(ml)
+				mrow.add_child(UI.button("Load your save", _on_load.bind(slot, true), 15, Vector2(190, 44)))
 		var waiting: String = confirm.get(slot, "")
 		if mode == "new":
 			if info.is_empty():
@@ -82,7 +92,7 @@ func show_slots() -> void:
 			else:
 				row.add_child(UI.button("Sure? Tap again" if waiting == "overwrite" else "Overwrite", _on_overwrite.bind(slot), 18, Vector2(190, 52)))
 		else:
-			var load_b := UI.button("Load", _on_load.bind(slot), 18, Vector2(120, 52))
+			var load_b := UI.button("Load latest", _on_load.bind(slot), 18, Vector2(150, 52))
 			load_b.disabled = info.is_empty() or info.get("broken", false)
 			row.add_child(load_b)
 			var del := UI.button("Sure? Tap again" if waiting == "delete" else "Delete", _on_delete.bind(slot), 18, Vector2(190, 52))
@@ -183,6 +193,7 @@ func build_difficulty() -> void:
 	var pk: Dictionary = GameData.PECKING[clampi(int(s.get("pecking", 1)), 0, GameData.PECKING.size() - 1)]
 	var items := [
 		[tr("CPU difficulty: %s") % tr(SETTINGS.DIFF_NAMES[int(s["difficulty"])]), _on_diff_step.bind("difficulty")],
+		[tr("Auto-aim: %s") % tr(SETTINGS.AIM_NAMES[clampi(int(s.get("auto_aim", 0)), 0, 1)]), _on_diff_step.bind("auto_aim")],
 		[tr("Gus's coaching: %s") % tr(SETTINGS.COACH_NAMES[clampi(int(s.get("coaching", 2)), 0, 3)]), _on_diff_step.bind("coaching")],
 		[tr("Starting money: %s (new games)") % GameData.money_text(int(s.get("start_money", GameData.START_MONEY))), _on_diff_step.bind("start_money")],
 		[tr("Rent & food: %s") % (tr("none") if int(s.get("living_cost", GameData.LIVING_COST)) == 0 else tr("$%d a month") % int(s.get("living_cost", GameData.LIVING_COST))), _on_diff_step.bind("living_cost")],
@@ -199,6 +210,8 @@ func _on_diff_step(key: String) -> void:
 			s["difficulty"] = (int(s["difficulty"]) + 1) % SETTINGS.DIFF_NAMES.size()
 		"coaching":
 			s["coaching"] = (int(s.get("coaching", 2)) + 1) % SETTINGS.COACH_NAMES.size()
+		"auto_aim":
+			s["auto_aim"] = 1 - clampi(int(s.get("auto_aim", 0)), 0, 1)
 		"start_money":
 			var opts: Array = GameData.START_MONEY_OPTIONS
 			s["start_money"] = opts[(opts.find(int(s.get("start_money", GameData.START_MONEY))) + 1) % opts.size()]
@@ -442,7 +455,7 @@ func _on_overwrite(slot: int) -> void:
 
 ## Loading a save: a bar at the bottom fills up while the save is read and the garage loads
 ## in the background (the garage scene is the slow part the first time).
-func _on_load(slot: int) -> void:
+func _on_load(slot: int, mine: bool = false) -> void:
 	const GARAGE := "res://garage.tscn"
 	var cover := ColorRect.new()
 	cover.color = Color(0.07, 0.07, 0.1, 0.96)
@@ -484,7 +497,7 @@ func _on_load(slot: int) -> void:
 	show.call(3.0)
 	await get_tree().process_frame
 	await get_tree().process_frame
-	var err := GameData.load_game(slot)
+	var err := GameData.load_game(slot, mine)
 	if err != "":
 		cover.queue_free()
 		var l := UI.label(err, 16, Color(1.0, 0.6, 0.4))
