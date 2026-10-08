@@ -415,10 +415,13 @@ static func drafts() -> Array:
 	if d.get("watch", false):
 		# a fight you watched from ringside (1.56): winner, loser
 		# (1.57) five options: trash talk the winner, the loser, or both
-		return [["humble", "Watched %s beat %s from ringside. Respect to both."], ["hype", "%s over %s! Somebody put that on the big screen."],
+		var w_opts := [["humble", "Watched %s beat %s from ringside. Respect to both."], ["hype", "%s over %s! Somebody put that on the big screen."],
 				["trash_w", "%s beat %s and still looked slow. Lucky night."],
 				["trash_l", "%s won, sure. But %s was never going to. Retire."],
 				["trash", "%s beat %s and still looked slow. I'd take either of them."]]
+		if d.get("gloat", false):
+			w_opts.push_front(["gloat", "Backed %s against %s at long odds. Payday."])   # (1.73) a big live bet paid
+		return w_opts
 	if d["won"]:
 		return [["humble", "Good fight, %s. I got lucky with that last one."], ["hype", "ANOTHER ONE. %s didn't know what hit them."],
 				["trash", "%s, go back to the scrapyard. I'll be here when you're ready."]]
@@ -472,6 +475,9 @@ static func publish(tone: String) -> void:
 			f *= (1.0 + 0.02 * k1) if d["won"] else 0.98
 			if watched:
 				rel_social(w1, REL_HYPE_WATCHED, k1, GameData.REL_SOCIAL_CAP)   # the winner loves it
+		"gloat":
+			f *= 1.0 + 0.015 * k1
+			rel_social(w1, 2.0, k1, GameData.REL_SOCIAL_CAP)   # the pilot you backed likes the money talk
 		"trash", "trash_w", "trash_l":
 			f *= 1.0 + 0.01 * k1
 			# who takes it personally: your opponent; when you watched, the winner, the loser or both

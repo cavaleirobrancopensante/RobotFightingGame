@@ -838,9 +838,10 @@ class DraftCard extends PanelContainer:
 		var hints := {"humble": tr("Safe. Sponsors like it. They warm up to you (+4).") if not watched else tr("Safe. Both of them warm up to you (+3)."),
 				"hype": tr("Big if you keep winning.") if not watched else tr("The winner loves it (+6)."),
 				"trash": tr("Fans love it. They won't (-10).") if not watched else tr("Fans love it. Both of them will remember (-10 each)."),
-				"trash_w": tr("Fans love it. The winner won't (-10)."), "trash_l": tr("Fans love it. The loser won't (-10).")}
+				"trash_w": tr("Fans love it. The winner won't (-10)."), "trash_l": tr("Fans love it. The loser won't (-10)."),
+				"gloat": tr("You called it and got paid. Fans love a winner (+2 with the winner).")}
 		var names := {"humble": tr("HUMBLE"), "hype": tr("HYPE"), "trash": tr("TRASH TALK") if not watched else tr("TRASH TALK: BOTH"),
-				"trash_w": tr("TRASH TALK: WINNER"), "trash_l": tr("TRASH TALK: LOSER")}
+				"trash_w": tr("TRASH TALK: WINNER"), "trash_l": tr("TRASH TALK: LOSER"), "gloat": tr("GLOAT")}
 		# what's between you and each pilot named in the drafts: (+52) green, (-61) red
 		var wids: Array = S.draft_wids()
 		var bb_args: Array = []

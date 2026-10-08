@@ -474,6 +474,15 @@ var slowmo := 0.0           # slow motion after a knockout
 # camera punching in, the HUD out of the way. At most one every MOMENT_GAP seconds (KOs always).
 const MOMENT_GAP := 8.0
 var moment_t := 0.0
+# (1.73) live betting while you watch: odds move with the fight, each bet keeps its price
+var live_bets: Array = []      # [{side, stake, odds}]
+var live_odds := [2.0, 2.0]
+var live_p0 := 0.5             # the bookies' chance for the left robot before the bell
+var live_t := 0.0
+var live_stake_i := 1
+var live_bar: Control = null
+var live_btns: Array = []
+var live_info: Label = null
 var moment_kind := ""
 var moment_on = null        # the robot the camera follows
 var moment_name := ""
@@ -786,6 +795,10 @@ func _input(event: InputEvent) -> void:
 	# taps on the BotMedia card on the results screen belong to its buttons, not "tap to leave"
 	if post_card != null and is_instance_valid(post_card) and (event is InputEventScreenTouch or event is InputEventMouseButton) \
 			and post_card.get_global_rect().has_point(event.position):
+		return
+	# (1.73) and taps on the live betting bar belong to its buttons
+	if live_bar != null and live_bar.visible and (event is InputEventScreenTouch or event is InputEventMouseButton) \
+			and live_bar.get_global_rect().has_point(event.position):
 		return
 	if event is InputEventScreenTouch:
 		if event.pressed:
@@ -1726,6 +1739,8 @@ func _process(delta: float) -> void:
 		redraw_all()
 		return
 	update_coach(delta)
+	if mode == "watch":
+		update_live_bets(delta)
 	if hitstop > 0.0:
 		hitstop -= delta
 		redraw_all()
@@ -1960,6 +1975,7 @@ func finish_match() -> void:
 			torn[side] = f.ripped
 		result = GameData.record_watch(won, hp, torn)
 		result["watch"] = true
+		settle_live_bets()
 		phase = "results"
 		phase_timer = 0.0
 		Sfx.play("victory")
@@ -2052,6 +2068,9 @@ func quit_fight() -> void:
 		return
 	Sfx.play("error")
 	if mode == "watch":
+		for b in live_bets:
+			GameData.money += int(b["stake"])   # walked out: your live bets come back
+		live_bets = []
 		GameData.watching = {}   # walked out: the round will decide it on paper
 		Loading.go("res://garage.tscn")
 		return
@@ -4262,6 +4281,8 @@ func draw_results() -> void:
 	var lines: Array = []
 	if mode == "watch":
 		lines.append([tr("That's the result on the books. Bets on it pay when the round is over."), Color(0.8, 0.8, 0.85)])
+		for bl in result.get("live", {}).get("lines", []):
+			lines.append([str(bl), Color(0.6, 1.0, 0.6) if str(bl).contains("+$") else Color(1.0, 0.55, 0.5)])
 		if result.get("posted", "") == "" and post_card == null:
 			lines.append([tr("A post about it is waiting on BotMedia."), Color(0.6, 0.85, 1.0)])
 	elif mode == "quick":
@@ -6064,3 +6085,151 @@ func _close_post_card() -> void:
 		post_card.queue_free()
 	post_card = null
 	redraw_all()
+
+
+
+# ---------------------------------------------------------------- live betting (1.73)
+# While you watch, a bar along the bottom takes bets. The odds move every second with the fight
+# (core left, parts still on, power in the tank) from the bookies' pre-fight price; a bet keeps
+# the price it was placed at. Bets close in the last 10 seconds and during a big moment. They're
+# paid at the bell; a long-odds win leaves a GLOAT post waiting on BotMedia.
+
+const LIVE_EDGE := 0.92        # the house keeps 8%
+const LIVE_SWING := 5.0        # how hard the fight moves the price
+const LIVE_CLOSE := 10.0       # seconds left on the clock when bets close
+
+
+func live_strength(f: Fighter) -> float:
+	var core := 0.0
+	var on := 0
+	var total := 0
+	for slot in f.parts:
+		var pt: Dictionary = f.parts[slot]
+		if pt.is_empty():
+			continue
+		total += 1
+		if float(pt.get("hp", 0.0)) > 0.0:
+			on += 1
+		if slot == "torso":
+			core = clampf(float(pt["hp"]) / maxf(1.0, float(pt["max_hp"])), 0.0, 1.0)
+	return core * 0.6 + float(on) / maxf(1.0, total) * 0.25 + clampf(f.power / maxf(1.0, f.power_max), 0.0, 1.0) * 0.15
+
+
+func live_closed() -> bool:
+	return phase != "fight" or time_left < LIVE_CLOSE or moment_t > 0.0
+
+
+func update_live_bets(delta: float) -> void:
+	if live_bar == null:
+		if phase != "fight":
+			return
+		setup_live_bets()
+	live_bar.visible = phase == "fight" and not paused
+	live_t -= delta
+	if live_t > 0.0:
+		return
+	live_t = 1.0
+	var a: Fighter = team_p[0]
+	var b: Fighter = team_c[0]
+	var lp0 := log(live_p0 / (1.0 - live_p0))
+	var p := 1.0 / (1.0 + exp(-(lp0 + LIVE_SWING * (live_strength(a) - live_strength(b)))))
+	p = clampf(p, 0.03, 0.97)
+	live_odds = [snappedf(maxf(1.05, LIVE_EDGE / p), 0.05), snappedf(maxf(1.05, LIVE_EDGE / (1.0 - p)), 0.05)]
+	var closed := live_closed()
+	var stake: int = GameData.stakes()[live_stake_i]
+	for k in 2:
+		var btn: Button = live_btns[k]
+		var f: Fighter = a if k == 0 else b
+		btn.text = (tr("BETS CLOSED") if closed else tr("$%d on %s · %.2fx") % [stake, (f.pilot_name if f.pilot_name != "" else f.label), live_odds[k]])
+		btn.disabled = closed or GameData.money < stake
+	var mine: Array = []
+	for bt in live_bets:
+		var f2: Fighter = a if int(bt["side"]) == 0 else b
+		mine.append(tr("$%d on %s at %.2fx") % [int(bt["stake"]), (f2.pilot_name if f2.pilot_name != "" else f2.label), float(bt["odds"])])
+	live_info.text = (tr("Your bets: %s") % ", ".join(mine)) if not mine.is_empty() else tr("LIVE ODDS · tap a robot to back it at today's price")
+
+
+func setup_live_bets() -> void:
+	var ev: Dictionary = GameData.watch_event()
+	if not ev.is_empty():
+		var oa: float = GameData.Career.odds(ev, int(GameData.watching["a"]), int(GameData.watching["b"]))
+		var ob: float = GameData.Career.odds(ev, int(GameData.watching["b"]), int(GameData.watching["a"]))
+		live_p0 = clampf((1.0 / oa) / ((1.0 / oa) + (1.0 / ob)), 0.05, 0.95)
+	var panel := PanelContainer.new()
+	panel.add_theme_stylebox_override("panel", GUI.box(Color(0.05, 0.05, 0.07, 0.82), 10, 6))
+	panel.anchor_left = 0.18
+	panel.anchor_right = 0.82
+	panel.anchor_top = 1.0
+	panel.anchor_bottom = 1.0
+	panel.offset_top = -UIK.tsz(13) * 2.0 - 58.0
+	panel.offset_bottom = -6.0
+	hud_layer.add_child(panel)
+	var col := VBoxContainer.new()
+	col.add_theme_constant_override("separation", 4)
+	panel.add_child(col)
+	live_info = GUI.text("", 12, GUI.AMBER)
+	live_info.clip_text = true
+	live_info.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	col.add_child(live_info)
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 8)
+	col.add_child(row)
+	var sb := UIK.button("", func(): pass, 13, Vector2(96, 40))
+	sb.text = "$%d" % GameData.stakes()[live_stake_i]
+	sb.pressed.connect(func():
+		live_stake_i = (live_stake_i + 1) % GameData.stakes().size()
+		sb.text = "$%d" % GameData.stakes()[live_stake_i]
+		live_t = 0.0)
+	row.add_child(sb)
+	live_btns = []
+	for k in 2:
+		var b := UIK.button("", _on_live_bet.bind(k), 13, Vector2(0, 40))
+		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		b.clip_text = true
+		row.add_child(b)
+		live_btns.append(b)
+	live_bar = panel
+	live_t = 0.0
+
+
+func _on_live_bet(side: int) -> void:
+	if live_closed():
+		return
+	var stake: int = GameData.stakes()[live_stake_i]
+	if GameData.money < stake:
+		return
+	GameData.money -= stake
+	live_bets.append({"side": side, "stake": stake, "odds": live_odds[side]})
+	Sfx.play("buy", 0.05)
+	live_t = 0.0
+
+
+## At the bell: winning bets pay their own price. A big payday (4 to 1 or longer, or more than a
+## week of running costs) leaves a GLOAT option on the post waiting on BotMedia.
+func settle_live_bets() -> void:
+	if live_bets.is_empty():
+		return
+	var out := {"lines": [], "paid": 0, "staked": 0}
+	var big := false
+	var a: Fighter = team_p[0]
+	var b: Fighter = team_c[0]
+	for bt in live_bets:
+		var f: Fighter = a if int(bt["side"]) == 0 else b
+		var name := f.pilot_name if f.pilot_name != "" else f.label
+		out["staked"] += int(bt["stake"])
+		if (int(bt["side"]) == 0) == won:
+			var pay := int(int(bt["stake"]) * float(bt["odds"]))
+			GameData.money += pay
+			out["paid"] += pay
+			out["lines"].append(tr("Live bet on %s at %.2fx: +$%d") % [name, float(bt["odds"]), pay])
+			if float(bt["odds"]) >= 4.0 or pay >= GameData.living_cost() / 4:
+				big = true
+		else:
+			out["lines"].append(tr("Live bet on %s: lost $%d") % [name, int(bt["stake"])])
+	live_bets = []
+	result["live"] = out
+	if big and not GameData.Social.st()["draft"].is_empty():
+		GameData.Social.st()["draft"]["gloat"] = true
+	if live_bar:
+		live_bar.visible = false
+	GameData.save_game()
