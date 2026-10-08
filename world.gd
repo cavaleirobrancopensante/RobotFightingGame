@@ -552,8 +552,39 @@ static func week_passed(y: int, wk: int, busy: Dictionary) -> void:
 				var foes: Array = pool.filter(func(q): return q != p)
 				if not foes.is_empty():
 					fight_pair(rng, p, foes[rng.randi() % foes.size()], "pickup")
+	for p in active():
+		weekly_repairs(p)
 	if wk % GameData.MONTH_WEEKS == 0:
 		month_passed(rng, busy)
+
+
+## What a pilot keeps back before spending on the robot.
+static func reserve_of(p: Dictionary) -> int:
+	var living: int = LIVING[str(p["tier"])]
+	return {"saver": living * 2, "spender": 0, "gambler": -living / 2, "grinder": living}.get(str(p["habit"]), 0)
+
+
+## A week in their garage (1.53): every robot heals 7% on its own (a day's tinkering, like Gus's
+## 1%), then the ones who can afford it pay for proper repairs, worst part first, while the money
+## lasts. A broke pilot fights with the dents.
+static func weekly_repairs(p: Dictionary) -> void:
+	if not p.has("wear"):
+		p["wear"] = {}
+	for slot in p["wear"].keys():
+		var v := float(p["wear"][slot]) + 0.07
+		if v >= 1.0:
+			p["wear"].erase(slot)
+		else:
+			p["wear"][slot] = v
+	var reserve := reserve_of(p)
+	var worn: Array = p["wear"].keys()
+	worn.sort_custom(func(a, b): return float(p["wear"][a]) < float(p["wear"][b]))
+	for slot in worn:
+		var cost := int(maxf(30.0, part_cost(p["bot"]["parts"].get(slot, "")) * GameData.REPAIR_SHARE) * (1.0 - float(p["wear"][slot])))
+		if int(p["cash"]) - cost < reserve:
+			break
+		p["cash"] = int(p["cash"]) - cost
+		p["wear"].erase(slot)
 
 
 static func in_division(wid: int) -> bool:
@@ -639,16 +670,7 @@ static func month_passed(rng: RandomNumberGenerator, busy: Dictionary) -> void:
 		read_month(p)
 		p["cash"] = int(p["cash"]) - living + rng.randi_range(INCOME[tier][0], INCOME[tier][1])
 		p["cash"] = int(p["cash"]) - int(bot_value(p["bot"]) * 0.03)   # oil, bolts, upkeep: dear robots cost dear
-		var reserve: int = {"saver": living * 2, "spender": 0, "gambler": -living / 2, "grinder": living}.get(str(p["habit"]), 0)
-		# repairs, worst part first, while the money lasts
-		var worn: Array = p["wear"].keys()
-		worn.sort_custom(func(a, b): return float(p["wear"][a]) < float(p["wear"][b]))
-		for slot in worn:
-			var cost := int(maxf(20.0, part_cost(p["bot"]["parts"].get(slot, "")) * 0.2) * (1.0 - float(p["wear"][slot])))
-			if int(p["cash"]) - cost < reserve:
-				break
-			p["cash"] = int(p["cash"]) - cost
-			p["wear"].erase(slot)
+		var reserve: int = reserve_of(p)   # (repairs happen every week now: weekly_repairs)
 		# scrap pilots dig the scrapyard like you do: now and then a usable part turns up
 		if (tier == "rust" or tier == "scrap" or tier == "open") and rng.randf() < 0.45:
 			var slot: String = UPGRADE_SLOTS[rng.randi() % 6]

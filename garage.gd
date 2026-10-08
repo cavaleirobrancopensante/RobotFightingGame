@@ -1812,8 +1812,8 @@ func tour_steps() -> Array:
 		{"target": "repair", "text": tr("The robot's dented. Repair all puts the dents on the job board. Check the price, then tap it.")},
 		{"target": "next", "text": tr("Time only moves when you press the big yellow button. The bay works on the jobs while it runs.")},
 		{"target": "rail:Parts", "text": tr("Get Parts. The scrapyard's out back, one free dig a day.")},
-		{"target": "dig", "text": tr("Tap Dig anywhere. Mostly junk, but it's free.")},
-		{"target": "fight", "text": tr("Saturday is the Open Trials. Three chances, and one win puts us in the Scrap League. Practise at the Rusty Bolt till then.")},
+		{"target": "dig", "text": tr("Tap Dig anywhere. Some days there's nothing, but it's free.")},
+		{"target": "fight", "text": tr("Saturday is the Open Trials. Two wins put us in the Scrap League, two losses and we're out. Practise at the Rusty Bolt.")},
 	]
 
 
@@ -2705,6 +2705,20 @@ func build_jobs_view() -> void:
 	list_box.add_child(ot)
 	var bar2 := flow_bar()
 	row_button(bar2, tr("Overtime $%d") % GameData.overtime_cost() if not GameData.overtime else tr("Booked"), _on_overtime, not GameData.overtime and GameData.money >= GameData.overtime_cost(), 150)
+	# the bay itself: passive repair, and the upgrades that speed it up (each one puts the rent up)
+	var bl := GUI.text(tr("THE BAY: %s. Parts on your robots heal %d%% a day on their own.") % [tr(GameData.BAY_NAMES[GameData.bay_level]), int(round(GameData.passive_rate() * 100.0))], 15, GUI.YELLOW, "headb")
+	bl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	list_box.add_child(bl)
+	var lv := GUI.BlockBar.new()   # 1 block = 1% a day
+	lv.block_w = 22.0
+	lv.setup(GameData.passive_rate() * 100.0, 1.0, (GameData.PASSIVE_BASE + GameData.PASSIVE_STEP * GameData.BAY_LEVELS) * 100.0, GUI.GREEN)
+	list_box.add_child(lv)
+	if GameData.bay_level < GameData.BAY_LEVELS:
+		var up_l := GUI.text(tr("Next: %s. %d%% a day, rent +$%d a month.") % [tr(GameData.BAY_NAMES[GameData.bay_level + 1]), int(round((GameData.passive_rate() + GameData.PASSIVE_STEP) * 100.0)), GameData.bay_rent()], 13, GUI.MUTED)
+		up_l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		list_box.add_child(up_l)
+		var bar3 := flow_bar()
+		row_button(bar3, tr("Install $%d") % GameData.bay_price(), _on_bay_upgrade, GameData.money >= GameData.bay_price(), 150)
 	if GameData.jobs.is_empty():
 		section(tr("Nothing on the board. Everything's fixed and bolted on."))
 		return
@@ -2742,6 +2756,13 @@ func build_jobs_view() -> void:
 		row_button(line, tr("Up"), _on_job_up.bind(i), i > 0, 60)
 		if j["kind"] == "repair":
 			row_button(line, tr("Cancel +$%d") % GameData.job_refund(j), _on_cancel_job.bind(i), true, 120)
+
+
+func _on_bay_upgrade() -> void:
+	confirm(tr(GameData.BAY_NAMES[GameData.bay_level + 1]).to_upper(), tr("Install the %s for $%d? Parts heal faster, and the rent goes up $%d a month for good.") % [tr(GameData.BAY_NAMES[GameData.bay_level + 1]), GameData.bay_price(), GameData.bay_rent()], tr("Install"), func():
+		note(GameData.buy_bay_upgrade(), "buy")
+		GameData.save_game()
+		refresh())
 
 
 func _on_cancel_job(i: int) -> void:
@@ -3370,16 +3391,17 @@ func build_controllers() -> void:
 ## The scrapyard: a mountain of dead robots. Dig for free (beaten-up) parts, a few digs per fight.
 func build_scrapyard_tab() -> void:
 	var bar := action_bar()
-	var info := GUI.text(tr("One dig a day, and whatever comes up is beaten up. Dig anywhere for the best odds, or dig for the part you need and take mostly junk. Every day you stay away, the odds of a rare find go up."), 12, GUI.MUTED)
+	var info := GUI.text(tr("One dig a day, and nothing is guaranteed. Every day you stay away, the odds of finding something go up. Digging for one kind of part halves them."), 12, GUI.MUTED)
 	info.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	info.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	bar.add_child(info)
 	var luck := VBoxContainer.new()
-	luck.add_child(GUI.text(tr("RARE FIND"), 12, GUI.MUTED, "headb"))
+	luck.add_child(GUI.text(tr("FIND CHANCE"), 12, GUI.MUTED, "headb"))
 	luck.add_child(GUI.readout("%d%%" % roundi(GameData.dig_luck * 100.0), 26, GUI.GREEN if GameData.dig_luck > 0.0 else GUI.MUTED))
-	var lb := GUI.BlockBar.new()   # 1 block = one day left alone (5%)
-	lb.setup(GameData.dig_luck * 100.0, 5.0, GameData.DIG_LUCK_MAX * 100.0, GUI.GREEN)
+	var lb := GUI.BlockBar.new()   # 1 block = one day left alone
+	lb.setup(GameData.dig_luck * 100.0, GameData.DIG_LUCK_STEP * 100.0, GameData.DIG_LUCK_MAX * 100.0, GUI.GREEN)
 	luck.add_child(lb)
+	luck.add_child(GUI.text(tr("rare %.1f%%") % (GameData.dig_luck * GameData.DIG_RARE_SHARE * 100.0), 12, GUI.MUTED))
 	bar.add_child(luck)
 	if GameData.digs_left <= 0:
 		row_button(bar, tr("Dug today. Back tomorrow"), _on_dig.bind(""), false, 270)
@@ -4216,7 +4238,7 @@ func open_pilot(wid: int) -> void:
 	sbar.add_child(bmb)
 	# at the bar tonight? then you can take them on from here
 	if GameData.patrons_today().any(func(x): return int(x["wid"]) == wid) and GameData.can_pass_day():
-		var cb := UI.button(tr("Challenge ($%d)") % GameData.PICKUP_PURSE.get(str(p["tier"]), 100), func(): close_popup(); _on_challenge(wid), 16, Vector2(0, 46))
+		var cb := UI.button(tr("Challenge ($%d)") % GameData.pickup_purse(str(p["tier"])), func(): close_popup(); _on_challenge(wid), 16, Vector2(0, 46))
 		popup_footer.add_child(cb)
 
 
@@ -4257,7 +4279,7 @@ func build_pub_cards() -> void:
 		if pat.get("hungover", false):
 			sub += "   " + tr("(sleeping it off)")
 		var row := make_tap_row(bot_preview(o), tr("%s · %s") % [str(pat["name"]), str(o.get("name", "?"))], sub, open_pilot.bind(wid))
-		var purse: int = int(GameData.PICKUP_PURSE.get(str(pat["tier"]), 120))
+		var purse: int = GameData.pickup_purse(str(pat["tier"]))
 		row_button(row, tr("Challenge ($%d)") % purse if can else tr("Your fight's tonight"), _on_challenge.bind(wid), can, 150)
 		if tag != "":
 			# a pilot with something to say to you: the stripes say "go and talk"
@@ -4266,6 +4288,8 @@ func build_pub_cards() -> void:
 				host = host.get_parent()
 			if host:
 				GUI.mark_new(host, true)
+	if GameData.pickups_this_week() >= 2:
+		section(tr("You've fought %d pickups this week. The crowd's seen you, so purses are smaller till Monday.") % GameData.pickups_this_week())
 	var tv := tv_info()
 	if not tv.is_empty():
 		var hm := GameData.headline_match()
@@ -4712,7 +4736,7 @@ func open_day_plan() -> void:
 		row_button(r2, tr("Overtime $%d") % GameData.overtime_cost(), _plan_do.bind("overtime"), GameData.money >= GameData.overtime_cost(), 170)
 	if GameData.digs_left > 0:
 		var r3 := action_bar(todo)
-		var dt := GUI.text(tr("Today's dig at the scrapyard is still there. Rare find: %d%%. Leave it and tomorrow it's %d%%.") % [roundi(GameData.dig_luck * 100), roundi(minf(GameData.DIG_LUCK_MAX, GameData.dig_luck + GameData.DIG_LUCK_STEP) * 100)], 14, GUI.TEXT)
+		var dt := GUI.text(tr("Today's dig at the scrapyard is still there. Chance of finding something: %d%%. Leave it and tomorrow it's %d%%.") % [roundi(GameData.dig_luck * 100), roundi(minf(GameData.DIG_LUCK_MAX, GameData.dig_luck + GameData.DIG_LUCK_STEP) * 100)], 14, GUI.TEXT)
 		dt.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		dt.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		r3.add_child(dt)
@@ -4874,7 +4898,7 @@ func build_league_view() -> void:
 	var rule := ""
 	match stage:
 		"open":
-			rule = tr("The gutter: pilots with no league live on pickups and cups. On the open dates at the start of the year the best 16 fight the Open Trials: three Saturdays, and one win is all it takes to get into the Scrap League. Lose and you fight again next Saturday.")
+			rule = tr("The gutter: pilots with no league live on pickups and cups. On the open dates at the start of the year the best 16 fight the Open Trials over three Saturdays: two wins and you're in the Scrap League, two losses and you're out for the year.")
 		"title":
 			rule = tr("The Titanium Championship: the top 8 of last year's Steel League, a knockout on the open dates at the start of the year. Win the final and you're the champion of Port Ferrum.")
 		"steel":
@@ -5954,10 +5978,10 @@ func open_fight_popup() -> void:
 	fight_popup_open = true
 	if mode == "story" and GameData.event.get("trials", false):
 		# the Open Trials: the whole year hangs on this
-		var left: int = GameData.event.get("slots", []).size() - int(GameData.event.get("po_round", 0))
+		var rec: Array = Career.trials_record(GameData.event, 0)
 		col.add_child(GUI.text(tr("MAKE OR BREAK"), 22, GUI.RED, "stencil"))
-		var ml := GUI.text(tr("Win once and we're in the Scrap League. Lose all three chances and it's a whole year in the gutter: pickups and cups, no league, no league money.") + " " +
-				(tr("This is the last chance.") if left <= 1 else tr("Chances left: %d.") % left), 15, GUI.AMBER)
+		var ml := GUI.text(tr("Two wins and we're in the Scrap League. Two losses and it's a whole year in the gutter: pickups and cups, no league, no league money.") + " " +
+				tr("Our record: %d-%d.") % [int(rec[0]), int(rec[1])], 15, GUI.AMBER)
 		ml.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		col.add_child(ml)
 	# who, and for how much

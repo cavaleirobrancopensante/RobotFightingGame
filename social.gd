@@ -260,14 +260,27 @@ static func fan_key(seed: int) -> String:
 
 # ---------------------------------------------------------------- followers
 
+## How many followers a pilot can expect in each league (1.53): gains slow down as you get close
+## and almost stop past it, so following grows with your league, not with the number of fights.
+const FOL_CEIL := {"open": 2500, "scrap": 15000, "rust": 60000, "iron": 250000, "steel": 1000000, "title": 2000000}
+
+
 static func fol_change(f: int, won: bool, destroyed: int, intact: int, lost_parts: int, stage: String) -> int:
-	var flat: int = FOL_FLAT.get(stage, 50)
+	var key := stage
+	var k_pick := 1.0
+	if not FOL_CEIL.has(key):
+		key = str(GameData.rank) if FOL_CEIL.has(str(GameData.rank)) else "scrap"
+		k_pick = 0.5 if stage == "pickup" else 1.0   # a pickup at the pub is half the news of a league night
+	var flat: float = float(FOL_FLAT.get(key, 50)) * k_pick
+	var room := clampf(1.0 - float(f) / float(FOL_CEIL[key]), 0.03, 1.0)
 	var x := float(f)
+	var gain := 0.0
 	if won:
-		x += x * 0.03 + flat
+		gain += x * 0.03 * k_pick + flat
 	else:
 		x -= x * 0.03
-	x += destroyed * (float(f) * 0.01 + flat / 5.0) + intact * float(f) * 0.01
+	gain += destroyed * (float(f) * 0.01 + flat / 5.0) + intact * float(f) * 0.01
+	x += gain * room
 	x -= lost_parts * float(f) * 0.01
 	return maxi(0, int(round(x)))
 

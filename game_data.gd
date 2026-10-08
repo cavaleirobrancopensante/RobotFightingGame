@@ -2,7 +2,7 @@ extends Node
 
 # helper scripts, loaded by path so the game also runs without an editor scan
 ## The game's version, shown on the main menu. Bump it with every change (1.1, 1.2, ...).
-const VERSION := "1.52"
+const VERSION := "1.53"
 const Arena = preload("res://arena.gd")
 const I18n = preload("res://i18n.gd")
 const Catalog = preload("res://catalog.gd")
@@ -225,7 +225,7 @@ const TIER_BUDGET := [500, 1500, 4500, 13500, 40000]
 const CUP_PURSE := [400, 1200, 3600, 11000, 33000]
 const CUP_PRIZE := [1500, 4500, 13500, 40000, 120000]
 ## Running costs: Gus's rent in the gutter and Scrap, then a mechanic, a crew, travel... (x the Settings amount / $1,000)
-const RUNNING := {"open": 1.0, "scrap": 1.0, "rust": 2.8, "iron": 9.0, "steel": 28.0}
+const RUNNING := {"open": 0.5, "scrap": 1.0, "rust": 2.8, "iron": 9.0, "steel": 28.0}
 
 # ---- custom part workshop
 # Each grade gives stat points to spend. Every point costs more than in the shop: you pay for choice.
@@ -277,14 +277,18 @@ var contracts := {}   # sponsor contracts and offers (contracts.gd)
 var alerts_unseen := 0   # new BotMedia alerts (the rail lights up)
 var tips_log: Array = []   # Gus's fight tips as he said them ({"id", "text"}, oldest first): the pause screen lists them
 const DIGS_PER_FIGHT := 1
-## Scrapyard digs: [grade, chance] (cumulative, checked rarest first): anything can turn up, rarely.
-const DIG_RARE := [[5, 0.0004], [4, 0.002], [3, 0.007], [2, 0.022]]
 var digs_left := DIGS_PER_FIGHT   # scrapyard digs: one a day
-## The longer you leave the pile alone, the better your odds of something rare on the next dig:
-## +5% for every day you don't dig, up to 50%. Digging spends it.
-const DIG_LUCK_STEP := 0.05
-const DIG_LUCK_MAX := 0.5
-var dig_luck := 0.0
+## The chance a dig finds anything (1.53): +15% for every day you leave the pile alone, up to 90%.
+## Digging spends it. DIG_RARE_SHARE of it can be something rare; of the rest, DIG_GOOD is good
+## gear, DIG_DECENT decent, the remainder junk. Digging for one kind of part: odds x DIG_KIND_K.
+const DIG_LUCK_STEP := 0.2
+const DIG_LUCK_MAX := 0.9
+const DIG_LUCK_START := 0.45   # a new game: the pile's been waiting for you
+const DIG_RARE_SHARE := 0.08
+const DIG_GOOD := 0.2
+const DIG_DECENT := 0.45
+const DIG_KIND_K := 0.5
+var dig_luck := DIG_LUCK_START
 var forfeit := false   # the fight being recorded was quit (counts as a loss, pays nothing)   # Gus's one-time tips (fight and garage) already shown
 var inventory: Array = []   # [{uid, id, hp}]
 var equipped := {}          # slot -> uid (-1 = empty)
@@ -571,12 +575,14 @@ func new_game() -> void:
 	streak = 0
 	pub_seen = ""
 	digs_left = DIGS_PER_FIGHT
+	dig_luck = DIG_LUCK_START
 	day = "mon"
 	robot_name = DEFAULT_ROBOT
 	inventory = []
 	equipped = {}
 	wingmen = [{}, {}]
 	gantries = 0
+	bay_level = 0
 	sending = -1
 	phase = 0
 	jobs = []
@@ -863,8 +869,8 @@ func repair_cost(p: Dictionary) -> int:
 		return 0
 	var discount := 0.6 if style == "mechanic" else 1.0   # mechanics fix things cheaper
 	if is_wreck(p):
-		return maxi(20, int(d["cost"] * 0.5 * discount))   # rebuilding a wreck
-	return maxi(1, ceili(missing * maxf(20.0, d["cost"] * 0.2) * discount))
+		return maxi(20, int(d["cost"] * WRECK_SHARE * discount))   # rebuilding a wreck
+	return maxi(1, ceili(missing * maxf(30.0, d["cost"] * REPAIR_SHARE) * discount))
 
 
 ## Fixing a part is paid up front and goes on Gus's job board: the bay works on it as time passes.
@@ -913,8 +919,23 @@ func repair_all() -> String:
 const PHASE_NAMES := ["MORNING", "AFTERNOON", "EVENING"]
 const SHIFT_HOURS := 4.0           # morning shift, afternoon shift
 const NIGHT_HOURS := 8.0           # overtime
-const REPAIR_HOURS := {"head": 3.0, "arm": 3.0, "leg": 3.0, "torso": 6.0, "reactor": 2.0, "back": 2.0}   # 0 to full
-const SWAP_HOURS := {"head": 1.0, "arm": 1.0, "leg": 1.0, "torso": 4.0, "reactor": 2.0, "back": 2.0}
+const REPAIR_HOURS := {"head": 6.0, "arm": 6.0, "leg": 6.0, "torso": 12.0, "reactor": 3.0, "back": 3.0}   # 0 to full (1.53: x2)
+const SWAP_HOURS := {"head": 1.5, "arm": 1.5, "leg": 1.5, "torso": 6.0, "reactor": 3.0, "back": 3.0}   # (1.53: x1.5)
+## What a full repair costs, as a share of the part's price (1.53: was 0.2, which made fixing a dug
+## part and selling it a money printer: parts sell for 40%). A wreck's rebuild costs WRECK_SHARE.
+const REPAIR_SHARE := 0.25
+const WRECK_SHARE := 0.6
+const SELL_SHARE := 0.25   # what a part sells for, at full health (1.53: was 0.4)
+## Passive repair (1.53): Gus tinkers in the quiet hours. Every part on your robots (and on the
+## shelf) gets this share of its HP back each day, wrecks excepted. The bay upgrades (Bay > Job board)
+## raise it a step at a time; each step puts the rent up.
+const PASSIVE_BASE := 0.01
+const PASSIVE_STEP := 0.01
+const BAY_LEVELS := 4
+const BAY_NAMES := ["Gus's bench", "Parts washer", "Welding rig", "Hydraulic hoist", "Diagnostic computer"]
+const BAY_RENT := 0.15     # each level adds this share of the running costs every month
+const BAY_PRICE := [0.6, 1.0, 1.5, 2.2]   # each level's price, in months of running costs
+var bay_level := 0
 const GRADE_TIME := 0.25           # each grade up takes a quarter longer
 const WRECK_TIME := 1.5            # rebuilding a wreck
 const MECHANIC_WAGE := 0.3         # a mechanic's monthly wage: this share of your running costs
@@ -1280,7 +1301,7 @@ func bench_spec(spec: Dictionary, robot: String) -> Dictionary:
 ## Damaged parts sell for less; even junk and wrecks are worth something as scrap metal.
 func sell_value(p: Dictionary) -> int:
 	var h := hp_ratio(p)
-	return maxi(int(part_def(p["id"])["cost"] * 0.4 * h), int(10 + 15 * h))
+	return maxi(int(part_def(p["id"])["cost"] * SELL_SHARE * h), int(10 + 15 * h))
 
 
 func sell(uid: int) -> String:
@@ -1710,7 +1731,26 @@ func do_scout() -> String:
 ## What a defeat pays: in the scrapyard you pay the winner, in the Regional and cups you get nothing,
 ## in the Championship (and exhibitions) you still get a small purse.
 ## What a pickup against the pilot at the bar pays, by their division (stars pay more, and hit harder).
-const PICKUP_PURSE := {"open": 100, "scrap": 250, "rust": 750, "iron": 2200, "steel": 6500}
+const PICKUP_PURSE := {"open": 150, "scrap": 250, "rust": 750, "iron": 2200, "steel": 6500}
+
+
+## The crowd at the Rusty Bolt gets bored of the same face (1.53): the first two pickups of a week pay
+## the full purse, then each one pays less.
+const PICKUP_FATIGUE := [1.0, 1.0, 0.8, 0.6, 0.45, 0.35]
+
+
+func pickups_this_week() -> int:
+	var n := 0
+	for e in fight_log:
+		if int(e["y"]) == year and int(e["w"]) == week and str(e.get("mode", "")) == "pickup":
+			n += 1
+	return n
+
+
+## A pickup's purse against a pilot from `tier`, this week.
+func pickup_purse(tier: String) -> int:
+	var k: float = PICKUP_FATIGUE[mini(pickups_this_week(), PICKUP_FATIGUE.size() - 1)]
+	return int(float(PICKUP_PURSE.get(tier, 120)) * k / 10.0) * 10
 
 
 func loss_pay(base: int) -> int:
@@ -1743,8 +1783,8 @@ func current_reward_for(o: Dictionary) -> int:
 			return EXHIBITION_REWARD
 		"pickup":
 			if pickup.has("tier"):
-				return int(PICKUP_PURSE.get(str(pickup["tier"]), 120))
-			return int(PICKUP_PURSE.get(rank, 120))
+				return pickup_purse(str(pickup["tier"]))
+			return pickup_purse(rank)
 		"circuit":
 			return int(CUP_PURSE[clampi(int(circuit["tier"]) - 1, 0, CUP_PURSE.size() - 1)] * (1.0 + 0.25 * int(circuit["round"])))
 		"story":
@@ -2148,9 +2188,9 @@ func day_index() -> int:
 ## week starts on Monday.
 func next_day() -> void:
 	phase = 0
-	# a day without digging: the pile settles and the odds of something rare go up
-	if digs_left > 0:
-		dig_luck = minf(DIG_LUCK_MAX, dig_luck + DIG_LUCK_STEP)
+	passive_repair()
+	# every day the pile settles a little more: the odds of finding something go up (a dig spends them)
+	dig_luck = minf(DIG_LUCK_MAX, dig_luck + DIG_LUCK_STEP)
 	digs_left = DIGS_PER_FIGHT
 	if day == "sun":
 		advance_week(1)
@@ -2358,8 +2398,57 @@ func new_year() -> void:
 
 
 func living_cost() -> int:
-	return int(int(settings.get("living_cost", LIVING_COST)) * float(RUNNING.get(rank, 1.0)) * (1.0 + GANTRY_RENT * gantries) / 10.0) * 10 \
+	return int(int(settings.get("living_cost", LIVING_COST)) * float(RUNNING.get(rank, 1.0)) * (1.0 + GANTRY_RENT * gantries + BAY_RENT * bay_level) / 10.0) * 10 \
 			+ mechanics * mechanic_wage()
+
+
+# ---------------------------------------------------------------- passive repair and the bay upgrades
+
+## How much HP every part on your robots gets back each day, as a share of its max.
+func passive_rate() -> float:
+	return PASSIVE_BASE + PASSIVE_STEP * bay_level
+
+
+## A day goes by: Gus tinkers. Parts on your robots heal a little (wrecks need a real rebuild).
+func passive_repair() -> void:
+	var rate := passive_rate()
+	var uids: Array = []
+	for slot in BODY_SLOTS:
+		var p := equipped_inst(slot)
+		if not p.is_empty():
+			uids.append(int(p["uid"]))
+	for wm in wingmen:
+		for slot in wm:
+			uids.append(int(wm[slot]))
+	for uid in uids:
+		var p := inst(uid)
+		if p.is_empty() or float(p["hp"]) <= 0.0:
+			continue
+		var mx: float = float(part_def(p["id"])["hp"])
+		p["hp"] = minf(mx, float(p["hp"]) + mx * rate)
+
+
+## What one more bay level adds to the monthly bill.
+func bay_rent() -> int:
+	return int(int(settings.get("living_cost", LIVING_COST)) * float(RUNNING.get(rank, 1.0)) * BAY_RENT / 10.0) * 10
+
+
+func bay_price() -> int:
+	if bay_level >= BAY_LEVELS:
+		return 0
+	var base := maxf(500.0, float(settings.get("living_cost", LIVING_COST))) * float(RUNNING.get(rank, 1.0))
+	return int(base * float(BAY_PRICE[bay_level]) / 10.0) * 10
+
+
+func buy_bay_upgrade() -> String:
+	if bay_level >= BAY_LEVELS:
+		return "The bay's as good as it gets."
+	var c := bay_price()
+	if money < c:
+		return tr("The %s costs $%d. No credit at Gus's.") % [tr(BAY_NAMES[bay_level + 1]), c]
+	money -= c
+	bay_level += 1
+	return tr("Gus installs the %s: $%d. Parts heal %d%% a day now, and the rent goes up $%d a month.") % [tr(BAY_NAMES[bay_level]), c, int(round(passive_rate() * 100.0)), bay_rent()]
 
 
 ## What one more gantry adds to the monthly bill.
@@ -3216,21 +3305,28 @@ func tab_tip(tab: String) -> String:
 	return ""
 
 
-## Dig through the scrapyard pile. Returns {"text", "part"} (part = id found, or "").
-## One dig = one part, always beaten up. Mostly junk, sometimes something decent, rarely a real find.
-const CHIP_DIG_CHANCE := 0.04
 
 
 ## One dig in the scrapyard. kind = "" digs anywhere (better odds of something good), or
 ## "head" / "torso" / "arm" / "leg" digs for that part - you get one, but it's mostly junk.
+## A dig (1.53): nothing is guaranteed. dig_luck is the chance you find anything at all; it builds
+## every day you leave the pile alone (DIG_LUCK_STEP a day, up to DIG_LUCK_MAX) and a dig spends it.
+## Only a slice of it (DIG_RARE_SHARE) can be something rare: a chip, or a part a grade above yours.
+## Digging for one kind of part halves your odds. What you do find is mostly junk.
 func dig_scrap(kind: String = "") -> Dictionary:
 	if digs_left <= 0:
 		return {"text": "You've dug today. Come back tomorrow.", "part": ""}
 	digs_left -= 1
-	# the luck you saved up by staying away: a chip, or a part from a grade above yours
-	var lucky := randf() < dig_luck
+	var chance := dig_luck * (DIG_KIND_K if kind != "" else 1.0)
 	dig_luck = 0.0
-	if lucky:
+	var roll := randf()
+	if roll >= chance:
+		var none := ["Nothing. An hour of digging and all you've got is rust under your nails.",
+				"Nothing worth carrying home. The good stuff's been picked over.",
+				"Gus pulls out a bent spoon and a dead rat. Not today, kid."]
+		return {"text": tr(none[randi() % none.size()]), "part": "", "grade": "none"}
+	# something turned up: the luckiest slice of the odds is something rare
+	if roll < chance * DIG_RARE_SHARE:
 		var free_chips: Array = chip_ids().filter(func(id): return not owned_chips.has(id))
 		if kind == "" and not free_chips.is_empty() and randf() < 0.35:
 			var lc: String = free_chips[randi() % free_chips.size()]
@@ -3244,41 +3340,19 @@ func dig_scrap(kind: String = "") -> Dictionary:
 				lpool.append(lid)
 		if not lpool.is_empty():
 			var lid2: String = lpool[randi() % lpool.size()]
-			var luid := add_part(lid2, randf_range(0.3, 0.6))
+			var luid := add_part(lid2, randf_range(0.2, 0.45))
 			inst(luid)["dug"] = true
 			return {"text": tr("Lucky dig! A %s, a grade above anything the dealer sells you. Battered, but it's ours (in Storage).") % part_def(lid2)["name"], "part": lid2, "grade": "rare", "uid": luid}
-	# now and then, digging anywhere turns up a training chip (you can't dig for one)
-	var unowned: Array = chip_ids().filter(func(id): return not owned_chips.has(id))
-	if kind == "" and not unowned.is_empty() and randf() < CHIP_DIG_CHANCE:
-		var cid: String = unowned[randi() % unowned.size()]
-		owned_chips.append(cid)
-		var cm: Dictionary = Specials.MOVES[cid]
-		return {"text": tr("Buried in the junk was a training chip, %s! It's yours (see Chips).") % tr(cm["name"]), "part": "", "chip": cid, "grade": "chip"}
 	var r := randf()
-	var good_odds := 0.12 if kind == "" else 0.04
-	var decent_odds := 0.5 if kind == "" else 0.22
 	var pool: Array = []
 	var grade := "junk"
-	# once in a long while the heap gives up something from far above the gutter
-	var rare := randf()
-	var dig_g := 1
-	for pair in DIG_RARE:
-		if rare < float(pair[1]):
-			dig_g = int(pair[0])
-			break
-	if dig_g > 1:
-		grade = "rare"
-		for id in ALL_PARTS:
-			var d: Dictionary = PARTS[id]
-			if d["shop"] and int(d.get("grade", 0)) == dig_g and not UNDAMAGEABLE.has(d["kind"]) and (kind == "" or d["kind"] == kind):
-				pool.append(id)
-	elif r < good_odds:
+	if r < DIG_GOOD:
 		grade = "good"
 		for id in ALL_PARTS:
 			var d: Dictionary = PARTS[id]
 			if d["shop"] and int(d.get("grade", 0)) == 1 and d["cost"] >= 250 and not UNDAMAGEABLE.has(d["kind"]) and (kind == "" or d["kind"] == kind):
 				pool.append(id)
-	elif r < decent_odds:
+	elif r < DIG_GOOD + DIG_DECENT:
 		grade = "decent"
 		for id in ALL_PARTS:
 			var d: Dictionary = PARTS[id]
@@ -3290,12 +3364,10 @@ func dig_scrap(kind: String = "") -> Dictionary:
 			if kind == "" or k == kind:
 				pool += STARTER_OPTIONS[k]
 	var id: String = pool[randi() % pool.size()]
-	var dug_uid := add_part(id, randf_range(0.15, 0.5))
+	var dug_uid := add_part(id, randf_range(0.12, 0.45))
 	inst(dug_uid)["dug"] = true   # shown on the Scrapyard screen; fight salvage only goes to Storage
 	var name: String = part_def(id)["name"]
 	match grade:
-		"rare":
-			return {"text": tr("Gus drops his coffee. A %s, in the gutter's scrap heap! Somebody up there lost this. Battered, but it's ours (in Storage).") % name, "part": id, "grade": "rare", "uid": dug_uid}
 		"good":
 			return {"text": tr("Jackpot! A %s, buried under a dead robot. Banged up, but it's real gear (in Storage).") % name, "part": id, "grade": grade, "uid": dug_uid}
 		"decent":
@@ -3695,7 +3767,7 @@ func record_result(won: bool, part_hp: Dictionary, destroyed: int, salvage_ids: 
 			intact.append(o["parts"][slot])
 	for sv in salvage_ids:
 		intact.erase(str(sv.get("id", "")))   # erase() removes one copy: two identical arms, one torn off -> one left
-	if won and randf() < 0.3 and not intact.is_empty():
+	if won and randf() < (0.15 if fight_mode() == "pickup" else 0.3) and not intact.is_empty():   # (1.53: pickups half as often)
 		var id: String = intact[randi() % intact.size()]
 		var d := part_def(id)
 		add_part(id, 1.0 if UNDAMAGEABLE.has(d["kind"]) else 0.5)
@@ -3759,13 +3831,20 @@ func record_result(won: bool, part_hp: Dictionary, destroyed: int, salvage_ids: 
 			if res["phase_changed"]:
 				event_done = league_end(event)
 			if event.get("trials", false) and not res["done"]:
-				# the Open Trials: one win is all it takes; a loss means another chance next Saturday
-				if won:
-					pending_talk.append({"lines": [["GUS", tr("That's the one we needed! We're in the Scrap League, kid. The Trials finish without us, the league starts in week 4."), {}]]})
-				elif not Career.finals_match_of(event, 0).is_empty():
-					var left: int = event.get("slots", []).size() - int(event.get("po_round", 0))
-					pending_talk.append({"lines": [["GUS", (tr("Lost it. Shake it off: one more chance, next Saturday. Lose that and it's a year in the gutter.") if left == 1
-							else tr("Lost it. That's not the end: %d more chances, one every Saturday. One win is all we need.") % left), {}]]})
+				# the Open Trials: two wins and we're in, two losses and we're out
+				var rec: Array = Career.trials_record(event, 0)
+				var line := ""
+				if int(rec[0]) >= 2:
+					line = tr("That's two! We're in the Scrap League, kid. The Trials finish without us, the league starts in week 4.")
+				elif int(rec[1]) >= 2:
+					line = tr("Two losses. That's the Trials done for us. A year in the gutter, kid. We dig, we fight pickups, we come back stronger.")
+				elif won:
+					line = tr("One down. One more win next Saturday and we're in the Scrap League.")
+				elif int(rec[0]) == 0:
+					line = tr("Lost it. Shake it off: win the next two and we're still in.")
+				else:
+					line = tr("One each. Next Saturday decides it: win and we're in, lose and it's a year in the gutter.")
+				pending_talk.append({"lines": [["GUS", line, {}]]})
 			if res["done"]:
 				event_done = finish_title(event) if event.get("stage", "") == "title" else finish_event(event)
 				if event.get("stage", "") == "open":
@@ -4373,7 +4452,7 @@ func save_game() -> bool:
 	var data := {
 		"version": SAVE_VERSION, "pilot_name": pilot_name, "robot_name": robot_name,
 		"saved_at": Time.get_datetime_string_from_system(false, true), "money": money, "inventory": inventory, "equipped": equipped,
-		"next_uid": next_uid, "gantries": gantries, "phase": phase, "jobs": jobs, "bolted": bolted, "mechanics": mechanics, "overtime": overtime, "paint": paint, "fight_index": fight_index, "wins": wins,
+		"next_uid": next_uid, "gantries": gantries, "bay_level": bay_level, "phase": phase, "jobs": jobs, "bolted": bolted, "mechanics": mechanics, "overtime": overtime, "paint": paint, "fight_index": fight_index, "wins": wins,
 		"losses": losses, "champion": champion, "story_seen": story_seen,
 		"owned_chips": owned_chips, "chips": chips, "circuit": circuit, "circuit_offers": circuit_offers,
 		"circuits_won": circuits_won, "pickup": pickup, "setups": setups, "custom_parts": custom_parts,
@@ -4520,6 +4599,7 @@ func load_game(slot: int = -1) -> String:
 				if not inst(uid).is_empty():
 					wingmen[k][str(ws)] = uid
 	gantries = clampi(int(data.get("gantries", -1)), -1, wingmen.size())
+	bay_level = clampi(int(data.get("bay_level", 0)), 0, BAY_LEVELS)
 	if gantries < 0:   # a save from before gantries: every backup you'd built already has one
 		gantries = 0
 		for k in wingmen.size():

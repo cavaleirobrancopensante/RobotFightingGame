@@ -14,30 +14,35 @@ const I18n = preload("res://i18n.gd")
 
 const MAX_PARTNERS := 2
 ## Monthly fee for a partner sticker at each league (a title deal pays double).
-const FEE_BASE := {"open": 120, "scrap": 300, "rust": 900, "iron": 2700, "steel": 8000}
+const FEE_BASE := {"open": 90, "scrap": 220, "rust": 700, "iron": 2000, "steel": 6000}   # (1.53: x0.75)
+## A first broken rule is usually a friendly reminder; sometimes they fine you straight away.
+const FIRST_FINE_CHANCE := 0.25
+## Offers (1.53): a Monday offer comes 35% of the time, and only once you've won this many fights.
+const OFFER_CHANCE := 0.35
+const OFFER_MIN_WINS := 3
 const STICKER_SLOTS := ["head", "arm_front", "arm_back", "leg_front", "leg_back"]
 
 ## The companies. paint = index in GameData.PAINTS a title deal asks for; asks = the rules they like.
 const SPONSORS := {
-	"boltcola": {"name": "Bolt Cola", "handle": "BoltCola", "tag": "BoltCola", "line": "drink", "paint": 2, "mult": 1.2, "min_fol": 300,
+	"boltcola": {"name": "Bolt Cola", "handle": "BoltCola", "tag": "BoltCola", "line": "drink", "paint": 2, "mult": 1.2, "min_fol": 2000,
 			"title": true, "asks": ["posts", "wins"], "fol": 220000, "colors": ["#e8352c", "#ffffff"]},
-	"voltaic": {"name": "Voltaic Cells", "handle": "VoltaicCells", "tag": "Voltaic", "line": "power", "paint": 1, "mult": 1.0, "min_fol": 800,
+	"voltaic": {"name": "Voltaic Cells", "handle": "VoltaicCells", "tag": "Voltaic", "line": "power", "paint": 1, "mult": 1.0, "min_fol": 4000,
 			"title": true, "asks": ["wins", "no_forfeit"], "fol": 64000, "colors": ["#f2c230", "#141414"]},
-	"ferrum": {"name": "Ferrum Freight", "handle": "FerrumFreight", "tag": "FerrumFreight", "line": "shipping", "paint": 4, "mult": 0.9, "min_fol": 100,
+	"ferrum": {"name": "Ferrum Freight", "handle": "FerrumFreight", "tag": "FerrumFreight", "line": "shipping", "paint": 4, "mult": 0.9, "min_fol": 1000,
 			"title": true, "asks": ["active"], "fol": 31000, "colors": ["#2f6fd6", "#e8eef8"]},
-	"rustbuster": {"name": "Rustbuster Oil", "handle": "RustbusterOil", "tag": "Rustbuster", "line": "oil", "paint": 3, "mult": 0.8, "min_fol": 50,
+	"rustbuster": {"name": "Rustbuster Oil", "handle": "RustbusterOil", "tag": "Rustbuster", "line": "oil", "paint": 3, "mult": 0.8, "min_fol": 600,
 			"title": false, "asks": ["repaired"], "fol": 12000, "colors": ["#2fae6b", "#ffffff"]},
-	"gearhead": {"name": "Gearhead Garage", "handle": "GearheadGarage", "tag": "Gearhead", "line": "parts", "paint": 1, "mult": 0.9, "min_fol": 200,
+	"gearhead": {"name": "Gearhead Garage", "handle": "GearheadGarage", "tag": "Gearhead", "line": "parts", "paint": 1, "mult": 0.9, "min_fol": 1000,
 			"title": false, "asks": ["dealer"], "fol": 18000, "colors": ["#f07a1a", "#ffffff"]},
-	"neon": {"name": "Neon Arcade", "handle": "NeonArcade", "tag": "NeonArcade", "line": "controllers", "paint": 6, "mult": 1.1, "min_fol": 1500,
+	"neon": {"name": "Neon Arcade", "handle": "NeonArcade", "tag": "NeonArcade", "line": "controllers", "paint": 6, "mult": 1.1, "min_fol": 6000,
 			"title": false, "asks": ["controller", "followers"], "fol": 47000, "colors": ["#ff4fb8", "#1a1a2a"]},
-	"nova": {"name": "Nova Noodles", "handle": "NovaNoodles", "tag": "NovaNoodles", "line": "food", "paint": 2, "mult": 0.7, "min_fol": 30,
+	"nova": {"name": "Nova Noodles", "handle": "NovaNoodles", "tag": "NovaNoodles", "line": "food", "paint": 2, "mult": 0.7, "min_fol": 300,
 			"title": false, "asks": ["posts"], "fol": 26000, "colors": ["#8a5cf0", "#ffd84a"]},
-	"harbour": {"name": "Harbour Mutual", "handle": "HarbourMutual", "tag": "HarbourMutual", "line": "insurance", "paint": 4, "mult": 1.0, "min_fol": 1000,
+	"harbour": {"name": "Harbour Mutual", "handle": "HarbourMutual", "tag": "HarbourMutual", "line": "insurance", "paint": 4, "mult": 1.0, "min_fol": 5000,
 			"title": false, "asks": ["no_trash", "no_forfeit"], "fol": 22000, "colors": ["#e05a5a", "#f6efe0"]},
-	"rustybolt": {"name": "The Rusty Bolt", "handle": "therustybolt", "tag": "RustyBolt", "line": "pub", "paint": 2, "mult": 0.5, "min_fol": 0,
+	"rustybolt": {"name": "The Rusty Bolt", "handle": "therustybolt", "tag": "RustyBolt", "line": "pub", "paint": 2, "mult": 0.5, "min_fol": 100,
 			"title": false, "asks": ["active"], "fol": 3200, "colors": ["#ff7a33", "#2a0e0e"]},
-	"kane": {"name": "Kane Dynamics", "handle": "KaneDynamics", "tag": "KaneDynamics", "line": "all", "paint": 7, "mult": 4.0, "min_fol": 15000,
+	"kane": {"name": "Kane Dynamics", "handle": "KaneDynamics", "tag": "KaneDynamics", "line": "all", "paint": 7, "mult": 4.0, "min_fol": 30000,
 			"title": true, "asks": ["wins", "exclusive"], "fol": 2400000, "colors": ["#c8102e", "#141414"]},
 }
 
@@ -146,7 +151,7 @@ static func make_offer(id: String) -> Dictionary:
 	for a in d["asks"]:
 		reqs.append(make_req(str(a), rng))
 	var o := {"id": int(s["next"]), "sp": id, "role": role, "slot": "torso" if role == "title" else (slots[rng.randi() % slots.size()] if not slots.is_empty() else "head"),
-			"fee": fee, "sign": int(fee * rng.randf_range(1.0, 2.0)), "win": int(fee * 0.15), "rip": int(fee * 0.05), "podium": fee * 3,
+			"fee": fee, "sign": int(fee * rng.randf_range(0.5, 1.2)), "win": int(fee * 0.15), "rip": int(fee * 0.05), "podium": fee * 3,
 			"weeks": [8, 12, 16, 26][rng.randi() % 4], "reqs": reqs, "strikes": 0, "want": want,
 			"patience": rng.randi_range(2, 4), "ceiling": k * (1.15 + 0.35 * want), "k": k, "asks": 0, "played": false,
 			"sleeping": false, "expires": World.abs_week() + 1, "reply": ""}
@@ -180,11 +185,11 @@ static func weekly_offers() -> void:
 		if int(o["expires"]) >= aw:
 			kept.append(o)
 	s["offers"] = kept
-	if GameData.wins < 1 or s["offers"].size() >= 2:
+	if GameData.wins < OFFER_MIN_WINS or s["offers"].size() >= 2:
 		return
 	var rng := RandomNumberGenerator.new()
 	rng.seed = aw * 31 + GameData.Social.followers()
-	if rng.randf() > 0.7:
+	if rng.randf() > OFFER_CHANCE:
 		return
 	var pool: Array = SPONSORS.keys().filter(func(k): return can_offer(k))
 	if pool.is_empty():
@@ -402,7 +407,13 @@ static func strike(c: Dictionary, why: String) -> void:
 	var who := str(d["name"]).to_upper()
 	match int(c["strikes"]):
 		1:
-			GameData.log_talk(who, I18n.t("A friendly reminder: %s. Don't make us say it twice.") % why, "sponsor:" + str(c["sp"]))
+			if randf() < FIRST_FINE_CHANCE:
+				# some sponsors don't do friendly reminders (1.53)
+				var fine1 := int(int(c["fee"]) / 4)
+				GameData.money -= fine1
+				GameData.log_talk(who, I18n.t("We don't do reminders: %s. That's a $%d fine. Next time it's worse.") % [why, fine1], "sponsor:" + str(c["sp"]))
+			else:
+				GameData.log_talk(who, I18n.t("A friendly reminder: %s. Don't make us say it twice.") % why, "sponsor:" + str(c["sp"]))
 		2:
 			var fine := int(int(c["fee"]) / 4)
 			GameData.money -= fine

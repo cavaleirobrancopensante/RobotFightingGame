@@ -2,7 +2,7 @@ extends RefCounted
 ## The career: a pyramid of four leagues, the open dates at the start of the year, and cups.
 ##
 ##   the gutter ("open")  no league at all: pilots live on pickups and cups. At the start of the
-##                        year the best 16 fight the Open Trials (3 chances, 1 win needed): 14 go up to Scrap.
+##                        year the best 16 fight the Open Trials (two wins in, two losses out): 8 go up to Scrap.
 ##   Scrap League   64    the bottom league.
 ##   Rust League    48
 ##   Iron League    40
@@ -626,6 +626,28 @@ static func _pairs(ids: Array, last: bool) -> Array:
 	return out
 
 
+## The Open Trials so far: {id: [wins, losses]} from every match with a winner.
+static func _trials_records(ev: Dictionary) -> Dictionary:
+	var rec := {}
+	for rd in ev.get("finals", {}).get("up", {}).get("rounds", []):
+		for m in rd:
+			if int(m["w"]) == -1:
+				continue
+			var w := int(m["w"])
+			var l := _loser(m)
+			if not rec.has(w):
+				rec[w] = [0, 0]
+			if not rec.has(l):
+				rec[l] = [0, 0]
+			rec[w][0] += 1
+			rec[l][1] += 1
+	return rec
+
+
+static func trials_record(ev: Dictionary, id: int) -> Array:
+	return _trials_records(ev).get(id, [0, 0])
+
+
 static func _loser(m: Dictionary) -> int:
 	return int(m["b"]) if int(m["w"]) == int(m["a"]) else int(m["a"])
 
@@ -689,12 +711,27 @@ static func play_finals_round(ev: Dictionary, rng: RandomNumberGenerator) -> Arr
 		if r + 1 >= ev.get("slots", PLAYOFF_SLOTS).size():
 			continue   # that was the last round
 		if ev.get("trials", false):
-			# the Open Trials: a win and you're in; the losers get another chance next Saturday
+			# the Open Trials (1.53): two wins and you're in, two losses and you're out. Round 2 pairs
+			# the winners with winners (2-0 = in) and the losers with losers (0-2 = out); round 3 is
+			# the decider for everyone at 1-1.
+			var rec := _trials_records(ev)
 			var nxt: Array = []
-			for m in cur:
-				nxt.append(_loser(m))
-			if nxt.size() >= 2:
-				rounds.append(_pairs(nxt, r + 1 >= 2))
+			if r == 0:
+				var wins: Array = []
+				var losses: Array = []
+				for m in cur:
+					wins.append(int(m["w"]))
+					losses.append(_loser(m))
+				nxt = _pairs(wins, false) + _pairs(losses, false)
+			else:
+				var mid: Array = []
+				for id in rec:
+					if int(rec[id][0]) == 1 and int(rec[id][1]) == 1:
+						mid.append(int(id))
+				mid.sort()
+				nxt = _pairs(mid, true)
+			if not nxt.is_empty():
+				rounds.append(nxt)
 			continue
 		if r == 0:
 			# semis: promotion = quarterfinal winners; relegation = quarterfinal losers
@@ -724,9 +761,10 @@ static func end_finals(ev: Dictionary) -> void:
 	if ev["finals"].has("up"):
 		var rounds: Array = ev["finals"]["up"]["rounds"]
 		if ev.get("trials", false):
-			for rd in rounds:
-				for m in rd:
-					up.append(int(m["w"]))
+			var rec := _trials_records(ev)
+			for id in rec:
+				if int(rec[id][0]) >= 2:
+					up.append(int(id))
 		else:
 			up = order.slice(0, UP_DOWN)
 			for m in rounds[1]:
@@ -745,10 +783,10 @@ static func end_finals(ev: Dictionary) -> void:
 	ev["phase"] = "done"
 
 
-## The Open Trials: the best 16 of the gutter, on the open dates at the start of the year. Three
-## chances, one win needed: round 1 (Saturday of week 1), 8 fights, the winners are in the Scrap
-## League this year; the losers fight again on week 2 (4 more in), and those losers get a last
-## chance on week 3 (2 more in). 14 go up; the Scrap League drops its weakest to make room.
+## The Open Trials: the best 16 of the gutter, on the open dates at the start of the year, three
+## Saturdays (weeks 1-3). Two wins and you're in the Scrap League, two losses and you're out:
+## round 2 pairs 1-0 with 1-0 and 0-1 with 0-1, round 3 is the decider for the eight at 1-1.
+## 8 go up; the Scrap League drops its weakest to make room.
 static func new_trials(year: int, seed_value: int, with_player: bool, wids: Array) -> Dictionary:
 	var pilots: Array = []
 	var ids: Array = []
@@ -810,7 +848,7 @@ static func new_title(year: int, seed_value: int, entries: Array) -> Dictionary:
 static func finals_round_name(ev: Dictionary, side: String, at: int = -1) -> String:
 	var r: int = ev.get("po_round", 0) if at < 0 else at
 	if ev.get("trials", false):
-		return ["FIRST CHANCE", "SECOND CHANCE", "LAST CHANCE"][mini(r, 2)]
+		return ["FIRST ROUND", "SECOND ROUND", "DECIDER"][mini(r, 2)]
 	if ev.get("stage", "") == "steel" and side == "up":
 		return ["TITLE PLAYOFF QUARTERFINAL", "TITLE PLAYOFF SEMIFINAL", "LAST TITLE TICKET"][mini(r, 2)]
 	if side == "up":
