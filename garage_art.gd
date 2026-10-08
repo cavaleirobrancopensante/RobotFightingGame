@@ -23,6 +23,7 @@ static func robot_spot(scene: String) -> Array:
 ##        "found": text of the last dig find, "trophies": int, "backup": look or {}}
 ## The whole-screen background for a scene. stage = where the robot panel is (people and props go there).
 static func draw_back(ci: CanvasItem, screen: Vector2, stage: Rect2, scene: String, t: float, info: Dictionary) -> void:
+	PilotArt.light = scene_light(scene)
 	var floor_screen := stage.end.y - 20.0
 	_environment(ci, screen, floor_screen, scene, t, info)
 	ci.draw_set_transform(stage.position, 0.0, Vector2.ONE)
@@ -232,7 +233,14 @@ static func draw_front(ci: CanvasItem, stage: Rect2, scene: String, t: float, in
 	ci.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
 
+## The light the people in a scene stand in (1.60): Gus's building is the bay's work lamp, the places
+## outside have their own.
+static func scene_light(scene: String) -> String:
+	return scene if scene in ["pub", "shop", "scrap", "phone"] else "bay"
+
+
 static func _front(ci: CanvasItem, size: Vector2, scene: String, t: float, info: Dictionary, robot_base: Vector2, robot_h: float) -> void:
+	PilotArt.light = scene_light(scene)
 	var floor_y := size.y - 20.0
 	var s := clampf(size.y / 300.0, 0.6, 1.3)
 	var pilot: Dictionary = info.get("pilot", {})

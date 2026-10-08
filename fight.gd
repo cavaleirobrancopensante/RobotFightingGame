@@ -4757,15 +4757,21 @@ func draw_pilot(pd: Dictionary, off: Vector2) -> void:
 	elif r.blocking:
 		lean = -0.15
 	var bob := absf(sin(clock * 6.0)) * 2.0 * s if r.state == "walk" else sin(clock * 2.0 + team) * 0.6 * s
+	PilotArt.light = fight_light() if Arena.noir() else ""
+	PilotArt._begin()
 	# legs
-	ci.draw_rect(Rect2(base + Vector2(-9 * s, -24 * s), Vector2(7 * s, 24 * s)), outfit.darkened(0.45))
-	ci.draw_rect(Rect2(base + Vector2(2 * s, -24 * s), Vector2(7 * s, 24 * s)), outfit.darkened(0.45))
-	ci.draw_rect(Rect2(base + Vector2(-10 * s, -3 * s), Vector2(9 * s, 3 * s)), Color(0.12, 0.12, 0.12))
-	ci.draw_rect(Rect2(base + Vector2(1 * s, -3 * s), Vector2(9 * s, 3 * s)), Color(0.12, 0.12, 0.12))
+	PilotArt._blk(ci, Rect2(base + Vector2(-9 * s, -24 * s), Vector2(7 * s, 24 * s)), outfit.darkened(0.45))
+	PilotArt._blk(ci, Rect2(base + Vector2(2 * s, -24 * s), Vector2(7 * s, 24 * s)), outfit.darkened(0.45))
+	PilotArt._rc(ci, Rect2(base + Vector2(-10 * s, -3 * s), Vector2(9 * s, 3 * s)), Color(0.12, 0.12, 0.12))
+	PilotArt._rc(ci, Rect2(base + Vector2(1 * s, -3 * s), Vector2(9 * s, 3 * s)), Color(0.12, 0.12, 0.12))
 	# torso
 	var hip := base + Vector2(0, -24 * s - bob)
 	var neck := hip + Vector2(face * lean * 6 * s, -30 * s)
-	ci.draw_colored_polygon(PackedVector2Array([hip + Vector2(-11 * s, 0), hip + Vector2(11 * s, 0), neck + Vector2(12 * s, 0), neck + Vector2(-12 * s, 0)]), outfit)
+	var torso := PackedVector2Array([hip + Vector2(-11 * s, 0), hip + Vector2(11 * s, 0), neck + Vector2(12 * s, 0), neck + Vector2(-12 * s, 0)])
+	if PilotArt.lit():
+		RobotArt._plate(ci, torso, outfit)
+	else:
+		ci.draw_colored_polygon(torso, outfit)
 	# head
 	var hc := neck + Vector2(face * lean * 3 * s, -11 * s)
 	var hr := 10.0 * s
@@ -4777,7 +4783,7 @@ func draw_pilot(pd: Dictionary, off: Vector2) -> void:
 	var pad := neck + Vector2(face * (14 + lean * 4) * s + jx, (10 - hands_up * 26) * s - j * 4 * s)
 	for side in [-1.0, 1.0]:
 		var sh := neck + Vector2(side * 10 * s, 3 * s)
-		ci.draw_line(sh, pad + Vector2(side * 6 * s, 0), outfit.darkened(0.15), 5 * s)
+		PilotArt._limb2(ci, sh, pad + Vector2(side * 6 * s, 0), outfit.darkened(0.15), 5 * s)
 	PilotArt.draw_controller(ci, pad, s, str(look.get("controller", "gamepad")), j > 0.0, clock)
 	draw_pilot_bubble(pd, hc + Vector2(0, -hr - 10 * s))
 
@@ -5646,6 +5652,7 @@ func draw_walk_in(off: Vector2) -> void:
 		"b_call", "b_zoom":
 			pose = "announce"
 	var lit := Arena.noir()
+	PilotArt.light = fight_light() if lit else ""
 	if lit:
 		RobotArt._set_light(fight_light(), 1.0)
 		RobotArt._grade = 2

@@ -55,6 +55,7 @@ class Portrait extends Control:
 			queue_redraw()
 
 	func _draw() -> void:
+		PilotArt.light = "neutral"
 		draw_rect(Rect2(Vector2.ZERO, size), Color(0.12, 0.12, 0.17))
 		var c := size * 0.5
 		var r := minf(size.x, size.y) * 0.32

@@ -276,6 +276,7 @@ class Stage extends Control:
 	var op
 
 	func _draw() -> void:
+		PilotArt.light = ""   # the opening keeps its own look until its restyle (1.62)
 		var W := size.x
 		var H := size.y
 		if W < 10.0:

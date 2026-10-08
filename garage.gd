@@ -2023,6 +2023,7 @@ class Avatar extends Control:
 			return
 		draw_circle(c, r, Color(0.16, 0.17, 0.22))
 		var PA = load("res://pilot_art.gd")
+		PA.light = "neutral"
 		if key == "me":
 			PA.draw_head(self, c + Vector2(0, r * 0.18), r * 0.6, GameData.pilot_look, 1.0, 0.0)
 		elif acc.has("wid"):
@@ -4307,6 +4308,7 @@ class PilotFace extends Control:
 	var look := {}
 	func _draw() -> void:
 		draw_rect(Rect2(Vector2.ZERO, size), Color(0.08, 0.08, 0.1))
+		load("res://pilot_art.gd").light = "neutral"
 		load("res://pilot_art.gd").draw_head(self, size * 0.5 + Vector2(0, 6), minf(size.x, size.y) * 0.32, look, 1.0, 0.0)
 
 
