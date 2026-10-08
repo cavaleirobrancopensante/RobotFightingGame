@@ -93,6 +93,7 @@ class Fighter:
 	var parts := {}
 	var spec := {}
 	var look := {}
+	var pre_walk := false   # (1.71) walking up to its mark during the countdown
 	var look_dirty := true
 	var eff := 1.0
 	var dmg_mult := 1.0
@@ -1765,11 +1766,18 @@ func _process(delta: float) -> void:
 		# 3-2-1: walk about, but no hitting yet (and the barrier keeps you on your side)
 		for k in p_ins.size():
 			p_ins[k] = move_only(p_ins[k])
+		# (1.71) the enemy walks steadily up to its mark and settles there. It used to roll the dice
+		# every frame (walk 70% of frames), which made it stutter through the countdown.
 		for k in c_ins.size():
 			var cf: Fighter = team_c[k]
 			c_ins[k] = empty_input()
-			if cf.pos.x > screen.x * 0.5 + 120.0 and randf() < 0.7:
-				c_ins[k]["left"] = true
+			var mark := screen.x * 0.5 + 130.0 + k * 90.0
+			if cf.pre_walk:
+				if cf.pos.x <= mark:
+					cf.pre_walk = false   # there: stop and hold the guard
+			elif cf.pos.x > mark + 40.0:
+				cf.pre_walk = true        # only starts again if it's well short of it
+			c_ins[k]["left"] = cf.pre_walk
 	elif phase != "fight":
 		for k in p_ins.size():
 			p_ins[k] = empty_input()
