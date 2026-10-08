@@ -122,7 +122,7 @@ static func follow(key: String, on: bool) -> void:
 # ---------------------------------------------------------------- posts
 
 ## Post something. text is an English template (translated when shown); args fill its %s / %d.
-static func post(by: String, text: String, args: Array = [], card: Dictionary = {}, tags: Array = [], mention: bool = false) -> Dictionary:
+static func post(by: String, text: String, args: Array = [], card: Dictionary = {}, tags: Array = [], mention: bool = false, ctx: String = "") -> Dictionary:
 	var s := st()
 	var rng := RandomNumberGenerator.new()
 	rng.seed = int(s["next"]) * 977 + GameData.year
@@ -132,6 +132,8 @@ static func post(by: String, text: String, args: Array = [], card: Dictionary = 
 			"by": by, "text": text, "args": args, "card": card, "tags": tags, "likes": likes,
 			"reposts": int(likes * rng.randf_range(0.04, 0.14)), "replies": int(likes * rng.randf_range(0.02, 0.09)),
 			"mention": mention}
+	if ctx != "":
+		p["ctx"] = ctx   # (1.85) what the post is about: the replies you can give depend on it
 	s["next"] = int(s["next"]) + 1
 	(s["posts"] as Array).append(p)
 	if (s["posts"] as Array).size() > MAX_POSTS:
@@ -354,9 +356,9 @@ static func world_fight(rng: RandomNumberGenerator, winner: Dictionary, loser: D
 		var tag := tag_for(stage)
 		post("w:%d" % int(winner["wid"]), ["Nobody gave me a chance against %s. Nobody.", "Write it down: I beat %s.",
 				"Who's laughing now, %s?"][rng.randi() % 3], [loser["name"]], {"kind": "still", "wa": int(winner["wid"]), "wb": int(loser["wid"]), "won": true, "an": winner["name"], "bn": loser["name"],
-				"venue": STAGE_VENUE.get(stage, "scrap_ring")}, [tag, "UpsetOfTheWeek"])
+				"venue": STAGE_VENUE.get(stage, "scrap_ring")}, [tag, "UpsetOfTheWeek"], false, "pilot_upset")
 		post(fan_key(rng.randi()), ["%s just beat %s. I need to sit down.", "Upset of the week: %s over %s.",
-				"My bet slip is crying. %s beat %s."][rng.randi() % 3], [winner["name"], loser["name"]], {}, ["UpsetOfTheWeek"])
+				"My bet slip is crying. %s beat %s."][rng.randi() % 3], [winner["name"], loser["name"]], {}, ["UpsetOfTheWeek"], false, "fan_upset")
 
 
 ## Your fight: followers, a post from your opponent, from Gus when you win, from a fan or two,
@@ -377,18 +379,18 @@ static func my_fight(o: Dictionary, won: bool, destroyed: int, intact: int, own_
 		follow("w:%d" % wid, true)
 		if won:
 			post("w:%d" % wid, ["Tough night. %s was sharper. Back to the bay.", "%s got lucky. Rematch, any time.",
-					"Lost to %s. I'll be back."][rng.randi() % 3], [GameData.pilot_name], card, [tag], true)
+					"Lost to %s. I'll be back."][rng.randi() % 3], [GameData.pilot_name], card, [tag], true, "opp_lost")
 		else:
 			post("w:%d" % wid, ["Too easy. %s, call me when you've grown up.", "Thanks for the warm-up, %s.",
-					"Another win. Sorry, %s."][rng.randi() % 3], [GameData.pilot_name], card, [tag], true)
+					"Another win. Sorry, %s."][rng.randi() % 3], [GameData.pilot_name], card, [tag], true, "opp_won")
 	if won:
 		post("gus", ["Good night at the bay. Kid did alright.", "Dents to fix, money in the jar. Good night.",
-				"Told you that robot still had it."][rng.randi() % 3], [], {}, [])
+				"Told you that robot still had it."][rng.randi() % 3], [], {}, [], false, "gus_win")
 	post(fan_key(rng.randi()), ["%s is the real deal. Saw it from the cheap seats.", "Did anyone else see %s tonight?",
 			"Keep an eye on %s."][rng.randi() % 3] if won else ["Rough one for %s tonight.", "%s will be back. Probably.",
-			"Not %s's night."][rng.randi() % 3], [GameData.pilot_name], {}, [tag])
+			"Not %s's night."][rng.randi() % 3], [GameData.pilot_name], {}, [tag], false, "fan_me_win" if won else "fan_me_loss")
 	if destroyed > 0 and won:
-		post(fan_key(rng.randi() + 3), "%s tore %d parts off tonight. Somebody call a scrap man.", [GameData.pilot_name, destroyed], {}, [tag])
+		post(fan_key(rng.randi() + 3), "%s tore %d parts off tonight. Somebody call a scrap man.", [GameData.pilot_name, destroyed], {}, [tag], false, "fan_me_win")
 	# a robot bolted together off-label gets people talking (1.54)
 	var odd: Array = GameData.off_label_kinds()
 	if not odd.is_empty():
@@ -397,10 +399,10 @@ static func my_fight(o: Dictionary, won: bool, destroyed: int, intact: int, own_
 				"reactor_arm": ["Is that a battery strapped to %s's shoulder? Bold.", "%s fights one arm short with a reactor taped on. Respect."]}
 		var k: String = odd[rng.randi() % odd.size()]
 		var pick: Array = lines[k]
-		var oddp := post(fan_key(rng.randi() + 7), pick[rng.randi() % pick.size()], [GameData.pilot_name], {}, [tag, "ScrapEngineering"])
+		var oddp := post(fan_key(rng.randi() + 7), pick[rng.randi() % pick.size()], [GameData.pilot_name], {}, [tag, "ScrapEngineering"], false, "fan_offlabel")
 		oddp["likes"] = int(oddp["likes"]) * 3 + 20   # people love a mess
 		if won:
-			post("gus", ["It's not pretty, but it won. That's engineering.", "Don't tell anyone how we bolted that together."][rng.randi() % 2], [], {}, [])
+			post("gus", ["It's not pretty, but it won. That's engineering.", "Don't tell anyone how we bolted that together."][rng.randi() % 2], [], {}, [], false, "gus_win")
 	# your own post: three drafts to pick from on BotMedia
 	s["draft"] = {"opp": opp_name, "wid": wid, "won": won, "tag": tag, "at": now_t()}
 	if int(s["followers"]) != before:
@@ -516,32 +518,108 @@ static func posts_this_week() -> int:
 # {r (number in the thread), by (account key), text (English template), args, at, to (the reply it
 # answers, -1 = the post), likes}. Replies are always picked from tones, never typed.
 
-## What you can say, by who you're answering: [tone, line, relationship move]. %s = their name.
-const REPLY_SETS := {
+## (1.85) What you can say depends on what you're answering. Every post and every reply has a
+## context (ctx): set where it's made (post(..., ctx)), or worked out from who wrote it (ctx_of).
+## CTX_REPLIES[ctx] = [[tone, line, relationship move], ...]; %s = their name. Tones that ask for
+## something: "rematch" / "ring" (a fight), "team" (a tag team): the pilot may say yes, and their
+## answer carries the offer (a button in the thread books it).
+const CTX_REPLIES := {
+	# your opponent, about your fight
+	"opp_lost": [["respect", "Good fight, %s. You made me work for every bolt.", 6.0], ["rematch", "Any time, %s. Name the night.", 0.0],
+			["gloat", "Lucky? The replay says otherwise, %s.", -6.0], ["trash", "Back to the scrapyard, %s.", -10.0]],
+	"opp_won": [["respect", "Fair win, %s. You earned it.", 6.0], ["rematch", "Run it back, %s. Any night you like.", -1.0],
+			["doubt", "One night, %s. Don't get used to it.", -4.0], ["trash", "Enjoy it, %s. It won't happen twice.", -8.0]],
+	# pilots about themselves
+	"pilot_upset": [["congrats", "Nobody saw that coming, %s. Well fought.", 5.0], ["joke", "Somebody check %s's robot for magnets.", 2.0],
+			["doubt", "Even a broken clock, %s.", -4.0], ["trash", "Do it twice and I'll care, %s.", -8.0]],
+	"pilot_champ": [["congrats", "Earned every bit of it, %s.", 5.0], ["joke", "Save me a spot on that podium next year, %s.", 2.0],
+			["doubt", "Enjoy the view, %s. I'm coming up.", -3.0], ["trash", "Weak year, %s. Lucky you.", -8.0]],
+	"pilot_readup": [["team", "Spar with me one night, %s? Tag team at the Bolt.", 3.0], ["joke", "Reading fights or reading the paper, %s?", 2.0],
+			["doubt", "Show it in the ring, %s.", -3.0], ["trash", "Read this, %s: you're still slow.", -8.0]],
+	"pilot_sponsor": [["friendly", "Looks good on you, %s.", 4.0], ["joke", "How many cans of that do they pay you in, %s?", 2.0],
+			["trash", "Sellout, %s.", -6.0]],
+	"pilot_tag": [["friendly", "Good team. Do it again soon, %s.", 5.0], ["team", "Next time take me along, %s.", 3.0],
+			["joke", "Two on two and you still needed help, %s?", -2.0]],
+	"pilot_feud": [["calm", "Leave it in the ring, %s.", 3.0], ["joke", "Somebody get these two a room. A ring. Whatever.", 0.0],
+			["trash", "You're both bums, %s.", -8.0]],
 	"pilot": [["friendly", "Respect, %s. See you in the ring.", 5.0], ["joke", "%s, save some of that for Saturday.", 2.0],
 			["doubt", "We'll see about that, %s.", -4.0], ["trash", "Big words for someone with your record, %s.", -10.0]],
+	# fans
+	"fan_me_win": [["thanks", "Thanks, %s. The noise helps more than you think.", 0.0], ["hype", "Wait till you see the next one, %s.", 0.0],
+			["humble", "All Gus. I just push the buttons.", 0.0]],
+	"fan_me_loss": [["promise", "We'll be back, %s. Stick around.", 0.0], ["joke", "The robot took it worse than me. Barely.", 0.0],
+			["fire", "Keep watching, %s. This isn't the end of it.", 0.0]],
+	"fan_doubt": [["promise", "Watch this space, %s.", 0.0], ["joke", "My mum says I'm talented, %s.", 0.0], ["mock", "Who are you again, %s?", 0.0]],
+	"fan_offlabel": [["proud", "Broke AND genius. Why not both?", 0.0], ["joke", "Gus calls it engineering. I call it Tuesday.", 0.0],
+			["humble", "It's what we had. It worked.", 0.0]],
+	"fan_top": [["agree", "Couldn't agree more, %s.", 0.0], ["hype", "Ask me again after I fight them, %s.", 0.0], ["doubt", "Hard disagree, %s.", 0.0]],
+	"fan_upset": [["agree", "Told you. Anything can happen in that ring.", 0.0], ["joke", "Somebody owes somebody a lot of money tonight.", 0.0]],
+	"fan_rattled": [["kind", "Everyone has bad weeks. They'll come back.", 0.0], ["joke", "Rattled is my default setting, %s.", 0.0],
+			["mock", "Kick them while they're down, %s. Classy.", 0.0]],
+	"fan": [["agree", "Couldn't agree more, %s.", 0.0], ["joke", "%s, you need a hobby. Oh, wait.", 0.0], ["doubt", "Hard disagree, %s.", 0.0]],
+	# news, announcers, adverts
+	"news_me": [["humble", "Just doing the work.", 0.0], ["hype", "Write it down. There's more coming.", 0.0], ["joke", "Finally famous. Mum, I'm on the news.", 0.0]],
+	"news_me_good": [["shill", "Proud of this one. Big things coming.", 0.0], ["humble", "Grateful. Back to the bay.", 0.0]],
+	"news_me_bad": [["calm", "It happens. We move on.", 0.0], ["joke", "Their loss. I wasn't drinking it anyway.", 0.0]],
+	"news_podium": [["congrats", "Big year for all three. Respect.", 0.0], ["hype", "Next year that's my name up there.", 0.0], ["doubt", "Weak field this year.", 0.0]],
+	"news_clip": [["wow", "I've watched this ten times.", 0.0], ["joke", "My robot felt that one from here.", 0.0], ["doubt", "Overrated. Seen better at the scrap ring.", 0.0]],
+	"news_slump": [["kind", "Everyone slips. Watch them come back.", 0.0], ["doubt", "Called it months ago.", 0.0]],
 	"news": [["agree", "Called it.", 0.0], ["joke", "My toaster could do better. Actually, my toaster fights.", 0.0],
 			["doubt", "Not buying it. Wait for the next round.", 0.0]],
-	"fan": [["agree", "Couldn't agree more, %s.", 0.0], ["joke", "%s, you need a hobby. Oh, wait.", 0.0], ["doubt", "Hard disagree, %s.", 0.0]],
+	"announcer": [["hype", "I'll be there. Front row.", 0.0], ["joke", "Bring earplugs? Bring a helmet.", 0.0]],
+	"kane_ad": [["doubt", "Programs don't feel the crowd.", 0.0], ["mock", "Kane, sell me a toaster instead.", 0.0], ["agree", "Can't argue with results.", 0.0]],
+	"shop_ad": [["shill", "Save me something good.", 0.0], ["mock", "Last week's stock fell apart in a week.", 0.0]],
+	"sponsor_welcome": [["shill", "Proud to wear your colours.", 0.0], ["hype", "Let's win some together.", 0.0]],
 	"ad": [["shill", "Good stuff. I'd know.", 0.0], ["mock", "Nobody asked, %s.", 0.0]],
+	"gus_win": [["thanks", "Couldn't do it without you, Gus.", 0.0], ["joke", "Gus, put the phone down and fix my arm.", 0.0],
+			["hype", "Next week we go bigger.", 0.0]],
 	"gus": [["friendly", "Best boss in Port Ferrum.", 0.0], ["joke", "Gus, put the phone down and fix my arm.", 0.0]],
+	# answering a pilot who answered you (the conversation goes on)
+	"answer_bite": [["double", "Saturday then, %s. Bring a spare head.", -8.0], ["ring", "Talk's cheap. Book it, %s.", -2.0],
+			["laugh", "Ha. You're funnier when you lose, %s.", 1.0], ["calm", "Easy, %s. It's just talk.", 4.0]],
+	"answer_warm": [["drink", "First round's on me at the Bolt, %s.", 5.0], ["team", "We should team up one night, %s.", 3.0],
+			["joke", "Careful, %s. People will think we're friends.", 2.0]],
+	"answer_cool": [["push", "Noted? That's all you've got, %s?", -3.0], ["friendly", "Fair enough. Good luck out there, %s.", 3.0]],
+	"answer_yes": [["thanks", "See you there, %s.", 2.0], ["hype", "Bring everything you've got, %s.", -1.0]],
+	"answer_no": [["push", "Scared, %s?", -4.0], ["calm", "Another time then, %s.", 2.0]],
 }
+## Tones that make a pilot bite back, and tones that ask for something.
+const BITE_TONES := ["doubt", "trash", "gloat", "double", "push", "mock"]
+const ASK_TONES := {"rematch": "rematch", "ring": "rematch", "team": "tag"}
 ## Followers a reply wins you (a share of what you have), by tone.
-const REPLY_FOL := {"friendly": 0.002, "joke": 0.004, "doubt": 0.003, "trash": 0.01, "agree": 0.002, "shill": 0.002, "mock": 0.005}
+const REPLY_FOL := {"friendly": 0.002, "joke": 0.004, "doubt": 0.003, "trash": 0.01, "agree": 0.002, "shill": 0.002, "mock": 0.005,
+		"respect": 0.003, "gloat": 0.008, "rematch": 0.005, "congrats": 0.002, "hype": 0.004, "thanks": 0.002, "humble": 0.002,
+		"double": 0.008, "ring": 0.006, "laugh": 0.004, "proud": 0.004, "wow": 0.003, "fire": 0.004, "promise": 0.003}
 
 ## World replies made up when a thread is first opened.
 const FAN_LINES := ["Facts.", "This is why I watch.", "No chance.", "Saturday can't come soon enough.", "Who asked?", "Big if true.",
 		"Legend.", "Overrated, and I'll say it again.", "I was there. Loudest night of the year.", "My dad says the old pilots were better."]
-const FAN_TO_ME := ["Let's go, %s!", "Proud of you, %s.", "%s for the Titanium. Calling it now.", "Rookie luck, %s. Prove me wrong."]
+const FAN_TO_ME := ["Let's go, %s!", "Proud of you, %s.", "%s for the Titanium. Calling it now."]
+const FAN_DOUBT_ME := ["Rookie luck, %s. Prove me wrong.", "One good night doesn't make a pilot, %s.", "Still think that robot's held together with tape, %s."]
 const OPP_FRIEND := ["Good fight. Next one's mine.", "Respect. I'll buy you a drink at the Bolt."]
 const OPP_RIVAL := ["Enjoy it while it lasts.", "Lucky. Everyone saw it."]
 const OPP_PLAIN := ["Fair enough. See you around.", "Not bad, rookie."]
-## A pilot answering your reply: warm, biting, or cool.
+## A pilot answering you: by the kind of answer, and whether it's about your fight ("fight") or not.
+const ANSWERS := {
+	"warm": ["Ha. Fair point.", "See you at the Bolt, %s.", "You're all right, %s.", "Respect goes both ways, %s.", "Ha. Alright, alright."],
+	"warm_fight": ["Next one's mine though, %s.", "You fought clean, %s. I'll give you that.", "Good scrap, %s. My bay's still smoking."],
+	"bite": ["Say that to my face on Saturday.", "Keep talking, %s. It suits you.", "Cute. Real cute.", "My robot remembers faces, %s."],
+	"bite_fight": ["Run your mouth now, %s. Saturday you won't.", "I've watched the tape. I know your tells now, %s.", "One lucky night and you're a star, %s?"],
+	"bite_hard": ["That's it. You and me, %s. Name the night.", "Enough talk. The Bolt, tonight, %s. Unless you're busy hiding.",
+			"You want it that bad, %s? Come and get it.", "I'm done typing, %s. Ring. Tonight."],
+	"cool": ["We'll see.", "Noted.", "Sure, %s.", "If you say so."],
+	"friends": ["You know what, %s? You're alright. Drinks are on me.", "We should do this more often, %s. In the ring and out of it."],
+	"yes_rematch": ["You're on, %s. The Bolt, tonight.", "Done. Tonight. Don't be late, %s."],
+	"no_rematch": ["Not tonight, %s. Got my own fights.", "Find someone your own size, %s."],
+	"yes_tag": ["Tonight then, %s. Two on two at the Bolt.", "Why not. Meet me at the Bolt, %s."],
+	"no_tag": ["Not tonight, %s. Maybe another time.", "Busy, %s. Ask me next week."],
+}
+const REL_ANSWER_WARM := 1.0
+const REL_ANSWER_BITE := -3.0
+## Old saves' answers (1.67) kept working.
 const ANSWER_WARM := ["Ha. Fair point.", "See you at the Bolt, %s.", "You're all right, %s."]
 const ANSWER_BITE := ["Say that to my face on Saturday.", "Keep talking, %s. It suits you.", "Cute. Real cute."]
 const ANSWER_COOL := ["We'll see.", "Noted."]
-const REL_ANSWER_WARM := 1.0
-const REL_ANSWER_BITE := -3.0
 
 
 ## What kind of account this is, for the replies it gets.
@@ -557,9 +635,44 @@ static func kind_of(key: String) -> String:
 	return "news"
 
 
-## The replies you can give to an account: [tone, line, relationship move].
+## What a post is about (1.85): its own ctx, else worked out from who wrote it.
+static func ctx_of(p: Dictionary) -> String:
+	var c := str(p.get("ctx", ""))
+	if c != "":
+		return c
+	var k := kind_of(str(p.get("by", "")))
+	match k:
+		"pilot":
+			return "pilot"
+		"fan":
+			return "fan"
+		"ad":
+			return "ad"
+		"gus":
+			return "gus"
+	return "news"
+
+
+## The context of what you'd be answering: the post (to = -1) or a reply in its thread.
+static func reply_ctx(p: Dictionary, to: int = -1) -> String:
+	if to < 0:
+		return ctx_of(p)
+	var r := find_reply(p, to)
+	var c := str(r.get("ctx", ""))
+	if c != "":
+		return c
+	return {"pilot": "pilot", "fan": "fan", "ad": "ad", "gus": "gus"}.get(kind_of(str(r.get("by", ""))), "news")
+
+
+## The replies you can give: [tone, line, relationship move].
+static func reply_options(p: Dictionary, to: int = -1) -> Array:
+	var c := reply_ctx(p, to)
+	return CTX_REPLIES.get(c, CTX_REPLIES.get({"pilot": "pilot", "fan": "fan", "ad": "ad", "gus": "gus"}.get(c.split("_")[0], "news"), CTX_REPLIES["news"]))
+
+
+## Kept for old callers: the replies for an account's own posts.
 static func reply_options_for(key: String) -> Array:
-	return REPLY_SETS.get(kind_of(key), REPLY_SETS["news"])
+	return CTX_REPLIES.get(kind_of(key), CTX_REPLIES["news"])
 
 
 ## The thread of a post (made up the first time it's opened).
@@ -578,12 +691,17 @@ static func thread(p: Dictionary) -> Array:
 		if opp >= 0 and not World.pilot(opp).is_empty():
 			var r := GameData.rel_of(opp)
 			var pool: Array = OPP_FRIEND if r >= GameData.REL_FRIEND else (OPP_RIVAL if r <= -15.0 else OPP_PLAIN)
-			out.append({"r": rn, "by": "w:%d" % opp, "text": pool[rng.randi() % pool.size()], "args": [], "at": int(p["at"]) + 1, "to": -1, "likes": rng.randi_range(5, 80)})
+			var mine_won: bool = str((p.get("card", {}) as Dictionary).get("a", "")) == GameData.pilot_name or bool(p.get("won", true))
+			out.append({"r": rn, "by": "w:%d" % opp, "text": pool[rng.randi() % pool.size()], "args": [], "at": int(p["at"]) + 1, "to": -1, "likes": rng.randi_range(5, 80),
+					"ctx": "opp_lost" if mine_won else "opp_won"})
 			rn += 1
 		for i in n:
 			var fk := fan_key(rng.randi())
-			if by == "me" and rng.randf() < 0.5:
-				out.append({"r": rn, "by": fk, "text": FAN_TO_ME[rng.randi() % FAN_TO_ME.size()], "args": [GameData.pilot_name], "at": int(p["at"]) + rng.randi_range(0, 2), "to": -1, "likes": rng.randi_range(0, 30)})
+			if by == "me" and rng.randf() < 0.6:
+				var doubt := rng.randf() < 0.35
+				var fp: Array = FAN_DOUBT_ME if doubt else FAN_TO_ME
+				out.append({"r": rn, "by": fk, "text": fp[rng.randi() % fp.size()], "args": [GameData.pilot_name], "at": int(p["at"]) + rng.randi_range(0, 2), "to": -1, "likes": rng.randi_range(0, 30),
+						"ctx": "fan_doubt" if doubt else "fan_me_win"})
 			else:
 				out.append({"r": rn, "by": fk, "text": FAN_LINES[rng.randi() % FAN_LINES.size()], "args": [], "at": int(p["at"]) + rng.randi_range(0, 2), "to": -1, "likes": rng.randi_range(0, 30)})
 			rn += 1
@@ -645,7 +763,7 @@ static func reply(id: int, tone: String, to: int = -1) -> void:
 	var acc := account(target)
 	var line := ""
 	var move := 0.0
-	for r in reply_options_for(target):
+	for r in reply_options(p, to):
 		if r[0] == tone:
 			line = r[1]
 			move = float(r[2])
@@ -656,32 +774,60 @@ static func reply(id: int, tone: String, to: int = -1) -> void:
 	if wid >= 0 and move != 0.0:
 		rel_social(wid, move, k, GameData.REL_SOCIAL_CAP)
 	st()["followers"] = int(followers() * (1.0 + float(REPLY_FOL.get(tone, 0.002)) * k))
-	if tone == "trash":
+	if tone in ["trash", "double", "gloat"]:
 		GameData.Contracts.on_post("trash")
 	elif tone == "shill" and target.begins_with("sp:"):
 		GameData.Contracts.on_post("humble")
 	var rid := int(p.get("rn", th.size()))
 	p["rn"] = rid + 1
-	th.append({"r": rid, "by": "me", "text": line, "args": [str(acc["name"])], "at": now_t(), "to": to, "likes": 0, "tone": tone})
+	# how deep the conversation is: your reply sits one under what it answers
+	var depth := 0 if to < 0 else int(find_reply(p, to).get("depth", 0)) + 1
+	th.append({"r": rid, "by": "me", "text": line, "args": [str(acc["name"])], "at": now_t(), "to": to, "likes": 0, "tone": tone, "depth": depth})
 	p["replied"] = true
 	count_post()
-	# a pilot may answer you a part of the day later
 	if wid >= 0:
-		var rel := GameData.rel_of(wid)
-		var rng := RandomNumberGenerator.new()
-		rng.seed = id * 131 + rid * 17 + GameData.week
-		var bite := tone in ["doubt", "trash"]
-		var chance := (0.5 + (0.4 if rel <= GameData.REL_RIVAL else 0.0)) if bite else (0.4 + (0.3 if rel >= 15.0 else 0.0))
-		if GameData.nemeses.has(wid):
+		_plan_answer(p, id, rid, target, wid, tone, depth)
+
+
+## A pilot you answered may answer back a part of the day later (one at a time per pilot per thread).
+## What they say depends on your tone, how they feel about you, what the post was about, and how
+## long the back-and-forth has gone on: a few rounds of insults and they call you out to fight; a few
+## rounds of kind words and they count you a friend. Asking for a fight or a team-up gets a yes or a no.
+static func _plan_answer(p: Dictionary, id: int, rid: int, target: String, wid: int, tone: String, depth: int) -> void:
+	var rel := GameData.rel_of(wid)
+	var rng := RandomNumberGenerator.new()
+	rng.seed = id * 131 + rid * 17 + GameData.week
+	var bite := BITE_TONES.has(tone)
+	var ask: String = ASK_TONES.get(tone, "")
+	var kind := "cool"
+	var chance := 0.0
+	if ask != "":
+		# a yes needs nothing booked tonight, and they mustn't hate you (a rival likes a fight, though)
+		var free: bool = GameData.fight_mode() == "open"
+		var yes := false
+		if ask == "rematch":
+			yes = free and (rel <= -15.0 or rng.randf() < 0.6)
+		else:
+			yes = free and rel > -15.0 and rng.randf() < (0.5 + rel / 100.0)
+		kind = ("yes_" if yes else "no_") + ask
+		chance = 1.0
+	elif bite:
+		kind = "bite_hard" if depth >= 2 or GameData.nemeses.has(wid) else "bite"
+		chance = (0.5 + (0.4 if rel <= GameData.REL_RIVAL else 0.0))
+		if GameData.nemeses.has(wid) or depth >= 2:
 			chance = 1.0
-		var ans: Array = st().get("answers", [])
-		st()["answers"] = ans
-		var waiting := false
-		for a in ans:
-			if int(a["post"]) == id and str(a["by"]) == target:
-				waiting = true   # one answer at a time from each pilot in a thread
-		if not waiting and not is_blocked(target) and rng.randf() < chance:
-			ans.append({"post": id, "to": rid, "by": target, "kind": "bite" if bite else ("warm" if tone in ["friendly", "joke"] else "cool"), "due": now_t() + 1})
+	else:
+		kind = "friends" if depth >= 2 and rel >= 15.0 else ("warm" if tone not in ["calm", "push"] else "cool")
+		chance = 0.4 + (0.3 if rel >= 15.0 else 0.0) + (0.2 if depth >= 1 else 0.0)
+	if is_blocked(target) or rng.randf() >= chance:
+		return
+	var ans: Array = st().get("answers", [])
+	st()["answers"] = ans
+	for a in ans:
+		if int(a["post"]) == id and str(a["by"]) == target:
+			return   # one answer at a time from each pilot in a thread
+	var fight: bool = str(p.get("ctx", "")).begins_with("opp_") or str(p.get("ctx", "")) == "pilot_feud"
+	ans.append({"post": id, "to": rid, "by": target, "kind": kind, "fight": fight, "depth": depth + 1, "due": now_t() + 1})
 
 
 ## Answers that are due arrive (called when BotMedia opens and every morning).
@@ -699,17 +845,44 @@ static func tick() -> void:
 		if p.is_empty():
 			continue
 		var th := thread(p)
-		var pool: Array = ANSWER_BITE if a["kind"] == "bite" else (ANSWER_WARM if a["kind"] == "warm" else ANSWER_COOL)
+		var kind := str(a["kind"])
+		var pool_key := kind
+		if (kind == "warm" or kind == "bite") and bool(a.get("fight", false)):
+			pool_key = kind + "_fight"
+		var pool: Array = ANSWERS.get(pool_key, ANSWERS.get(kind, ANSWER_COOL))
 		var rng := RandomNumberGenerator.new()
 		rng.seed = int(a["post"]) * 31 + int(a["to"])
 		var rid := int(p.get("rn", th.size()))
 		p["rn"] = rid + 1
-		th.append({"r": rid, "by": str(a["by"]), "text": pool[rng.randi() % pool.size()], "args": [GameData.pilot_name], "at": now_t(), "to": int(a["to"]), "likes": rng.randi_range(2, 40)})
+		# a line they haven't used in this thread yet, if there is one
+		var said: Array = th.filter(func(x): return str(x["by"]) == str(a["by"])).map(func(x): return str(x["text"]))
+		var fresh: Array = pool.filter(func(x): return not said.has(x))
+		var use: Array = fresh if not fresh.is_empty() else pool
+		var rep := {"r": rid, "by": str(a["by"]), "text": use[rng.randi() % use.size()], "args": [GameData.pilot_name], "at": now_t(), "to": int(a["to"]),
+				"likes": rng.randi_range(2, 40), "depth": int(a.get("depth", 1))}
+		# what you can say back to this answer
+		if kind.begins_with("yes_"):
+			rep["ctx"] = "answer_yes"
+			rep["offer"] = kind.substr(4)   # a button in the thread books it
+		elif kind.begins_with("no_"):
+			rep["ctx"] = "answer_no"
+		elif kind == "bite_hard":
+			rep["ctx"] = "answer_bite"
+			rep["offer"] = "rematch"   # they called you out
+		elif kind == "bite":
+			rep["ctx"] = "answer_bite"
+		elif kind == "warm" or kind == "friends":
+			rep["ctx"] = "answer_warm"
+		else:
+			rep["ctx"] = "answer_cool"
+		th.append(rep)
 		var wid := int(str(a["by"]).substr(2)) if str(a["by"]).begins_with("w:") else -1
-		if a["kind"] == "bite":
+		if kind.begins_with("bite"):
 			GameData.rel_add(wid, REL_ANSWER_BITE)
-		elif a["kind"] == "warm":
+		elif kind == "warm":
 			GameData.rel_add(wid, REL_ANSWER_WARM, GameData.REL_SOCIAL_CAP)
+		elif kind == "friends":
+			GameData.rel_add(wid, 4.0, GameData.REL_SOCIAL_CAP)
 		note("%s answered you.", [account(str(a["by"]))["name"]], int(p["id"]))
 	st()["answers"] = keep
 
@@ -751,14 +924,14 @@ static func podium(ev: Dictionary, kind: String) -> void:
 				p["fol"] = int(pilot_fol(p) * (1.0 + add_k)) + add_flat
 	var tag := tag_for(kind if kind in ["title", "cup"] else str(ev.get("stage", "")))
 	post("botmedia", "%s is over. Gold: %s. Silver: %s. Bronze: %s.", [str(ev.get("name", "")), names[0], names[1], names[2]],
-			{"kind": "podium", "names": names}, [tag, "Podium"])
+			{"kind": "podium", "names": names}, [tag, "Podium"], false, "news_podium")
 	var win_id := int(order[0])
 	if win_id == 0:
 		st()["draft"] = {"opp": str(ev.get("name", "")), "wid": -1, "won": true, "tag": tag, "at": now_t()}
 	else:
 		var e0: Dictionary = GameData.Career.pilot(ev, win_id)
 		if int(e0.get("wid", -1)) >= 0:
-			post("w:%d" % int(e0["wid"]), "Champions of the %s. Thank you, Port Ferrum.", [str(ev.get("name", ""))], {}, [tag, "Podium"])
+			post("w:%d" % int(e0["wid"]), "Champions of the %s. Thank you, Port Ferrum.", [str(ev.get("name", ""))], {}, [tag, "Podium"], false, "pilot_champ")
 
 
 ## A pilot's Read moved a whole dot, or they're rattled / steady again.
@@ -772,14 +945,14 @@ static func read_event(p: Dictionary, kind: String) -> void:
 		"up":
 			if big or randf() < 0.3:
 				post(key, ["Sparring paid off. I'm reading fights better than ever.", "Something clicked this month. Watch me.",
-						"Better every week. Ask my last opponent."][int(p["wid"]) % 3], [], {"kind": "read", "dots": dots}, ["ReadUp"])
+						"Better every week. Ask my last opponent."][int(p["wid"]) % 3], [], {"kind": "read", "dots": dots}, ["ReadUp"], false, "pilot_readup")
 		"down":
 			if big:
-				post("botmedia", "%s has lost a step. Read down to %d dots.", [p["name"], dots], {"kind": "read", "dots": dots}, ["ReadDown"])
+				post("botmedia", "%s has lost a step. Read down to %d dots.", [p["name"], dots], {"kind": "read", "dots": dots}, ["ReadDown"], false, "news_slump")
 		"rattled":
 			if big or randf() < 0.35:
 				post(fan_key(int(p["wid"]) + GameData.week), "%s looks RATTLED. Three bad nights and counting.", [p["name"]], {"kind": "rattled"},
-						[str(p["name"]).replace(" ", "") + "Rattled"])
+						[str(p["name"]).replace(" ", "") + "Rattled"], false, "fan_rattled")
 		"steady":
 			if big:
 				post(key, "Head's clear again. Next.", [], {}, [])
@@ -798,26 +971,26 @@ static func daily() -> void:
 		if not hm.is_empty():
 			var ev: Dictionary = hm["ev"]
 			post("mic_grand", "TONIGHT: %s against %s. Be there.", [str(GameData.Career.pilot(ev, int(hm["a"])).get("pilot", "?")),
-					str(GameData.Career.pilot(ev, int(hm["b"])).get("pilot", "?"))], {}, ["FightNight", tag_for(str(ev.get("stage", "")))])
-		post("mic_scrap", "Scrap Heap tonight! Bring earplugs and a spare bolt.", [], {}, ["FightNight"])
+					str(GameData.Career.pilot(ev, int(hm["b"])).get("pilot", "?"))], {}, ["FightNight", tag_for(str(ev.get("stage", "")))], false, "announcer")
+		post("mic_scrap", "Scrap Heap tonight! Bring earplugs and a spare bolt.", [], {}, ["FightNight"], false, "announcer")
 	if day == "mon" and GameData.week % 2 == 0:
 		post("kane", ["Programs don't ask for a cut. OVERLORD, every Saturday.", "Why trust a tired pilot? Trust Kane Dynamics.",
-				"OVERLORD has never missed a punch. Ever.", "The future fights alone. Kane Dynamics."][(GameData.week / 2) % 4], [], {"kind": "ad"}, ["OVERLORD"])
+				"OVERLORD has never missed a punch. Ever.", "The future fights alone. Kane Dynamics."][(GameData.week / 2) % 4], [], {"kind": "ad"}, ["OVERLORD"], false, "kane_ad")
 	if day == "sun":
-		post("partsrus", "New stock is in. First come, first bolted.", [], {}, ["SundayStock"])
+		post("partsrus", "New stock is in. First come, first bolted.", [], {}, ["SundayStock"], false, "shop_ad")
 	# a fan reacts to someone at the top
 	var tops := World.active("steel") + World.active("iron")
 	if not tops.is_empty() and rng.randf() < 0.7:
 		var p: Dictionary = tops[rng.randi() % tops.size()]
 		post(fan_key(rng.randi()), ["Is %s overrated? Asking for a friend.", "%s is the best pilot in this city and it's not close.",
 				"Saw %s at the docks. Shorter than I thought.", "Someone tell %s to stop spending and start winning."][rng.randi() % 4],
-				[p["name"]], {}, [])
+				[p["name"]], {}, [], false, "fan_top")
 	# now and then a pilot shows off a sponsor
 	if rng.randf() < 0.25 and not tops.is_empty():
 		var p2: Dictionary = tops[rng.randi() % tops.size()]
 		var ids: Array = GameData.Contracts.SPONSORS.keys().filter(func(k): return k != "kane" and k != "rustybolt")
 		var sp: String = ids[rng.randi() % ids.size()]
-		post("w:%d" % int(p2["wid"]), "Proud to fight in %s colours this season.", [GameData.Contracts.SPONSORS[sp]["name"]], {"kind": "logo", "logo": sp}, [str(GameData.Contracts.SPONSORS[sp]["tag"])])
+		post("w:%d" % int(p2["wid"]), "Proud to fight in %s colours this season.", [GameData.Contracts.SPONSORS[sp]["name"]], {"kind": "logo", "logo": sp}, [str(GameData.Contracts.SPONSORS[sp]["tag"])], false, "pilot_sponsor")
 
 
 # ---------------------------------------------------------------- posting any time (1.68)
@@ -933,10 +1106,11 @@ const DM_LINES := {
 	"sorry": "Look, I'm sorry about before.", "thanks": "Got it, Gus.", "why": "Why?", "support": "Thanks for the support.",
 }
 const DM_REL := {"hi": 2.0, "fire": -6.0, "laugh": 3.0, "sorry": 12.0, "support": 0.0}
-const DM_WARM := ["Hey yourself. Good luck too.", "Thanks. See you at the Bolt."]
-const DM_COLD := ["What do you want?", "Not now."]
-const DM_FIRE := ["Saturday. You and me.", "Keep running your mouth."]
-const DM_LAUGH := ["Whatever.", "Ha. Fine."]
+const DM_WARM := ["Hey yourself. Good luck too.", "Thanks. See you at the Bolt.", "Hey. Saw your last fight. Not bad at all.",
+		"Hey. Gus still feeding you that awful coffee?", "Good to hear from you. Keep your guard up."]
+const DM_COLD := ["What do you want?", "Not now.", "Busy.", "Do I know you?"]
+const DM_FIRE := ["Saturday. You and me.", "Keep running your mouth.", "Talk is all you've got.", "My robot's been waiting for yours."]
+const DM_LAUGH := ["Whatever.", "Ha. Fine.", "Ha. Alright, you got me.", "Funny. We'll see who's laughing at the bell."]
 const DM_TAG_YES := "You're on. Tonight at the Bolt."
 const DM_TAG_NO := "Not tonight."
 const DM_REMATCH_YES := "Tonight then. Don't be late."
@@ -945,7 +1119,8 @@ const DM_RUN := "Running a %s these days. Why, scared?"
 const DM_SORRY_YES := "Fine. Water under the bridge."
 const DM_SORRY_NO := "Too late for that."
 const GUS_WHY := ["Because I've seen kids lose arms over less.", "Because your dad would have. Trust me.", "Because the bell doesn't wait for anyone."]
-const THREATS := ["See you tonight. Bring spare parts.", "I've watched your fights. You drop your left.", "Tonight I take something off that robot. Your pick."]
+const THREATS := ["See you tonight. Bring spare parts.", "I've watched your fights. You drop your left.", "Tonight I take something off that robot. Your pick.",
+		"Hope Gus has a spare head lying around.", "Tonight your robot learns some humility.", "I don't lose twice to the same pilot."]
 const STORY_WHO := ["NARRATOR", "ECHO", "YOU"]
 
 

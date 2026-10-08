@@ -2,7 +2,7 @@ extends Node
 
 # helper scripts, loaded by path so the game also runs without an editor scan
 ## The game's version, shown on the main menu. Bump it with every change (1.1, 1.2, ...).
-const VERSION := "1.84"
+const VERSION := "1.85"
 const Arena = preload("res://arena.gd")
 const I18n = preload("res://i18n.gd")
 const Catalog = preload("res://catalog.gd")
@@ -2533,7 +2533,7 @@ func tag_after(won: bool) -> void:
 		pending_stories.append({"lines": [pilot_line(ally, tr(Talk.pick(Talk.TAG_WON if won else Talk.TAG_LOST, seed_text)) % pilot_name)]})
 		if won:
 			Social.post("w:%d" % ally, ["Tag team with %s tonight. We cleaned house.", "Me and %s, unbeatable. Who's next?"][absi(hash(seed_text)) % 2],
-					[pilot_name], {}, ["TagTeam"], true)
+					[pilot_name], {}, ["TagTeam"], true, "pilot_tag")
 	if foes.size() >= 2 and won:
 		rel_add(int(foes[1]), -REL_FIGHT_K * 0.5)
 
@@ -5901,7 +5901,7 @@ func film_done(job: Dictionary, out: Dictionary) -> void:
 		var line: String = lines0[absi(hash(key)) % lines0.size()]
 		var stage := str(spec[0]) if not spec.is_empty() else ""
 		var p := Social.post("botmedia", line, [str(wo.get("pilot", "?")), str(lo.get("pilot", "?"))], {"kind": "clip", "id": ids[0]},
-				[Social.tag_for(stage), "FightNight"])
+				[Social.tag_for(stage), "FightNight"], false, "news_clip")
 		p["likes"] = int(int(p["likes"]) * 1.6)
 		p["reposts"] = int(int(p["reposts"]) * 2.0)
 	# bad blood: a fight that tore parts off (or ended in a K.O.) leaves a mark between them
@@ -5911,8 +5911,8 @@ func film_done(job: Dictionary, out: Dictionary) -> void:
 	feud_add(wwid, lwid, -hit)
 	if before > FEUD_LINE and feud_of(wwid, lwid) <= FEUD_LINE and wwid >= 0 and lwid >= 0:
 		World.news("Bad blood between %s and %s.", [str(wo.get("pilot", "?")), str(lo.get("pilot", "?"))])
-		Social.post("w:%d" % wwid, "Told you, %s. Every time.", [str(lo.get("pilot", "?"))], {}, ["BadBlood"])
-		Social.post("w:%d" % lwid, "Enjoy it, %s. Next time I take your arm home.", [str(wo.get("pilot", "?"))], {}, ["BadBlood"])
+		Social.post("w:%d" % wwid, "Told you, %s. Every time.", [str(lo.get("pilot", "?"))], {}, ["BadBlood"], false, "pilot_feud")
+		Social.post("w:%d" % lwid, "Enjoy it, %s. Next time I take your arm home.", [str(wo.get("pilot", "?"))], {}, ["BadBlood"], false, "pilot_feud")
 	prune_world_clips()
 	save_game()
 

@@ -123,7 +123,7 @@ static func active(tier: String = "") -> Array:
 static func news(text: String, args: Array = []) -> void:
 	var n: Array = w()["news"]
 	n.append({"y": GameData.year, "w": GameData.week, "text": text, "args": args})
-	GameData.Social.post("botmedia", text, args, {}, news_tags(args))   # every headline is a BotMedia post too
+	GameData.Social.post("botmedia", text, args, {}, news_tags(args), false, "news_me" if args.has(GameData.pilot_name) else "news")   # every headline is a BotMedia post too
 	if n.size() > 120:
 		n.pop_front()
 

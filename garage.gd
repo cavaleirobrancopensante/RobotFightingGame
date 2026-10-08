@@ -2854,7 +2854,7 @@ func open_thread(id: int, to: int = -1, replying: bool = false) -> void:
 		var k: float = S.day_factor(target, true)
 		if k < 1.0:
 			col.add_child(GUI.text(tr("You've said a lot to them today: it counts less.") if k > 0.0 else tr("Nothing more to gain with them today. Tomorrow it resets."), 12, GUI.AMBER))
-		for r in S.reply_options_for(target):
+		for r in S.reply_options(p, to):
 			var line: String = tr(str(r[1]))
 			if line.contains("%s"):
 				line = line % str(acc["name"])
@@ -2895,12 +2895,16 @@ func thread_root(p: Dictionary, r: Dictionary) -> int:
 
 ## What a reply tone will do, in a few words (the relationship move, shrunk by today's gains).
 func reply_hint(tone: String, move: float, k: float) -> String:
+	if GameData.Social.ASK_TONES.has(tone):
+		return tr("Asks for a fight.") if GameData.Social.ASK_TONES[tone] == "rematch" else tr("Asks for a team-up.")
 	if move > 0.0:
 		return tr("They warm up to you (+%d).") % roundi(move * k)
 	if move < 0.0:
 		return tr("They won't like it (%d).") % roundi(move * k)
 	return {"agree": tr("Easy likes."), "joke": tr("Fans like a joke."), "doubt": tr("A little heat."), "shill": tr("Sponsors like it."),
-			"mock": tr("Fans love it."), "friendly": tr("Gus pretends not to care.")}.get(tone, "")
+			"mock": tr("Fans love it."), "friendly": tr("Gus pretends not to care."), "thanks": tr("Fans love it."), "hype": tr("Big talk. Fans eat it up."),
+			"humble": tr("Easy likes."), "promise": tr("Fans like a comeback."), "fire": tr("A little heat."), "proud": tr("Fans like it."),
+			"wow": tr("Easy likes."), "kind": tr("People notice."), "congrats": tr("Easy likes."), "calm": tr("Cools things down.")}.get(tone, "")
 
 
 ## One reply in a thread: face, name, when, the line, its likes, and Reply (not on your own).
@@ -2948,6 +2952,24 @@ func reply_row(p: Dictionary, r: Dictionary, parent: Control, depth: int, sel: i
 	if by != "me":
 		var b := UI.button(tr("Reply"), _on_pick_reply.bind(int(p["id"]), int(r["r"])), 12, Vector2(76, 30))
 		acts.add_child(b)
+	# (1.85) a pilot said yes to a fight or a team-up, or called you out: book it right here
+	var offer := str(r.get("offer", ""))
+	if offer != "" and by.begins_with("w:") and not r.get("used", false):
+		var owid := int(by.substr(2))
+		var free: bool = GameData.fight_mode() == "open" and GameData.phase <= 2
+		var ob := UI.button(tr("Book the fight ›") if offer == "rematch" else tr("Team up tonight ›"), func():
+			r["used"] = true
+			close_popup()
+			if offer == "rematch":
+				_on_challenge(owid)
+			else:
+				_on_team_up(owid), 12, Vector2(150, 30))
+		ob.disabled = not free
+		if free:
+			GUI.mark_new(ob, true)
+		else:
+			ob.tooltip_text = tr("You've already got a fight booked tonight.")
+		acts.add_child(ob)
 	if sel == int(r["r"]):
 		GUI.mark_new(panel, true)
 

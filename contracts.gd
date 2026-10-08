@@ -357,8 +357,8 @@ static func sign(id: int) -> String:
 			GameData.owned_controllers.append(str(r["id"]))   # they send the stick round
 			GameData.pilot_look["controller"] = str(r["id"])
 	var d := sp(str(c["sp"]))
-	GameData.Social.post("sp:" + str(c["sp"]), "Welcome to the family, %s. #%s", ["@" + GameData.Social.account("me")["handle"], d["tag"]], {"kind": "logo", "logo": c["sp"]}, [d["tag"]], true)
-	GameData.Social.post("botmedia", "%s signs with %s.", [GameData.pilot_name, d["name"]], {"kind": "logo", "logo": c["sp"]}, [d["tag"]])
+	GameData.Social.post("sp:" + str(c["sp"]), "Welcome to the family, %s. #%s", ["@" + GameData.Social.account("me")["handle"], d["tag"]], {"kind": "logo", "logo": c["sp"]}, [d["tag"]], true, "sponsor_welcome")
+	GameData.Social.post("botmedia", "%s signs with %s.", [GameData.pilot_name, d["name"]], {"kind": "logo", "logo": c["sp"]}, [d["tag"]], false, "news_me_good")
 	if c["sp"] == "kane":
 		var s2: Dictionary = GameData.Social.st()
 		s2["followers"] = int(int(s2["followers"]) * 0.8)   # the pilots' fans don't forgive this
@@ -423,7 +423,7 @@ static func strike(c: Dictionary, why: String) -> void:
 			st()["active"].erase(c)
 			st()["mood"][c["sp"]] = float(st()["mood"].get(c["sp"], 0.0)) - 0.3
 			GameData.log_talk(who, I18n.t("We're done. Contract torn up, sticker off."), "sponsor:" + str(c["sp"]))
-			GameData.Social.post("botmedia", "%s and %s part ways.", [d["name"], GameData.pilot_name], {"kind": "logo", "logo": c["sp"]}, [d["tag"]])
+			GameData.Social.post("botmedia", "%s and %s part ways.", [d["name"], GameData.pilot_name], {"kind": "logo", "logo": c["sp"]}, [d["tag"]], false, "news_me_bad")
 	GameData.Social.note("%s: %s", [d["name"], why], -1, str(c["sp"]))
 
 
