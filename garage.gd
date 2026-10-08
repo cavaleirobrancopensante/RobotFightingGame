@@ -942,6 +942,9 @@ func _process(delta: float) -> void:
 	if detail_panel and detail_panel.visible and left_col:
 		detail_panel.position = left_col.global_position
 		detail_panel.size = left_col.size
+	if city_map != null and is_instance_valid(city_map) and city_map.visible and left_col:
+		city_map.position = left_col.global_position
+		city_map.size = left_col.size
 	if bubble == null or not bubble.visible:
 		return
 	_place_talk()
@@ -1019,6 +1022,12 @@ func refresh() -> void:
 	if not tab_list().has(tab) and not CITY_TABS.has(tab):
 		tab = "Bay"
 	set_seg(seg())
+	# (1.77) the City: the map takes the left side (wider), the panel on the right says what's where
+	var in_city := tab == "City"
+	if city_map != null and is_instance_valid(city_map) and not in_city:
+		city_map.visible = false
+	left_col.size_flags_horizontal = Control.SIZE_EXPAND_FILL if in_city else Control.SIZE_FILL
+	left_col.size_flags_stretch_ratio = 1.5
 	set_scene_for_tab()
 	preview.highlight = selected if tab == "Bay" and seg() == "robot" else ""
 	preview.callouts = part_callouts(preview.highlight)
@@ -6997,38 +7006,29 @@ func place_of(t: String, key: String = "") -> String:
 
 
 func build_city() -> void:
-	var vh := get_viewport_rect().size.y
-	# the tablet on the left, what you picked on the right
-	var row := HBoxContainer.new()
-	row.add_theme_constant_override("separation", 12)
-	list_box.add_child(row)
-	var map = load("res://city_map.gd").new()
-	map.custom_minimum_size = Vector2(300, maxf(260.0, vh - 250.0))
-	map.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	map.size_flags_stretch_ratio = 1.6
-	map.selected = city_pick
-	map.picked.connect(_on_city_pick)
-	map.arrived.connect(_on_city_arrived)
-	row.add_child(map)
-	city_map = map
-	var side := VBoxContainer.new()
-	side.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	side.add_theme_constant_override("separation", 8)
-	row.add_child(side)
+	# (1.77) the map fills the left of the screen where the scene usually is; this panel says what's where
+	if city_map == null or not is_instance_valid(city_map):
+		city_map = load("res://city_map.gd").new()
+		city_map.picked.connect(_on_city_pick)
+		city_map.arrived.connect(_on_city_arrived)
+		add_child(city_map)
+		move_child(city_map, bubble.get_index())
+	city_map.selected = city_pick
+	city_map.visible = true
 	# your time this part of the day
-	side.add_child(GUI.text(tr("YOUR TIME THIS %s") % tr(GameData.PHASE_NAMES[GameData.phase]), 13, GUI.MUTED, "headb"))
+	list_box.add_child(GUI.text(tr("YOUR TIME THIS %s") % tr(GameData.PHASE_NAMES[GameData.phase]), 13, GUI.MUTED, "headb"))
 	var bar := GUI.BlockBar.new()
-	bar.block_w = 22.0
+	bar.block_w = 30.0
 	bar.height = 16.0
 	bar.setup(GameData.pilot_left(), 1.0, GameData.PILOT_HOURS, GUI.GREEN)
-	side.add_child(bar)
+	list_box.add_child(bar)
 	var tl := GUI.text(tr("%s left. The bay works either way.") % hours_text(GameData.pilot_left()), 13, GUI.TEXT)
 	tl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	side.add_child(tl)
-	side.add_child(GUI.HazardStrip.new())
+	list_box.add_child(tl)
+	list_box.add_child(GUI.HazardStrip.new())
 	city_card = VBoxContainer.new()
 	city_card.add_theme_constant_override("separation", 8)
-	side.add_child(city_card)
+	list_box.add_child(city_card)
 	fill_city_card()
 
 
