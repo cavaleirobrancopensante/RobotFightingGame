@@ -12,6 +12,9 @@ var tex: TextureRect
 var fight: Node
 var muted := false
 var fast := false
+var playlist: Array = []   # (1.76) more than one: each plays once, then the next (the Rusty Bolt's TV)
+var pi := 0
+var lowres := false        # (1.76) drawn at a third of the size (a small screen doesn't need more)
 
 
 func _ready() -> void:
@@ -19,8 +22,9 @@ func _ready() -> void:
 	if custom_minimum_size == Vector2.ZERO:
 		custom_minimum_size = Vector2(320, 180)
 	sv = SubViewport.new()
-	var scr: Array = clip.get("scr", [1152, 648])
-	sv.size = Vector2i(int(scr[0]), int(scr[1]))
+	if clip.is_empty() and not playlist.is_empty():
+		clip = playlist[0]
+	_size_sv()
 	sv.render_target_update_mode = SubViewport.UPDATE_ALWAYS
 	sv.gui_disable_input = true
 	sv.handle_input_locally = true
@@ -33,6 +37,26 @@ func _ready() -> void:
 	tex.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(tex)
 	restart()
+
+
+func _size_sv() -> void:
+	var scr: Array = clip.get("scr", [1152, 648])
+	var full := Vector2i(int(scr[0]), int(scr[1]))
+	if lowres:
+		sv.size = full / 3
+		sv.size_2d_override = full
+		sv.size_2d_override_stretch = true
+	else:
+		sv.size = full
+
+
+func _process(_d: float) -> void:
+	# a playlist moves on when a clip reaches its end
+	if playlist.size() > 1 and fight != null and fight.rp_hold > 0.0:
+		pi = (pi + 1) % playlist.size()
+		clip = playlist[pi]
+		_size_sv()
+		restart()
 
 
 func restart() -> void:

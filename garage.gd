@@ -93,6 +93,7 @@ class Backdrop extends Control:
 			info["gantry"] = {"left": pv._base + Vector2(-sh.x, sh.y) * k, "right": pv._base + sh * k,
 					"top": pv._base.y + top * k, "reach": (sh.x + 38.0) * k}
 		GarageArt.draw_back(self, size, stage, garage.scene, t, info)
+		garage.update_tv(Rect2(stage.position + (info["tv_rect"] as Rect2).position, (info["tv_rect"] as Rect2).size) if info.has("tv_rect") else Rect2(), self)
 		GarageArt.draw_front(self, stage, garage.scene, t, info, pv._base, pv.robot_height)
 		# where everyone's head is on screen, for the speech bubbles
 		var xf := get_global_transform()
@@ -451,6 +452,7 @@ func segs_of(t: String) -> Array:
 			out.append(["all", tr("DMs"), ""])
 			out.append(["profile", tr("Profile"), ""])
 			out.append(["looks", tr("Looks"), "", true])
+			out.append(["clips", tr("Clips"), "", true])
 			if GameData.unlocked("pilot"):
 				out.append(["gear", tr("Gear"), "pilot", true])
 			out.append(["contracts", tr("Contracts"), "", true])
@@ -562,7 +564,7 @@ func build_seg_bar() -> void:
 	for sg in list:
 		if sg.size() > 3 and sg[3]:
 			continue   # opens from somewhere else (BotMedia's profile)
-		var on: bool = sg[0] == seg() or (tab == "Feed" and sg[0] == "profile" and seg() in ["looks", "gear", "contracts"])
+		var on: bool = sg[0] == seg() or (tab == "Feed" and sg[0] == "profile" and seg() in ["looks", "clips", "gear", "contracts"])
 		var b := UI.button(str(sg[1]), _on_seg.bind(sg[0]), 13, Vector2(0, 34))
 		GUI.mark_new(b, seg_new(sg[0], sg[2]) or (tab == "Feed" and sg[0] == "home" and not GameData.Social.drafts().is_empty())
 				or (tab == "Feed" and sg[0] == "profile" and (seg_new("gear", "pilot") and GameData.unlocked("pilot") or contracts_new())))
@@ -1055,6 +1057,9 @@ func refresh() -> void:
 				"looks":
 					profile_bar()
 					build_pilot_looks()
+				"clips":
+					profile_bar()
+					build_my_clips()
 				"gear":
 					profile_bar()
 					build_controllers()
@@ -2448,6 +2453,12 @@ func build_explore() -> void:
 			account_header(feed_focus)
 		feed_list(feed_focus)
 		return
+	# (1.76) the week's best clips, yours and everybody's
+	var top: Array = GameData.clips_week(4)
+	if not top.is_empty():
+		section(tr("TOP CLIPS THIS WEEK"))
+		for c in top:
+			post_card({"kind": "clip", "id": str(c["id"])}, list_box)
 	section(tr("TRENDING IN PORT FERRUM"))
 	var fb := flow_bar()
 	for t in S.trending(8):
@@ -2871,7 +2882,7 @@ func profile_bar() -> void:
 	right.add_child(GUI.readout(S.fol_text(S.followers()), 28, GUI.GREEN))
 	right.add_child(GUI.text(tr("FOLLOWERS"), 10, GUI.MUTED, "headb"))
 	var bar := flow_bar()
-	var subs := [["profile", tr("Posts")], ["looks", tr("Looks")]]
+	var subs := [["profile", tr("Posts")], ["clips", tr("Clips")], ["looks", tr("Looks")]]
 	if GameData.unlocked("pilot"):
 		subs.append(["gear", tr("Gear")])
 	var nc: int = GameData.Contracts.st()["offers"].size()
@@ -2885,6 +2896,55 @@ func profile_bar() -> void:
 			b.add_theme_stylebox_override(k, st[1])
 		GUI.mark_new(b, (sb[0] == "gear" and seg_new("gear", "pilot")) or (sb[0] == "contracts" and contracts_new()))
 		bar.add_child(b)
+
+
+## (1.76) Your clips (posted) and the ones you saved from other people's fights.
+func build_my_clips() -> void:
+	var mine: Array = GameData.my_clips()
+	if mine.is_empty():
+		var l := GUI.text(tr("No clips yet. Post one after a fight, or save one you like from BotMedia."), 15, GUI.MUTED)
+		l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		list_box.add_child(l)
+		return
+	var own := mine.filter(func(c): return c.get("mine", false))
+	var saved := mine.filter(func(c): return not c.get("mine", false))
+	if not own.is_empty():
+		section(tr("YOUR CLIPS"))
+		for c in own:
+			post_card({"kind": "clip", "id": str(c["id"])}, list_box)
+	if not saved.is_empty():
+		section(tr("SAVED"))
+		for c in saved:
+			post_card({"kind": "clip", "id": str(c["id"])}, list_box)
+
+
+# ---- (1.76) the Rusty Bolt's TV plays the week's best clips (sound off; tap it to watch one)
+var tv_player: Control = null
+
+
+func update_tv(r: Rect2, host: Control) -> void:
+	var clips: Array = GameData.clips_week(8) if scene == "pub" and r.size.x > 10.0 else []
+	var want := not clips.is_empty() and GameData.headline_match().is_empty()
+	if not want:
+		if tv_player != null and is_instance_valid(tv_player):
+			tv_player.queue_free()
+		tv_player = null
+		return
+	if tv_player == null or not is_instance_valid(tv_player):
+		tv_player = load("res://clip_player.gd").new()
+		tv_player.playlist = clips
+		tv_player.lowres = true
+		tv_player.muted = true
+		tv_player.custom_minimum_size = Vector2(4, 4)
+		tv_player.mouse_filter = Control.MOUSE_FILTER_STOP
+		tv_player.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+		tv_player.gui_input.connect(func(e):
+			if (e is InputEventMouseButton and e.pressed and e.button_index == MOUSE_BUTTON_LEFT) or (e is InputEventScreenTouch and not e.pressed):
+				if tv_player != null and not (tv_player.clip as Dictionary).is_empty():
+					open_clip(str(tv_player.clip["id"])))
+		host.add_child(tv_player)
+	tv_player.position = r.position
+	tv_player.size = r.size
 
 
 func build_my_posts() -> void:
@@ -3451,6 +3511,9 @@ func patron_info() -> Dictionary:
 ## What's on the pub TV: tonight's headline league fight, or the table on quiet nights.
 func tv_info() -> Dictionary:
 	var hm := GameData.headline_match()
+	if hm.is_empty() and tv_player != null and is_instance_valid(tv_player) and not (tv_player.clip as Dictionary).is_empty():
+		# (1.76) the week's best clips on a loop
+		return {"live": false, "title": tr("BEST OF THE WEEK") + " · " + GameData.Clips.kind_name(tv_player.clip), "a": GameData.Clips.title(tv_player.clip), "b": ""}
 	if not hm.is_empty():
 		var ev: Dictionary = hm["ev"]
 		return {"live": true, "title": tr(Career.STAGES[ev["stage"]]["short"]) + " · " + tr(Career.round_name(ev)),
@@ -4715,6 +4778,15 @@ func open_pilot(wid: int) -> void:
 	brow.add_child(bi)
 	bi.add_child(GUI.text(str(bot.get("name", "?")), 16, GUI.TEXT, "headb"))
 	bi.add_child(GUI.text(tr("Parts worth $%d") % int(W.bot_value(p.get("bot", {}))), 14, GUI.MUTED))
+	# (1.76) their highlights: filmed fights they were in
+	var hl: Array = GameData.clips_of_pilot(wid, 3)
+	if not hl.is_empty():
+		col.add_child(GUI.text(tr("HIGHLIGHTS"), 14, GUI.YELLOW, "headb"))
+		for c in hl:
+			var cb := UI.button("▶ " + GameData.Clips.kind_name(c) + ": " + GameData.Clips.title(c), open_clip.bind(str(c["id"])), 13, Vector2(0, 38))
+			cb.alignment = HORIZONTAL_ALIGNMENT_LEFT
+			cb.clip_text = true
+			col.add_child(cb)
 	# BotMedia: follow them, or read what they've been posting
 	var sbar := HBoxContainer.new()
 	sbar.add_theme_constant_override("separation", 8)
@@ -4780,7 +4852,18 @@ func build_pub_cards() -> void:
 	if GameData.pickups_this_week() >= 2:
 		section(tr("You've fought %d pickups this week. The crowd's seen you, so purses are smaller till Monday.") % GameData.pickups_this_week())
 	var tv := tv_info()
-	if not tv.is_empty():
+	var week_clips: Array = GameData.clips_week(8)
+	if GameData.headline_match().is_empty() and not week_clips.is_empty():
+		# (1.76) no fight on tonight: the TV loops the week's best clips
+		var tbar := action_bar()
+		var tl := GUI.text(tr("ON THE TV: %s") % tr("BEST OF THE WEEK") + "   " + tr("%d clips") % week_clips.size(), 14, GUI.AMBER, "bold")
+		tl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		tl.clip_text = true
+		tbar.add_child(tl)
+		row_button(tbar, tr("Watch ▸"), func():
+			var cid := str(tv_player.clip["id"]) if tv_player != null and is_instance_valid(tv_player) and not (tv_player.clip as Dictionary).is_empty() else str(week_clips[0]["id"])
+			open_clip(cid), true, 110)
+	elif not tv.is_empty():
 		var hm := GameData.headline_match()
 		var bar := action_bar()
 		var l := GUI.text(tr("ON THE TV: %s") % str(tv["title"]) + "   " + str(tv["a"]) + ("  vs  " + str(tv["b"]) if str(tv["b"]) != "" else ""), 14, GUI.AMBER, "bold")

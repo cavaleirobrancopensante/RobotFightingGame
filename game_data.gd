@@ -2,7 +2,7 @@ extends Node
 
 # helper scripts, loaded by path so the game also runs without an editor scan
 ## The game's version, shown on the main menu. Bump it with every change (1.1, 1.2, ...).
-const VERSION := "1.75"
+const VERSION := "1.76"
 const Arena = preload("res://arena.gd")
 const I18n = preload("res://i18n.gd")
 const Catalog = preload("res://catalog.gd")
@@ -5603,6 +5603,7 @@ func film_done(job: Dictionary, out: Dictionary) -> void:
 		cd["id"] = "w%d_%d_%d" % [int(Time.get_unix_time_from_system()), randi() % 100000, n]
 		cd["world"] = true
 		cd["fkey"] = key
+		cd["wids"] = [wwid, lwid]
 		cd["still"] = {"kind": "still", "wa": wwid, "wb": lwid, "won": true, "an": str(wo.get("pilot", "")), "bn": str(lo.get("pilot", "")),
 				"venue": str(job.get("arena", "scrap_ring")), "ko": str(out.get("ko", ""))}
 		clips[cd["id"]] = cd
@@ -5649,6 +5650,41 @@ func prune_world_clips() -> void:
 				p["card"] = still
 		clips.erase(id)
 	clips_dirty = true
+
+
+## (1.76) The week's best clips (yours you posted and the world's), best first.
+func clips_week(n: int = 8) -> Array:
+	var now := World.abs_week()
+	var out: Array = []
+	for id in clips:
+		var c: Dictionary = clips[id]
+		if c.get("temp", false) or now - int(c.get("wk", 0)) > 1:
+			continue
+		out.append(c)
+	out.sort_custom(func(a, b): return float(a.get("score", 0.0)) > float(b.get("score", 0.0)))
+	return out.slice(0, n)
+
+
+## (1.76) A pilot's highlights: world clips they're in, best first.
+func clips_of_pilot(wid: int, n: int = 3) -> Array:
+	var out: Array = []
+	for id in clips:
+		var c: Dictionary = clips[id]
+		if (c.get("wids", []) as Array).any(func(x): return int(x) == wid):   # (ints come back from the file as floats)
+			out.append(c)
+	out.sort_custom(func(a, b): return float(a.get("score", 0.0)) > float(b.get("score", 0.0)))
+	return out.slice(0, n)
+
+
+## (1.76) Your clips (the ones you posted) and the ones you saved, newest first.
+func my_clips() -> Array:
+	var out: Array = []
+	for id in clips:
+		var c: Dictionary = clips[id]
+		if (c.get("mine", false) and not c.get("temp", false)) or c.get("saved", false):
+			out.append(c)
+	out.reverse()
+	return out
 
 
 ## (1.75) Save a clip you like: it stays for good.

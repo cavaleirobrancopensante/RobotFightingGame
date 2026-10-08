@@ -6286,7 +6286,8 @@ func settle_live_bets() -> void:
 			GameData.money += pay
 			out["paid"] += pay
 			out["lines"].append(tr("Live bet on %s at %.2fx: +$%d") % [name, float(bt["odds"]), pay])
-			if float(bt["odds"]) >= 4.0 or pay >= GameData.living_cost() / 4:
+			# (1.76) stricter: long odds, or a month's running costs won at 2 to 1 or better
+			if float(bt["odds"]) >= 4.0 or (pay >= GameData.living_cost() and float(bt["odds"]) >= 2.0):
 				big = true
 		else:
 			out["lines"].append(tr("Live bet on %s: lost $%d") % [name, int(bt["stake"])])

@@ -580,6 +580,7 @@ static func _pub_back(ci: CanvasItem, size: Vector2, floor_y: float, t: float, i
 			HORIZONTAL_ALIGNMENT_CENTER, sign_r.size.x, int(14 * s), neon)
 	# the TV: two little robots slugging it out
 	var tv := Rect2(size.x * 0.56, size.y * 0.05, size.x * 0.27, size.y * 0.19)
+	info["tv_rect"] = tv   # (1.76) the week's best clips play on it (garage.update_tv)
 	_rc(ci, tv.grow(4), Color(0.1, 0.1, 0.11))
 	_rc(ci, tv, Color(0.06, 0.12, 0.16))
 	_ln(ci, Vector2(tv.get_center().x, tv.position.y - 4), Vector2(tv.get_center().x, 0), Color(0.2, 0.2, 0.22), 3.0)
