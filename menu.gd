@@ -27,13 +27,16 @@ class ArenaBackdrop extends Control:
 	var looks: Array = []
 	var t := 0.0
 	var _rt := 0.0
+	var sv: SubViewport = null   # (1.86) painted into its own texture, 12 times a second
 
 	func _process(delta: float) -> void:
 		t += delta
 		_rt -= delta
 		if _rt <= 0.0:
-			_rt = 1.0 / 24.0
+			_rt = 1.0 / 12.0
 			queue_redraw()
+			if sv:
+				sv.render_target_update_mode = SubViewport.UPDATE_ONCE
 
 	func _draw() -> void:
 		var screen := size
@@ -55,10 +58,14 @@ class ArenaBackdrop extends Control:
 ## The title: ROBOT on a red dot-matrix board, FIGHTING on split-flap tiles.
 class TitleArt extends Control:
 	var t := 0.0
+	var _rt := 0.0
 
 	func _process(delta: float) -> void:
 		t += delta
-		queue_redraw()
+		_rt -= delta
+		if _rt <= 0.0:
+			_rt = 1.0 / 15.0   # (1.86) the LED board doesn't need 60 frames a second
+			queue_redraw()
 
 	func _draw() -> void:
 		# One line: ROBOT on the Championship's red LED board, FIGHTING on the Regional's flip
@@ -99,9 +106,13 @@ class ThemedButton extends Button:
 		mouse_entered.connect(queue_redraw)
 		mouse_exited.connect(queue_redraw)
 
+	var _rt := 0.0
+
 	func _process(delta: float) -> void:
 		t += delta
-		if look == "dots" or look == "scrap" or is_hovered():
+		_rt -= delta
+		if (look == "dots" or look == "scrap") and _rt <= 0.0:
+			_rt = 1.0 / 15.0
 			queue_redraw()
 
 	func _draw() -> void:
@@ -195,11 +206,27 @@ func themed(text: String, look: String, cb: Callable) -> ThemedButton:
 
 func _ready() -> void:
 	Sfx.music("menu")
+	# (1.86) the arena and its crowd are hundreds of shapes: they're painted into a texture a few
+	# times a second and the menu shows that, instead of drawing the whole crowd every frame
+	var vs := get_viewport_rect().size
+	var sv := SubViewport.new()
+	sv.disable_3d = true
+	sv.size = Vector2i(vs.ceil())
+	sv.render_target_update_mode = SubViewport.UPDATE_ONCE
+	add_child(sv)
 	var bg := ArenaBackdrop.new()
 	bg.looks = [random_look(), random_look()]
-	bg.set_anchors_preset(Control.PRESET_FULL_RECT)
+	bg.size = vs
+	bg.sv = sv
 	bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	add_child(bg)
+	sv.add_child(bg)
+	var tex := TextureRect.new()
+	tex.texture = sv.get_texture()
+	tex.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	tex.stretch_mode = TextureRect.STRETCH_SCALE
+	tex.set_anchors_preset(Control.PRESET_FULL_RECT)
+	tex.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(tex)
 	var m := UI.margin(self, 18)
 	var row := HBoxContainer.new()
 	m.add_child(row)
