@@ -333,6 +333,18 @@ static func my_fight(o: Dictionary, won: bool, destroyed: int, intact: int, own_
 			"Not %s's night."][rng.randi() % 3], [GameData.pilot_name], {}, [tag])
 	if destroyed > 0 and won:
 		post(fan_key(rng.randi() + 3), "%s tore %d parts off tonight. Somebody call a scrap man.", [GameData.pilot_name, destroyed], {}, [tag])
+	# a robot bolted together off-label gets people talking (1.54)
+	var odd: Array = GameData.off_label_kinds()
+	if not odd.is_empty():
+		var lines := {"leg_arm": ["%s just punched somebody with a FOOT. Broke or genius?", "Is that a leg where %s's arm should be? Asking for a friend."],
+				"arm_leg": ["Saw %s walk on its fists tonight. I can't unsee it.", "%s's robot is standing on its hands. Nobody tell the league."],
+				"reactor_arm": ["Is that a battery strapped to %s's shoulder? Bold.", "%s fights one arm short with a reactor taped on. Respect."]}
+		var k: String = odd[rng.randi() % odd.size()]
+		var pick: Array = lines[k]
+		var oddp := post(fan_key(rng.randi() + 7), pick[rng.randi() % pick.size()], [GameData.pilot_name], {}, [tag, "ScrapEngineering"])
+		oddp["likes"] = int(oddp["likes"]) * 3 + 20   # people love a mess
+		if won:
+			post("gus", ["It's not pretty, but it won. That's engineering.", "Don't tell anyone how we bolted that together."][rng.randi() % 2], [], {}, [])
 	# your own post: three drafts to pick from on BotMedia
 	s["draft"] = {"opp": opp_name, "wid": wid, "won": won, "tag": tag, "at": now_t()}
 	if int(s["followers"]) != before:

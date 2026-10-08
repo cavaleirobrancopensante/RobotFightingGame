@@ -2,7 +2,7 @@ extends Node
 
 # helper scripts, loaded by path so the game also runs without an editor scan
 ## The game's version, shown on the main menu. Bump it with every change (1.1, 1.2, ...).
-const VERSION := "1.53"
+const VERSION := "1.54"
 const Arena = preload("res://arena.gd")
 const I18n = preload("res://i18n.gd")
 const Catalog = preload("res://catalog.gd")
@@ -37,13 +37,20 @@ const ROBOT_FIRST := ["ECHO", "RUSTY", "BOLT", "PISTON", "SPARKY", "TANK", "GIZM
 const ROBOT_LAST := ["", "", "", " JR", " MK II", " 3000", "-9", " PRIME", " ZERO", "-X"]
 
 # Robot slots. Front = the side facing the camera (drawn in front).
-const SLOTS := ["head", "head2", "torso", "arm_front", "arm_back", "arm_front2", "arm_back2", "leg_front", "leg_back", "back", "reactor"]
+const SLOTS := ["head", "head2", "torso", "arm_front", "arm_back", "arm_front2", "arm_back2", "leg_front", "leg_back", "back", "reactor", "reactor2"]
 const SLOT_NAMES := {"head": "Head", "head2": "Second Head", "torso": "Torso", "arm_front": "Left Arm", "arm_back": "Right Arm",
 		"arm_front2": "Lower Left Arm", "arm_back2": "Lower Right Arm",
-		"leg_front": "Left Leg", "leg_back": "Right Leg", "back": "Back Gear", "reactor": "Reactor"}
+		"leg_front": "Left Leg", "leg_back": "Right Leg", "back": "Back Gear", "reactor": "Reactor", "reactor2": "Second Reactor"}
 const SLOT_KIND := {"head": "head", "head2": "head", "torso": "torso", "arm_front": "arm", "arm_back": "arm",
-		"arm_front2": "arm", "arm_back2": "arm", "leg_front": "leg", "leg_back": "leg", "back": "back", "reactor": "reactor"}
-const EXTRA_SLOTS := ["head2", "arm_front2", "arm_back2"]   # only exist on torsos with mount points
+		"arm_front2": "arm", "arm_back2": "arm", "leg_front": "leg", "leg_back": "leg", "back": "back", "reactor": "reactor", "reactor2": "reactor"}
+const EXTRA_SLOTS := ["head2", "arm_front2", "arm_back2", "reactor2"]   # only exist on torsos with mount points (four-arm torsos also take a second reactor)
+## Off-label fitting (1.54): when you're poor and out of parts, anything goes, at a price.
+##   a reactor in an arm slot: no arm on that side, the reactor gives OFF_REACTOR of its output
+##   a leg in an arm slot: punches with a foot, OFF_LEG_ARM damage and speed points off
+##   an arm in a leg slot: walks on its fist, OFF_ARM_LEG speed and damage points off
+const OFF_REACTOR := 0.5
+const OFF_LEG_ARM := {"damage": -35, "speed": -20}
+const OFF_ARM_LEG := {"damage": -30, "speed": -35}
 const KINDS := ["head", "torso", "arm", "leg", "back", "reactor"]
 const KIND_NAMES := {"head": "Heads", "torso": "Torsos", "arm": "Arms", "leg": "Legs", "back": "Back", "reactor": "Reactors"}
 const UNDAMAGEABLE := ["reactor", "back"]   # kinds that sit inside/behind the robot and never take damage
@@ -513,6 +520,8 @@ func _ready() -> void:
 			d["trait_lv"] = 0
 		if not d.has("mounts"):
 			d["mounts"] = []
+		if (d["mounts"] as Array).has("arm_front2") and not (d["mounts"] as Array).has("reactor2"):
+			d["mounts"] = (d["mounts"] as Array) + ["reactor2"]   # a four-arm frame has room for a second reactor
 		if d["kind"] == "head" and not d.has("chips"):
 			d["chips"] = 1
 		for k in ["hp", "armor", "damage", "speed", "aim", "draw", "output", "chips"]:
@@ -775,6 +784,68 @@ func reroll_stock() -> String:
 
 
 ## Is this slot usable right now? Extra slots need a torso with the right mount.
+## Can this part go in this slot? Its own kind always; off-label (1.54): a reactor or a leg in an
+## arm slot, an arm in a leg slot (never the extra lower arms' slots for legs, the frame won't take them).
+func fits(d: Dictionary, slot: String) -> bool:
+	var sk: String = SLOT_KIND.get(slot, "")
+	var k := str(d.get("kind", ""))
+	if k == sk:
+		return true
+	if sk == "arm" and k == "reactor":
+		return true
+	if sk == "arm" and k == "leg" and not slot.ends_with("2"):
+		return true
+	if sk == "leg" and k == "arm":
+		return true
+	return false
+
+
+## "" for a part in its own kind of slot, else "reactor_arm" / "leg_arm" / "arm_leg".
+func off_label(d: Dictionary, slot: String) -> String:
+	var sk: String = SLOT_KIND.get(slot, "")
+	var k := str(d.get("kind", ""))
+	if k == sk:
+		return ""
+	return k + "_" + sk
+
+
+## What an off-label fit costs you, in one line ("" when it's a normal fit).
+func off_label_text(d: Dictionary, slot: String) -> String:
+	match off_label(d, slot):
+		"reactor_arm":
+			return tr("No arm on that side, and the reactor only gives half its power (%d).") % int(float(d.get("output", 0)) * OFF_REACTOR)
+		"leg_arm":
+			return tr("Punches with a foot: damage %d, speed %d.") % [int(OFF_LEG_ARM["damage"]), int(OFF_LEG_ARM["speed"])]
+		"arm_leg":
+			return tr("Walks on its fist: speed %d, kicks %d.") % [int(OFF_ARM_LEG["speed"]), int(OFF_ARM_LEG["damage"])]
+	return ""
+
+
+## Which off-label fits the robot is running: ["leg_arm", "reactor_arm", ...] (no repeats).
+func off_label_kinds(eq: Dictionary = {}) -> Array:
+	if eq.is_empty():
+		eq = equipped
+	var out: Array = []
+	for slot in BODY_SLOTS:
+		var p := inst(int(eq.get(slot, -1)))
+		if not p.is_empty():
+			var o := off_label(part_def(p["id"]), slot)
+			if o != "" and not out.has(o):
+				out.append(o)
+	return out
+
+
+## Is anything on this robot fitted off-label?
+func has_off_label(eq: Dictionary = {}) -> bool:
+	if eq.is_empty():
+		eq = equipped
+	for slot in BODY_SLOTS:
+		var p := inst(int(eq.get(slot, -1)))
+		if not p.is_empty() and off_label(part_def(p["id"]), slot) != "":
+			return true
+	return false
+
+
 func slot_available(slot: String) -> bool:
 	if not EXTRA_SLOTS.has(slot):
 		return true
@@ -820,7 +891,7 @@ func buy(id: String) -> String:
 	Contracts.on_buy()
 	var uid := add_part(id)
 	for slot in SLOTS:
-		if SLOT_KIND[slot] == d["kind"] and equipped[slot] == -1 and slot_available(slot):
+		if SLOT_KIND[slot] == d["kind"] and equipped[slot] == -1 and slot_available(slot) and slot != "reactor2":
 			equipped[slot] = uid
 			return tr("Bought %s and fitted it to the %s.") % [d["name"], tr(SLOT_NAMES[slot])]
 	return tr("Bought %s. It's in your Spares, equip it from there.") % d["name"]
@@ -835,7 +906,7 @@ func equip(uid: int, slot: String) -> String:
 	var d := part_def(p["id"])
 	if is_wreck(p):
 		return tr("%s is a wreck. Rebuild it first.") % d["name"]
-	if SLOT_KIND[slot] != d["kind"]:
+	if not fits(d, slot):
 		return tr("A %s doesn't fit the %s.") % [d["name"], tr(SLOT_NAMES[slot])]
 	if not slot_available(slot):
 		return tr("Your torso has no mount for a %s.") % str(SLOT_NAMES[slot]).to_lower()
@@ -1406,13 +1477,25 @@ func part_stat_text(d: Dictionary, cur_hp: float = -1.0) -> String:
 		bits.append(tr("CHIPS %d") % d["chips"])
 	if d["kind"] in ["head", "torso", "arm", "leg"]:
 		bits.append(tr(SIZE_NAMES.get(d.get("size_class", "M"), "Medium")))
+	if d["kind"] in ["arm", "leg"]:
+		bits.append(tr("REACH %d%%") % reach_pct(d))
+	if d["kind"] == "torso":
+		var mt: Array = d["mounts"]
+		bits.append(tr("ARMS %d") % (4 if mt.has("arm_front2") else 2))
+		bits.append(tr("HEADS %d") % (2 if mt.has("head2") else 1))
+		if mt.has("reactor2"):
+			bits.append(tr("REACTORS 2"))
 	bits.append(tr("Power %d") % d["draw"])
-	if not d["mounts"].is_empty():
-		var m: Array = []
-		for slot in d["mounts"]:
-			m.append(tr(str(SLOT_NAMES[slot])).to_lower())
-		bits.append(tr("| Mounts: ") + ", ".join(m))
 	return "  ".join(bits) + g + trait_line(d)
+
+
+## How far an arm or leg reaches, against a standard Rebar Arm / Strut Leg (100%): bigger parts reach further.
+func reach_pct(d: Dictionary) -> int:
+	var sz := float(d.get("size", 1.0))
+	if d["kind"] == "leg":
+		var ld: Array = RobotArt.LEGS.get(str(d.get("shape", "rod")), RobotArt.LEGS["rod"])
+		return int(round(float(ld[0]) / 60.0 * sz * 100.0))
+	return int(round(sz * 100.0))
 
 
 func trait_line(d: Dictionary) -> String:
@@ -1507,16 +1590,19 @@ func stats(eq: Dictionary = {}) -> Dictionary:
 		if p.is_empty():
 			continue
 		var d := part_def(p["id"])
+		var off := off_label(d, slot)
 		used += d["draw"]
-		output += d["output"]
+		output += int(float(d["output"]) * (OFF_REACTOR if off == "reactor_arm" else 1.0))
+		if off == "reactor_arm":
+			continue   # a reactor strapped where an arm should be: power, no arm
 		match SLOT_KIND[slot]:
 			"arm":
 				arms += 1
-				arm_dmg += d["damage"]
+				arm_dmg += d["damage"] + (int(OFF_LEG_ARM["damage"]) if off == "leg_arm" else 0)
 				arm_gm += float(d.get("gm", 1.0))
 			"leg":
 				legs += 1
-				leg_spd += d["speed"]
+				leg_spd += d["speed"] + (int(OFF_ARM_LEG["speed"]) if off == "arm_leg" else 0)
 			"torso":
 				torso_spd = d["speed"]
 			"head":
@@ -1542,16 +1628,30 @@ func player_spec(eq: Dictionary = {}, label: String = "") -> Dictionary:
 	if eq.is_empty():
 		eq = equipped
 	var parts := {}
+	var pods := {}
 	for slot in BODY_SLOTS:
 		var p := inst(int(eq.get(slot, -1)))
 		if p.is_empty():
 			parts[slot] = {}
 		else:
 			var d := part_def(p["id"])
+			var off := off_label(d, slot)
+			if off == "reactor_arm":
+				parts[slot] = {}
+				pods[slot] = Color(d["color"])   # drawn strapped to the shoulder
+				continue
 			parts[slot] = {"id": d["id"], "hp": p["hp"], "max_hp": float(d["hp"]), "armor": d["armor"],
 					"damage": d["damage"], "speed": d["speed"], "aim": d["aim"], "draw": float(d["draw"]),
 					"shape": d["shape"], "size": d["size"], "color": Color(d["color"]),
 					"trait": d["trait"], "trait_lv": d["trait_lv"], "gm": float(d.get("gm", 1.0))}
+			if off == "leg_arm":
+				parts[slot]["damage"] = int(d["damage"]) + int(OFF_LEG_ARM["damage"])
+				parts[slot]["speed"] = int(d["speed"]) + int(OFF_LEG_ARM["speed"])
+				parts[slot]["swap"] = "leg"
+			elif off == "arm_leg":
+				parts[slot]["damage"] = int(d["damage"]) + int(OFF_ARM_LEG["damage"])
+				parts[slot]["speed"] = int(d["speed"]) + int(OFF_ARM_LEG["speed"])
+				parts[slot]["swap"] = "arm"
 	var s := stats(eq)
 	var gadgets: Array = []
 	for slot in SLOTS:
@@ -1568,6 +1668,7 @@ func player_spec(eq: Dictionary = {}, label: String = "") -> Dictionary:
 			"gadgets": gadgets, "specials": active_chips() if eq == equipped else [], "style": style,
 			"controller": str(pilot_look.get("controller", "gamepad")),
 			"stickers": Contracts.stickers() if eq == equipped else {},
+			"pods": pods,
 			"traits": global_traits(ids_of(eq))}
 
 
@@ -3320,6 +3421,8 @@ func dig_scrap(kind: String = "") -> Dictionary:
 	var chance := dig_luck * (DIG_KIND_K if kind != "" else 1.0)
 	dig_luck = 0.0
 	var roll := randf()
+	if kind == "extras" and roll < chance:
+		return dig_extras()
 	if roll >= chance:
 		var none := ["Nothing. An hour of digging and all you've got is rust under your nails.",
 				"Nothing worth carrying home. The good stuff's been picked over.",
@@ -3374,6 +3477,30 @@ func dig_scrap(kind: String = "") -> Dictionary:
 			return {"text": tr("Found a %s. Dented, but decent (in Storage).") % name, "part": id, "grade": grade, "uid": dug_uid}
 	var meh := ["More junk: a %s. Rusty, but it bolts on.", "A %s, half eaten by rust. Better than nothing.", "Dug out a %s. Gus says he's seen worse. Not much worse."]
 	return {"text": (tr(meh[randi() % meh.size()]) % name) + tr(" (in Storage)"), "part": id, "grade": grade, "uid": dug_uid}
+
+
+## Digging for extras (1.54): half the odds of a normal dig, and what turns up is power or a pad.
+## Mostly a dead car battery, sometimes a real reactor, now and then a controller someone threw out.
+func dig_extras() -> Dictionary:
+	var r := randf()
+	if r < 0.12:
+		var free: Array = CONTROLLER_INFO.keys().filter(func(c): return not owned_controllers.has(c) and int(CONTROLLER_INFO[c]["cost"]) > 0 and int(CONTROLLER_INFO[c]["cost"]) <= 1500)
+		if not free.is_empty():
+			var cid: String = free[randi() % free.size()]
+			owned_controllers.append(cid)
+			return {"text": tr("Under a pile of tyres: a %s! Sticky buttons, but it works. It's on your gear shelf (BotMedia > Gear).") % tr(PilotArt.CONTROLLER_NAMES.get(cid, cid)), "part": "", "grade": "controller", "controller": cid}
+	var pool: Array = []
+	if r < 0.45:
+		for id in ALL_PARTS:
+			var d: Dictionary = PARTS[id]
+			if d["kind"] == "reactor" and d["shop"] and int(d.get("grade", 0)) == 1:
+				pool.append(id)
+	var id2: String = pool[randi() % pool.size()] if not pool.is_empty() else "junk_reactor"
+	var uid := add_part(id2, 1.0)
+	inst(uid)["dug"] = true
+	if id2 == "junk_reactor":
+		return {"text": tr("A car battery, still holding a charge. Better than nothing (in Storage)."), "part": id2, "grade": "junk", "uid": uid}
+	return {"text": tr("A %s, buried under a dead robot and still humming (in Storage).") % part_def(id2)["name"], "part": id2, "grade": "good", "uid": uid}
 
 
 func buy_controller(id: String) -> String:
@@ -3676,7 +3803,9 @@ static func look_from_spec(spec: Dictionary) -> Dictionary:
 		else:
 			parts[slot] = {"alive": p["hp"] > 0.0 or slot == "torso", "shape": p["shape"], "size": p["size"],
 					"color": p["color"], "health": clampf(p["hp"] / p["max_hp"], 0.0, 1.0),
-					"grade": GameData.grade_of(str(p["id"])) if p.has("id") else 3}
+					"grade": GameData.grade_of(str(p["id"])) if p.has("id") else 3, "swap": str(p.get("swap", ""))}
+	for slot in spec.get("pods", {}):
+		parts[slot] = {"alive": false, "shape": "pod", "pod": spec["pods"][slot]}
 	return {"parts": parts, "trim": spec["trim"], "eye": spec["eye"], "scale": spec["scale"],
 			"back": spec.get("back", {}), "stickers": spec.get("stickers", {})}
 

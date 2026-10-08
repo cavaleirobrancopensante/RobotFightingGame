@@ -286,7 +286,7 @@ static func draw(ci: CanvasItem, base: Vector2, look: Dictionary, pose: Dictiona
 	var bob_l: Vector2 = pose.get("bob_l", Vector2.ZERO)   # lead fist
 	var bob_r: Vector2 = pose.get("bob_r", Vector2.ZERO)   # rear fist (out of step with the lead one)
 	_draw_back(ci, look, g, pose, flash, trim, t)
-	if look["parts"].has(ra2) and look["parts"][ra2].has("shape"):
+	if look["parts"].has(ra2) and look["parts"][ra2].has("shape"):   # (a reactor pod has shape "pod")
 		_draw_arm(ci, look, ra2, shoulder_of(g, ra2), arm_pose[ra2], true, flash, trim, t, fist_out.has(ra2), aim if limb == ra2 else 0.0, bob_r)
 	_draw_arm(ci, look, ra, shoulder_of(g, ra), arm_pose[ra], true, flash, trim, t, fist_out.has(ra), aim if limb == ra else 0.0, bob_r)
 	var drop: float = pose.get("drop", 0.0)   # a sweep sinks the body; the standing leg bends to stay on the floor
@@ -875,10 +875,15 @@ static func _leg_goal(hip: Vector2, pose: String, aim: float, leg_len: float, dr
 static func _draw_arm(ci: CanvasItem, look: Dictionary, slot: String, s: Vector2, pose: String,
 		back: bool, flash: bool, trim: Color, t: float, fist_gone: bool = false, aim: float = 0.0, bob: Vector2 = Vector2.ZERO) -> void:
 	var p := _part(look, slot)
+	if p.has("pod"):
+		_pod(ci, s, p["pod"], t)   # a reactor strapped on where the arm should be
+		return
 	if not p.get("alive", false):
 		_stump(ci, s, -1.0 if look.get("icon", false) else t)
 		return
 	var dims: Array = ARMS.get(p["shape"], ARMS["rod"])
+	if str(p.get("swap", "")) == "leg":
+		dims = [LEGS.get(p["shape"], LEGS["rod"])[1] * 0.85, 6.0]   # a leg doing an arm's job keeps its own thickness
 	var sz: float = p["size"]
 	var th: float = dims[0] * sz
 	var fr: float = dims[1] * sz
@@ -899,6 +904,12 @@ static func _draw_arm(ci: CanvasItem, look: Dictionary, slot: String, s: Vector2
 	_limb(ci, e, h, c, th * 0.9)
 	_joint(ci, s, th * 0.55, c.darkened(0.25))
 	_joint(ci, e, th * 0.5, c.darkened(0.25))
+	if str(p.get("swap", "")) == "leg":
+		# a leg bolted on as an arm: it punches with a foot
+		var heel := h - perp * 7.0
+		_plate(ci, PackedVector2Array([heel - dir * 4.0, h + perp * 7.0 - dir * 4.0, h + perp * 9.0 + dir * 16.0, heel + dir * 20.0]), tc)
+		_damage_marks(ci, s, h, p.get("health", 1.0), t)
+		return
 	match p["shape"]:
 		"piston":
 			_limb(ci, e + dir * 4.0, e.lerp(h, 0.6), c.darkened(0.3), th * 1.4)
@@ -983,6 +994,17 @@ static func _draw_arm(ci: CanvasItem, look: Dictionary, slot: String, s: Vector2
 	_damage_marks(ci, s, h, p.get("health", 1.0), t)
 
 
+## A reactor strapped to the shoulder in place of an arm (off-label, 1.54): a box with straps and its light.
+static func _pod(ci: CanvasItem, s: Vector2, col: Color, t: float) -> void:
+	var r := Rect2(s + Vector2(-9, -6), Vector2(18, 26))
+	_plate(ci, _chamfer(r, 4.0), Color(0.24, 0.25, 0.28))
+	_ln(ci, Vector2(r.position.x - 2, r.position.y + 7), Vector2(r.end.x + 2, r.position.y + 7), Color(0.35, 0.28, 0.2), 3.0)
+	var c: Color = col
+	_glow(ci, r.get_center() + Vector2(0, 4), 5.0, c)
+	ci.draw_rect(Rect2(r.position + Vector2(5, 12), Vector2(8, 8)), Color(c, 0.7 + 0.3 * sin(t * 5.0)))
+	_joint(ci, s, 5.0, Color(0.3, 0.3, 0.33))
+
+
 static func draw_rocket_fist(ci: CanvasItem, h: Vector2, dir: Vector2, fr: float, c: Color, tc: Color, flying: bool, t: float) -> void:
 	var perp := dir.orthogonal()
 	if flying:
@@ -1052,6 +1074,9 @@ static func _draw_leg(ci: CanvasItem, look: Dictionary, slot: String, hip: Vecto
 		_stump(ci, hip, -1.0 if look.get("icon", false) else 0.0)
 		return
 	var dims: Array = LEGS.get(p["shape"], LEGS["rod"])
+	var arm_leg := str(p.get("swap", "")) == "arm"   # an arm doing a leg's job: it walks on its fist
+	if arm_leg:
+		dims = [60.0, ARMS.get(p["shape"], ARMS["rod"])[0] * 1.1]
 	var sz: float = p["size"]
 	var th: float = dims[1] * sz
 	var own_len := leg_len_of(look, slot)
@@ -1063,6 +1088,15 @@ static func _draw_leg(ci: CanvasItem, look: Dictionary, slot: String, hip: Vecto
 	# the knee: two equal bones, bent forward when the foot comes in closer than the leg is long
 	var knee := ik_joint(hip, foot, own_len * 0.5, own_len * 0.5, hip.lerp(foot, 0.5) + Vector2(8.0, 0.0))
 	_grade = int(p.get("grade", 3))
+	if arm_leg:
+		_limb(ci, hip, knee, c, th)
+		_limb(ci, knee, foot + Vector2(0, -9), c, th * 0.9)
+		_joint(ci, knee, th * 0.5, c.darkened(0.25))
+		_joint(ci, hip, th * 0.5, c.darkened(0.3))
+		var fr: float = ARMS.get(p["shape"], ARMS["rod"])[1] * sz
+		_round(ci, foot + Vector2(0, -maxf(fr, 7.0)), maxf(fr, 7.0), tc)   # the fist it stands on
+		_damage_marks(ci, hip, foot, p.get("health", 1.0), 0.0)
+		return
 	match p["shape"]:
 		"spring":
 			_ln(ci, hip, foot, c.darkened(0.3), 3.0)

@@ -1259,8 +1259,8 @@ const SHORT_SLOT := {"arm_front": "Left", "arm_back": "Right", "arm_front2": "Lo
 const COMPARE_STATS := {
 	"head": [["hp", "HP", "", false], ["armor", "Armor", "%", false], ["aim", "Aim", "%", false], ["chips", "Chips", "", false], ["draw", "Power use", "", true]],
 	"torso": [["hp", "HP", "", false], ["armor", "Armor", "%", false], ["speed", "Speed", "%", false], ["draw", "Power use", "", true]],
-	"arm": [["hp", "HP", "", false], ["armor", "Armor", "%", false], ["damage", "Damage", "%", false], ["speed", "Speed", "%", false], ["draw", "Power use", "", true]],
-	"leg": [["hp", "HP", "", false], ["armor", "Armor", "%", false], ["damage", "Damage", "%", false], ["speed", "Speed", "%", false], ["draw", "Power use", "", true]],
+	"arm": [["hp", "HP", "", false], ["armor", "Armor", "%", false], ["damage", "Damage", "%", false], ["speed", "Speed", "%", false], ["reach", "Reach", "%", false], ["draw", "Power use", "", true]],
+	"leg": [["hp", "HP", "", false], ["armor", "Armor", "%", false], ["damage", "Damage", "%", false], ["speed", "Speed", "%", false], ["reach", "Reach", "%", false], ["draw", "Power use", "", true]],
 	"back": [["output", "Power out", "", false], ["draw", "Power use", "", true]],
 	"reactor": [["output", "Power out", "", false]],
 }
@@ -1292,6 +1292,11 @@ func slots_for(kind: String) -> Array:
 	return GameData.SLOTS.filter(func(sl): return GameData.SLOT_KIND[sl] == kind and GameData.slot_available(sl))
 
 
+## Slots this part could go in off-label (1.54): a reactor or a leg in an arm slot, an arm in a leg slot.
+func off_slots(d: Dictionary) -> Array:
+	return GameData.SLOTS.filter(func(sl): return GameData.SLOT_KIND[sl] != str(d["kind"]) and GameData.fits(d, sl) and GameData.slot_available(sl))
+
+
 ## Where a new part of this kind should go: an empty slot first, else the one with the cheapest part on it.
 func best_slot(kind: String) -> String:
 	var best := ""
@@ -1306,7 +1311,11 @@ func best_slot(kind: String) -> String:
 
 
 func _stat_val(d: Dictionary, key: String) -> float:
-	return float(d.get(key, 0)) if not d.is_empty() else 0.0
+	if d.is_empty():
+		return 0.0
+	if key == "reach":
+		return float(GameData.reach_pct(d)) if d.get("kind", "") in ["arm", "leg"] else 0.0
+	return float(d.get(key, 0))
 
 
 ## "HP +12 · DMG -5%" against what's in the slot now, green when it's better, red when it's worse.
@@ -1397,6 +1406,16 @@ func build_detail() -> void:
 			var cur := GameData.equipped_inst(sl)
 			var mark: bool = inv and cur.get("uid", -2) == p["uid"]
 			grid.add_child(GUI.text((tr("vs %s") % tr(SHORT_SLOT.get(sl, "fitted"))) + (" ●" if mark else ""), 11, GUI.MUTED, "headb"))
+		if not GameData.UNDAMAGEABLE.has(kind):
+			# the health they have right now (a battered spare against a fresh one, and the other way round)
+			grid.add_child(GUI.text(tr("HP now"), 12, GUI.MUTED))
+			var hv: float = float(p["hp"]) if inv else float(d["hp"])
+			grid.add_child(GUI.readout("%d" % ceili(hv), 17, GUI.TEXT))
+			for sl in slots:
+				var cur := GameData.equipped_inst(sl)
+				var ch: float = 0.0 if cur.is_empty() else float(cur["hp"])
+				var dh := hv - ch
+				grid.add_child(GUI.readout("=" if absf(dh) < 0.5 else "%+d" % int(round(dh)), 17, GUI.MUTED if absf(dh) < 0.5 else (GUI.GREEN if dh > 0.0 else GUI.RED)))
 		for st in stats:
 			grid.add_child(GUI.text(tr(st[1]), 12, GUI.MUTED))
 			var v := _stat_val(d, st[0])
@@ -1433,6 +1452,15 @@ func build_detail() -> void:
 		for sl in slots:
 			if sl != fitted_slot:
 				add_btn.call(tr("Fit: %s · %s") % [tr(GameData.SLOT_NAMES[sl]), GameData.hours_text(GameData.swap_hours(d))], _on_detail_fit.bind(int(p["uid"]), sl), not wreck, GUI.YELLOW)
+		# off-label: when you're short of the right part, this one can stand in (with a price)
+		var offs := off_slots(d)
+		if not offs.is_empty():
+			var ol := GUI.text(tr("OFF-LABEL") + ": " + GameData.off_label_text(d, offs[0]), 12, GUI.AMBER)
+			ol.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+			detail_box.add_child(ol)
+			for sl in offs:
+				if sl != fitted_slot:
+					add_btn.call(tr("Off-label: %s · %s") % [tr(GameData.SLOT_NAMES[sl]), GameData.hours_text(GameData.swap_hours(d))], _on_detail_fit.bind(int(p["uid"]), sl), not wreck, GUI.AMBER)
 		var c := GameData.repair_cost(p)
 		if c > 0:
 			add_btn.call((tr("Rebuild $%d · %s") if wreck else tr("Fix $%d · %s")) % [c, GameData.hours_text(GameData.repair_hours(p))], _on_repair.bind(int(p["uid"])), GameData.can_repair(c), GUI.AMBER)
@@ -1734,7 +1762,8 @@ func build_overview() -> void:
 			make_tap_row(part_icon({}), tr("Empty"), tr("Tap to fit or buy one") + (tr(" (optional)") if opt else ""), _on_slot.bind(slot), slot_name)
 			continue
 		var d := GameData.part_def(p["id"])
-		var row := make_tap_row(part_icon(d, GameData.hp_ratio(p)), d["name"], job_line("m", slot, p) + part_info(d), _on_slot.bind(slot), slot_name)
+		var off_note := GameData.off_label_text(d, slot)
+		var row := make_tap_row(part_icon(d, GameData.hp_ratio(p)), d["name"], job_line("m", slot, p) + (part_info(d) if off_note == "" else "[color=#f2b84a]%s[/color]" % (tr("OFF-LABEL") + ": " + off_note)), _on_slot.bind(slot), slot_name)
 		if not GameData.UNDAMAGEABLE.has(d["kind"]):
 			row.add_child(hp_widget(p))
 			var c := GameData.repair_cost(p)
@@ -2814,7 +2843,8 @@ func build_slot(slot: String) -> void:
 		make_row(part_icon({}), "Nothing", "This slot is empty.")
 	else:
 		var d := GameData.part_def(p["id"])
-		var row := make_row(part_icon(d, GameData.hp_ratio(p)), d["name"], part_info(d))
+		var off_t := GameData.off_label_text(d, slot)
+		var row := make_row(part_icon(d, GameData.hp_ratio(p)), d["name"], part_info(d) if off_t == "" else "[color=#f2b84a]%s[/color]" % (tr("OFF-LABEL") + ": " + off_t))
 		var c := GameData.repair_cost(p)
 		if c > 0:
 			row_button(row, tr("Fix $%d · %s") % [c, GameData.hours_text(GameData.repair_hours(p))], _on_repair.bind(p["uid"]), GameData.can_repair(c), 130).add_theme_color_override("font_color", GUI.AMBER)
@@ -2844,6 +2874,19 @@ func build_slot(slot: String) -> void:
 		var row := make_tap_row(part_icon(d, 0.0), d["name"] + tr("  (WRECKED)"), tr("Rebuild it to use it again."),
 				_on_detail.bind({"src": "inv", "uid": sp["uid"]}), "", is_detail("inv", sp["uid"]))
 		row_button(row, tr("Rebuild $%d · %s") % [c, GameData.hours_text(GameData.repair_hours(sp))], _on_repair.bind(sp["uid"]), GameData.can_repair(c), 160).add_theme_color_override("font_color", GUI.AMBER)
+	# off-label: other kinds of part that can stand in here (a leg for an arm, a reactor on the shoulder...)
+	var offs: Array = []
+	for sp in GameData.spares():
+		var od := GameData.part_def(sp["id"])
+		if od["kind"] != kind and GameData.fits(od, slot) and not GameData.is_wreck(sp):
+			offs.append(sp)
+	if not offs.is_empty():
+		section(tr("Off-label, for when you're short:"))
+		for sp in offs:
+			var d := GameData.part_def(sp["id"])
+			var row := make_tap_row(part_icon(d, GameData.hp_ratio(sp)), d["name"], "[color=#f2b84a]" + GameData.off_label_text(d, slot) + "[/color]",
+					_on_detail.bind({"src": "inv", "uid": sp["uid"]}), tr(str(d["kind"]).to_upper()), is_detail("inv", sp["uid"]))
+			row_button(row, tr("Fit · %s") % GameData.hours_text(GameData.swap_hours(d)), _on_equip.bind(sp["uid"], slot), true, 110)
 	# never stuck: if this slot is empty and there's nothing to fit, Gus has some junk lying around
 	if p.is_empty() and options.is_empty() and slot in ["head", "torso"]:
 		section("Gus's emergency junk:")
@@ -3391,7 +3434,7 @@ func build_controllers() -> void:
 ## The scrapyard: a mountain of dead robots. Dig for free (beaten-up) parts, a few digs per fight.
 func build_scrapyard_tab() -> void:
 	var bar := action_bar()
-	var info := GUI.text(tr("One dig a day, and nothing is guaranteed. Every day you stay away, the odds of finding something go up. Digging for one kind of part halves them."), 12, GUI.MUTED)
+	var info := GUI.text(tr("One dig a day, and nothing is guaranteed. Every day you stay away, the odds of finding something go up. Digging for one kind of part, or for extras (reactors, controllers), halves them."), 12, GUI.MUTED)
 	info.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	info.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	bar.add_child(info)
@@ -3408,11 +3451,13 @@ func build_scrapyard_tab() -> void:
 	else:
 		dig_button = row_button(bar, tr("Dig anywhere"), _on_dig.bind(""), true, 150)
 		GUI.mark_new(dig_button, true)   # today's dig is waiting
-		var kinds := action_bar()
+		var kinds := flow_bar()
 		kinds.add_child(UI.label(tr("Dig for:"), 16, Color(1.0, 0.8, 0.4)))
-		for k in ["head", "torso", "arm", "leg"]:
-			var b := row_button(kinds, tr({"head": "Head", "torso": "Torso", "arm": "Arm", "leg": "Leg"}[k]), _on_dig.bind(k), true, 0)
+		for k in ["head", "torso", "arm", "leg", "extras"]:
+			var b := row_button(kinds, tr({"head": "Head", "torso": "Torso", "arm": "Arm", "leg": "Leg", "extras": "Extras"}[k]), _on_dig.bind(k), true, 0)
 			b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			if k == "extras":
+				b.tooltip_text = tr("Reactors and controllers. Often nothing.")
 	# Test Drive: Gus's silly practice robots, behind the pile
 	section(tr("TEST DRIVE: Gus pilots his Junkers so you can practise. No damage, no prize, nothing saved."))
 	for jid in GameData.JUNKERS:
@@ -3453,7 +3498,7 @@ func _on_dig(kind: String = "") -> void:
 	var res := GameData.dig_scrap(kind)
 	dig_at = Time.get_ticks_msec() / 1000.0
 	dig_found = tr("Found something!") if res["part"] != "" else ""
-	note(res["text"], "buy" if res.has("chip") else ("break" if res["part"] != "" else "land"))
+	note(res["text"], "buy" if res.has("chip") or res.has("controller") else ("break" if res["part"] != "" else "land"))
 	GameData.log_day(str(res["text"]), "good" if str(res.get("grade", "")) in ["rare", "good", "chip"] else "info")
 	GameData.save_game()
 	refresh()
