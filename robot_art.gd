@@ -431,14 +431,104 @@ static func _col(p: Dictionary, flash: bool, back: bool) -> Color:
 	return c.darkened(0.35) if back else c
 
 
+## (1.66) Damage on an arm or leg: a dent, then a jagged crack across the limb with a lit lip,
+## then a split that glows from the wiring inside.
 static func _damage_marks(ci: CanvasItem, a: Vector2, b: Vector2, health: float, t: float) -> void:
-	if health < 0.6:
-		var m := a.lerp(b, 0.5)
-		var d := (b - a).normalized().orthogonal() * 6.0
-		ci.draw_line(m - d, m + d * 0.4 + (b - a) * 0.12, Color(0.05, 0.05, 0.05), 2.0)
+	if health >= 0.75 or (b - a).length() < 4.0:
+		return
+	var d := (b - a).normalized()
+	var n := d.orthogonal()
+	if health < 0.75:
+		_dent(ci, a.lerp(b, 0.62) + n * 2.0, 3.5)
+	if health < 0.55:
+		var m := a.lerp(b, 0.42)
+		_crack(ci, PackedVector2Array([m - n * 7.0, m - n * 2.0 + d * 3.0, m + n * 1.5 - d * 1.5, m + n * 6.0 + d * 2.0]))
 	if health < 0.3:
-		var glow := Color(1.0, 0.35, 0.1, 0.5 + 0.4 * sin(t * 12.0))
-		ci.draw_circle(a.lerp(b, 0.35), 4.0, glow)
+		var m2 := a.lerp(b, 0.3)
+		_split(ci, m2 - n * 4.0, m2 + n * 4.0 + d * 2.0, t)
+
+
+## A crack in a plate: a dark jagged line with the light catching its lower lip.
+static func _crack(ci: CanvasItem, pts: PackedVector2Array) -> void:
+	if pts.size() < 2:
+		return
+	if _lit():
+		var off := Vector2(0, 1.4)
+		ci.draw_polyline(_shift(pts, off), _key_col(0.55), 1.2)
+	ci.draw_polyline(pts, Color(0.04, 0.035, 0.035), 2.2)
+	# hairline branches off the middle
+	if pts.size() >= 3:
+		var m: Vector2 = pts[1]
+		var e: Vector2 = pts[pts.size() - 1]
+		ci.draw_line(m, m.lerp(e, 0.5) + (e - m).orthogonal().normalized() * 4.0, Color(0.04, 0.035, 0.035), 1.2)
+
+
+static func _shift(pts: PackedVector2Array, off: Vector2) -> PackedVector2Array:
+	var out := PackedVector2Array()
+	for q in pts:
+		out.append(q + off)
+	return out
+
+
+## A dent: the metal pushed in, so the shadow sits on the lit side and the light on the far side.
+static func _dent(ci: CanvasItem, at: Vector2, r: float) -> void:
+	var tw := _toward() if _lit() else Vector2(0, -1)
+	ci.draw_circle(at, r, Color(0, 0, 0, 0.28))
+	ci.draw_circle(at + tw * r * 0.35, r * 0.7, Color(0, 0, 0, 0.22))
+	if _lit():
+		var ang := (-tw).angle()
+		ci.draw_arc(at, r * 0.9, ang - 0.9, ang + 0.9, 8, _key_col(0.6), 1.2)
+
+
+## A split torn open: a dark gash with hot wiring glowing inside.
+static func _split(ci: CanvasItem, a: Vector2, b: Vector2, t: float) -> void:
+	var d := b - a
+	var n := d.orthogonal().normalized() * 2.6
+	var mid := a.lerp(b, 0.5)
+	var gash := PackedVector2Array([a, mid + n + d * 0.1, b, mid - n - d * 0.08])
+	ci.draw_colored_polygon(gash, Color(0.03, 0.02, 0.02))
+	var glow := Color(1.0, 0.42, 0.12, 0.55 + 0.35 * sin(t * 12.0))
+	ci.draw_line(a.lerp(b, 0.25), a.lerp(b, 0.75), glow, 1.6)
+	ci.draw_circle(mid, 5.0, Color(glow.r, glow.g, glow.b, 0.15))
+	if _lit():
+		ci.draw_line(gash[3] + Vector2(0, 1.2), b + Vector2(0, 1.2), _key_col(0.5), 1.0)
+
+
+## (1.66) Wear on a big plate (torsos, heads) as the part loses health, always in the same places
+## for the same part: dents, scorch, a crack with a lit lip, then a torn hole glowing inside.
+static func _wear(ci: CanvasItem, r: Rect2, hp: float, seed: int, t: float) -> void:
+	if hp >= 0.8:
+		return
+	var hx := func(k: int) -> float: return float(absi(hash(seed * 131 + k * 17)) % 1000) / 1000.0
+	var at := func(k: int) -> Vector2: return r.position + Vector2(r.size.x * (0.2 + 0.6 * hx.call(k)), r.size.y * (0.2 + 0.6 * hx.call(k + 50)))
+	var u := minf(r.size.x, r.size.y)
+	# scorch: soft soot where it's been hit
+	var sc: Vector2 = at.call(1)
+	ci.draw_circle(sc, u * 0.16, Color(0.05, 0.04, 0.03, 0.16 * (1.0 - hp)))
+	ci.draw_circle(sc, u * 0.09, Color(0.05, 0.04, 0.03, 0.18 * (1.0 - hp)))
+	_dent(ci, at.call(2), clampf(u * 0.08, 3.0, 7.0))
+	if hp < 0.65:
+		_dent(ci, at.call(3), clampf(u * 0.06, 2.5, 5.5))
+	if hp < 0.55:
+		var c0: Vector2 = at.call(4)
+		var s := u * 0.14
+		_crack(ci, PackedVector2Array([c0 + Vector2(-s, -s * 0.8), c0 + Vector2(-s * 0.2, -s * 0.15), c0 + Vector2(s * 0.15, s * 0.35), c0 + Vector2(s * 0.75, s * 0.9)]))
+	if hp < 0.3:
+		var h0: Vector2 = at.call(6)
+		var hr := clampf(u * 0.1, 4.0, 9.0)
+		var hole := PackedVector2Array()
+		for k in 7:
+			var a := TAU * k / 7.0
+			hole.append(h0 + Vector2(cos(a), sin(a) * 0.8) * hr * (0.7 + 0.5 * hx.call(k + 80)))
+		ci.draw_colored_polygon(hole, Color(0.03, 0.02, 0.02))
+		var glow := Color(1.0, 0.42, 0.12, 0.6 + 0.35 * sin(t * 10.0 + seed))
+		ci.draw_circle(h0 + Vector2(0, hr * 0.2), hr * 0.45, glow)
+		ci.draw_circle(h0, hr * 1.6, Color(glow.r, glow.g, glow.b, 0.12))
+		var rim := hole.duplicate()
+		rim.append(hole[0])
+		ci.draw_polyline(rim, Color(0.04, 0.035, 0.035), 1.6)
+		if _lit():
+			ci.draw_polyline(PackedVector2Array([hole[1], hole[2], hole[3]]), _key_col(0.6), 1.2)
 
 
 static func _stump(ci: CanvasItem, at: Vector2, t: float) -> void:
@@ -1328,12 +1418,7 @@ static func _draw_torso(ci: CanvasItem, look: Dictionary, g: Dictionary, flash: 
 	_rust(ci, r, hash(str(p.get("shape", ""))))
 	# damage
 	var hp: float = p.get("health", 1.0)
-	if hp < 0.7:
-		ci.draw_line(Vector2(x0 + w * 0.2, y0 + 20), Vector2(x0 + w * 0.4, y0 + 34), Color(0.05, 0.05, 0.05), 2.0)
-		ci.draw_line(Vector2(x0 + w * 0.4, y0 + 34), Vector2(x0 + w * 0.3, y0 + 46), Color(0.05, 0.05, 0.05), 2.0)
-	if hp < 0.4:
-		ci.draw_circle(Vector2(x1 - w * 0.25, y1 - 22), 7.0, Color(0.08, 0.07, 0.07, 0.8))
-		ci.draw_line(Vector2(x0 + 6, y1 - 30), Vector2(x0 + w * 0.5, y1 - 20), Color(1.0, 0.4, 0.1, 0.5 + 0.4 * sin(t * 10.0)), 2.0)
+	_wear(ci, r, hp, hash(str(p.get("shape", ""))) + 11, t)
 
 
 # ---- head
@@ -1503,7 +1588,6 @@ static func _draw_head(ci: CanvasItem, look: Dictionary, g: Dictionary, flash: b
 			ci.draw_circle(Vector2(x0 + 4, y0 - 15), 3.0, eye)
 	_rust(ci, r, hash(str(p.get("shape", ""))) + 5)
 	var hp: float = p.get("health", 1.0)
-	if hp < 0.6:
-		ci.draw_line(Vector2(x0 + w * 0.2, y0 + 3), Vector2(x0 + w * 0.35, y0 + h * 0.5), Color(0.05, 0.05, 0.05), 2.0)
+	_wear(ci, Rect2(x0, y0, w, h), hp, hash(str(p.get("shape", ""))) + 29, t)
 	if hp < 0.3 and fmod(t * 5.0, 1.0) < 0.5:
 		ci.draw_circle(Vector2(x0 + w * 0.3, y0 + h * 0.2), 3.0, Color(1.0, 0.8, 0.3))

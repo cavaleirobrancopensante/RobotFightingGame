@@ -194,7 +194,30 @@ static func draw_head(ci: CanvasItem, c: Vector2, r: float, raw: Dictionary, dir
 				_cr(ci, c + Vector2(0, r * (0.95 + k * 0.2)), r * 0.12, bc.darkened(0.1 * k))
 			ci.draw_rect(Rect2(mc, Vector2(r * 0.5, maxf(1.5, mouth))), Color(0.25, 0.08, 0.06))
 	if look.get("scar", false):
-		ci.draw_line(c + Vector2(r * 0.15, -r * 0.5), c + Vector2(r * 0.6, r * 0.2), Color(0.6, 0.25, 0.2), w * 1.3)
+		_scar(ci, er, r, skin)
+
+
+## (1.66) A scar through the brow and down the cheek, broken where it crosses the eye: pale healed
+## skin with a darker edge, a few stitch marks on a big face.
+static func _scar(ci: CanvasItem, e: Vector2, r: float, skin: Color) -> void:
+	var a := e + Vector2(-r * 0.1, -r * 0.46)
+	var b := e + Vector2(r * 0.2, r * 0.46)
+	var d := (b - a).normalized()
+	var gap := r * 0.2
+	var edge := skin.darkened(0.32)
+	var pale := skin.lightened(0.28).lerp(Color(0.95, 0.72, 0.68), 0.35)
+	var w := maxf(1.2, r * 0.07)
+	for seg in [[a, e - d * gap], [e + d * gap, b]]:
+		var p0: Vector2 = seg[0]
+		var p1: Vector2 = seg[1]
+		var mid := p0.lerp(p1, 0.5) + d.orthogonal() * r * 0.02
+		ci.draw_polyline(PackedVector2Array([p0, mid, p1]), edge, w)
+		ci.draw_polyline(PackedVector2Array([p0, mid, p1]), pale, maxf(0.8, w * 0.45))
+		if r >= 16.0:
+			for k in 2:
+				var q := p0.lerp(p1, 0.33 + k * 0.33)
+				var o := d.orthogonal() * r * 0.04
+				ci.draw_line(q - o, q + o, edge, maxf(0.8, w * 0.35))
 
 
 ## The controller in the pilot's hands. s = scale, active = buttons being pressed right now.

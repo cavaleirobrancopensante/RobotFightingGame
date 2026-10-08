@@ -2005,6 +2005,7 @@ const T := {
 	"The uppercut. SLEDGE's head is still in the rafters.": "O uppercut. A cabeça do SLEDGE ainda está no teto.",
 	"Second on parts torn off. One part short.": "Segundo no critério de peças arrancadas. Faltou uma peça.",
 	"Silver, one part short of gold. The next season Kane changed everything.": "Prata, a uma peça do ouro. Na temporada seguinte, a Kane mudou tudo.",
+	"Kid! Over here. You need to see this.": "Garoto! Aqui. Você precisa ver isso.",
 	"Tap MOVES to see your special moves and how to do them.": "Toque em GOLPES para ver seus golpes especiais e como fazer.",
 	"Burned out! Hang on...": "Pane! Aguenta aí...",
 	"Watch your power! Back off!": "Olha a energia! Recua!",

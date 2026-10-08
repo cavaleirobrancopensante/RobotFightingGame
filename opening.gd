@@ -30,8 +30,11 @@ const SHOTS := [
 	["dad_win", 3.4, [0.5, 0.52, 1.18], [0.46, 0.56, 1.05]],
 	["overlord", 10.0, [0.5, 0.5, 1.0], [0.6, 0.55, 1.3]],
 	["fall", 10.0, [0.5, 0.3, 1.5], [0.5, 0.72, 1.5]],
-	["scrap", 13.0, [0.5, 0.5, 1.0], [0.5, 0.64, 1.55]],
+	# the road montage ends on the stadium down in the city, and the next shot pulls back from it
 	["road", 10.0, [0.5, 0.5, 1.0], [0.5, 0.5, 1.0]],
+	# the scrapyard: on the stadium, back to you on the heap; Gus calls; cut to the crane and ECHO.
+	# A 5th entry = camera keys [[seconds, [x, y, zoom]], ...] instead of one move.
+	["scrap", 13.0, [0.5, 0.5, 1.0], [0.5, 0.64, 1.55], [[0.0, [0.6033, 0.599, 2.4]], [3.0, [0.5, 0.5, 1.0]], [3.4, [0.5, 0.5, 1.0]], [13.0, [0.5, 0.64, 1.55]]]],
 	["bell", 8.0, [0.5, 0.5, 1.0], [0.6, 0.58, 1.25]],
 ]
 ## [shot id, seconds in, speaker, text]
@@ -41,13 +44,14 @@ const LINES := [
 	["dad_face", 0.3, "NARRATOR", "Pilots ran the ring. Your father was one of the best."],
 	["overlord", 2.4, "NARRATOR", "Then Kane built a fighter that needs nobody."],
 	["fall", 1.0, "NARRATOR", "The pilots were sent home. Your father was the first."],
-	["scrap", 6.0, "GUS", "Your dad's. Still yours, if it still works."],
-	["scrap", 9.6, "ECHO", "[ HANDLER LINK FOUND ]"],
 	["road", 1.0, "NARRATOR", "From the gutter to the Titanium Championship. One rung a year."],
+	["scrap", 1.4, "GUS", "Kid! Over here. You need to see this."],
+	["scrap", 7.8, "GUS", "Your dad's. Still yours, if it still works."],
+	["scrap", 11.2, "ECHO", "[ HANDLER LINK FOUND ]"],
 	["bell", 1.2, "GUS", "Old Pike fights anybody for a hundred bucks. Let's see what you've got."],
 ]
 ## Shots that cut straight to the next one (no fade between them)
-const CUTS := ["dad_face", "dad_clash", "dad_uppercut"]
+const CUTS := ["dad_face", "dad_clash", "dad_uppercut", "road"]
 const FADE := 0.45
 const CPS := 40.0   # letters a second as a line types out
 
@@ -188,7 +192,7 @@ func _events() -> void:
 	var cues := {"dad_bell": ["dad_face", 0.1, "round"], "clash": ["dad_clash", 0.75, "hit_big"], "upper": ["dad_uppercut", 0.85, "uppercut"],
 			"upper2": ["dad_uppercut", 0.9, "hit_big"], "pop": ["dad_uppercut", 0.95, "break"], "ko": ["dad_uppercut", 1.2, "ko"],
 			"roar": ["dad_win", 0.0, "crowd_cheer"], "ol_hit1": ["overlord", 5.0, "hit_big"], "ol_hit2": ["overlord", 6.6, "break"],
-			"lever": ["scrap", 2.6, "click"], "tarp": ["scrap", 3.0, "swing"], "lamp": ["scrap", 7.2, "equip"], "eye": ["scrap", 8.0, "target"], "bell": ["bell", 6.8, "round"]}
+			"lever": ["scrap", 4.4, "click"], "tarp": ["scrap", 4.8, "swing"], "lamp": ["scrap", 9.0, "equip"], "eye": ["scrap", 9.8, "target"], "bell": ["bell", 6.8, "round"]}
 	for k in cues:
 		var c: Array = cues[k]
 		if sid() == str(c[0]) and t >= float(c[1]) and not _fired.has(k):
@@ -206,6 +210,20 @@ func _camera() -> void:
 	var k := smoothstep(0.0, float(sh[1]), t)
 	var a: Array = sh[2]
 	var b: Array = sh[3]
+	if sh.size() > 4:
+		# camera keys: ease between the two keys around now
+		var keys: Array = sh[4]
+		a = keys[0][1]
+		b = a
+		k = 0.0
+		for i in range(keys.size() - 1):
+			if t >= float(keys[i][0]) and t <= float(keys[i + 1][0]):
+				a = keys[i][1]
+				b = keys[i + 1][1]
+				k = smoothstep(float(keys[i][0]), float(keys[i + 1][0]), t)
+		if t > float(keys[keys.size() - 1][0]):
+			a = keys[keys.size() - 1][1]
+			b = a
 	var z := lerpf(float(a[2]), float(b[2]), k)
 	var c := Vector2(lerpf(float(a[0]), float(b[0]), k), lerpf(float(a[1]), float(b[1]), k)) * size
 	# keep the frame inside the stage (no empty edges when zoomed)
@@ -644,17 +662,20 @@ func draw_dad_face(ci: CanvasItem, W: float, H: float, tt: float) -> void:
 	ci.draw_colored_polygon(PackedVector2Array([Vector2(W * 0.36, 0), Vector2(W * 0.2, H), Vector2(W * 0.72, H), Vector2(W * 0.5, 0)]), Color(1.0, 0.95, 0.8, 0.06))
 	var c := Vector2(W * 0.42, H * 0.42)
 	var r := H * 0.2
-	# shoulders in the leather jacket, the collar up
+	# shoulders in the leather jacket, the collar up (lit plates in the arena's light)
+	lit("champ_arena")
 	var jacket := Color(str(dad.get("outfit", "#5a3a22")))
-	ci.draw_rect(Rect2(c.x - r * 1.9, c.y + r * 1.05, r * 3.8, H), jacket)
-	ci.draw_colored_polygon(PackedVector2Array([c + Vector2(-r * 0.7, r * 0.95), c + Vector2(-r * 0.15, r * 1.5), c + Vector2(-r * 0.9, r * 1.6)]), jacket.lightened(0.15))
-	ci.draw_colored_polygon(PackedVector2Array([c + Vector2(r * 0.7, r * 0.95), c + Vector2(r * 0.15, r * 1.5), c + Vector2(r * 0.9, r * 1.6)]), jacket.lightened(0.15))
-	ci.draw_rect(Rect2(c.x - r * 0.35, c.y + r * 0.75, r * 0.7, r * 0.4), Color(str(dad.get("skin", "#b07a52"))).darkened(0.1))
-	# his face: eyes on the ring, jaw set, the light of the ring on one side
+	GarageArt._pg(ci, PackedVector2Array([Vector2(c.x - r * 1.9, H * 1.02), Vector2(c.x - r * 1.75, c.y + r * 1.25), Vector2(c.x - r * 0.4, c.y + r * 0.95),
+			Vector2(c.x + r * 0.4, c.y + r * 0.95), Vector2(c.x + r * 1.75, c.y + r * 1.25), Vector2(c.x + r * 1.9, H * 1.02)]), jacket)
+	GarageArt._rc(ci, Rect2(c.x - r * 0.35, c.y + r * 0.72, r * 0.7, r * 0.42), Color(str(dad.get("skin", "#b07a52"))).darkened(0.12))
+	GarageArt._pg(ci, PackedVector2Array([c + Vector2(-r * 0.75, r * 0.92), c + Vector2(-r * 0.12, r * 1.5), c + Vector2(-r * 0.95, r * 1.65)]), jacket.lightened(0.12))
+	GarageArt._pg(ci, PackedVector2Array([c + Vector2(r * 0.75, r * 0.92), c + Vector2(r * 0.12, r * 1.5), c + Vector2(r * 0.95, r * 1.65)]), jacket.lightened(0.12))
+	ci.draw_line(Vector2(c.x, c.y + r * 1.5), Vector2(c.x, H), jacket.darkened(0.4), r * 0.03)
+	# his face: eyes on the ring, jaw set, a thin edge of the ring's light on one side
 	var mouth := 1.5 if tt < 1.6 else 4.0 + 3.0 * absf(sin(tt * 10.0))
 	PilotArt.draw_head(ci, c, r, dad, 1.0, mouth)
 	ci.draw_rect(Rect2(c + Vector2(-r * 0.3, r * 0.22), Vector2(r * 0.6, r * 0.12)), Color(str(dad.get("beard_color", "#3a2e28"))))   # the moustache
-	ci.draw_arc(c, r * 1.02, -PI * 0.45, PI * 0.35, 24, Color(1.0, 0.85, 0.55, 0.45), r * 0.08)
+	ci.draw_arc(c, r * 1.0, -PI * 0.35, PI * 0.2, 24, Color(1.0, 0.85, 0.55, 0.3), r * 0.035)
 	# a drop of sweat running down
 	var sy := fmod(tt * 0.5, 1.0)
 	ci.draw_circle(c + Vector2(-r * 0.75, -r * 0.2 + sy * r * 0.8), r * 0.04, Color(0.8, 0.9, 1.0, 0.7))
@@ -664,8 +685,9 @@ func draw_dad_face(ci: CanvasItem, W: float, H: float, tt: float) -> void:
 	PilotArt.draw_controller(ci, stick, s, str(dad.get("controller", "arcade")), true, tt)
 	var skin := Color(str(dad.get("skin", "#b07a52")))
 	var jab := sin(tt * 22.0) * 4.0 * s if tt > 1.4 else 0.0
-	ci.draw_circle(stick + Vector2(-14 * s, -6 * s + jab), 3.6 * s, skin)
-	ci.draw_circle(stick + Vector2(12 * s, -5 * s - jab), 3.6 * s, skin)
+	lit("champ_arena")
+	GarageArt._cr(ci, stick + Vector2(-14 * s, -6 * s + jab), 3.6 * s, skin)
+	GarageArt._cr(ci, stick + Vector2(12 * s, -5 * s - jab), 3.6 * s, skin)
 	ci.draw_circle(stick + Vector2(-6 * s, 2 * s), 3 * s, Color("#ff00aa", 0.25 + 0.15 * sin(tt * 6.0)))
 	ci.draw_circle(stick + Vector2(-6 * s, 2 * s), 1.2 * s, Color("#ff00aa"))
 
@@ -917,17 +939,19 @@ func draw_fall(ci: CanvasItem, W: float, H: float, tt: float) -> void:
 	ci.draw_circle(lamp + Vector2(0, 4), 5.0, Color(1.0, 0.97, 0.88))
 	ci.draw_circle(lamp + Vector2(0, 4), 12.0, Color(1.0, 0.97, 0.88, 0.15))
 	var bin := Rect2(W * 0.3, floor_y - H * 0.16, W * 0.14, H * 0.16)
-	GarageArt._rc(ci, bin, Color(0.25, 0.27, 0.3))
-	for k in 3:
-		ci.draw_line(Vector2(bin.position.x + bin.size.x * (0.25 + k * 0.25), bin.position.y + 12), Vector2(bin.position.x + bin.size.x * (0.25 + k * 0.25), bin.end.y - 6), Color(0.18, 0.19, 0.22), 2.0)
-	ci.draw_string(GUI.headb(), Vector2(bin.position.x, bin.get_center().y + 6), "KANE", HORIZONTAL_ALIGNMENT_CENTER, bin.size.x, 16, Color(1.0, 0.3, 0.35))
+	# the controllers drop in (drawn first, so they sink behind the bin's front, not across it)
 	for k in 5:
 		var at := 4.0 + k * 0.7
 		if tt < at:
 			continue
 		var f := clampf((tt - at) / 0.6, 0.0, 1.0)
-		var p := Vector2(bin.get_center().x + (hsh(k) - 0.5) * 40.0, lerpf(H * 0.58, bin.position.y + 6, f * f))
+		var p := Vector2(bin.get_center().x + (hsh(k) - 0.5) * 40.0, lerpf(H * 0.58, bin.position.y + 2.0 + k * 2.0, f * f))
 		PilotArt.draw_controller(ci, p, 1.3, PilotArt.CONTROLLERS[k % PilotArt.CONTROLLERS.size()], false, tt)
+	lit()
+	GarageArt._rc(ci, bin, Color(0.25, 0.27, 0.3))
+	for k in 3:
+		ci.draw_line(Vector2(bin.position.x + bin.size.x * (0.25 + k * 0.25), bin.position.y + 12), Vector2(bin.position.x + bin.size.x * (0.25 + k * 0.25), bin.end.y - 6), Color(0.18, 0.19, 0.22), 2.0)
+	ci.draw_string(GUI.headb(), Vector2(bin.position.x, bin.get_center().y + 6), "KANE", HORIZONTAL_ALIGNMENT_CENTER, bin.size.x, 16, Color(1.0, 0.3, 0.35))
 	lit()
 	GarageArt._rc(ci, Rect2(bin.position - Vector2(6, 6), Vector2(bin.size.x + 12, 10)), Color(0.36, 0.38, 0.41))
 	var wood := Color(0.38, 0.24, 0.15)
@@ -944,7 +968,17 @@ func draw_fall(ci: CanvasItem, W: float, H: float, tt: float) -> void:
 
 # ---------------------------------------------------------------- 6 the scrapyard
 
+## The scrapyard (1.66): first you on the heap, seen from behind, a foot on a dead robot's head, looking
+## at the city and the stadium; Gus calls and you turn; then the crane takes the tarp off ECHO.
 func draw_scrap(ci: CanvasItem, W: float, H: float, tt: float) -> void:
+	if tt < 3.4:
+		draw_lookout(ci, W, H, tt)
+	else:
+		draw_reveal(ci, W, H, tt - 1.8)
+
+
+## The crane and the tarp coming off ECHO (bt: the reveal's own clock, 1.6 when the shot cuts to it).
+func draw_reveal(ci: CanvasItem, W: float, H: float, tt: float) -> void:
 	var floor_y := H * 0.82
 	var hz := floor_y - H * 0.2
 	sky(ci, W, H, Color(0.1, 0.12, 0.28), Color(0.98, 0.58, 0.32), hz)
@@ -1096,17 +1130,18 @@ func draw_road(ci: CanvasItem, W: float, H: float, tt: float) -> void:
 	var x0 := W * 0.12
 	var y0 := H * 0.82
 	var end_f := clampf((tt - (rung_time(n - 1) + 0.4)) / 0.9, 0.0, 1.0)
-	# the stadium at the top, once the last step is reached
 	var top := Vector2(x0 + dx * n, y0 - (n - 1) * dy + off)
+	# (1.66) at the top: the stadium down in the city, seen from the scrapyard, zoomed in so its doors
+	# sit at the end of the last step; then the stair fades and the next shot pulls back from here
 	if end_f > 0.0:
-		# the last step runs straight into its doors
-		var dh := H * 0.13
-		var sc := Vector2(top.x + W * 0.035, top.y - 4.0 - dh * 0.3)
-		stadium_dome(ci, sc, W * 0.3, dh, tt, end_f * (1.2 + 0.2 * sin(tt * 4.0)))
-		var door := Rect2(top.x, top.y - 4.0 - H * 0.07, W * 0.07, H * 0.07)
-		ci.draw_rect(door.grow(8), Color(1.0, 0.86, 0.58, 0.15 * end_f))
-		ci.draw_rect(door, Color(1.0, 0.86, 0.58, end_f))
-		ci.draw_rect(Rect2(0, 0, W, H), Color(0.03, 0.03, 0.07, 1.0 - end_f))   # (fades the dome up; the stair is drawn over it)
+		var door := Vector2(W, H) * CITY_DOOR
+		ci.draw_set_transform(top - door * 2.4, 0.0, Vector2(2.4, 2.4))
+		lookout_scene(ci, W, H, 0.0, true)
+		ci.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+		ci.draw_rect(Rect2(0, 0, W, H), Color(0.03, 0.03, 0.07, 1.0 - end_f))
+	var sa := 1.0 - clampf((tt - (rung_time(n - 1) + 1.2)) / 0.8, 0.0, 1.0)   # the stair fades away
+	if sa <= 0.0:
+		return
 	lit("road")
 	var gold := Color(1.0, 0.85, 0.4)
 	for k in n:
@@ -1116,27 +1151,27 @@ func draw_road(ci: CanvasItem, W: float, H: float, tt: float) -> void:
 		if y > H + 40.0:
 			continue
 		if k > 0:
-			ci.draw_line(Vector2(sx, y + dy), Vector2(sx, y), Color(gold, 0.15 + 0.8 * lt), 5.0)
+			ci.draw_line(Vector2(sx, y + dy), Vector2(sx, y), Color(gold, (0.15 + 0.8 * lt) * sa), 5.0)
 		if lt > 0.0:
-			ci.draw_rect(Rect2(sx - 8, y - 14, dx + 16, 30), Color(1.0, 0.8, 0.35, 0.12 * lt))
-		GarageArt._rc(ci, Rect2(sx, y - 4, dx, 12), Color(0.22, 0.19, 0.16).lerp(gold, lt))
+			ci.draw_rect(Rect2(sx - 8, y - 14, dx + 16, 30), Color(1.0, 0.8, 0.35, 0.12 * lt * sa))
+		GarageArt._rc(ci, Rect2(sx, y - 4, dx, 12), Color(Color(0.22, 0.19, 0.16).lerp(gold, lt), sa))
 		var big := k == n - 1
 		if lt > 0.0:
 			# the league's trophy drops onto its step, and the step says which rung it is
 			var pop := 1.0 + 0.35 * sin(clampf((tt - rung_time(k)) / 0.35, 0.0, 1.0) * PI)
-			GarageArt.draw_trophy(ci, Vector2(sx + dx * 0.5, y - 4), str(RUNG_SCENES[k][2]), 1, (2.0 if not big else 2.6) * pop * lt)
+			GarageArt.draw_trophy(ci, Vector2(sx + dx * 0.5, y - 4), str(RUNG_SCENES[k][2]), 1, (2.0 if not big else 2.6) * pop * lt * sa)
 			lit("road")
 			var fs := UI.px(14) if not big else UI.px(18)
-			ci.draw_string_outline(GUI.headb(), Vector2(sx - 30, y + 34), I18n.t(RUNGS[k]), HORIZONTAL_ALIGNMENT_CENTER, dx + 60, fs, 4, Color(0, 0, 0, 0.8 * lt))
-			ci.draw_string(GUI.headb(), Vector2(sx - 30, y + 34), I18n.t(RUNGS[k]), HORIZONTAL_ALIGNMENT_CENTER, dx + 60, fs, Color(1, 1, 1, lt) if not big else Color(1.0, 0.88, 0.45, lt))
+			ci.draw_string_outline(GUI.headb(), Vector2(sx - 30, y + 34), I18n.t(RUNGS[k]), HORIZONTAL_ALIGNMENT_CENTER, dx + 60, fs, 4, Color(0, 0, 0, 0.8 * lt * sa))
+			ci.draw_string(GUI.headb(), Vector2(sx - 30, y + 34), I18n.t(RUNGS[k]), HORIZONTAL_ALIGNMENT_CENTER, dx + 60, fs, Color(1, 1, 1, lt * sa) if not big else Color(1.0, 0.88, 0.45, lt * sa))
 	# ECHO's eye, climbing: a green light on the step it has reached
 	var ek := int(floor(p))
 	var ef := p - ek
 	var e0 := Vector2(x0 + dx * (ek + 0.8), y0 - ek * dy + off - 16.0)
 	var e1 := Vector2(x0 + dx * (ek + 1.8), y0 - (ek + 1) * dy + off - 16.0)
 	var ep := e0.lerp(e1, ef) + Vector2(0, -sin(ef * PI) * 30.0)
-	ci.draw_circle(ep, 14.0, Color(0.35, 1.0, 0.75, 0.2))
-	ci.draw_circle(ep, 5.0, Color(0.6, 1.0, 0.85))
+	ci.draw_circle(ep, 14.0, Color(0.35, 1.0, 0.75, 0.2 * sa))
+	ci.draw_circle(ep, 5.0, Color(0.6, 1.0, 0.85, sa))
 
 
 # ---------------------------------------------------------------- 8 the bell
@@ -1462,6 +1497,150 @@ func road_fight(ci: CanvasItem, W: float, H: float, at: float, k: int) -> void:
 			"state": "hit" if hit and mine else ("punch" if hit else "idle"), "attack_limb": "arm_front", "extended": hit and not mine})
 	if hit:
 		sparks(ci, Vector2(W * 0.5, floor_y - tall * 0.62), fmod(at, 0.7), 10, 260.0, k * 7 + int(at / 0.7))
+
+
+## Where the stadium's doors stand in the scrapyard's city view (shares of the screen); the road's
+## stair ends there and the scrapyard shot starts zoomed in on them (LOOKOUT camera key).
+const CITY_DOOR := Vector2(0.72, 0.62)
+
+
+## The city from the scrapyard at sunset (1.66): the stadium down among the towers, lit up, the sun
+## going down behind the right. Drawn without transforms so the road can zoom into it.
+func city_view(ci: CanvasItem, W: float, H: float, tt: float) -> void:
+	var hz := H * CITY_DOOR.y
+	sky(ci, W, H, Color(0.1, 0.12, 0.28), Color(0.98, 0.58, 0.32), hz)
+	ci.draw_rect(Rect2(0, hz, W, H - hz), Color(0.36, 0.22, 0.24))
+	var sun := Vector2(W * 0.92, hz - H * 0.05)
+	ci.draw_circle(sun, H * 0.2, Color(1.0, 0.7, 0.4, 0.12))
+	ci.draw_circle(sun, H * 0.1, Color(1.0, 0.78, 0.5, 0.22))
+	ci.draw_circle(sun, H * 0.05, Color(1.0, 0.9, 0.65))
+	lit("scrap_ring")
+	skyline(ci, W, hz, H * 0.55, tt, Color(0.6, 0.38, 0.42), Color(0.5, 0.31, 0.36), 0.1)
+	# the stadium on the ground among them, its doors glowing (CITY_DOOR)
+	var dh := H * 0.075
+	var dc := Vector2(W * CITY_DOOR.x, hz - dh * 0.3)
+	stadium_dome(ci, dc, W * 0.2, dh, tt, 1.3)
+	var door := Rect2(W * CITY_DOOR.x - W * 0.018, hz - H * 0.028, W * 0.036, H * 0.028)
+	ci.draw_rect(door.grow(4), Color(1.0, 0.86, 0.58, 0.2))
+	ci.draw_rect(door, Color(1.0, 0.86, 0.58))
+	ci.draw_polygon(PackedVector2Array([Vector2(0, hz - H * 0.08), Vector2(W, hz - H * 0.08), Vector2(W, hz + 2), Vector2(0, hz + 2)]),
+			PackedColorArray([Color(1.0, 0.6, 0.35, 0.0), Color(1.0, 0.6, 0.35, 0.0), Color(1.0, 0.6, 0.35, 0.25), Color(1.0, 0.6, 0.35, 0.25)]))
+	ci.draw_line(Vector2(0, hz), Vector2(W, hz), Color(1.0, 0.72, 0.42, 0.35), 1.5)
+
+
+## You on top of the heap, seen from behind, a foot up on a dead robot's head, looking at the city.
+## back: true = from behind; false = turned to the right (Gus called).
+func lookout_scene(ci: CanvasItem, W: float, H: float, tt: float, back: bool) -> void:
+	city_view(ci, W, H, tt)
+	lit("scrap_ring")
+	# far ridges of junk between you and the city
+	var ridge := PackedVector2Array([Vector2(0, H)])
+	for i in 25:
+		var f := float(i) / 24.0
+		ridge.append(Vector2(W * f, H * 0.66 - H * (0.02 + 0.03 * hsh(i + 850)) * (0.6 + 0.4 * sin(f * 11.0))))
+	ridge.append(Vector2(W, H))
+	ci.draw_colored_polygon(ridge, Color(0.34, 0.2, 0.22))
+	# Gus's crane far off on the right (where the next shot goes), and junk heaps in between
+	crane(ci, Vector2(W * 0.86, H * 0.7), H * 0.32, W * 0.11, Color(0.26, 0.16, 0.17))
+	for q in [[0.12, 0.76, 0.16, 0.09], [0.6, 0.8, 0.2, 0.11], [0.32, 0.72, 0.1, 0.05]]:
+		GarageArt._scrap_pile(ci, Vector2(W * float(q[0]), H * float(q[1])), W * float(q[2]), H * float(q[3]), tt + float(q[0]) * 9.0)
+	ci.draw_polygon(PackedVector2Array([Vector2(0, H * 0.62), Vector2(W, H * 0.62), Vector2(W, H * 0.82), Vector2(0, H * 0.82)]),
+			PackedColorArray([Color(1.0, 0.6, 0.35, 0.18), Color(1.0, 0.6, 0.35, 0.18), Color(1.0, 0.6, 0.35, 0.0), Color(1.0, 0.6, 0.35, 0.0)]))
+	# the heap you stand on, and another one on the right
+	GarageArt._scrap_pile(ci, Vector2(W * 0.9, H * 1.02), W * 0.3, H * 0.3, tt + 2.0)
+	GarageArt._scrap_pile(ci, Vector2(W * 0.38, H * 1.04), W * 0.5, H * 0.17, tt)
+	var s := H / 150.0
+	var feet := Vector2(W * 0.4, H * 0.9)
+	PilotArt.light = "scrap_ring"
+	if back:
+		back_person(ci, feet, s, you, tt)
+	else:
+		_dead_head(ci, feet, s)
+		PilotArt.draw_person(ci, feet, s, you, 1.0, "idle", tt)
+	heads["GUS"] = Vector2(W * 1.04, H * 0.42)
+	ci.draw_rect(Rect2(0, 0, W, H), Color(1.0, 0.6, 0.3, 0.05))
+
+
+## The dead robot's head your foot rests on.
+func _dead_head(ci: CanvasItem, feet: Vector2, s: float) -> void:
+	lit("scrap_ring")
+	var rh := Rect2(feet + Vector2(-2 * s, -11 * s), Vector2(17 * s, 11 * s))
+	GarageArt._rc(ci, rh, Color(0.48, 0.42, 0.37))
+	ci.draw_rect(Rect2(rh.position + Vector2(3 * s, 3 * s), Vector2(5 * s, 3 * s)), Color(0.08, 0.07, 0.07))
+	ci.draw_rect(Rect2(rh.position + Vector2(10 * s, 3 * s), Vector2(5 * s, 3 * s)), Color(0.08, 0.07, 0.07))
+	GarageArt._ln(ci, rh.position + Vector2(13 * s, 0), rh.position + Vector2(15 * s, -5 * s), Color(0.4, 0.36, 0.33), 2.5)
+
+
+## A person seen from behind (1.66), the right foot up on a robot head and the right hand on that knee.
+func back_person(ci: CanvasItem, feet: Vector2, s: float, raw: Dictionary, tt: float) -> void:
+	var lk := PilotArt.normalize(raw)
+	_dead_head(ci, feet, s)
+	PilotArt._begin()
+	var outfit := Color(lk.get("outfit", "#34495e"))
+	var pants := outfit.darkened(0.35)
+	var skin := Color(lk.get("skin", "#c8946e"))
+	var hair := Color(lk.get("hair", "#2a1d14"))
+	var shoe := Color(0.13, 0.1, 0.08)
+	var bob := sin(tt * 2.0) * 0.6 * s
+	# the standing leg, and the raised one (shorter from behind: its foot is further away, up on the head)
+	PilotArt._blk(ci, Rect2(feet + Vector2(-8 * s, -24 * s), Vector2(7 * s, 24 * s)), pants)
+	PilotArt._rc(ci, Rect2(feet + Vector2(-9 * s, -3 * s), Vector2(9 * s, 3 * s)), shoe)
+	PilotArt._blk(ci, Rect2(feet + Vector2(2 * s, -25 * s), Vector2(8 * s, 13 * s)), pants)
+	PilotArt._rc(ci, Rect2(feet + Vector2(1.5 * s, -14 * s), Vector2(9 * s, 3.5 * s)), shoe)
+	# the jacket, a seam down the back
+	var hip := feet + Vector2(0, -24 * s + bob)
+	var neck := hip + Vector2(0, -30 * s)
+	PilotArt._blk(ci, Rect2(neck + Vector2(-12 * s, 0), Vector2(24 * s, 30 * s)), outfit)
+	ci.draw_line(neck + Vector2(0, 4 * s), hip + Vector2(0, -2 * s), outfit.darkened(0.3), maxf(1.0, s * 0.8))
+	ci.draw_line(hip + Vector2(-12 * s, -4 * s), hip + Vector2(12 * s, -4 * s), outfit.darkened(0.25), maxf(1.0, s * 0.8))
+	# arms: the left hangs, the right hand rests on the raised knee
+	var shl := neck + Vector2(-10 * s, 3 * s)
+	var shr := neck + Vector2(10 * s, 3 * s)
+	var hl := shl + Vector2(-3 * s, 24 * s)
+	var knee := feet + Vector2(8 * s, -24 * s)
+	PilotArt._limb2(ci, shl, hl, outfit.darkened(0.12), 5 * s)
+	PilotArt._cr(ci, hl, 2.6 * s, skin)
+	PilotArt._limb2(ci, shr, knee, outfit.darkened(0.12), 5 * s)
+	PilotArt._cr(ci, knee, 2.8 * s, skin)
+	# the head from behind: neck, ears, then the back of the head is hair (or hat)
+	var r := 10.0 * s
+	var hc := neck + Vector2(0, -11 * s)
+	PilotArt._rc(ci, Rect2(neck + Vector2(-3.5 * s, -4 * s), Vector2(7 * s, 5 * s)), skin.darkened(0.1))
+	PilotArt._head_disc(ci, hc, r, skin)
+	var hat := str(lk.get("hat", ""))
+	if lk.get("long_hair", false):
+		PilotArt._rc(ci, Rect2(hc + Vector2(-r * 0.95, 0), Vector2(r * 1.9, r * 1.3)), hair)
+	match hat:
+		"bald":
+			ci.draw_arc(hc, r * 0.7, PI * 1.1, PI * 1.5, 8, Color(1, 1, 1, 0.2), maxf(1.0, s))
+		"mohawk":
+			PilotArt._rc(ci, Rect2(hc + Vector2(-r * 0.18, -r * 1.55), Vector2(r * 0.36, r * 2.0)), hair)
+		_:
+			PilotArt._cr(ci, hc + Vector2(0, -r * 0.1), r * 0.94, hair)
+	match hat:
+		"beanie":
+			PilotArt._rc(ci, Rect2(hc + Vector2(-r, -r * 1.05), Vector2(r * 2.0, r * 0.7)), hair.darkened(0.1))
+			PilotArt._cr(ci, hc + Vector2(0, -r * 1.1), r * 0.18, hair.lightened(0.3))
+		"cap":
+			PilotArt._rc(ci, Rect2(hc + Vector2(-r * 1.05, -r * 1.05), Vector2(r * 2.1, r * 0.6)), hair.darkened(0.15))
+			ci.draw_line(hc + Vector2(-r * 0.4, -r * 0.45), hc + Vector2(r * 0.4, -r * 0.45), hair.lightened(0.3), maxf(1.0, s))
+		"helmet":
+			PilotArt._cr(ci, hc + Vector2(0, -r * 0.15), r * 1.08, hair)
+		"cowboy":
+			PilotArt._rc(ci, Rect2(hc + Vector2(-r * 1.6, -r * 0.75), Vector2(r * 3.2, r * 0.2)), hair)
+			PilotArt._rc(ci, Rect2(hc + Vector2(-r * 0.75, -r * 1.45), Vector2(r * 1.5, r * 0.75)), hair)
+		"tophat":
+			PilotArt._rc(ci, Rect2(hc + Vector2(-r * 1.15, -r * 0.8), Vector2(r * 2.3, r * 0.18)), hair)
+			PilotArt._rc(ci, Rect2(hc + Vector2(-r * 0.7, -r * 1.85), Vector2(r * 1.4, r * 1.1)), hair)
+		"headband":
+			PilotArt._rc(ci, Rect2(hc + Vector2(-r * 1.02, -r * 0.62), Vector2(r * 2.04, r * 0.22)), Color(0.75, 0.2, 0.2))
+			PilotArt._ln2(ci, hc + Vector2(0, -r * 0.5), hc + Vector2(-r * 0.3, r * 0.3), Color(0.75, 0.2, 0.2), r * 0.12)
+		"bun":
+			PilotArt._cr(ci, hc + Vector2(0, -r * 0.85), r * 0.35, hair.darkened(0.1))
+
+
+func draw_lookout(ci: CanvasItem, W: float, H: float, tt: float) -> void:
+	lookout_scene(ci, W, H, tt, tt < 2.8)
 
 
 # ================================================================ the words, the fades, SKIP

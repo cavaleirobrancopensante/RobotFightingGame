@@ -524,7 +524,7 @@ def night_shift(out):
 
 # ---------------------------------------------------------------- 8. The overture (opening cutscene)
 # Timed to the shots (seconds): 0 city, 8 stadium, 15 your dad's night, 27 OVERLORD, 37 the fall,
-# 47 the scrapyard, 60 the road, 70 the bell. Written in seconds, not bars, so it follows the film.
+# 47 the road, 57 the scrapyard (1.66 swapped them), 70 the bell. Written in seconds, not bars, so it follows the film.
 
 THEME = [(0, 1, "D5"), (1, .5, "A4"), (1.5, .5, "D5"), (2, 1, "E5"), (3, 1, "F#5"), (4, 1.5, "G5"), (5.5, .5, "F#5"),
          (6, 1, "E5"), (7, 1, "A4"), (8, 1.5, "B4"), (9.5, .5, "C#5"), (10, 1, "D5"), (11, 1, "E5"), (12, 4, "D5")]
@@ -592,30 +592,34 @@ def overture(out):
     nt(lambda f, n: mm.wave("sine", f, n, vib=0.004) * mm.adsr(n, 1.0, 0.2, 0.9, 2.0) * 0.12, 37.0, 10.0, "A5", 1.0)
     for name in ["D3", "F3", "A3"]:
         nt(strings, 38.0, 9.0, name, 0.6)
-    # 47-60 the scrapyard: wind again; the theme alone on a music box, slow and in minor
-    put(47.0, noise_bed(secs(13), 150, 900, 0.045) * np.minimum(1, np.arange(secs(13)) / secs(2)))
-    theme(lambda f, n: inst_box(f, n), 48.5, 0.7, 12, 1.0, minor=True)
-    nt(strings, 55.0, 5.0, "F3", 0.5)
-    nt(strings, 55.0, 5.0, "A3", 0.5)
-    # 58: the hum of ECHO waking: a rising sine
-    hum = mm.wave("sine", 110, secs(2.0)) * np.linspace(0, 0.2, secs(2.0))
-    put(58.0, hum)
-    # 60-70 the road: the theme returns, faster and bigger (beat = 0.42 s)
+    # 47-57 the road (1.66: before the scrapyard now): the theme returns, faster and bigger (beat = 0.42 s),
+    # climbing with the stair; it lands on the stadium as the montage ends
     bs2 = 0.42
     for k in range(24):
-        at = 60.0 + k * bs2
+        at = 47.0 + k * bs2
         put(at, mm.kick() * 0.9)
         if k % 2:
             put(at, mm.snare() * 0.7, "verb")
         for h in range(2):
             put(at + h * bs2 / 2, mm.hat(open_=h == 1) * 0.45)
     for bar in range(3):
-        at = 60.0 + bar * 4 * bs2 * 2
+        at = 47.0 + bar * 4 * bs2 * 2
         for name in [["D3", "F#3", "A3"], ["B2", "D3", "F#3"], ["G2", "B2", "D3"]][bar]:
             nt(strings, at, 8 * bs2, name, 1.3)
         nt(mm.inst_bass, at, 8 * bs2, ["D2", "B1", "G1"][bar], 0.9, None)
-    theme(brass, 60.0, bs2, 0, 1.1)
-    theme(lambda f, n: mm.inst_lead2(f, n) * 0.7, 60.0, bs2, 12, 0.7)
+    theme(brass, 47.0, bs2, 0, 1.1)
+    theme(lambda f, n: mm.inst_lead2(f, n) * 0.7, 47.0, bs2, 12, 0.7)
+    # 57-70 the scrapyard: wind on the heap at sunset; Gus calls; at the cut to the crane (60.4) the
+    # theme alone on a music box, slow and in minor
+    put(57.0, noise_bed(secs(13), 150, 900, 0.045) * np.minimum(1, np.arange(secs(13)) / secs(1.5)))
+    for name in ["D3", "A3"]:
+        nt(strings, 57.2, 3.2, name, 0.5)
+    theme(lambda f, n: inst_box(f, n), 60.4, 0.55, 12, 1.0, minor=True)
+    nt(strings, 64.0, 6.0, "F3", 0.5)
+    nt(strings, 64.0, 6.0, "A3", 0.5)
+    # 64.8: the hum of ECHO waking: a rising sine up to the eye (66.8)
+    hum = mm.wave("sine", 110, secs(2.0)) * np.linspace(0, 0.2, secs(2.0))
+    put(64.8, hum)
     # 70-78 the bell: a last big chord rings out under the bar noise
     for name in ["D3", "A3", "D4", "F#4", "A4"]:
         nt(brass, 70.1, 3.0, name, 0.8)

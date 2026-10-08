@@ -156,8 +156,9 @@ save("untarget", env(osc((1500, 700), 0.08), decay=0.05), 0.35)
 # (saw + square, as loud, so phone speakers carry it) but clean, no growl, and a brighter tone.
 save("talk", env(mix(lowpass(osc((420, 380), 0.055, "saw"), 0.7),
                      osc((420, 380), 0.055, "square") * 0.25), decay=0.04), 0.7)
-save("talk_robot", seq(env(mix(osc(420, 0.035, "tri"), osc(420, 0.035) * 0.2), decay=0.025),
-                       env(mix(osc(330, 0.035, "tri"), osc(330, 0.035) * 0.2), decay=0.025), gap=0.0), 0.3)
+# ECHO: a two-tone digital chirp, built as loud as Gus's voice (saw + square) so phone speakers carry it
+save("talk_robot", seq(env(mix(lowpass(osc(620, 0.032, "saw"), 0.8), osc(620, 0.032, "square") * 0.35), decay=0.022),
+                       env(mix(lowpass(osc(465, 0.032, "saw"), 0.8), osc(465, 0.032, "square") * 0.35), decay=0.022), gap=0.0), 0.7)
 save("time", env(osc(220, 0.6), decay=0.5), 0.5)
 save("spark", mix(env(lowpass(noise(0.05), 0.8), decay=0.01), env(osc((3000, 1200), 0.05, "square"), decay=0.02) * 0.4), 0.3)
 
