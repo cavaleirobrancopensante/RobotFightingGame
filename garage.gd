@@ -290,7 +290,9 @@ func _ready() -> void:
 	seg_panel.add_child(tabs_box)
 	scroll = ScrollContainer.new()
 	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	# SHOW_NEVER, not DISABLED: a row that's still too wide gets clipped at the panel's edge
+	# instead of pushing the whole screen wider than the phone
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_SHOW_NEVER
 	UI.drag_scroll(scroll, func(): return overlay != null and is_instance_valid(overlay) and overlay.visible)
 	right.add_child(scroll)
 	list_box = VBoxContainer.new()
@@ -531,6 +533,19 @@ func build_rail() -> void:
 
 
 ## The toggle bar along the top of the list.
+## The big yellow button's text shrinks until it fits beside the Bell chip (long labels, big text,
+## Portuguese and Spanish).
+func fit_fight_font() -> void:
+	var f: Font = GUI.stencil()
+	var room := get_viewport_rect().size.x - 92.0 - bell_button.get_combined_minimum_size().x - 52.0 - 60.0
+	if send_button.visible:
+		room -= send_button.get_combined_minimum_size().x + 8.0
+	var fs := UI.tsz(18)
+	while fs > 11 and f.get_string_size(fight_button.text, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x + 30.0 > room:
+		fs -= 1
+	fight_button.add_theme_font_size_override("font_size", fs)
+
+
 func build_seg_bar() -> void:
 	for c in tabs_box.get_children():
 		c.queue_free()
@@ -550,6 +565,10 @@ func build_seg_bar() -> void:
 		GUI.mark_new(b, seg_new(sg[0], sg[2]) or (tab == "Feed" and sg[0] == "home" and not GameData.Social.drafts().is_empty())
 				or (tab == "Feed" and sg[0] == "profile" and (seg_new("gear", "pilot") and GameData.unlocked("pilot") or contracts_new())))
 		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		# long names (big text, Portuguese) shrink instead of pushing the panel off the screen
+		b.clip_text = true
+		b.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+		b.tooltip_text = str(sg[1])
 		var st := GUI.seg_style(on)
 		for k in ["normal", "disabled"]:
 			b.add_theme_stylebox_override(k, st[0])
@@ -970,6 +989,7 @@ func refresh() -> void:
 		elif not core.is_empty() and GameData.hp_ratio(core) < 0.35:
 			fight_button.text += tr(" · core damaged!")
 
+	fit_fight_font()
 	preview.look = GameData.player_look()
 	body_map.health = body_health()
 	body_map.queue_redraw()
@@ -1122,11 +1142,10 @@ func make_bar(value: float, max_value: float, color: Color) -> ProgressBar:
 
 # ---------------------------------------------------------------- row helpers
 
-func make_row(icon: Control, title: String, subtitle: String, parent: Control = null, tag: String = "") -> HBoxContainer:
+func make_row(icon: Control, title: String, subtitle: String, parent: Control = null, tag: String = "") -> Container:
 	var panel := PanelContainer.new()
 	(parent if parent else list_box).add_child(panel)
-	var row := HBoxContainer.new()
-	row.add_theme_constant_override("separation", 10)
+	var row := GUI.WrapRow.new()
 	panel.add_child(row)
 	icon.custom_minimum_size = Vector2(52, 52)
 	icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -1160,7 +1179,7 @@ func row_text(title: String, subtitle: String, tag: String, wrap: bool) -> VBoxC
 		rl.bbcode_enabled = true
 		rl.fit_content = true
 		rl.scroll_active = false
-		rl.autowrap_mode = TextServer.AUTOWRAP_OFF
+		rl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		rl.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		rl.add_theme_font_override("normal_font", GUI.body())
 		rl.add_theme_font_size_override("normal_font_size", UI.px(11))
@@ -1178,7 +1197,7 @@ func row_text(title: String, subtitle: String, tag: String, wrap: bool) -> VBoxC
 
 
 ## A whole-row button (tap anywhere on it), with an icon, two lines of text and extra widgets.
-func make_tap_row(icon: Control, title: String, subtitle: String, cb: Callable, tag: String = "", sel: bool = false) -> HBoxContainer:
+func make_tap_row(icon: Control, title: String, subtitle: String, cb: Callable, tag: String = "", sel: bool = false) -> Container:
 	var b := Button.new()
 	b.custom_minimum_size = Vector2(0, 62)
 	b.focus_mode = Control.FOCUS_NONE
@@ -1193,18 +1212,21 @@ func make_tap_row(icon: Control, title: String, subtitle: String, cb: Callable, 
 	for st in [["normal", n], ["hover", h], ["pressed", pr], ["hover_pressed", pr]]:
 		b.add_theme_stylebox_override(st[0], st[1])
 	list_box.add_child(b)
-	var row := HBoxContainer.new()
+	var row := GUI.WrapRow.new()
 	row.set_anchors_preset(Control.PRESET_FULL_RECT)
 	row.offset_left = 6
 	row.offset_right = -8
-	row.add_theme_constant_override("separation", 10)
+	row.offset_top = 5
+	row.offset_bottom = -5
 	row.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	b.add_child(row)
+	# the button grows with the row when its buttons drop to a second line
+	row.minimum_size_changed.connect(func(): b.custom_minimum_size.y = maxf(62.0, row.get_combined_minimum_size().y + 10.0))
 	icon.custom_minimum_size = Vector2(52, 52)
 	icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	icon.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	row.add_child(icon)
-	row.add_child(row_text(title, subtitle, tag, false))
+	row.add_child(row_text(title, subtitle, tag, true))
 	return row
 
 
@@ -2377,7 +2399,7 @@ func build_alerts() -> void:
 			icon = avatar_for(str(S.find_post(pid).get("by", "botmedia")))
 		else:
 			icon = Glyph.new("like", GUI.YELLOW, 40)
-		var row: HBoxContainer
+		var row: Container
 		if pid >= 0 and not S.find_post(pid).is_empty():
 			row = make_tap_row(icon, txt, sub, open_post.bind(pid))
 		else:
@@ -2787,7 +2809,7 @@ func build_slot(slot: String) -> void:
 	for sp in GameData.spares():
 		if GameData.part_def(sp["id"])["kind"] == kind:
 			(wrecks if GameData.is_wreck(sp) else options).append(sp)
-	section("Swap in from storage:" if not options.is_empty() else tr("No spare %s in storage.") % str(GameData.KIND_NAMES[kind]).to_lower())
+	section("Swap in from storage:" if not options.is_empty() else tr("No spare %s in storage.") % tr(str(GameData.KIND_NAMES[kind])).to_lower())
 	for sp in options:
 		var d := GameData.part_def(sp["id"])
 		var row := make_tap_row(part_icon(d, GameData.hp_ratio(sp)), d["name"] + ("" if d["shop"] else tr("  (rare)")), delta_text(d, slot),
@@ -2816,7 +2838,7 @@ func build_slot(slot: String) -> void:
 			var d := GameData.part_def(id)
 			var row := make_tap_row(part_icon(d), d["name"], delta_text(d, slot), _on_detail.bind({"src": "shop", "id": id}), "", is_detail("shop", id))
 			row_button(row, tr("Buy & fit $%d · %s") % [d["cost"], GameData.hours_text(GameData.swap_hours(d))], _on_buy_fit.bind(id, slot), GameData.money >= d["cost"], 180)
-	var more := action_bar()
+	var more := flow_bar()
 	if GameData.unlocked("shop"):
 		row_button(more, "Dealer's stock", _on_go_shop.bind(kind), true, 200)
 	else:
@@ -2905,7 +2927,7 @@ func open_popup(title: String) -> VBoxContainer:
 	head.add_child(UI.button("Close", close_popup, 16, Vector2(90, 44)))
 	outer.add_child(GUI.HazardStrip.new())
 	popup_scroll = ScrollContainer.new()
-	popup_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	popup_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_SHOW_NEVER
 	outer.add_child(popup_scroll)
 	var col := VBoxContainer.new()
 	col.add_theme_constant_override("separation", 8)
@@ -2963,8 +2985,9 @@ func patron_info() -> Dictionary:
 		return {}
 	var crowd: Array = []
 	for p in all.slice(1):
-		crowd.append({"look": GameData.World.look_of(int(p["wid"])), "name": str(p["name"])})
-	return {"look": GameData.World.look_of(int(all[0]["wid"])), "name": str(all[0]["name"]), "crowd": crowd}
+		crowd.append({"look": GameData.World.look_of(int(p["wid"])), "name": str(p["name"]), "hungover": p.get("hungover", false)})
+	return {"look": GameData.World.look_of(int(all[0]["wid"])), "name": str(all[0]["name"]), "crowd": crowd,
+			"hungover": all[0].get("hungover", false)}
 
 
 ## What's on the pub TV: tonight's headline league fight, or the table on quiet nights.
@@ -3479,7 +3502,7 @@ func build_workshop() -> void:
 	forge.add_theme_color_override("font_color", Color(1.0, 0.8, 0.3))
 
 	section("Part type")
-	var kinds := action_bar()
+	var kinds := flow_bar()
 	for k in GameData.CUSTOM_KINDS:
 		var b := row_button(kinds, str(k).capitalize(), _on_ws_kind.bind(k), true, 0)
 		b.toggle_mode = true
@@ -3487,9 +3510,7 @@ func build_workshop() -> void:
 		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 
 	section("Shape")
-	var grid := GridContainer.new()
-	grid.columns = 5
-	list_box.add_child(grid)
+	var grid := flow_bar()
 	for sh in GameData.custom_shapes(ws["kind"]):
 		var b := UI.button(str(sh).capitalize(), _on_ws_set.bind("shape", sh), 13, Vector2(100, 40))
 		b.toggle_mode = true
@@ -3497,9 +3518,7 @@ func build_workshop() -> void:
 		grid.add_child(b)
 
 	section("Colour")
-	var colors := GridContainer.new()
-	colors.columns = 12
-	list_box.add_child(colors)
+	var colors := flow_bar()
 	for c in GameData.CUSTOM_COLORS:
 		var b := UI.button("", _on_ws_set.bind("color", c), 12, Vector2(40, 40))
 		var sb := StyleBoxFlat.new()
@@ -3511,13 +3530,13 @@ func build_workshop() -> void:
 		colors.add_child(b)
 
 	section("Size and grade")
-	var sizes := action_bar()
+	var sizes := flow_bar()
 	for opt in [[0.85, "Small"], [1.0, "Normal"], [1.15, "Large"]]:
 		var b := row_button(sizes, opt[1], _on_ws_set.bind("size", opt[0]), true, 0)
 		b.toggle_mode = true
 		b.button_pressed = is_equal_approx(ws["size"], opt[0])
 		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	var grades := action_bar()
+	var grades := flow_bar()
 	for g in GameData.CUSTOM_GRADES.size():
 		var gr: Dictionary = GameData.CUSTOM_GRADES[g]
 		var b := row_button(grades, tr("%s (%d pts)") % [tr(gr["name"]), gr["points"]], _on_ws_grade.bind(g), true, 0)
@@ -3542,7 +3561,7 @@ func build_workshop() -> void:
 		row_button(row, "+", _on_ws_stat.bind(stat, 1), left > 0 and n < GameData.CUSTOM_MAX_PER_STAT, 54)
 
 	section(tr("Gadget (+$%d)") % int(GameData.CUSTOM_GADGET_PRICE * pow(GameData.GRADE_PRICE, GameData.my_grade() - 1)))
-	var gad := action_bar()
+	var gad := flow_bar()
 	var none := row_button(gad, "None", _on_ws_set.bind("gadget", ""), true, 0)
 	none.toggle_mode = true
 	none.button_pressed = ws["gadget"] == ""
@@ -3639,6 +3658,7 @@ func build_cups_tab() -> void:
 
 var season_view := "calendar"   # Season tab: "calendar" (main) or "table" (league table / bracket)
 var cal_month := -1              # month shown on the calendar (0-12); -1 = this month
+var cal_seen_month := -1         # the month it was when the page was last turned to "now"
 
 const MONTH_NAMES := ["JANUARY", "FEBRUARY", "MARCH", "APRIL", "MAY", "JUNE", "JULY", "AUGUST", "SEPTEMBER",
 		"OCTOBER", "NOVEMBER", "DECEMBER", "YEAR'S END"]
@@ -3669,8 +3689,10 @@ func build_season_tab() -> void:
 ## Only what you're actually in shows up - leagues you haven't qualified for aren't there.
 func build_calendar() -> void:
 	var cur_month := (GameData.week - 1) / GameData.MONTH_WEEKS
-	if cal_month < 0:
+	if cal_month < 0 or cur_month != cal_seen_month:
+		# a new month turns the page by itself
 		cal_month = cur_month
+		cal_seen_month = cur_month
 	var mode := GameData.fight_mode()
 	tonight_strip(mode)
 	var head := HBoxContainer.new()
@@ -3939,9 +3961,12 @@ func _on_cal_day(w: int, day: int) -> void:
 			b.alignment = HORIZONTAL_ALIGNMENT_LEFT
 			b.clip_text = true
 			v.add_child(b)
-	# later this week: you can jump straight to it (it stops at a night with your own fight)
-	if w == GameData.week and day > GameData.day_index() and GameData.can_pass_day():
-		col.add_child(UI.button(tr("Go to %s") % tr(GameData.DAY_FULL[day]), _on_go_to_day.bind(day), 16, Vector2(0, 44)))
+	# a later day: you can jump straight to it (it stops at a night with your own fight)
+	if (w > GameData.week or (w == GameData.week and day > GameData.day_index())) and GameData.can_pass_day():
+		var stop := GameData.next_fight_before(w, day)
+		if stop != "":
+			col.add_child(GUI.text(tr("Your %s fight comes first. The clock stops there.") % stop, 13, GUI.MUTED))
+		col.add_child(UI.button(tr("Go to %s") % tr(GameData.DAY_FULL[day]), _on_go_to_day.bind(day, w), 16, Vector2(0, 44)))
 
 
 ## "ROOK · ECHO  vs  MARGO · TIN CAN" for a match button.
@@ -4032,6 +4057,8 @@ func _on_cal_match(w: int, day: int, i: int, k: int) -> void:
 		foot.add_child(bb)
 	if bet and not pickup and a != 0 and GameData.can_watch(ev, a, b):
 		foot.add_child(UI.button(tr("Watch"), _on_watch.bind(a, b, str(m.get("on", ""))), 15, Vector2(110, 44)))
+	elif bet and not pickup and a != 0 and GameData.phase < 2:
+		col.add_child(GUI.text(tr("The fights start in the evening. Come back then to watch."), 14, GUI.MUTED))
 
 
 var bet_stake := 50
@@ -4209,9 +4236,15 @@ func grudge_tag(wid: int) -> String:
 
 ## Today's pilots in the pub and the TV.
 func build_pub_cards() -> void:
-	section(tr("IN THE RUSTY BOLT TONIGHT. Anyone here will take a pickup fight."))
+	var pats := GameData.patrons_today()
+	if GameData.phase == 0:
+		section(tr("THE MORNING AFTER. A few of last night's crowd never made it home.") if not pats.is_empty() else tr("THE MORNING AFTER. Nobody here but the bartender."))
+	elif GameData.phase == 1:
+		section(tr("A QUIET AFTERNOON. The crowd comes in tonight."))
+	else:
+		section(tr("IN THE RUSTY BOLT TONIGHT. Anyone here will take a pickup fight."))
 	var can := GameData.can_pass_day()
-	for pat in GameData.patrons_today():
+	for pat in pats:
 		var wid := int(pat["wid"])
 		var o := GameData.World.robot(wid)
 		var rec: Array = GameData.h2h.get(str(wid), [0, 0])
@@ -4221,6 +4254,8 @@ func build_pub_cards() -> void:
 		var tag := grudge_tag(wid)
 		if tag != "":
 			sub += "   " + tag
+		if pat.get("hungover", false):
+			sub += "   " + tr("(sleeping it off)")
 		var row := make_tap_row(bot_preview(o), tr("%s · %s") % [str(pat["name"]), str(o.get("name", "?"))], sub, open_pilot.bind(wid))
 		var purse: int = int(GameData.PICKUP_PURSE.get(str(pat["tier"]), 120))
 		row_button(row, tr("Challenge ($%d)") % purse if can else tr("Your fight's tonight"), _on_challenge.bind(wid), can, 150)
@@ -4256,6 +4291,8 @@ func bet_card(on: String, ev: Dictionary) -> void:
 	if ev.is_empty():
 		return
 	section(tr("%s · %s. Odds come from the table and the robots, so a pilot nobody rates pays big. Watch a fight and its result is the real one.") % [tr(str(ev["name"])), tr(Career.round_name(ev))])
+	if not GameData.watch_time(ev):
+		section(tr("The fights start in the evening. Come back then to watch."))
 	var bar := action_bar()
 	bar.add_child(UI.label("Stake:", 16))
 	for st in GameData.stakes():
@@ -4502,10 +4539,10 @@ func tonight_name() -> String:
 	return tr("%s NIGHT") % tr(GameData.DAY_FULL[GameData.day_index()]).to_upper()
 
 
-func _on_go_to_day(idx: int) -> void:
+func _on_go_to_day(idx: int, w: int = -1) -> void:
 	close_popup()
 	time_begin()
-	GameData.skip_to_day(idx)
+	GameData.skip_to_day(idx, w)
 	refresh()
 	time_end()
 
@@ -4738,6 +4775,14 @@ func open_day_plan() -> void:
 			var sl := GUI.text(str(line), 13, GUI.TEXT)
 			sl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 			col.add_child(sl)
+	if GameData.can_pass_day():
+		# days or weeks ahead: pick the day on the calendar
+		var r7 := action_bar(col)
+		var sk := GUI.text(tr("Skip days or weeks: tap a day on the calendar."), 13, GUI.MUTED)
+		sk.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		sk.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		r7.add_child(sk)
+		row_button(r7, tr("Calendar ›"), func(): close_popup(); go_to("Season", "calendar"), true, 170)
 	# the decision
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 10)
@@ -4963,11 +5008,12 @@ func table_row(cells: Array, widths: Array, col: Color, bg: Color, wid: int = -1
 	p.add_theme_stylebox_override("panel", sb)
 	var row := HBoxContainer.new()
 	p.add_child(row)
+	var grow := float(UI.tsz(15)) / (15.0 * UI.SCALE)   # the columns widen with the text size
 	for k in cells.size():
 		var l := UI.label(str(cells[k]), 15, col)
 		l.clip_text = true
 		if int(widths[k]) > 0:
-			l.custom_minimum_size = Vector2(widths[k], 0)
+			l.custom_minimum_size = Vector2(float(widths[k]) * grow, 0)
 		else:
 			l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		row.add_child(l)

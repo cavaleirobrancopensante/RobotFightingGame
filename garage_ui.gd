@@ -187,6 +187,112 @@ static func draw_wrapped(ci: CanvasItem, n: int, filled: float, bw: float, col: 
 			ci.draw_rect(Rect2(x, y, (bw - 1.0) * part, 5.0), col)
 
 
+## A list row that never pushes the screen wider: child 0 is the icon, child 1 the text (it fills),
+## everything after it (buttons, health bars) sits on the right while the text keeps at least
+## TEXT_MIN of room; otherwise those drop to a line of their own under the text, right-aligned,
+## wrapping again if they still don't fit (big text, narrow phones).
+class WrapRow extends Container:
+	const SEP := 10.0
+	const TEXT_MIN := 0.42      # the share of the row the text keeps before the buttons drop down
+	var _min_h := 0.0
+	var _laid_w := -1.0
+
+	func _notification(what: int) -> void:
+		if what == NOTIFICATION_SORT_CHILDREN:
+			_layout(true)
+		elif what == NOTIFICATION_RESIZED and absf(size.x - _laid_w) > 0.5:
+			update_minimum_size()
+
+	func _kids() -> Array:
+		return get_children().filter(func(c): return c is Control and c.visible and not c.is_set_as_top_level())
+
+	func _get_minimum_size() -> Vector2:
+		var h := _layout(false)
+		var kids := _kids()
+		var w := 0.0
+		if kids.size() > 0:
+			w = kids[0].get_combined_minimum_size().x + SEP + 40.0
+		for c in kids.slice(2):
+			w = maxf(w, c.get_combined_minimum_size().x)
+		return Vector2(w, h)
+
+	## Lays the children out for the current width (or only measures); returns the height needed.
+	func _layout(place: bool) -> float:
+		var kids := _kids()
+		if kids.is_empty():
+			return 0.0
+		var W := size.x if size.x > 1.0 else 600.0
+		var icon: Control = kids[0]
+		var text: Control = kids[1] if kids.size() > 1 else null
+		var trail: Array = kids.slice(2)
+		var iw := icon.get_combined_minimum_size().x
+		var tw := 0.0
+		for c in trail:
+			tw += c.get_combined_minimum_size().x + SEP
+		var room := W - iw - SEP - tw
+		var one_line := trail.is_empty() or room >= W * TEXT_MIN
+		var text_w := maxf(room if one_line else W - iw - SEP, 10.0)
+		var text_h := 0.0
+		if text:
+			if place:
+				# a wrapping label measures its height at its width: size it first
+				text.size.x = text_w
+			text_h = text.get_combined_minimum_size().y
+		var h1 := maxf(icon.get_combined_minimum_size().y, text_h)
+		if one_line:
+			for c in trail:
+				h1 = maxf(h1, c.get_combined_minimum_size().y)
+		var total := h1
+		var lines: Array = []   # [[controls], width, height] for the dropped-down trailing items
+		if not one_line:
+			var cur: Array = []
+			var cw := 0.0
+			var ch := 0.0
+			for c in trail:
+				var m: Vector2 = c.get_combined_minimum_size()
+				if not cur.is_empty() and cw + SEP + m.x > W:
+					lines.append([cur, cw, ch])
+					cur = []
+					cw = 0.0
+					ch = 0.0
+				cw += (SEP if not cur.is_empty() else 0.0) + m.x
+				ch = maxf(ch, m.y)
+				cur.append(c)
+			if not cur.is_empty():
+				lines.append([cur, cw, ch])
+			for ln in lines:
+				total += 6.0 + float(ln[2])
+		if place:
+			_laid_w = W
+			var im := icon.get_combined_minimum_size()
+			fit_child_in_rect(icon, Rect2(0, (h1 - im.y) * 0.5, iw, im.y))
+			if text:
+				fit_child_in_rect(text, Rect2(iw + SEP, (h1 - text_h) * 0.5, text_w, text_h))
+			if one_line:
+				var x := W
+				for i in range(trail.size() - 1, -1, -1):
+					var c: Control = trail[i]
+					var m: Vector2 = c.get_combined_minimum_size()
+					x -= m.x
+					var ch2: float = m.y if (c.size_flags_vertical & SIZE_FILL) == 0 or c is Button else h1
+					fit_child_in_rect(c, Rect2(x, (h1 - ch2) * 0.5, m.x, ch2))
+					x -= SEP
+			else:
+				var y := h1
+				for ln in lines:
+					y += 6.0
+					var x := W - float(ln[1])
+					for c in ln[0]:
+						var m: Vector2 = c.get_combined_minimum_size()
+						fit_child_in_rect(c, Rect2(x, y + (float(ln[2]) - m.y) * 0.5, m.x, m.y))
+						x += m.x + SEP
+					y += float(ln[2])
+			if absf(total - _min_h) > 0.5:
+				_min_h = total
+				update_minimum_size.call_deferred()
+		return total
+
+
 ## A block bar for a value: one block per `per_block` up to `max_value`.
 class BlockBar extends Control:
 	var n := 10
@@ -358,7 +464,7 @@ class RailButton extends Button:
 		var f: Font = font
 		var fs := UI.px(13)
 		var txt := tr(label)
-		while fs > UI.px(9) and f.get_string_size(txt, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x > size.x - 6:
+		while fs > 9 and f.get_string_size(txt, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x > size.x - 6:
 			fs -= 1
 		draw_string(f, Vector2(0, size.y - 12), txt, HORIZONTAL_ALIGNMENT_CENTER, size.x, fs, col)
 

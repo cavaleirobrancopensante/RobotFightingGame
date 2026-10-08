@@ -98,8 +98,14 @@ const PUB_STAR := [
 ## Same league. (%s = your name)
 const PUB_PEER := [
 	"Saw your last fight, %s. Not bad. Fancy a pickup at the scrapyard tonight?",
-	"Evening, %s. I could use the money. Pickup fight, you and me?",
+	"Hey, %s. I could use the money. Pickup fight, you and me?",
 	"%s! Sit down. Loser of the next pickup buys the round.",
+]
+## Still at the bar from last night, in the morning. (%s = your name)
+const PUB_HUNGOVER := [
+	"Ugh. %s? Not so loud. What time is it?",
+	"Don't look at me like that, %s. I live here now.",
+	"Mmph. A fight? Sure. Ask me tonight, %s. Or tomorrow.",
 ]
 ## Lower league. (%s = your name)
 const PUB_ROOKIE := [

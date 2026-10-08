@@ -26,6 +26,7 @@ static func draw_back(ci: CanvasItem, screen: Vector2, stage: Rect2, scene: Stri
 	var floor_screen := stage.end.y - 20.0
 	_environment(ci, screen, floor_screen, scene, t, info)
 	ci.draw_set_transform(stage.position, 0.0, Vector2.ONE)
+	info["_stage"] = stage.position
 	_props_back(ci, stage.size, scene, t, info)
 	ci.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
@@ -626,12 +627,26 @@ static func _pub_back(ci: CanvasItem, size: Vector2, floor_y: float, t: float, i
 ## playing, the bulbs run, the record spins and notes drift out of the horn.
 	# the rest of tonight's crowd, standing around with their drinks (further back, a bit smaller)
 	var crowd: Array = info.get("patron", {}).get("crowd", [])
+	var cgap := 58.0 if crowd.size() <= 4 else 48.0
 	for k in crowd.size():
 		var cs := s * 0.82
-		var cx2 := _pub_counter_x(size) - (30 + 58 * k) * s
+		var cx2 := _pub_counter_x(size) - (30 + cgap * k) * s
 		var cy := floor_y - 16 * s
-		PilotArt.draw_person(ci, Vector2(cx2, cy), cs, crowd[k]["look"], 1.0 if k % 2 == 0 else -1.0, "hold", t + 1.3 * k)
-		_head(info, str(crowd[k]["name"]), Vector2(cx2, cy), cs)
+		if crowd[k].get("hungover", false):
+			# last night's leftovers: flat out on the floor, an empty bottle rolled away, snoring
+			var feet := Vector2(cx2 + 30 * s, cy - 9 * cs)
+			_turned(ci, info, feet, -PI * 0.5)
+			PilotArt.draw_person(ci, Vector2.ZERO, cs, crowd[k]["look"], 1.0, "stand", 0.0)
+			_turned(ci, info, Vector2.ZERO, 0.0)
+			_bottle_down(ci, Vector2(cx2 + 40 * s, cy - 3 * s), s)
+			var head := feet + Vector2(-70 * cs, 0)
+			_zzz(ci, head + Vector2(0, -10 * s), s, t + k)
+			if not info.has("heads"):
+				info["heads"] = {}
+			info["heads"][str(crowd[k]["name"])] = head
+		else:
+			PilotArt.draw_person(ci, Vector2(cx2, cy), cs, crowd[k]["look"], 1.0 if k % 2 == 0 else -1.0, "hold", t + 1.3 * k)
+			_head(info, str(crowd[k]["name"]), Vector2(cx2, cy), cs)
 
 static func _jukebox(ci: CanvasItem, base: Vector2, s: float, t: float, playing: bool) -> void:
 	var w := 50.0 * s
@@ -740,8 +755,42 @@ static func _pub_front(ci: CanvasItem, size: Vector2, floor_y: float, s: float, 
 		ci.draw_rect(Rect2(qx - 10 * s, floor_y - 27 * s, 20 * s, 4 * s), Color(0.55, 0.15, 0.12))
 		ci.draw_line(Vector2(qx - 6 * s, floor_y - 23 * s), Vector2(qx - 9 * s, floor_y), Color(0.45, 0.45, 0.5), 2.0)
 		ci.draw_line(Vector2(qx + 6 * s, floor_y - 23 * s), Vector2(qx + 9 * s, floor_y), Color(0.45, 0.45, 0.5), 2.0)
-		PilotArt.draw_person(ci, Vector2(qx, floor_y), s, patron["look"], 1.0, "drink", t + 4.1)
-		_head(info, str(patron["name"]), Vector2(qx, floor_y), s, true)
+		if patron.get("hungover", false):
+			# slumped forward onto the bar, head on the counter, out cold since last night
+			var hip := Vector2(qx, floor_y - 26 * s)
+			_turned(ci, info, hip, 0.55)
+			PilotArt.draw_person(ci, Vector2(0, 26 * s), s, patron["look"], 1.0, "drink", 0.0)
+			_turned(ci, info, Vector2.ZERO, 0.0)
+			var head := hip + Vector2(0, -52 * s).rotated(0.55)
+			_zzz(ci, head + Vector2(4 * s, -12 * s), s, t)
+			if not info.has("heads"):
+				info["heads"] = {}
+			info["heads"][str(patron["name"])] = head
+		else:
+			PilotArt.draw_person(ci, Vector2(qx, floor_y), s, patron["look"], 1.0, "drink", t + 4.1)
+			_head(info, str(patron["name"]), Vector2(qx, floor_y), s, true)
+
+
+## Draw the next thing turned by rot around at (stage coordinates); call with rot 0 and ZERO to go back.
+static func _turned(ci: CanvasItem, info: Dictionary, at: Vector2, rot: float) -> void:
+	var st: Vector2 = info.get("_stage", Vector2.ZERO)
+	ci.draw_set_transform(st + at, rot, Vector2.ONE)
+
+
+## Snoring: little z's drifting up from a sleeper's head.
+static func _zzz(ci: CanvasItem, at: Vector2, s: float, t: float) -> void:
+	var f := ThemeDB.fallback_font
+	for k in 3:
+		var ph := fmod(t * 0.45 + k / 3.0, 1.0)
+		var pos := at + Vector2(ph * 16 * s + sin(t * 2.0 + k) * 2 * s, -ph * 34 * s)
+		ci.draw_string(f, pos, "z", HORIZONTAL_ALIGNMENT_LEFT, -1, int((9.0 + ph * 9.0) * s), Color(0.95, 0.95, 1.0, 0.9 * (1.0 - ph)))
+
+
+## An empty bottle lying on the floor.
+static func _bottle_down(ci: CanvasItem, at: Vector2, s: float) -> void:
+	ci.draw_rect(Rect2(at + Vector2(-8 * s, -4 * s), Vector2(12 * s, 7 * s)), Color(0.2, 0.42, 0.22))
+	ci.draw_rect(Rect2(at + Vector2(4 * s, -2.5 * s), Vector2(6 * s, 4 * s)), Color(0.2, 0.42, 0.22))
+	ci.draw_line(at + Vector2(-6 * s, -3 * s), at + Vector2(2 * s, -3 * s), Color(1, 1, 1, 0.3), 1.0)
 
 
 ## Remember where a person's head is (stage coordinates), so the garage can point speech bubbles at it.

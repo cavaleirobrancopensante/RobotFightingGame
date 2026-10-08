@@ -149,7 +149,12 @@ static func text_of(p: Dictionary) -> String:
 static func grown(p: Dictionary, field: String) -> int:
 	var age := now_t() - int(p.get("at", now_t()))
 	var k := clampf(0.35 + 0.22 * age, 0.35, 1.0)
-	return int(float(p.get(field, 0)) * k) + (1 if field == "likes" and st()["liked"].has(str(p["id"])) else 0)
+	var mine := 0
+	if field == "likes" and st()["liked"].has(str(p["id"])):
+		mine = 1
+	elif field == "replies" and p.get("replied", false):
+		mine = 1   # your own reply counts
+	return int(float(p.get(field, 0)) * k) + mine
 
 
 static func when_text(p: Dictionary) -> String:

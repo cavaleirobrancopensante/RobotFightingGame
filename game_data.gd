@@ -2,7 +2,7 @@ extends Node
 
 # helper scripts, loaded by path so the game also runs without an editor scan
 ## The game's version, shown on the main menu. Bump it with every change (1.1, 1.2, ...).
-const VERSION := "1.51"
+const VERSION := "1.52"
 const Arena = preload("res://arena.gd")
 const I18n = preload("res://i18n.gd")
 const Catalog = preload("res://catalog.gd")
@@ -1820,10 +1820,38 @@ func patron_today() -> Dictionary:
 ## Everyone in The Rusty Bolt today: 2 to 5 real pilots from the rankings. Mostly your own
 ## division, some from below, now and then a star from the top; someone who hates you likes
 ## to turn up too. Nobody with a league fight of their own tonight. The first is at the bar.
+## The bar fills up as the day goes (1.52): in the morning one or two of last night's crowd are
+## still there, sleeping it off ("hungover"); in the afternoon one or two early drinkers (the first
+## of tonight's crowd); in the evening the whole night crowd, 3 to 6 of them.
 func patrons_today() -> Array:
+	if phase >= 2:
+		return night_patrons(year, week, day_index())
 	var rng := RandomNumberGenerator.new()
-	rng.seed = year * 100000 + week * 10 + day_index() + 99
-	var count := rng.randi_range(2, 5)
+	rng.seed = year * 100000 + week * 10 + day_index() + 7 + phase * 31
+	var n := rng.randi_range(1, 2)
+	if phase == 1:
+		return night_patrons(year, week, day_index()).slice(0, n)
+	# morning: yesterday's crowd, the ones who never made it home
+	var yw := week
+	var yd := day_index() - 1
+	if yd < 0:
+		yd = 6
+		yw -= 1
+	var out: Array = []
+	for p in night_patrons(year, yw, yd):
+		if out.size() >= n:
+			break
+		var q: Dictionary = p.duplicate()
+		q["hungover"] = true
+		out.append(q)
+	return out
+
+
+## Everyone at the bar on the night of (y, w, di).
+func night_patrons(y: int, w: int, di: int) -> Array:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = y * 100000 + w * 10 + di + 99
+	var count := rng.randi_range(3, 6)
 	var tonight := {}
 	for x in league_night():
 		for e in x[1]["pilots"]:
@@ -1832,14 +1860,19 @@ func patrons_today() -> Array:
 	var out: Array = []
 	var taken := {}
 	var ri := maxi(0, rank_index())
-	# someone with a grudge against you, now and then
+	# someone with a grudge against you, now and then (one roll a day, not one per grudge, so the
+	# same sore loser isn't propping up the bar every night)
+	var haters: Array = []
 	for key in grudge:
 		var wid := int(key)
 		var p := World.pilot(wid)
-		if hates_me(wid) and not p.is_empty() and not p["retired"] and not tonight.has(wid) and rng.randf() < 0.25:
-			out.append(p)
-			taken[wid] = true
-			break
+		if hates_me(wid) and not p.is_empty() and not p["retired"] and not tonight.has(wid):
+			haters.append(p)
+	haters.sort_custom(func(a, b): return int(a["wid"]) < int(b["wid"]))
+	if not haters.is_empty() and rng.randf() < 0.2:
+		var h: Dictionary = haters[rng.randi() % haters.size()]
+		out.append(h)
+		taken[int(h["wid"])] = true
 	var guard := 0
 	while out.size() < count and guard < 40:
 		guard += 1
@@ -2035,7 +2068,7 @@ func rival_taunt() -> Array:
 
 ## The pilot at the bar says hello (once a day): what they say depends on who they are to you.
 func pub_greeting() -> Array:
-	var stamp := "%d:%d:%s" % [year, week, day]
+	var stamp := "%d:%d:%s:%d" % [year, week, day, phase]   # the crowd changes through the day
 	if pub_seen == stamp:
 		return []
 	var all := patrons_today()
@@ -2049,7 +2082,9 @@ func pub_greeting() -> Array:
 	var wid := int(pat["wid"])
 	var list: Array = Talk.PUB_PEER
 	var ti := Career.ORDER.find(str(pat["tier"]))
-	if is_rival(wid) or hates_me(wid):
+	if pat.get("hungover", false):
+		list = Talk.PUB_HUNGOVER
+	elif is_rival(wid) or hates_me(wid):
 		list = Talk.PUB_RIVAL
 	elif ti > rank_index():
 		list = Talk.PUB_STAR
@@ -2179,13 +2214,35 @@ func skip_to_fight_night() -> String:
 	return tr("Fight night: %s.") % tr(DAY_FULL[day_index()])
 
 
-## Jump ahead to a later day this week, letting the free days in between go. Stops early at a
-## night with your own fight on it.
-func skip_to_day(idx: int) -> String:
+## The first night of yours with a fight on it between now and (w, idx), as a day name ("" = none).
+func next_fight_before(w: int, idx: int) -> String:
+	var ww := week
+	var dd := day_index()
+	var guard := 0
+	while (ww < w or (ww == w and dd < idx)) and guard < 400:
+		var k := str(week_plan(year, ww, DAYS[dd])["kind"])
+		if k in ["league", "playoff", "cup"]:
+			return tr(DAY_FULL[dd])
+		dd += 1
+		if dd > 6:
+			dd = 0
+			ww += 1
+		guard += 1
+	return ""
+
+
+## Jump ahead to a later day (this week or any later week this year), letting the free days in
+## between go. Stops early at a night with your own fight on it.
+func skip_to_day(idx: int, w: int = -1) -> String:
+	if w < 0:
+		w = week
 	refund_self_bets()
 	pickup = {}
-	while day_index() < idx and day != "sun" and can_pass_day():
+	var y0 := year
+	var guard := 0
+	while year == y0 and (week < w or (week == w and day_index() < idx)) and can_pass_day() and guard < 400:
 		pass_rest_of_day()
+		guard += 1
 	save_game()
 	return tr("It's %s.") % tr(DAY_FULL[day_index()])
 
@@ -2810,10 +2867,18 @@ func settle_bets(on: String, ev: Dictionary) -> Dictionary:
 
 # ---------------------------------------------------------------- watching other pilots' fights
 
+## Fights are on in the evening of their own night: that's the only time you can watch one.
+func watch_time(ev: Dictionary) -> bool:
+	if ev.is_empty() or phase < 2:
+		return false
+	var fd := 2 if is_same(ev, circuit) else Career.fight_day(ev)   # cups fight on Wednesdays
+	return Career.week_of_round(ev) == week and fd == day_index()
+
+
 ## Can you watch a & b fight this round? Computer pilots only, once per match, and Kane Dynamics
 ## keeps OVERLORD's fights behind closed doors.
 func can_watch(ev: Dictionary, a: int, b: int) -> bool:
-	if ev.is_empty() or a == 0 or b == 0:
+	if ev.is_empty() or a == 0 or b == 0 or not watch_time(ev):
 		return false
 	for id in [a, b]:
 		if int(Career.pilot(ev, id).get("rival", -1)) == OPPONENTS.size() - 1 or Career.retired(ev, id):
