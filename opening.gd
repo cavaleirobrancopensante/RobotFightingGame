@@ -31,7 +31,7 @@ const SHOTS := [
 	["overlord", 10.0, [0.5, 0.5, 1.0], [0.6, 0.55, 1.3]],
 	["fall", 10.0, [0.5, 0.3, 1.5], [0.5, 0.72, 1.5]],
 	["scrap", 13.0, [0.5, 0.5, 1.0], [0.5, 0.64, 1.55]],
-	["road", 10.0, [0.3, 0.68, 1.7], [0.5, 0.5, 1.0]],
+	["road", 10.0, [0.5, 0.5, 1.0], [0.5, 0.5, 1.0]],
 	["bell", 8.0, [0.5, 0.5, 1.0], [0.6, 0.58, 1.25]],
 ]
 ## [shot id, seconds in, speaker, text]
@@ -505,7 +505,7 @@ func draw_stadium(ci: CanvasItem, W: float, H: float, tt: float) -> void:
 	ci.draw_rect(sr.grow(p * 2.0), Color(1.0, 0.2, 0.2, 0.06))
 	Scoreboard.dot_text(ci, label, sr.position.x + p * 2.0, sr.position.y + p, p, sr.position.x, sr.end.x, Color(1.0, 0.25, 0.25))
 	# the doors under the Titanium banner, light spilling out onto the plaza
-	var door := Rect2(W * 0.42, bot - H * 0.12, W * 0.16, H * 0.12)
+	var door := Rect2(W * 0.39, bot - H * 0.12, W * 0.22, H * 0.12)
 	ci.draw_colored_polygon(PackedVector2Array([door.position + Vector2(0, door.size.y), Vector2(door.end.x, door.end.y), Vector2(door.end.x + W * 0.12, H), Vector2(door.position.x - W * 0.12, H)]), Color(1.0, 0.85, 0.55, 0.08))
 	ci.draw_rect(door, Color(1.0, 0.86, 0.58))
 	ci.draw_rect(door.grow(10), Color(1.0, 0.86, 0.58, 0.08))
@@ -1069,60 +1069,74 @@ func draw_scrap(ci: CanvasItem, W: float, H: float, tt: float) -> void:
 const RUNGS := ["GUTTER", "SCRAP", "RUST", "IRON", "STEEL", "TITANIUM"]
 
 
+## The road (1.64): no map. A stair of light climbs through a montage of fights, one a league: each
+## fight fades up behind the stair, the step lights, the league's trophy lands on it, the fight fades
+## and the stair climbs on, until the last step reaches the stadium's doors.
 func draw_road(ci: CanvasItem, W: float, H: float, tt: float) -> void:
-	var floor_y := H * 0.84
-	var hz := floor_y - H * 0.15
-	sky(ci, W, H, Color(0.05, 0.06, 0.16), Color(0.55, 0.3, 0.35), hz)
-	ci.draw_rect(Rect2(0, hz, W, H * 0.15), Color(0.55, 0.3, 0.35))
-	stars(ci, W, H, tt, 40, H * 0.3)
-	lit()
-	# Kane Hill: the stadium sits on top of the city, the stair climbs to its doors
-	var top_lit := clampf((tt - (1.6 + 5 * 1.1)) / 0.5, 0.0, 1.0)
-	var dome := Vector2(W * 0.82, H * 0.27)
-	var hill := PackedVector2Array([Vector2(W * 0.5, hz), Vector2(W * 0.6, H * 0.5), Vector2(W * 0.68, H * 0.37), Vector2(W * 0.74, H * 0.3),
-			Vector2(W * 0.92, H * 0.3), Vector2(W * 1.02, H * 0.38), Vector2(W * 1.02, hz)])
-	GarageArt._pg(ci, hill, Color(0.17, 0.12, 0.2))
-	for i in 40:
-		var hx := W * (0.56 + hsh(i + 600) * 0.44)
-		var hy := lerpf(H * 0.34, hz, hsh(i + 610))
-		if Geometry2D.is_point_in_polygon(Vector2(hx, hy), hill):
-			ci.draw_rect(Rect2(hx, hy, 3, 3), Color(1.0, 0.8, 0.45, 0.6))
-	stadium_dome(ci, dome, W * 0.15, H * 0.06, tt, 1.0 + top_lit * (0.6 + 0.3 * sin(tt * 4.0)))
-	skyline(ci, W, hz, H * 0.6, tt, Color(0.2, 0.14, 0.24), Color(0.15, 0.11, 0.19), 0.2)
-	GarageArt._scrap_pile(ci, Vector2(W * 0.2, floor_y), W * 0.45, H * 0.28, tt)
-	ci.draw_polygon(PackedVector2Array([Vector2(0, floor_y), Vector2(W, floor_y), Vector2(W, H), Vector2(0, H)]),
-			PackedColorArray([Color(0.24, 0.18, 0.15), Color(0.24, 0.18, 0.15), Color(0.12, 0.09, 0.09), Color(0.12, 0.09, 0.09)]))
-	ci.draw_line(Vector2(0, floor_y), Vector2(W, floor_y), Color(1.0, 0.75, 0.55, 0.35), 1.5)
-	# the ladder: a stair of light from the top of the scrap heap up to the stadium, one step a league,
-	# lit step by step. It only ever climbs.
-	var a := Vector2(W * 0.26, floor_y - H * 0.29)
-	var b := Vector2(W * 0.76, dome.y + H * 0.03)
 	var n := RUNGS.size()
-	var dx := (b.x - a.x) / n
+	ci.draw_polygon(PackedVector2Array([Vector2.ZERO, Vector2(W, 0), Vector2(W, H), Vector2(0, H)]),
+			PackedColorArray([Color(0.03, 0.03, 0.08), Color(0.03, 0.03, 0.08), Color(0.08, 0.05, 0.1), Color(0.08, 0.05, 0.1)]))
+	stars(ci, W, H, tt, 50, H)
+	# the fight of this rung, fading up behind the stair
 	for k in n:
-		var at := 1.6 + k * 1.1
-		var lt := clampf((tt - at) / 0.4, 0.0, 1.0)
-		var y := lerpf(a.y, b.y, float(k) / (n - 1))
-		var x0 := a.x + dx * k
-		var x1 := x0 + dx
-		var gold := Color(1.0, 0.85, 0.4)
-		# the riser up from the step below
+		var a0 := rung_time(k) - 0.4
+		var a1 := rung_time(k) + 1.05
+		if tt < a0 or tt > a1:
+			continue
+		var f := minf(clampf((tt - a0) / 0.3, 0.0, 1.0), clampf((a1 - tt) / 0.3, 0.0, 1.0))
+		road_fight(ci, W, H, tt - a0, k)
+		ci.draw_rect(Rect2(-10, -10, W + 20, H + 20), Color(0.03, 0.03, 0.07, 1.0 - 0.62 * f))
+	# where the climb is: p runs 0 .. n-1, the stair scrolls down so the lit step stays in view
+	var p := 0.0
+	for k in range(1, n):
+		p += smoothstep(rung_time(k) - 0.75, rung_time(k), tt)
+	var dx := W * 0.11
+	var dy := H * 0.15
+	var off := maxf(0.0, p * dy - H * 0.27)
+	var x0 := W * 0.12
+	var y0 := H * 0.82
+	var end_f := clampf((tt - (rung_time(n - 1) + 0.4)) / 0.9, 0.0, 1.0)
+	# the stadium at the top, once the last step is reached
+	var top := Vector2(x0 + dx * n, y0 - (n - 1) * dy + off)
+	if end_f > 0.0:
+		# the last step runs straight into its doors
+		var dh := H * 0.13
+		var sc := Vector2(top.x + W * 0.035, top.y - 4.0 - dh * 0.3)
+		stadium_dome(ci, sc, W * 0.3, dh, tt, end_f * (1.2 + 0.2 * sin(tt * 4.0)))
+		var door := Rect2(top.x, top.y - 4.0 - H * 0.07, W * 0.07, H * 0.07)
+		ci.draw_rect(door.grow(8), Color(1.0, 0.86, 0.58, 0.15 * end_f))
+		ci.draw_rect(door, Color(1.0, 0.86, 0.58, end_f))
+		ci.draw_rect(Rect2(0, 0, W, H), Color(0.03, 0.03, 0.07, 1.0 - end_f))   # (fades the dome up; the stair is drawn over it)
+	lit("road")
+	var gold := Color(1.0, 0.85, 0.4)
+	for k in n:
+		var lt := clampf((tt - rung_time(k)) / 0.35, 0.0, 1.0)
+		var y := y0 - k * dy + off
+		var sx := x0 + dx * k
+		if y > H + 40.0:
+			continue
 		if k > 0:
-			var py := lerpf(a.y, b.y, float(k - 1) / (n - 1))
-			ci.draw_line(Vector2(x0, py), Vector2(x0, y), Color(gold, 0.2 + 0.7 * lt), 4.0)
-		# the step: dark until it's reached, then glowing
-		ci.draw_rect(Rect2(x0, y - 3, dx, 9), Color(0.2, 0.17, 0.15) if lt <= 0.0 else Color(gold, 0.3 + 0.7 * lt))
-		ci.draw_rect(Rect2(x0, y + 4, dx, 2), Color(0.5, 0.32, 0.12, 0.8 * lt))
-		ci.draw_rect(Rect2(x0, y - 3, dx, 9), Color(0.08, 0.06, 0.05), false, 1.5)
+			ci.draw_line(Vector2(sx, y + dy), Vector2(sx, y), Color(gold, 0.15 + 0.8 * lt), 5.0)
 		if lt > 0.0:
-			ci.draw_rect(Rect2(x0 - 6, y - 10, dx + 12, 20), Color(1.0, 0.8, 0.35, 0.1 * lt))
-			ci.draw_string(GUI.headb(), Vector2(x0 - 20, y - 14), I18n.t(RUNGS[k]), HORIZONTAL_ALIGNMENT_CENTER, dx + 40, 14 if k < n - 1 else 18, Color(1, 1, 1, lt) if k < n - 1 else Color(1.0, 0.88, 0.45, lt))
-	# you, controller in hand, and the robot beside you
-	var s := H / 220.0
-	var you_at := Vector2(W * 0.22, floor_y + H * 0.02)
-	PilotArt.draw_person(ci, you_at, s, you, 1.0, "hold", tt)   # "hold" draws the controller in your hands
-	var look: Dictionary = looks["echo_rust"]
-	RobotArt.draw(ci, Vector2(W * 0.34, floor_y + 4), look, {"light": shot_light(), "scale": robot_scale(look, H * 0.36), "facing": 1, "time": tt})
+			ci.draw_rect(Rect2(sx - 8, y - 14, dx + 16, 30), Color(1.0, 0.8, 0.35, 0.12 * lt))
+		GarageArt._rc(ci, Rect2(sx, y - 4, dx, 12), Color(0.22, 0.19, 0.16).lerp(gold, lt))
+		var big := k == n - 1
+		if lt > 0.0:
+			# the league's trophy drops onto its step, and the step says which rung it is
+			var pop := 1.0 + 0.35 * sin(clampf((tt - rung_time(k)) / 0.35, 0.0, 1.0) * PI)
+			GarageArt.draw_trophy(ci, Vector2(sx + dx * 0.5, y - 4), str(RUNG_SCENES[k][2]), 1, (2.0 if not big else 2.6) * pop * lt)
+			lit("road")
+			var fs := UI.px(14) if not big else UI.px(18)
+			ci.draw_string_outline(GUI.headb(), Vector2(sx - 30, y + 34), I18n.t(RUNGS[k]), HORIZONTAL_ALIGNMENT_CENTER, dx + 60, fs, 4, Color(0, 0, 0, 0.8 * lt))
+			ci.draw_string(GUI.headb(), Vector2(sx - 30, y + 34), I18n.t(RUNGS[k]), HORIZONTAL_ALIGNMENT_CENTER, dx + 60, fs, Color(1, 1, 1, lt) if not big else Color(1.0, 0.88, 0.45, lt))
+	# ECHO's eye, climbing: a green light on the step it has reached
+	var ek := int(floor(p))
+	var ef := p - ek
+	var e0 := Vector2(x0 + dx * (ek + 0.8), y0 - ek * dy + off - 16.0)
+	var e1 := Vector2(x0 + dx * (ek + 1.8), y0 - (ek + 1) * dy + off - 16.0)
+	var ep := e0.lerp(e1, ef) + Vector2(0, -sin(ef * PI) * 30.0)
+	ci.draw_circle(ep, 14.0, Color(0.35, 1.0, 0.75, 0.2))
+	ci.draw_circle(ep, 5.0, Color(0.6, 1.0, 0.85))
 
 
 # ---------------------------------------------------------------- 8 the bell
@@ -1200,7 +1214,7 @@ func lit(set_name: String = "") -> void:
 
 ## Where each league's banner hangs on the stadium's front: [x share, width share, length share of H].
 ## The four leagues climb from the outside in, the Titanium banner hangs in the middle over the doors.
-const BANNER_AT := [[0.09, 0.085, 0.22], [0.27, 0.09, 0.25], [0.73, 0.09, 0.28], [0.91, 0.085, 0.31], [0.5, 0.16, 0.36]]
+const BANNER_AT := [[0.09, 0.1, 0.31], [0.27, 0.105, 0.34], [0.73, 0.105, 0.37], [0.91, 0.1, 0.4], [0.5, 0.17, 0.46]]
 
 
 var plaza_y := 0.0   # where the stadium's uplights stand (set by draw_stadium)
@@ -1260,18 +1274,20 @@ func draw_banner(ci: CanvasItem, cx: float, top: float, w: float, L: float, clot
 	# the sleeve over the pole
 	GarageArt._rc(ci, Rect2(cx - w * 0.5, top - 2, w, w * 0.13), cloth.darkened(0.3))
 	ci.draw_line(Vector2(cx - w * 0.5, top + w * 0.13), Vector2(cx + w * 0.5, top + w * 0.13), gold, bw)
-	# the name
-	var fs := Scoreboard.fit_size(GUI.headb(), name, w * 0.74, int(w * (0.2 if not grand else 0.17)))
-	var ny := top + w * 0.13 + fs * 1.15
-	var nx := cx - w * 0.5 + wv(tt, ph, 0.2, w)
-	ci.draw_string(GUI.headb(), Vector2(nx + 2, ny + 2), name, HORIZONTAL_ALIGNMENT_CENTER, w, fs, Color(0, 0, 0, 0.6))
-	ci.draw_string(GUI.headb(), Vector2(nx, ny), name, HORIZONTAL_ALIGNMENT_CENTER, w, fs, gold if grand else Color(0.96, 0.94, 0.88))
-	# the medallion and the league's trophy on it
-	var mr := minf(w * 0.3, L * 0.2)
-	var mc := Vector2(cx + wv(tt, ph, 0.56, w), ny + fs * 0.45 + mr + L * 0.04)
-	GarageArt._cr(ci, mc, mr, cloth.darkened(0.35))
-	ci.draw_arc(mc, mr - 3.0, 0.0, TAU, 32, gold, bw)
-	GarageArt.draw_trophy(ci, mc + Vector2(0, mr * 0.62), kind, 1, mr / 24.0)
+	# the name on its own dark plaque under the pole, big and outlined so it reads from the plaza
+	var fs := Scoreboard.fit_size(GUI.headb(), name, w * 0.78, int(w * (0.26 if not grand else 0.16)))
+	var plq := Rect2(cx - w * 0.42 + wv(tt, ph, 0.2, w), top + w * 0.13 + 6.0, w * 0.84, fs * 1.35)
+	GarageArt._rc(ci, plq, cloth.darkened(0.55))
+	ci.draw_rect(plq, gold, false, 1.5)
+	var ny := plq.position.y + plq.size.y * 0.5 + fs * 0.36
+	ci.draw_string_outline(GUI.headb(), Vector2(plq.position.x, ny), name, HORIZONTAL_ALIGNMENT_CENTER, plq.size.x, fs, 4, Color(0, 0, 0, 0.85))
+	ci.draw_string(GUI.headb(), Vector2(plq.position.x, ny), name, HORIZONTAL_ALIGNMENT_CENTER, plq.size.x, fs, gold if grand else Color(1.0, 0.97, 0.9))
+	# the league's trophy, big, standing low on the cloth above the swallowtail
+	var base := Vector2(cx + wv(tt, ph, 0.78, w), top + L * (0.8 if not grand else 0.82))
+	var room := base.y - plq.end.y - 10.0
+	var ts := minf(w * 0.9 / 30.0, room / 40.0)
+	ci.draw_circle(base + Vector2(0, -ts * 18.0), ts * 20.0, Color(1.0, 0.9, 0.6, 0.08 if not grand else 0.14))
+	GarageArt.draw_trophy(ci, base, kind, 1, ts)
 	# tassels along the swallowtail
 	var tl := Vector2(cx - w * 0.5 + wv(tt, ph, 1.0, w), top + L)
 	var tm := Vector2(cx + wv(tt, ph, 1.0, w), top + L * 0.86)
@@ -1405,6 +1421,47 @@ func _tsw(y: float, top: float, L: float, sway: float) -> float:
 ## The wind ruffling the tarp's sides.
 func _trf(y: float, k: float, top: float, L: float, tt: float) -> float:
 	return sin(tt * 3.4 + y * 0.05 + k) * 2.0 * clampf((y - top) / maxf(L, 1.0), 0.0, 1.0)
+
+
+## (1.64) The road montage: for each rung, where it's fought, its crowd, the trophy it gives, who ECHO
+## fights there (an OPPONENTS index, -1 = Old Pike).
+const RUNG_SCENES := [["scrap_ring", "scrappers", "open", -1], ["scrap_ring", "scrappers", "scrap", 1], ["regional_hall", "locals", "rust", 3],
+		["regional_final", "final_night", "iron", 7], ["champ_arena", "champ_fans", "steel", 8], ["champ_gala", "high_society", "title", 5]]
+
+
+var road_crowds := {}
+
+
+## When the light reaches step k of the road.
+func rung_time(k: int) -> float:
+	return 0.8 + k * 1.35
+
+
+## One rung's fight, drawn full screen behind the stair: its venue and crowd, ECHO (rusty at the
+## bottom, back in your dad's blue and gold from Iron up) trading blows with someone from that league.
+func road_fight(ci: CanvasItem, W: float, H: float, at: float, k: int) -> void:
+	var sc: Array = RUNG_SCENES[k]
+	var vid := str(sc[0])
+	var cid := str(sc[1])
+	var screen := Vector2(W, H)
+	if not road_crowds.has(cid):
+		road_crowds[cid] = Arena.make_crowd(cid, screen)
+	var floor_y := H * 0.8
+	Arena.draw_ring_scene(ci, vid, cid, road_crowds[cid], screen, floor_y, at + k, 1.0, W * 0.06, W * 0.94)
+	var key := "road_foe_%d" % k
+	if not looks.has(key):
+		looks[key] = pike_look if int(sc[3]) < 0 else rival_look(int(sc[3]))
+	var me: Dictionary = looks["echo_rust"] if k < 3 else looks["echo_dad"]
+	var foe: Dictionary = looks[key]
+	var tall := H * 0.44
+	var hit := fmod(at, 0.7) < 0.22
+	var mine := int(at / 0.7) % 3 != 2   # ECHO lands two in three
+	RobotArt.draw(ci, Vector2(W * 0.38, floor_y + 6), me, {"light": vid, "scale": robot_scale(me, tall), "facing": 1, "time": at,
+			"state": "punch" if hit and mine else ("hit" if hit else "idle"), "attack_limb": "arm_front" if int(at / 0.7) % 2 == 0 else "arm_back", "extended": hit and mine})
+	RobotArt.draw(ci, Vector2(W * 0.62, floor_y + 6), foe, {"light": vid, "scale": robot_scale(foe, tall), "facing": -1, "time": at,
+			"state": "hit" if hit and mine else ("punch" if hit else "idle"), "attack_limb": "arm_front", "extended": hit and not mine})
+	if hit:
+		sparks(ci, Vector2(W * 0.5, floor_y - tall * 0.62), fmod(at, 0.7), 10, 260.0, k * 7 + int(at / 0.7))
 
 
 # ================================================================ the words, the fades, SKIP
