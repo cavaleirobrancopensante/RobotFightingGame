@@ -282,7 +282,7 @@ static func _front(ci: CanvasItem, size: Vector2, scene: String, t: float, info:
 					_rc(ci, tile, Color.from_hsv(fmod(k * 0.19, 1.0), 0.35, 0.8))
 			_rc(ci, Rect2(mon.position.x + 10 * s, desk.position.y - 4 * s, 40 * s, 4 * s), Color(0.25, 0.25, 0.28))   # keyboard
 			# the pilot types, Gus leans in and points at the screen
-			_rc(ci, Rect2(mon.position.x - 2 * s, floor_y - 30 * s, 22 * s, 4 * s), Color(0.25, 0.25, 0.3))   # chair
+			PilotArt.draw_seat(ci, Vector2(mon.position.x + 8 * s, floor_y), s, 1.0)   # (1.81) a real chair
 			PilotArt.draw_person(ci, Vector2(mon.position.x + 8 * s, floor_y), s, pilot, 1.0, "sit_type", t)
 			_head(info, "YOU", Vector2(mon.position.x + 8 * s, floor_y), s, true)
 			PilotArt.draw_person(ci, Vector2(mon.end.x + 22 * s, floor_y), s, gus, -1.0, "point", t + 0.7)
@@ -393,6 +393,7 @@ static func _front(ci: CanvasItem, size: Vector2, scene: String, t: float, info:
 				_head(info, "YOU", Vector2(size.x * 0.66, floor_y), s)
 			else:
 				# Gus at his keyboard; you looking at the table on the screen
+				PilotArt.draw_seat(ci, Vector2(dx - 20 * s, floor_y), s, -1.0)   # (1.81) his chair
 				PilotArt.draw_person(ci, Vector2(dx - 20 * s, floor_y), s, PilotArt.GUS_LOOK, -1.0, "sit_type", t)
 				_head(info, "GUS", Vector2(dx - 20 * s, floor_y), s, true)
 				PilotArt.draw_person(ci, Vector2(size.x * 0.7, floor_y), s, info.get("pilot", {}), -1.0, "point", t + 0.4)
@@ -764,10 +765,8 @@ static func _pub_front(ci: CanvasItem, size: Vector2, floor_y: float, s: float, 
 	var patron: Dictionary = info.get("patron", {})
 	var qx := cx - 24 * s
 	var px := cx - (66 if not patron.is_empty() else 26) * s
-	for x in [px, px - 44 * s]:
-		_rc(ci, Rect2(x - 10 * s, floor_y - 27 * s, 20 * s, 4 * s), Color(0.55, 0.15, 0.12))
-		_ln(ci, Vector2(x - 6 * s, floor_y - 23 * s), Vector2(x - 9 * s, floor_y), Color(0.45, 0.45, 0.5), 2.0)
-		_ln(ci, Vector2(x + 6 * s, floor_y - 23 * s), Vector2(x + 9 * s, floor_y), Color(0.45, 0.45, 0.5), 2.0)
+	for x in [px - 4 * s, px - 48 * s]:
+		PilotArt.draw_seat(ci, Vector2(x, floor_y), s, 1.0, "stool")   # (1.81) stools you can see
 	PilotArt.draw_person(ci, Vector2(px - 4 * s, floor_y), s, pilot, 1.0, "push" if bet_age < 1.2 else "drink", t)
 	_head(info, "YOU", Vector2(px - 4 * s, floor_y), s, true)
 	# Gus on the next stool, nursing a coffee
@@ -775,9 +774,7 @@ static func _pub_front(ci: CanvasItem, size: Vector2, floor_y: float, s: float, 
 	_head(info, "GUS", Vector2(px - 48 * s, floor_y), s, true)
 	# today's pilot at the bar: a real pilot from the rankings (your pickup fight, if you want it)
 	if not patron.is_empty():
-		_rc(ci, Rect2(qx - 10 * s, floor_y - 27 * s, 20 * s, 4 * s), Color(0.55, 0.15, 0.12))
-		_ln(ci, Vector2(qx - 6 * s, floor_y - 23 * s), Vector2(qx - 9 * s, floor_y), Color(0.45, 0.45, 0.5), 2.0)
-		_ln(ci, Vector2(qx + 6 * s, floor_y - 23 * s), Vector2(qx + 9 * s, floor_y), Color(0.45, 0.45, 0.5), 2.0)
+		PilotArt.draw_seat(ci, Vector2(qx, floor_y), s, 1.0, "stool")
 		if patron.get("hungover", false):
 			# slumped forward onto the bar, head on the counter, out cold since last night
 			var hip := Vector2(qx, floor_y - 26 * s)

@@ -883,9 +883,7 @@ func draw_overlord(ci: CanvasItem, W: float, H: float, tt: float) -> void:
 	lit()
 	# its empty corner: a pilot's stool and nobody on it
 	var stool := Vector2(W * 0.9, floor_y + H * 0.16)
-	GarageArt._ln(ci, stool + Vector2(-12, -20), stool + Vector2(-14, 0), Color(0.3, 0.3, 0.32), 3.0)
-	GarageArt._ln(ci, stool + Vector2(12, -20), stool + Vector2(14, 0), Color(0.3, 0.3, 0.32), 3.0)
-	GarageArt._rc(ci, Rect2(stool + Vector2(-17, -27), Vector2(34, 8)), Color(0.34, 0.34, 0.36))
+	PilotArt.draw_seat(ci, stool, 1.05, -1.0, "stool", Color(0.3, 0.3, 0.34))   # (1.81) chrome and grey, empty
 	# the hits: a flash
 	for at in [5.0, 6.6]:
 		var f := 1.0 - clampf((tt - at) / 0.25, 0.0, 1.0)

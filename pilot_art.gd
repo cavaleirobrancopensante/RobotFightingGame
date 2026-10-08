@@ -564,6 +564,39 @@ static func _head_disc(ci: CanvasItem, c: Vector2, r: float, skin: Color) -> voi
 		ci.draw_circle(c, r, skin)
 
 
+## (1.81) What a sitting person sits on, drawn BEFORE draw_person (feet = the person's feet, dir = the
+## way they face). kind "office" = a swivel chair (backrest behind the back, cushion under the
+## thighs, gas column, five-star base on wheels); "stool" = a bar stool (round cushion, chrome legs,
+## a footrest ring). Bold colours and a dark outline so they read against any wall.
+const SEAT_LEATHER := Color(0.66, 0.2, 0.14)
+const SEAT_CHROME := Color(0.74, 0.76, 0.8)
+static func draw_seat(ci: CanvasItem, feet: Vector2, s: float, dir: float, kind: String = "office", seat_c: Color = SEAT_LEATHER) -> void:
+	_begin()
+	var hy := feet.y - 26 * s   # where the hips sit
+	var dark := Color(0.08, 0.08, 0.09)
+	if kind == "stool":
+		# chrome legs splaying out, the footrest ring, the cushion on top
+		for side in [-1.0, 1.0]:
+			_ln2(ci, Vector2(feet.x + side * 6 * s, hy + 4 * s), Vector2(feet.x + side * 12 * s, feet.y), SEAT_CHROME, 2.6 * s)
+		_ln2(ci, Vector2(feet.x - 10 * s, feet.y - 9 * s), Vector2(feet.x + 10 * s, feet.y - 9 * s), SEAT_CHROME, 2.0 * s)
+		_ln2(ci, Vector2(feet.x, hy + 4 * s), Vector2(feet.x, feet.y - 9 * s), SEAT_CHROME.darkened(0.2), 2.2 * s)
+		_blk(ci, Rect2(feet.x - 13 * s, hy - 1 * s, 26 * s, 6 * s), seat_c)
+		ci.draw_line(Vector2(feet.x - 11 * s, hy), Vector2(feet.x + 11 * s, hy), seat_c.lightened(0.35), maxf(1.0, s))
+		return
+	# office chair: the five-star base on wheels, the gas column, the cushion, the backrest
+	var base_y := feet.y - 3 * s
+	_ln2(ci, Vector2(feet.x - 15 * s, base_y), Vector2(feet.x + 15 * s, base_y), dark.lightened(0.15), 3.0 * s)
+	for wx in [-14.0, 0.0, 14.0]:
+		_cr(ci, Vector2(feet.x + wx * s, feet.y - 1.5 * s), 2.4 * s, dark)
+	_ln2(ci, Vector2(feet.x, hy + 4 * s), Vector2(feet.x, base_y), SEAT_CHROME, 3.0 * s)
+	var bx := feet.x - 15 * s * dir   # the backrest stands behind the back
+	_ln2(ci, Vector2(feet.x - 6 * s * dir, hy + 3 * s), Vector2(bx, hy - 4 * s), dark.lightened(0.15), 2.5 * s)
+	_blk(ci, Rect2(bx - 4 * s, hy - 38 * s, 8 * s, 34 * s), seat_c)
+	ci.draw_line(Vector2(bx - 2 * s * dir, hy - 36 * s), Vector2(bx - 2 * s * dir, hy - 6 * s), seat_c.lightened(0.35), maxf(1.0, s))
+	_blk(ci, Rect2(minf(feet.x - 13 * s * dir, feet.x + 17 * s * dir), hy - 1 * s, 30 * s, 6 * s), seat_c)
+	ci.draw_line(Vector2(feet.x - 11 * s, hy), Vector2(feet.x + 11 * s, hy), seat_c.lightened(0.35), maxf(1.0, s))
+
+
 ## One leg of a sitting person (k 0 = the far leg, a touch back and darker; 1 = the near leg over
 ## the lap): the thigh along the seat, the knee bent, the shin down to the floor, the foot flat.
 static func _sit_leg(ci: CanvasItem, feet: Vector2, s: float, dir: float, pants: Color, k: int) -> void:
