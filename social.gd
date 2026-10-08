@@ -152,8 +152,10 @@ static func grown(p: Dictionary, field: String) -> int:
 	var mine := 0
 	if field == "likes" and st()["liked"].has(str(p["id"])):
 		mine = 1
-	elif field == "replies" and p.get("replied", false):
-		mine = 1   # your own reply counts
+	elif field == "replies" and p.has("thread"):
+		for r in p["thread"]:
+			if str(r["by"]) == "me" or int(r.get("at", 0)) > int(p.get("at", 0)) + 3:
+				mine += 1   # your replies and the answers that came later count on top
 	elif field == "reposts" and reposted(int(p["id"])):
 		mine = 1
 	return int(float(p.get(field, 0)) * k) + mine
@@ -257,7 +259,7 @@ static func repost(id: int) -> void:
 	count_post()
 	var wid := wid_of_post(id)
 	if wid >= 0:
-		GameData.rel_add(wid, REL_REPOST, GameData.REL_SOCIAL_CAP)
+		rel_social(wid, REL_REPOST, day_factor(str(p["by"])), GameData.REL_SOCIAL_CAP)
 
 
 ## Hashtags most used over the last two weeks.
@@ -453,25 +455,30 @@ static func publish(tone: String) -> void:
 	var watched: bool = d.get("watch", false)
 	var w1 := int(d.get("wid", -1))
 	var w2 := int(d.get("lwid", -1)) if watched else -1
+	# (1.67) diminishing gains: the same pilot (or, with nobody named, the same tag) counts less each time today
+	var k1 := day_factor("w:%d" % w1 if w1 >= 0 else "#" + str(d.get("tag", "")))
+	var k2 := day_factor("w:%d" % w2) if w2 >= 0 else 1.0
 	match tone:
 		"humble":
-			f *= 1.005
+			f *= 1.0 + 0.005 * k1
 			# kind words: your opponent (or both of them, when you watched) warm up a little
-			GameData.rel_add(w1, REL_HUMBLE_WATCHED if watched else REL_HUMBLE, GameData.REL_SOCIAL_CAP)
-			GameData.rel_add(w2, REL_HUMBLE_WATCHED, GameData.REL_SOCIAL_CAP)
+			rel_social(w1, REL_HUMBLE_WATCHED if watched else REL_HUMBLE, k1, GameData.REL_SOCIAL_CAP)
+			rel_social(w2, REL_HUMBLE_WATCHED, k2, GameData.REL_SOCIAL_CAP)
 		"hype":
-			f *= 1.02 if d["won"] else 0.98
+			f *= (1.0 + 0.02 * k1) if d["won"] else 0.98
 			if watched:
-				GameData.rel_add(w1, REL_HYPE_WATCHED, GameData.REL_SOCIAL_CAP)   # the winner loves it
+				rel_social(w1, REL_HYPE_WATCHED, k1, GameData.REL_SOCIAL_CAP)   # the winner loves it
 		"trash", "trash_w", "trash_l":
-			f *= 1.01
+			f *= 1.0 + 0.01 * k1
 			# who takes it personally: your opponent; when you watched, the winner, the loser or both
 			if tone != "trash_l":
-				GameData.rel_add(w1, REL_TRASH)
+				rel_social(w1, REL_TRASH, k1)
 			if tone != "trash_w":
-				GameData.rel_add(w2, REL_TRASH)
+				rel_social(w2, REL_TRASH, k2)
 	s["followers"] = int(round(f))
-	post("me", text, draft_args(), {}, [str(d.get("tag", ""))])
+	var mine := post("me", text, draft_args(), {}, [str(d.get("tag", ""))])
+	if not watched and w1 >= 0:
+		mine["opp_wid"] = w1   # your opponent can turn up in the thread
 	count_post()
 	GameData.Contracts.on_post(tone)
 	s["draft"] = {}
@@ -487,33 +494,207 @@ static func posts_this_week() -> int:
 	return int(st()["posts_week"].get(str(World.abs_week()), 0))
 
 
-## Replies to a post that names you: [tone, text].
-static func reply_options() -> Array:
-	return [["friendly", "Respect, %s. See you in the ring."], ["cool", "We'll see, %s."], ["cutting", "Big words for someone with your record, %s."]]
+# ---------------------------------------------------------------- threads (1.67)
+# Every post has a thread: a few world replies made up when it's first opened (seeded by the post,
+# so they stay the same), your replies, and pilots answering you a part of the day later. A reply is
+# {r (number in the thread), by (account key), text (English template), args, at, to (the reply it
+# answers, -1 = the post), likes}. Replies are always picked from tones, never typed.
+
+## What you can say, by who you're answering: [tone, line, relationship move]. %s = their name.
+const REPLY_SETS := {
+	"pilot": [["friendly", "Respect, %s. See you in the ring.", 5.0], ["joke", "%s, save some of that for Saturday.", 2.0],
+			["doubt", "We'll see about that, %s.", -4.0], ["trash", "Big words for someone with your record, %s.", -10.0]],
+	"news": [["agree", "Called it.", 0.0], ["joke", "My toaster could do better. Actually, my toaster fights.", 0.0],
+			["doubt", "Not buying it. Wait for the next round.", 0.0]],
+	"fan": [["agree", "Couldn't agree more, %s.", 0.0], ["joke", "%s, you need a hobby. Oh, wait.", 0.0], ["doubt", "Hard disagree, %s.", 0.0]],
+	"ad": [["shill", "Good stuff. I'd know.", 0.0], ["mock", "Nobody asked, %s.", 0.0]],
+	"gus": [["friendly", "Best boss in Port Ferrum.", 0.0], ["joke", "Gus, put the phone down and fix my arm.", 0.0]],
+}
+## Followers a reply wins you (a share of what you have), by tone.
+const REPLY_FOL := {"friendly": 0.002, "joke": 0.004, "doubt": 0.003, "trash": 0.01, "agree": 0.002, "shill": 0.002, "mock": 0.005}
+
+## World replies made up when a thread is first opened.
+const FAN_LINES := ["Facts.", "This is why I watch.", "No chance.", "Saturday can't come soon enough.", "Who asked?", "Big if true.",
+		"Legend.", "Overrated, and I'll say it again.", "I was there. Loudest night of the year.", "My dad says the old pilots were better."]
+const FAN_TO_ME := ["Let's go, %s!", "Proud of you, %s.", "%s for the Titanium. Calling it now.", "Rookie luck, %s. Prove me wrong."]
+const OPP_FRIEND := ["Good fight. Next one's mine.", "Respect. I'll buy you a drink at the Bolt."]
+const OPP_RIVAL := ["Enjoy it while it lasts.", "Lucky. Everyone saw it."]
+const OPP_PLAIN := ["Fair enough. See you around.", "Not bad, rookie."]
+## A pilot answering your reply: warm, biting, or cool.
+const ANSWER_WARM := ["Ha. Fair point.", "See you at the Bolt, %s.", "You're all right, %s."]
+const ANSWER_BITE := ["Say that to my face on Saturday.", "Keep talking, %s. It suits you.", "Cute. Real cute."]
+const ANSWER_COOL := ["We'll see.", "Noted."]
+const REL_ANSWER_WARM := 1.0
+const REL_ANSWER_BITE := -3.0
 
 
-static func reply(id: int, tone: String) -> void:
-	var p := find_post(id)
-	if p.is_empty() or p.get("replied", false):
+## What kind of account this is, for the replies it gets.
+static func kind_of(key: String) -> String:
+	if key.begins_with("w:"):
+		return "pilot"
+	if key.begins_with("fan:"):
+		return "fan"
+	if key.begins_with("sp:") or key in ["kane", "partsrus", "rustybolt"]:
+		return "ad"
+	if key == "gus":
+		return "gus"
+	return "news"
+
+
+## The replies you can give to an account: [tone, line, relationship move].
+static func reply_options_for(key: String) -> Array:
+	return REPLY_SETS.get(kind_of(key), REPLY_SETS["news"])
+
+
+## The thread of a post (made up the first time it's opened).
+static func thread(p: Dictionary) -> Array:
+	if not p.has("thread"):
+		var out: Array = []
+		var rng := RandomNumberGenerator.new()
+		rng.seed = int(p["id"]) * 7919 + 17
+		var by := str(p["by"])
+		var n := clampi(int(p.get("replies", 0)), 0, 4)
+		if by == "me":
+			n = maxi(n, 2)
+		var rn := 0
+		# your opponent answers a post about your fight
+		var opp := int(p.get("opp_wid", -1)) if by == "me" else -1
+		if opp >= 0 and not World.pilot(opp).is_empty():
+			var r := GameData.rel_of(opp)
+			var pool: Array = OPP_FRIEND if r >= GameData.REL_FRIEND else (OPP_RIVAL if r <= -15.0 else OPP_PLAIN)
+			out.append({"r": rn, "by": "w:%d" % opp, "text": pool[rng.randi() % pool.size()], "args": [], "at": int(p["at"]) + 1, "to": -1, "likes": rng.randi_range(5, 80)})
+			rn += 1
+		for i in n:
+			var fk := fan_key(rng.randi())
+			if by == "me" and rng.randf() < 0.5:
+				out.append({"r": rn, "by": fk, "text": FAN_TO_ME[rng.randi() % FAN_TO_ME.size()], "args": [GameData.pilot_name], "at": int(p["at"]) + rng.randi_range(0, 2), "to": -1, "likes": rng.randi_range(0, 30)})
+			else:
+				out.append({"r": rn, "by": fk, "text": FAN_LINES[rng.randi() % FAN_LINES.size()], "args": [], "at": int(p["at"]) + rng.randi_range(0, 2), "to": -1, "likes": rng.randi_range(0, 30)})
+			rn += 1
+		p["thread"] = out
+		p["rn"] = rn
+	return p["thread"]
+
+
+## How many replies a thread has that it doesn't show ("+31 more").
+static func more_replies(p: Dictionary) -> int:
+	return maxi(0, grown(p, "replies") - thread(p).size())
+
+
+static func reply_text(r: Dictionary) -> String:
+	return World.news_text({"text": r["text"], "args": r.get("args", [])})
+
+
+static func find_reply(p: Dictionary, rid: int) -> Dictionary:
+	for r in thread(p):
+		if int(r["r"]) == rid:
+			return r
+	return {}
+
+
+## Diminishing gains (1.67): what you do toward the same pilot or account counts in full the first
+## time each day, then half, a quarter, then nothing until tomorrow. peek = don't count this one.
+const DAY_GAIN := [1.0, 0.5, 0.25, 0.0]
+static func day_factor(target: String, peek: bool = false) -> float:
+	if target == "":
+		return 1.0
+	var today := "%d:%d:%s" % [GameData.year, GameData.week, GameData.day]
+	var dg: Dictionary = st().get("day_gain", {})
+	if str(dg.get("_day", "")) != today:
+		dg = {"_day": today}
+		st()["day_gain"] = dg
+	var n := int(dg.get(target, 0))
+	if not peek:
+		dg[target] = n + 1
+	return DAY_GAIN[mini(n, DAY_GAIN.size() - 1)]
+
+
+## A relationship move from something you posted, shrunk by how often you've aimed at them today.
+static func rel_social(wid: int, amount: float, k: float, cap: float = 100.0) -> void:
+	if wid < 0 or absf(amount * k) < 0.01:
 		return
-	p["replied"] = true
-	var acc := account(str(p["by"]))
-	var text := ""
-	for r in reply_options():
+	GameData.rel_add(wid, amount * k, cap if amount > 0.0 else 100.0)
+
+
+## Reply to a post (to = -1) or to a reply in its thread. Followers and the relationship move by the
+## tone (shrunk by today's diminishing gains); a pilot may answer you later.
+static func reply(id: int, tone: String, to: int = -1) -> void:
+	var p := find_post(id)
+	if p.is_empty():
+		return
+	var th := thread(p)
+	var target := str(p["by"]) if to < 0 else str(find_reply(p, to).get("by", ""))
+	if target == "" or target == "me":
+		return
+	var acc := account(target)
+	var line := ""
+	var move := 0.0
+	for r in reply_options_for(target):
 		if r[0] == tone:
-			text = r[1]
+			line = r[1]
+			move = float(r[2])
+	if line == "":
+		return
+	var k := day_factor(target)
 	var wid := int(acc.get("wid", -1))
-	match tone:
-		"friendly":
-			GameData.rel_add(wid, REL_REPLY_FRIENDLY, GameData.REL_SOCIAL_CAP)
-		"cool":
-			st()["followers"] = int(followers() * 1.003)
-		"cutting":
-			st()["followers"] = int(followers() * 1.01)
-			GameData.rel_add(wid, REL_REPLY_CUTTING)
-			GameData.Contracts.on_post("trash")
-	post("me", text, ["@" + str(acc["handle"])], {}, p.get("tags", []))
+	if wid >= 0 and move != 0.0:
+		rel_social(wid, move, k, GameData.REL_SOCIAL_CAP)
+	st()["followers"] = int(followers() * (1.0 + float(REPLY_FOL.get(tone, 0.002)) * k))
+	if tone == "trash":
+		GameData.Contracts.on_post("trash")
+	elif tone == "shill" and target.begins_with("sp:"):
+		GameData.Contracts.on_post("humble")
+	var rid := int(p.get("rn", th.size()))
+	p["rn"] = rid + 1
+	th.append({"r": rid, "by": "me", "text": line, "args": [str(acc["name"])], "at": now_t(), "to": to, "likes": 0, "tone": tone})
+	p["replied"] = true
 	count_post()
+	# a pilot may answer you a part of the day later
+	if wid >= 0:
+		var rel := GameData.rel_of(wid)
+		var rng := RandomNumberGenerator.new()
+		rng.seed = id * 131 + rid * 17 + GameData.week
+		var bite := tone in ["doubt", "trash"]
+		var chance := (0.5 + (0.4 if rel <= GameData.REL_RIVAL else 0.0)) if bite else (0.4 + (0.3 if rel >= 15.0 else 0.0))
+		if GameData.nemeses.has(wid):
+			chance = 1.0
+		var ans: Array = st().get("answers", [])
+		st()["answers"] = ans
+		var waiting := false
+		for a in ans:
+			if int(a["post"]) == id and str(a["by"]) == target:
+				waiting = true   # one answer at a time from each pilot in a thread
+		if not waiting and rng.randf() < chance:
+			ans.append({"post": id, "to": rid, "by": target, "kind": "bite" if bite else ("warm" if tone in ["friendly", "joke"] else "cool"), "due": now_t() + 1})
+
+
+## Answers that are due arrive (called when BotMedia opens and every morning).
+static func tick() -> void:
+	var ans: Array = st().get("answers", [])
+	if ans.is_empty():
+		return
+	var keep: Array = []
+	for a in ans:
+		if int(a["due"]) > now_t():
+			keep.append(a)
+			continue
+		var p := find_post(int(a["post"]))
+		if p.is_empty():
+			continue
+		var th := thread(p)
+		var pool: Array = ANSWER_BITE if a["kind"] == "bite" else (ANSWER_WARM if a["kind"] == "warm" else ANSWER_COOL)
+		var rng := RandomNumberGenerator.new()
+		rng.seed = int(a["post"]) * 31 + int(a["to"])
+		var rid := int(p.get("rn", th.size()))
+		p["rn"] = rid + 1
+		th.append({"r": rid, "by": str(a["by"]), "text": pool[rng.randi() % pool.size()], "args": [GameData.pilot_name], "at": now_t(), "to": int(a["to"]), "likes": rng.randi_range(2, 40)})
+		var wid := int(str(a["by"]).substr(2)) if str(a["by"]).begins_with("w:") else -1
+		if a["kind"] == "bite":
+			GameData.rel_add(wid, REL_ANSWER_BITE)
+		elif a["kind"] == "warm":
+			GameData.rel_add(wid, REL_ANSWER_WARM, GameData.REL_SOCIAL_CAP)
+		note("%s answered you.", [account(str(a["by"]))["name"]], int(p["id"]))
+	st()["answers"] = keep
 
 
 ## A league, the Championship or a cup is over: the top three get a big boost and a post.
@@ -590,6 +771,7 @@ static func read_event(p: Dictionary, kind: String) -> void:
 ## Every morning: the announcers call fight night, Kane runs adverts, the dealer shouts about stock,
 ## a fan or two chatters, and now and then a pilot shows off a sponsor.
 static func daily() -> void:
+	tick()
 	var rng := RandomNumberGenerator.new()
 	rng.seed = GameData.year * 4099 + GameData.week * 31 + GameData.day_index()
 	var day: String = GameData.day

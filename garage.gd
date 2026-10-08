@@ -2226,13 +2226,25 @@ func post_row(p: Dictionary, parent: Control = null) -> void:
 		GameData.save_game()
 		refresh())
 	acts.add_child(rpb)
+	# (1.67) every post has a thread: the reply count opens it
+	var thb := Button.new()
+	thb.flat = true
+	thb.focus_mode = Control.FOCUS_NONE
 	var h := HBoxContainer.new()
+	h.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	h.add_theme_constant_override("separation", 4)
-	h.add_child(Glyph.new("reply", GUI.MUTED, 20))
-	h.add_child(GUI.text(S.fol_text(S.grown(p, "replies")), 13, GUI.MUTED))
-	acts.add_child(h)
-	if p.get("mention", false) and by != "me" and not p.get("replied", false) and not acc.has("logo"):
-		var rb := UI.button(tr("Reply"), open_reply.bind(id), 12, Vector2(80, 28))
+	var mine_in: bool = p.get("replied", false)
+	h.add_child(Glyph.new("reply", GUI.CYAN if mine_in else GUI.MUTED, 20))
+	h.add_child(GUI.text(S.fol_text(S.grown(p, "replies")), 13, GUI.CYAN if mine_in else GUI.MUTED))
+	thb.add_child(h)
+	thb.custom_minimum_size = Vector2(84, 40)
+	h.position = Vector2(4, 10)
+	thb.pressed.connect(open_thread.bind(id, -1))
+	acts.add_child(thb)
+	if by != "me":
+		var rb := UI.button(tr("Reply"), open_thread.bind(id, -1), 12, Vector2(80, 32))
+		if p.get("mention", false) and not mine_in:
+			GUI.mark_new(rb, true)
 		acts.add_child(rb)
 
 
@@ -2300,6 +2312,7 @@ func feed_list(kind: String) -> void:
 ## Home: your post waiting after a fight (three drafts), then everyone you follow.
 func build_home() -> void:
 	var S = GameData.Social
+	S.tick()
 	var drafts: Array = S.drafts()
 	if not drafts.is_empty():
 		# (1.63) the same card the results screen shows after a fight
@@ -2330,6 +2343,7 @@ func _on_skip_post() -> void:
 ## Explore: trending tags, who to follow, everything; or one tag / one account.
 func build_explore() -> void:
 	var S = GameData.Social
+	S.tick()
 	if feed_focus != "":
 		var bar := action_bar()
 		row_button(bar, tr("‹ Explore"), func(): feed_focus = ""; feed_shown = 30; refresh(), true, 130)
@@ -2399,6 +2413,7 @@ func _on_follow(key: String, on: bool) -> void:
 ## Alerts: mentions, follower jumps, offers, rule warnings. Opening it clears the count.
 func build_alerts() -> void:
 	var S = GameData.Social
+	S.tick()
 	if GameData.alerts_unseen > 0:
 		alerts_fresh = GameData.alerts_unseen   # stays marked while you look (refreshes don't clear it)
 		GameData.alerts_unseen = 0
@@ -2436,38 +2451,149 @@ func build_alerts() -> void:
 			break
 
 
-## One post on its own (from an alert): the post, and a reply if it named you.
+## One post on its own (from an alert): its thread.
 func open_post(id: int) -> void:
-	var p: Dictionary = GameData.Social.find_post(id)
-	if p.is_empty():
-		return
-	var col := open_popup(tr("POST"))
-	post_row(p, col)
-	popup_footer.add_child(UI.button(tr("Close"), close_popup, 16, Vector2(0, 46)))
+	open_thread(id, -1)
 
 
-## Reply to a post that names you: friendly, cool or cutting.
-func open_reply(id: int) -> void:
+## A post's thread (1.67): the post, its replies (answers indented under the reply they answer), and
+## what you can say: to the post (to = -1) or to the reply picked with its Reply button.
+func open_thread(id: int, to: int = -1) -> void:
 	var S = GameData.Social
 	var p: Dictionary = S.find_post(id)
 	if p.is_empty():
 		return
-	var acc: Dictionary = S.account(str(p["by"]))
-	var col := open_popup(tr("REPLY TO @%s") % acc["handle"])
+	S.tick()
+	var col := open_popup(tr("THREAD"))
 	post_row(p, col)
-	var hints := {"friendly": tr("They warm up to you (+5)."), "cool": tr("Says nothing, looks calm."), "cutting": tr("Fans love it. They won't (-8).")}
-	for r in S.reply_options():
-		var b := UI.button((tr(str(r[1])) % ("@" + str(acc["handle"]))) + "\n" + str(hints[r[0]]), _on_reply.bind(id, str(r[0])), 13, Vector2(0, 58))
-		col.add_child(b)
-	popup_footer.add_child(UI.button(tr("Back"), close_popup, 16, Vector2(0, 46)))
+	var th: Array = S.thread(p)
+	for r in th:
+		if int(r["to"]) >= 0:
+			continue
+		reply_row(p, r, col, 0, to)
+		for a in th:
+			if int(a["to"]) >= 0 and thread_root(p, a) == int(r["r"]):
+				reply_row(p, a, col, 1, to)
+	var more: int = S.more_replies(p)
+	if more > 0:
+		col.add_child(GUI.text(tr("+%d more replies") % more, 12, GUI.MUTED))
+	var target := str(p["by"]) if to < 0 else str(S.find_reply(p, to).get("by", ""))
+	if target != "" and target != "me":
+		var acc: Dictionary = S.account(target)
+		col.add_child(GUI.text(tr("REPLY TO @%s") % acc["handle"], 14, GUI.YELLOW, "headb"))
+		var k: float = S.day_factor(target, true)
+		if k < 1.0:
+			col.add_child(GUI.text(tr("You've said a lot to them today: it counts less.") if k > 0.0 else tr("Nothing more to gain with them today. Tomorrow it resets."), 12, GUI.AMBER))
+		for r in S.reply_options_for(target):
+			var line: String = tr(str(r[1]))
+			if line.contains("%s"):
+				line = line % str(acc["name"])
+			var b := UI.button(line + "\n" + reply_hint(str(r[0]), float(r[2]), k), _on_thread_reply.bind(id, str(r[0]), to), 13, Vector2(0, 58))
+			col.add_child(b)
+	popup_footer.add_child(UI.button(tr("Close"), close_popup, 16, Vector2(0, 46)))
+	if to >= 0:
+		scroll_to_end(col)
 
 
-func _on_reply(id: int, tone: String) -> void:
-	GameData.Social.reply(id, tone)
+## Scroll a pop-up's list to the bottom once it has laid out (the reply choices sit there).
+func scroll_to_end(col: Control) -> void:
+	var sc: Node = col
+	while sc != null and not (sc is ScrollContainer):
+		sc = sc.get_parent()
+	if sc == null:
+		return
+	for i in 4:
+		await get_tree().process_frame
+		if not is_instance_valid(sc):
+			return
+		var bar: VScrollBar = (sc as ScrollContainer).get_v_scroll_bar()
+		(sc as ScrollContainer).scroll_vertical = int(bar.max_value)
+
+
+## The reply a thread entry hangs under (its first reply to the post).
+func thread_root(p: Dictionary, r: Dictionary) -> int:
+	var cur := r
+	for i in 8:
+		if int(cur["to"]) < 0:
+			return int(cur["r"])
+		var up: Dictionary = GameData.Social.find_reply(p, int(cur["to"]))
+		if up.is_empty():
+			return -1
+		cur = up
+	return -1
+
+
+## What a reply tone will do, in a few words (the relationship move, shrunk by today's gains).
+func reply_hint(tone: String, move: float, k: float) -> String:
+	if move > 0.0:
+		return tr("They warm up to you (+%d).") % roundi(move * k)
+	if move < 0.0:
+		return tr("They won't like it (%d).") % roundi(move * k)
+	return {"agree": tr("Easy likes."), "joke": tr("Fans like a joke."), "doubt": tr("A little heat."), "shill": tr("Sponsors like it."),
+			"mock": tr("Fans love it."), "friendly": tr("Gus pretends not to care.")}.get(tone, "")
+
+
+## One reply in a thread: face, name, when, the line, its likes, and Reply (not on your own).
+func reply_row(p: Dictionary, r: Dictionary, parent: Control, depth: int, sel: int) -> void:
+	var S = GameData.Social
+	var by := str(r["by"])
+	var acc: Dictionary = S.account(by)
+	var margin := MarginContainer.new()
+	margin.add_theme_constant_override("margin_left", 36 * depth)
+	margin.add_theme_constant_override("margin_right", 14)   # clear of the scroll bar
+	parent.add_child(margin)
+	var panel := PanelContainer.new()
+	var sb := GUI.box(GUI.BG if depth == 0 else GUI.ROW, 8, 6)
+	if by == "me":
+		sb.border_color = GUI.YELLOW.darkened(0.4)
+		sb.border_width_left = 3
+	panel.add_theme_stylebox_override("panel", sb)
+	margin.add_child(panel)
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 8)
+	panel.add_child(row)
+	var av := avatar_for(by, 34)
+	av.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
+	row.add_child(av)
+	var col := VBoxContainer.new()
+	col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	col.add_theme_constant_override("separation", 2)
+	row.add_child(col)
+	var nm := str(acc["name"])
+	var rb: String = GameData.rel_text(int(acc["wid"])) if acc.has("wid") else ""
+	var head := GUI.text("%s  @%s · %s %s" % [nm, acc["handle"], S.when_text({"at": r.get("at", 0), "w": p.get("w", 1)}), rb], 12, GUI.YELLOW if by == "me" else GUI.MUTED)
+	head.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	col.add_child(head)
+	var tx := GUI.text(S.reply_text(r), 14, GUI.TEXT)
+	tx.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	col.add_child(tx)
+	var acts := HBoxContainer.new()
+	acts.add_theme_constant_override("separation", 12)
+	col.add_child(acts)
+	var lh := HBoxContainer.new()
+	lh.add_theme_constant_override("separation", 4)
+	lh.add_child(Glyph.new("like", GUI.MUTED, 16))
+	lh.add_child(GUI.text(S.fol_text(int(r.get("likes", 0))), 12, GUI.MUTED))
+	acts.add_child(lh)
+	if by != "me":
+		var b := UI.button(tr("Reply"), _on_pick_reply.bind(int(p["id"]), int(r["r"])), 12, Vector2(76, 30))
+		acts.add_child(b)
+	if sel == int(r["r"]):
+		GUI.mark_new(panel, true)
+
+
+func _on_pick_reply(id: int, rid: int) -> void:
 	close_popup()
+	open_thread(id, rid)
+
+
+func _on_thread_reply(id: int, tone: String, to: int) -> void:
+	GameData.Social.reply(id, tone, to)
+	Sfx.play("click", 0.05)
 	note(tr("Replied."), "equip")
 	GameData.save_game()
 	refresh()
+	open_thread(id, -1)
 
 
 ## Your profile, on top of Posts / Looks / Gear / Contracts.
@@ -4281,7 +4407,7 @@ func open_pilot(wid: int) -> void:
 			GameData.rel_color(wid) if absi(rv) >= 5 else GUI.MUTED, "headb")
 	info.add_child(rl)
 	var why: String = {"NEMESIS": tr("Your nemesis. Only beating them settles it."), "RIVAL": tr("You've got a score to settle with them."),
-			"COLD": tr("No love lost between you."), "FRIENDLY": tr("They like you. Likes, replies and a tag team or two make friends."),
+			"COLD": tr("No love lost between you."), "COLLEAGUE": tr("You get on. Likes, replies and a tag team or two make friends."),
 			"FRIEND": tr("A friend. They'll team up with you at the Rusty Bolt."), "BEST FRIEND": tr("Your best friend in Port Ferrum.")}.get(rw, tr("Like their posts, reply kindly, team up: that makes friends. Fights and trash talk make rivals."))
 	var gl := GUI.text(why, 13, GUI.MUTED)
 	gl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART

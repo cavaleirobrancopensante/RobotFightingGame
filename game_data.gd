@@ -2,7 +2,7 @@ extends Node
 
 # helper scripts, loaded by path so the game also runs without an editor scan
 ## The game's version, shown on the main menu. Bump it with every change (1.1, 1.2, ...).
-const VERSION := "1.66"
+const VERSION := "1.67"
 const Arena = preload("res://arena.gd")
 const I18n = preload("res://i18n.gd")
 const Catalog = preload("res://catalog.gd")
@@ -2147,7 +2147,7 @@ func rel_color(wid: int) -> Color:
 	return Color(0.45, 0.95, 0.5) if rel_of(wid) > 0.0 else Color(1.0, 0.42, 0.3)
 
 
-## The word for it: NEMESIS, RIVAL, COLD, FRIENDLY, FRIEND, BEST FRIEND, or "".
+## The word for it: NEMESIS, RIVAL, COLD, COLLEAGUE, FRIEND, BEST FRIEND, or "".
 func rel_word(wid: int) -> String:
 	var v := rel_of(wid)
 	if v <= REL_NEMESIS or nemeses.has(wid):
@@ -2161,7 +2161,7 @@ func rel_word(wid: int) -> String:
 	if v >= REL_FRIEND:
 		return "FRIEND"
 	if v >= 15.0:
-		return "FRIENDLY"
+		return "COLLEAGUE"
 	return ""
 
 
@@ -2178,12 +2178,30 @@ func is_friend(wid: int) -> bool:
 	return rel_of(wid) >= REL_FRIEND
 
 
-## Every week a little of it fades (a nemesis doesn't).
+## The milestones (1.67): three on each side. Once reached, a relationship settles there instead
+## of fading back to 0 (COLLEAGUE +15, FRIEND +40, BEST FRIEND +80; COLD -15, RIVAL -40, NEMESIS -80).
+## Where a value settles: the milestone between it and 0 (0 if it hasn't reached one).
+func rel_floor(v: float) -> float:
+	if v > 0.0:
+		for m in [80.0, 40.0, 15.0]:
+			if v >= m:
+				return m
+	elif v < 0.0:
+		for m in [-80.0, -40.0, -15.0]:
+			if v <= m:
+				return m
+	return 0.0
+
+
+## Every week what sits between milestones fades toward the milestone below it (toward 0 only
+## before the first one). A nemesis stays at -40 or worse.
 func rel_drift(k: float) -> void:
 	for key in rel.keys():
 		if str(key).begins_with("_"):
 			continue
-		var v := float(rel[key]) * k
+		var v := float(rel[key])
+		var fl := rel_floor(v)
+		v = fl + (v - fl) * k
 		if nemeses.has(int(key)):
 			v = minf(v, -40.0)
 		if absf(v) < 1.0:
@@ -2714,7 +2732,7 @@ func new_year() -> void:
 			continue
 		title_seeds.append(e)
 	World.year_end(rng, leagues)
-	rel_drift(0.7)   # time heals (a bit)
+	rel_drift(0.7)   # time heals a bit, but only down to the last milestone reached
 	start_year()
 
 
