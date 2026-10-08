@@ -545,6 +545,15 @@ static func _stump(ci: CanvasItem, at: Vector2, t: float) -> void:
 static func _set_light(name: String, facing: float) -> void:
 	_L = Light.get_set(name)
 	_from = float(_L.get("from", -0.55)) * facing
+	# (1.83) looked up once here, not for every plate
+	_amb = float(_L.get("amb", 0.3))
+	_key = _L.get("key", Color(1.0, 0.96, 0.88))
+	_rim = _L.get("rim", Color(0, 0, 0, 0))
+
+
+static var _amb := 0.3
+static var _key := Color(1.0, 0.96, 0.88)
+static var _rim := Color(0, 0, 0, 0)
 
 
 static func _lit() -> bool:
@@ -552,12 +561,11 @@ static func _lit() -> bool:
 
 
 static func _shadow_col(c: Color) -> Color:
-	return c.darkened(float(_L.get("amb", 0.3)))
+	return c.darkened(_amb)
 
 
 static func _key_col(alpha: float = 1.0) -> Color:
-	var k: Color = _L.get("key", Color(1.0, 0.96, 0.88))
-	return Color(k.r, k.g, k.b, alpha * float(GRADE_EDGE[clampi(_grade, 0, 5)]))
+	return Color(_key.r, _key.g, _key.b, alpha * float(GRADE_EDGE[clampi(_grade, 0, 5)]))
 
 
 ## Which way the key light is, from a part (local, unit length).
@@ -592,6 +600,12 @@ static func _plate(ci: CanvasItem, pts: PackedVector2Array, c: Color) -> void:
 	if not _lit() or pts.size() < 3:
 		return
 	var bb := _bounds_of(pts)
+	var n_pts := pts.size()
+	if bb.size.x < 7.0 and bb.size.y < 7.0:
+		# (1.83) tiny bits (rivets, trim ends): just the outline, the light can't show on them
+		ci.draw_polyline(pts, OUTLINE, 2.0)
+		ci.draw_line(pts[n_pts - 1], pts[0], OUTLINE, 2.0)
+		return
 	var cut: PackedVector2Array
 	if absf(_from) < 0.2:
 		var bh := bb.size.y * 0.3   # light from above: the shadow is the bottom of the plate
@@ -600,31 +614,30 @@ static func _plate(ci: CanvasItem, pts: PackedVector2Array, c: Color) -> void:
 		var sw := bb.size.x * 0.34
 		var x := bb.position.x - 2.0 if _from > 0.0 else bb.end.x - sw
 		cut = PackedVector2Array([Vector2(x, bb.position.y - 2), Vector2(x + sw + 2, bb.position.y - 2), Vector2(x + sw + 2, bb.end.y + 2), Vector2(x, bb.end.y + 2)])
-	var shade := _shadow_col(c)
+	var shade := c.darkened(_amb)
 	for poly in Geometry2D.intersect_polygons(pts, cut):
 		if (poly as PackedVector2Array).size() >= 3:
 			ci.draw_colored_polygon(poly, shade)
-	var closed := pts.duplicate()
-	closed.append(pts[0])
-	ci.draw_polyline(closed, OUTLINE, 2.5)
+	ci.draw_polyline(pts, OUTLINE, 2.5)
+	ci.draw_line(pts[n_pts - 1], pts[0], OUTLINE, 2.5)
 	var cen := bb.get_center()
-	var rim: Color = _L.get("rim", Color(0, 0, 0, 0))
-	var n_pts := pts.size()
+	var rim_on := _rim.a > 0.0 and absf(_from) >= 0.2
+	var key := _key_col(0.95)
+	var kw := 2.2 if _grade < 5 else 2.8
 	for i in n_pts:
 		var a: Vector2 = pts[i]
 		var b: Vector2 = pts[(i + 1) % n_pts]
 		var d := b - a
-		if d.length() < 5.0:
+		var dl := d.length()
+		if dl < 5.0:
 			continue
-		var n := d.orthogonal().normalized()
+		var n := Vector2(-d.y, d.x) / dl
 		if n.dot((a + b) * 0.5 - cen) < 0.0:
 			n = -n
-		var a2 := a.lerp(b, 0.1) - n * 2.6
-		var b2 := a.lerp(b, 0.9) - n * 2.6
 		if n.y < -0.5:
-			ci.draw_line(a2, b2, _key_col(0.95), 2.2 if _grade < 5 else 2.8)
-		elif rim.a > 0.0 and absf(_from) >= 0.2 and n.x * _from < -0.6:
-			ci.draw_line(a2, b2, rim, 1.6)
+			ci.draw_line(a + d * 0.1 - n * 2.6, a + d * 0.9 - n * 2.6, key, kw)
+		elif rim_on and n.x * _from < -0.6:
+			ci.draw_line(a + d * 0.1 - n * 2.6, a + d * 0.9 - n * 2.6, _rim, 1.6)
 	if _grade >= 5 and bb.size.x > 20.0:
 		# titanium: a brushed sheen across the plate
 		ci.draw_line(Vector2(bb.position.x + bb.size.x * 0.2, bb.position.y + bb.size.y * 0.55), Vector2(bb.position.x + bb.size.x * 0.55, bb.position.y + bb.size.y * 0.3), Color(1, 1, 1, 0.22), 2.0)
@@ -643,9 +656,8 @@ static func _round(ci: CanvasItem, cen: Vector2, r: float, c: Color) -> void:
 		return
 	var ang := tw.angle()
 	ci.draw_arc(cen, r - 2.4, ang - 0.75, ang + 0.75, 10, _key_col(0.95), 2.0)
-	var rim: Color = _L.get("rim", Color(0, 0, 0, 0))
-	if rim.a > 0.0 and absf(_from) >= 0.2:
-		ci.draw_arc(cen, r - 2.0, ang + PI - 0.55, ang + PI + 0.55, 8, rim, 1.5)
+	if _rim.a > 0.0 and absf(_from) >= 0.2:
+		ci.draw_arc(cen, r - 2.0, ang + PI - 0.55, ang + PI + 0.55, 8, _rim, 1.5)
 
 
 ## An arm or leg segment: a dark outline, the paint, a shadow down the side away from the light,

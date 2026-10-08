@@ -9,6 +9,7 @@ extends RefCounted
 ## All four are free (SIL Open Font License, see fonts/OFL-*.txt).
 
 const UI = preload("res://ui.gd")
+const I18n = preload("res://i18n.gd")
 
 const BG := Color(0.063, 0.063, 0.082)         # #101015
 const PANEL := Color(0.04, 0.04, 0.063, 0.6)   # see-through dark panels over the scene
@@ -806,6 +807,65 @@ class EventIcon extends Control:
 ## you watched), with what each does and everyone's (+52) / (-61) next to their names, then Say
 ## nothing. Used on BotMedia's Home and on the results screen of a fight (1.63).
 ## Fill avatar first if you want your face in the corner, connect posted / skipped, then build().
+## (1.83) "Post this?" before anything goes up on BotMedia: the words, what goes with it, what it
+## does, and Post it / Back. A layer over everything (the fight's results too).
+static func confirm_post(host: Node, text_bb: String, hint: String, media: String, on_yes: Callable) -> void:
+	var G = load("res://garage_ui.gd")
+	var layer := CanvasLayer.new()
+	layer.layer = 40
+	host.get_tree().root.add_child(layer)
+	var dim := ColorRect.new()
+	dim.color = Color(0, 0, 0, 0.7)
+	dim.set_anchors_preset(Control.PRESET_FULL_RECT)
+	dim.mouse_filter = Control.MOUSE_FILTER_STOP
+	layer.add_child(dim)
+	var center := CenterContainer.new()
+	center.set_anchors_preset(Control.PRESET_FULL_RECT)
+	dim.add_child(center)
+	var panel := PanelContainer.new()
+	var sb: StyleBoxFlat = G.box(Color(0.075, 0.075, 0.095), 14, 18)
+	sb.border_color = YELLOW
+	sb.set_border_width_all(2)
+	panel.add_theme_stylebox_override("panel", sb)
+	center.add_child(panel)
+	var col := VBoxContainer.new()
+	col.add_theme_constant_override("separation", 12)
+	col.custom_minimum_size = Vector2(minf(620.0, host.get_viewport().get_visible_rect().size.x * 0.8), 0)
+	panel.add_child(col)
+	col.add_child(G.text(I18n.t("POST THIS?"), 22, YELLOW, "headb"))
+	var t := RichTextLabel.new()
+	t.bbcode_enabled = true
+	t.fit_content = true
+	t.scroll_active = false
+	t.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	t.add_theme_font_override("normal_font", G.body())
+	t.add_theme_font_override("bold_font", G.headb())
+	t.add_theme_font_size_override("normal_font_size", UI.tsz(18))
+	t.add_theme_font_size_override("bold_font_size", UI.tsz(18))
+	t.add_theme_color_override("default_color", TEXT)
+	t.text = "“" + text_bb + "”"
+	col.add_child(t)
+	if media != "":
+		col.add_child(G.text(media, 14, CYAN, "headb"))
+	if hint != "":
+		var h: Label = G.text(hint, 14, MUTED)
+		h.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		col.add_child(h)
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 12)
+	col.add_child(row)
+	var back := UI.button(I18n.t("Back"), func(): Sfx.play("click"); layer.queue_free(), 18, Vector2(0, 56))
+	back.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.add_child(back)
+	var yes := UI.button(I18n.t("Post it"), func(): layer.queue_free(); on_yes.call(), 18, Vector2(0, 56))
+	yes.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	yes.add_theme_color_override("font_color", Color(0.08, 0.08, 0.08))
+	yes.add_theme_color_override("font_hover_color", Color(0.08, 0.08, 0.08))
+	for st in ["normal", "hover", "pressed"]:
+		yes.add_theme_stylebox_override(st, G.box(YELLOW if st != "hover" else YELLOW.lightened(0.15), 10, 8))
+	row.add_child(yes)
+
+
 class DraftCard extends PanelContainer:
 	signal posted(tone: String)
 	signal skipped
@@ -906,8 +966,7 @@ class DraftCard extends PanelContainer:
 					else:
 						pc.add_theme_stylebox_override("panel", G.box(BG, 8, 8))
 						if down["at"].x >= 0.0 and (e.position - down["at"]).length() < 14.0 and not _sent:
-							_sent = true
-							posted.emit(tone)
+							_ask(tone, tr(str(d[1])) % bb_args, str(names[tone]) + "  ·  " + str(hints[tone]))
 						down["at"] = Vector2(-1, -1))
 				pc.add_child(v)
 				row = pc
@@ -917,7 +976,7 @@ class DraftCard extends PanelContainer:
 				b.custom_minimum_size = Vector2(0, row_h)
 				for k in ["normal", "hover", "pressed", "hover_pressed"]:
 					b.add_theme_stylebox_override(k, G.box(BG if k == "normal" else BG.lightened(0.08), 8, 6))
-				b.pressed.connect(func(): posted.emit(tone))
+				b.pressed.connect(func(): _ask(tone, tr(str(d[1])) % bb_args, str(names[tone]) + "  ·  " + str(hints[tone])))
 				v.set_anchors_preset(Control.PRESET_FULL_RECT)
 				v.offset_left = 10
 				v.offset_right = -10
@@ -952,6 +1011,23 @@ class DraftCard extends PanelContainer:
 		sp.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		bar.add_child(sp)
 		bar.add_child(UI.button(tr("Say nothing"), func(): skipped.emit(), 14 if wrap else 12, Vector2(170, 46) if wrap else Vector2(130, 32)))
+
+	## Ask first (1.83): a misclick on HUMBLE when you meant TRASH TALK shouldn't go up.
+	func _ask(tone: String, text_bb: String, hint: String) -> void:
+		var dr: Dictionary = GameData.Social.st()["draft"]
+		var pic: Dictionary = dr.get("pic", {})
+		var media := ""
+		if str(pic.get("kind", "")) == "clip":
+			var c: Dictionary = GameData.clip(str(pic.get("id", "")))
+			media = tr("With the clip: %s") % GameData.Clips.kind_name(c) if not c.is_empty() else ""
+		elif not pic.is_empty():
+			media = tr("With the photo of the fight")
+		var G = load("res://garage_ui.gd")
+		G.confirm_post(self, text_bb, hint, media, func():
+			if _sent:
+				return
+			_sent = true
+			posted.emit(tone))
 
 	func _pick_media(which: String) -> void:
 		var dr: Dictionary = GameData.Social.st()["draft"]

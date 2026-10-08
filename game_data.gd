@@ -2,7 +2,7 @@ extends Node
 
 # helper scripts, loaded by path so the game also runs without an editor scan
 ## The game's version, shown on the main menu. Bump it with every change (1.1, 1.2, ...).
-const VERSION := "1.82"
+const VERSION := "1.83"
 const Arena = preload("res://arena.gd")
 const I18n = preload("res://i18n.gd")
 const Catalog = preload("res://catalog.gd")
@@ -604,6 +604,8 @@ func new_game() -> void:
 	money = int(settings.get("start_money", START_MONEY))
 	pilot_name = "Rook"
 	pilot_look = DEFAULT_PILOT_LOOK.duplicate()
+	places_been = ["home"]
+	pilot_at = "home"
 	owned_controllers = ["gamepad"]
 	spare_controllers = []
 	tips_seen = []
@@ -1063,6 +1065,7 @@ const WRECK_TIME := 1.5            # rebuilding a wreck
 const MECHANIC_WAGE := 0.3         # a mechanic's monthly wage: this share of your running costs
 const OVERTIME_PRICE := 80         # per pair of hands per night, x3 a grade
 var phase := 0                     # 0 morning, 1 afternoon, 2 evening (fights are in the evening)
+var places_been: Array = ["home"]   # (1.83) places you've been to (quick buttons over the map)
 var pilot_at := "home"             # (1.77) where your pilot is in Port Ferrum (the City map)
 var pilot_used := 0.0              # (1.77) hours of this part of the day your pilot has spent going places
 var jobs: Array = []               # the job board, in order: {kind: "repair"/"swap", uid, robot, slot, total, done, rush, start}
@@ -5036,7 +5039,7 @@ func save_game(path: String = "") -> bool:
 		"owned_chips": owned_chips, "chips": chips, "circuit": circuit, "circuit_offers": circuit_offers,
 		"circuits_won": circuits_won, "pickup": pickup, "setups": setups, "custom_parts": custom_parts,
 		"year": year, "week": week, "day": day, "rank": rank, "event": {}, "leagues": leagues, "title_seeds": title_seeds, "trophies": trophies, "career_stats": career_stats,
-		"pecking_k": pecking_k(), "style": style, "style_locked": style_locked, "shop_stock": shop_stock, "chip_stock": chip_stock, "scout": scout, "wingmen": wingmen, "sending": sending, "pilot_look": pilot_look, "owned_controllers": owned_controllers, "spare_controllers": spare_controllers, "tips_seen": tips_seen, "tips_log": tips_log, "h2h": h2h, "rivals": rivals, "rel": rel, "nemeses": nemeses, "pending_talk": pending_talk, "inbox": inbox, "inbox_seen": inbox_seen, "social": social, "pilot_at": pilot_at, "pilot_used": pilot_used, "film_index": film_index, "film_pending": film_pending, "films_seen": films_seen, "contracts": contracts, "alerts_unseen": alerts_unseen, "day_log": day_log, "ledger": ledger, "patched_week": patched_week, "gus_alerts": gus_alerts, "tour": tour, "streak": streak, "pub_seen": pub_seen, "digs_left": digs_left, "dig_luck": dig_luck, "bills_note": bills_note, "fight_log": fight_log, "bets": bets, "world": world,
+		"pecking_k": pecking_k(), "style": style, "style_locked": style_locked, "shop_stock": shop_stock, "chip_stock": chip_stock, "scout": scout, "wingmen": wingmen, "sending": sending, "pilot_look": pilot_look, "owned_controllers": owned_controllers, "spare_controllers": spare_controllers, "tips_seen": tips_seen, "tips_log": tips_log, "h2h": h2h, "rivals": rivals, "rel": rel, "nemeses": nemeses, "pending_talk": pending_talk, "inbox": inbox, "inbox_seen": inbox_seen, "social": social, "pilot_at": pilot_at, "places_been": places_been, "pilot_used": pilot_used, "film_index": film_index, "film_pending": film_pending, "films_seen": films_seen, "contracts": contracts, "alerts_unseen": alerts_unseen, "day_log": day_log, "ledger": ledger, "patched_week": patched_week, "gus_alerts": gus_alerts, "tour": tour, "streak": streak, "pub_seen": pub_seen, "digs_left": digs_left, "dig_luck": dig_luck, "bills_note": bills_note, "fight_log": fight_log, "bets": bets, "world": world,
 	}
 	var f := FileAccess.open(slot_path(save_slot) if path == "" else path, FileAccess.WRITE)
 	if f == null:
@@ -5182,6 +5185,7 @@ func load_game(slot: int = -1, mine: bool = false) -> String:
 				clips = cd0
 		clips_dirty = false
 	pilot_at = str(data.get("pilot_at", "home"))
+	places_been = data.get("places_been", ["home"])
 	pilot_used = float(data.get("pilot_used", 0.0))
 	film_index = data.get("film_index", {})
 	film_pending = data.get("film_pending", [])
@@ -5962,6 +5966,8 @@ func travel_to(place: String) -> int:
 		return 0
 	var h := travel_hours(pilot_at, place)
 	pilot_at = place
+	if not places_been.has(place):
+		places_been.append(place)   # (1.83) the City's quick buttons
 	var passed := spend_pilot(h)
 	save_game()
 	return passed

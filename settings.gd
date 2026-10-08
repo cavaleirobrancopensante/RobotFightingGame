@@ -15,6 +15,7 @@ var diff_button: Button
 var delete_button: Button
 var team_button: Button
 var battery_button: Button
+var fastfight_button: Button
 var errors_button: Button
 var log_overlay: Control
 var copy_button: Button
@@ -107,6 +108,7 @@ func _ready() -> void:
 	delete_button = UI.button("", _on_walkin, 19, Vector2(470, 50))   # (save files live under Load Game)
 	team_button = UI.button("", _on_team, 19, Vector2(470, 50))
 	battery_button = UI.button("", _on_battery, 19, Vector2(470, 50))
+	fastfight_button = UI.button("", _on_fast_fights, 19, Vector2(470, 50))
 	errors_button = UI.button("", _on_errors, 19, Vector2(470, 50))
 	reset_button = UI.button("", _on_reset, 19, Vector2(470, 50))
 	edges_button = UI.button("", _on_edges, 19, Vector2(470, 50))
@@ -125,7 +127,7 @@ func _ready() -> void:
 	plus.disabled = lv >= UI.TEXT_LEVELS.size() - 1
 	for c in [minus, text_label, plus]:
 		text_row.add_child(c)
-	for b in [text_row, sound_button, music_button, shake_button, battery_button, size_button, edges_button,
+	for b in [text_row, sound_button, music_button, shake_button, battery_button, fastfight_button, size_button, edges_button,
 			UI.button("Edit controls (move & resize)", _on_controls, 19, Vector2(470, 50)), team_button,
 			UI.button("Difficulty...", _on_difficulty, 19, Vector2(470, 50)), delete_button, errors_button, reset_button]:
 		grid.add_child(b)
@@ -143,6 +145,7 @@ func refresh() -> void:
 	edges_button.text = tr("Screen edges: %s") % tr(EDGE_NAMES[clampi(int(s.get("edges", 0)), 0, EDGE_NAMES.size() - 1)])
 	var n := GameData.error_count()
 	errors_button.text = tr("Error log (%d)") % n if n > 0 else tr("Error log (no errors)")
+	fastfight_button.text = tr("Fight graphics: %s") % tr("FAST (lower resolution)" if s.get("fast_fights", false) else "SHARP")
 	battery_button.text = tr("Battery saver: %s") % tr("ON (30 fps)" if s.get("battery_saver", false) else "OFF (60 fps)")
 	team_button.text = tr("Team controls: %s") % tr("SPLIT (a pad per robot)" if s.get("team_controls", "linked") == "split" else "LINKED (one pad for all)")
 	delete_button.text = tr("Walk-in show: %s") % tr("OFF (straight to the countdown)" if s.get("skip_intros", false) else "ON")
@@ -312,6 +315,13 @@ func _on_close_errors() -> void:
 		log_overlay.queue_free()
 		log_overlay = null
 	refresh()
+
+
+func _on_fast_fights() -> void:
+	GameData.settings["fast_fights"] = not GameData.settings.get("fast_fights", false)
+	GameData.save_settings()
+	refresh()
+	Sfx.play("click")
 
 
 func _on_battery() -> void:

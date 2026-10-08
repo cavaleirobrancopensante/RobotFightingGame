@@ -1766,7 +1766,7 @@ func _on_sell_picked_confirmed() -> void:
 
 
 ## Jump to a section (and one of its toggles).
-func go_to(t: String, key: String = "") -> void:
+func go_to(t: String, key: String = "", then: Callable = Callable()) -> void:
 	if t == "Storage":
 		t = "Bay"
 		key = "storage"
@@ -1774,6 +1774,10 @@ func go_to(t: String, key: String = "") -> void:
 	var place := place_of(t, key)
 	var passed := 0
 	var began := false
+	if place != "" and place != GameData.pilot_at and GameData.place_locked(place) == "":
+		# (1.83) no teleporting: the City map opens and your figure walks there first
+		walk_there(place, t, key, then)
+		return
 	if place != "" and place != GameData.pilot_at and GameData.place_locked(place) == "":
 		began = true
 		var th := GameData.travel_hours(GameData.pilot_at, place)
@@ -1790,6 +1794,26 @@ func go_to(t: String, key: String = "") -> void:
 		time_end()
 	elif began:
 		tp = {}
+	if then.is_valid():
+		then.call()
+
+
+## (1.83) Shortcuts that lead out into the city show the walk: the map, the route, the little figure,
+## then the place opens (on the toggle the shortcut asked for) and `then` runs.
+var arrive_next := {}
+
+
+func walk_there(place: String, t: String, key: String, then: Callable) -> void:
+	close_popup()
+	arrive_next = {"place": place, "tab": t, "key": key, "then": then}
+	tab = "City"
+	city_pick = place
+	refresh()
+	(func():
+		if city_map != null and is_instance_valid(city_map):
+			city_map.go(place)
+		else:
+			_on_city_arrived(place)).call_deferred()
 
 
 func _on_storage_filter(key: String) -> void:
@@ -2393,7 +2417,7 @@ func post_row(p: Dictionary, parent: Control = null) -> void:
 	thb.pressed.connect(open_thread.bind(id, -1))
 	acts.add_child(thb)
 	if by != "me":
-		var rb := UI.button(tr("Reply"), open_thread.bind(id, -1), 12, Vector2(80, 32))
+		var rb := UI.button(tr("Reply"), open_thread.bind(id, -1, true), 12, Vector2(80, 32))
 		if p.get("mention", false) and not mine_in:
 			GUI.mark_new(rb, true)
 		acts.add_child(rb)
@@ -2782,7 +2806,7 @@ func open_compose_tone(topic: String, arg: String, wid: int) -> void:
 				"shill": tr("Sponsors like it."), "thanks": tr("Fans love it.")}.get(tone, "")
 		if wid >= 0 and S.COMPOSE_REL.has(tone):
 			hint += "  " + reply_hint(tone, float(S.COMPOSE_REL[tone]), k)
-		col.add_child(UI.button(line + "\n" + hint, _on_compose.bind(topic, tone, arg, wid), 13, Vector2(0, 58)))
+		col.add_child(UI.button(line + "\n" + hint, func(): GUI.confirm_post(self, line, hint, "", _on_compose.bind(topic, tone, arg, wid)), 13, Vector2(0, 58)))
 	popup_footer.add_child(UI.button(tr("‹ Back"), open_compose, 16, Vector2(0, 46)))
 
 
@@ -2799,7 +2823,7 @@ func _on_compose(topic: String, tone: String, arg: String, wid: int) -> void:
 
 ## A post's thread (1.67): the post, its replies (answers indented under the reply they answer), and
 ## what you can say: to the post (to = -1) or to the reply picked with its Reply button.
-func open_thread(id: int, to: int = -1) -> void:
+func open_thread(id: int, to: int = -1, replying: bool = false) -> void:
 	var S = GameData.Social
 	var p: Dictionary = S.find_post(id)
 	if p.is_empty():
@@ -2832,8 +2856,8 @@ func open_thread(id: int, to: int = -1) -> void:
 			var b := UI.button(line + "\n" + reply_hint(str(r[0]), float(r[2]), k), _on_thread_reply.bind(id, str(r[0]), to), 13, Vector2(0, 58))
 			col.add_child(b)
 	popup_footer.add_child(UI.button(tr("Close"), close_popup, 16, Vector2(0, 46)))
-	if to >= 0:
-		scroll_to_end(col)
+	if to >= 0 or replying:
+		scroll_to_end(col)   # (1.83) Reply takes you straight to the choices
 
 
 ## Scroll a pop-up's list to the bottom once it has laid out (the reply choices sit there).
@@ -3400,6 +3424,8 @@ func build_slot(slot: String) -> void:
 			var d := GameData.part_def(sp["id"])
 			var row := make_tap_row(part_icon(d, GameData.hp_ratio(sp)), d["name"], "[color=#f2b84a]" + GameData.off_label_text(d, slot) + "[/color]",
 					_on_detail.bind({"src": "inv", "uid": sp["uid"]}), tr(str(d["kind"]).to_upper()), is_detail("inv", sp["uid"]))
+			if not GameData.UNDAMAGEABLE.has(d["kind"]):
+				row.add_child(hp_widget(sp))   # (1.83) off-label spares show their health like any other
 			row_button(row, tr("Fit · %s") % GameData.hours_text(GameData.swap_hours(d)), _on_equip.bind(sp["uid"], slot), true, 110)
 	# never stuck: if this slot is empty and there's nothing to fit, Gus has some junk lying around
 	if p.is_empty() and options.is_empty() and slot in ["head", "torso"]:
@@ -4046,7 +4072,8 @@ func _on_dig(kind: String = "") -> void:
 	# (1.77) digging happens at the scrapyard, and takes an hour of your day
 	var passed := 0
 	if GameData.pilot_at != "scrapyard":
-		passed += GameData.travel_to("scrapyard")
+		go_to("Parts", "scrap", _on_dig.bind(kind))   # (1.83) walk there on the map first
+		return
 	var res := GameData.dig_scrap(kind)
 	passed += GameData.spend_pilot(GameData.DIG_HOURS)
 	if passed > 0:
@@ -5513,9 +5540,10 @@ func _plan_do(what: String) -> void:
 			GameData.save_game()
 		"dig":
 			close_popup()
-			plan_after_find = true
+			var walking := GameData.pilot_at != "scrapyard"
+			plan_after_find = not walking   # walking out to the scrapyard: you stay there after
 			_on_dig("")
-			if overlay == null:
+			if not walking and overlay == null:
 				plan_after_find = false
 				open_day_plan()
 			return
@@ -7095,6 +7123,27 @@ func build_city() -> void:
 		move_child(city_map, bubble.get_index())
 	city_map.selected = city_pick
 	city_map.visible = true
+	# (1.83) places you've been to: one tap from here, over the top of the map
+	if city_quick == null or not is_instance_valid(city_quick):
+		city_quick = HFlowContainer.new()
+		city_quick.add_theme_constant_override("h_separation", 6)
+		city_quick.add_theme_constant_override("v_separation", 6)
+		city_quick.alignment = FlowContainer.ALIGNMENT_END   # top right: Gus's bubble lives top left
+		city_map.add_child(city_quick)
+	for c in city_quick.get_children():
+		c.queue_free()
+	city_quick.position = Vector2(18, 44)
+	city_quick.size = Vector2(maxf(200.0, city_map.size.x - 36.0), 0)
+	var quick := 0
+	for pl in ["home", "pub", "partsrus", "scrapyard"]:
+		if pl == GameData.pilot_at or not GameData.places_been.has(pl) or GameData.place_locked(pl) != "":
+			continue
+		var h := GameData.travel_hours(GameData.pilot_at, pl)
+		var qb := UI.button("%s ▸ %s" % [tr(str(GameData.PLACES[pl]["name"])), hours_text(h)], _on_city_quick.bind(pl), 13, Vector2(0, 40))
+		qb.add_theme_stylebox_override("normal", GUI.box(Color(0.04, 0.05, 0.07, 0.88), 8, 6))
+		city_quick.add_child(qb)
+		quick += 1
+	city_quick.visible = quick > 0
 	# your time this part of the day
 	list_box.add_child(GUI.text(tr("YOUR TIME THIS %s") % tr(GameData.PHASE_NAMES[GameData.phase]), 13, GUI.MUTED, "headb"))
 	var bar := GUI.BlockBar.new()
@@ -7110,6 +7159,18 @@ func build_city() -> void:
 	city_card.add_theme_constant_override("separation", 8)
 	list_box.add_child(city_card)
 	fill_city_card()
+
+
+var city_quick: HFlowContainer = null
+
+
+## A quick button over the map: pick the place and walk there in one tap.
+func _on_city_quick(place: String) -> void:
+	city_pick = place
+	if city_map != null and is_instance_valid(city_map):
+		city_map.selected = place
+	fill_city_card()
+	_on_city_go(place)
 
 
 func _on_city_pick(place: String) -> void:
@@ -7182,10 +7243,21 @@ func _on_city_arrived(place: String) -> void:
 	note(tr("At %s. That took %s.") % [tr(str(GameData.PLACES[place]["name"])), hours_text(h)])
 	city_pick = ""
 	enter_place(place)
+	var then: Callable = Callable()
+	if str(arrive_next.get("place", "")) == place:
+		# the shortcut that sent you here: its own toggle, then whatever it was for (a dig)
+		tab = str(arrive_next["tab"])
+		if str(arrive_next["key"]) != "":
+			set_seg(str(arrive_next["key"]))
+		then = arrive_next["then"]
+		refresh()
+	arrive_next = {}
 	if passed > 0:
 		time_end()
 	else:
 		tp = {}
+	if then.is_valid():
+		then.call()
 
 
 ## Walk in the door: the place's own screen and scene.

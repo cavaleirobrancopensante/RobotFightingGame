@@ -682,11 +682,19 @@ func _ready() -> void:
 	Sfx.play("crowd_cheer", 0.0, -9.0)   # the crowd warms up quietly; it gets loud on big moments
 	cheer = 3.0
 	rec_start()
+	# (1.83) Fast fight graphics: the fight is drawn at the game's own size and stretched to the
+	# screen (far fewer pixels on a sharp phone screen); everything else stays sharp
+	if GameData.settings.get("fast_fights", false) and get_tree().current_scene == self:
+		get_tree().root.content_scale_mode = Window.CONTENT_SCALE_MODE_VIEWPORT
+		fast_view = true
 
 
 ## Robots point at each other (foe), which would keep them alive forever after the fight.
 ## Break those links when the fight screen closes so the memory is freed.
 func _exit_tree() -> void:
+	if fast_view:
+		get_tree().root.content_scale_mode = Window.CONTENT_SCALE_MODE_CANVAS_ITEMS
+		fast_view = false
 	if demo_move != "":
 		Sfx.quiet = maxi(0, Sfx.quiet - 1)
 	if rec_on and not simming:
@@ -704,6 +712,8 @@ func _exit_tree() -> void:
 	focus = null
 	if arena_layer:
 		arena_layer.fight = null
+		if arena_layer.painter:
+			arena_layer.painter.fight = null
 	if replay.is_empty() and not simming:
 		OS.low_processor_usage_mode = true   # menus only redraw when something changes
 
@@ -1877,7 +1887,7 @@ func _process(delta: float) -> void:
 	arena_redraw_t -= delta
 	if arena_redraw_t <= 0.0 and arena_layer:
 		arena_redraw_t = 1.0 / ARENA_FPS
-		arena_layer.queue_redraw()
+		arena_layer.refresh()
 	redraw_all()
 
 
@@ -3617,7 +3627,50 @@ func draw_hitboxes(off: Vector2) -> void:
 
 ## The arena lives on its own layer behind the fighters and is redrawn ~24 times a second
 ## (the crowd doesn't need 60), which saves a good chunk of work every frame.
+## (1.83) The arena behind the fight. Drawing it is most of a frame's work (the crowd alone is
+## hundreds of shapes), so it's painted into its own texture ARENA_FPS times a second and the fight
+## shows that texture: one quad a frame instead of ~1800 draw calls. A bit bigger than the screen
+## (PAD) and drawn at CACHE_RES so the camera's zoom stays sharp.
 class ArenaLayer extends Node2D:
+	var fight: Node2D
+	var sv: SubViewport = null
+	var painter: ArenaPainter = null
+	const PAD := 40.0
+	const CACHE_RES := 1.0
+
+	func _build() -> void:
+		var scr: Vector2 = fight.screen
+		sv = SubViewport.new()
+		sv.disable_3d = true
+		sv.transparent_bg = false
+		sv.size = Vector2i(((scr + Vector2(PAD, PAD) * 2.0) * CACHE_RES).ceil())
+		sv.render_target_update_mode = SubViewport.UPDATE_ONCE
+		painter = ArenaPainter.new()
+		painter.fight = fight
+		painter.position = Vector2(PAD, PAD) * CACHE_RES
+		painter.scale = Vector2(CACHE_RES, CACHE_RES)
+		sv.add_child(painter)
+		add_child(sv)
+		queue_redraw()
+
+	## Paint the arena again (the crowd moves, lamps flicker).
+	func refresh() -> void:
+		if fight == null or fight.simming:
+			return   # filming off screen: nothing is ever drawn
+		if sv == null:
+			_build()
+		painter.queue_redraw()
+		sv.render_target_update_mode = SubViewport.UPDATE_ONCE
+
+	func _draw() -> void:
+		if sv != null:
+			var scr: Vector2 = fight.screen
+			draw_texture_rect(sv.get_texture(), Rect2(-Vector2(PAD, PAD), scr + Vector2(PAD, PAD) * 2.0), false)
+		elif fight:
+			fight.draw_arena(self)
+
+
+class ArenaPainter extends Node2D:
 	var fight: Node2D
 
 	func _draw() -> void:
@@ -3626,8 +3679,9 @@ class ArenaLayer extends Node2D:
 
 
 var arena_layer: ArenaLayer
+var fast_view := false
 var arena_redraw_t := 0.0
-const ARENA_FPS := 24.0
+const ARENA_FPS := 15.0
 
 
 func draw_arena(ci: CanvasItem) -> void:
@@ -5472,6 +5526,24 @@ func draw_title_board(r: Rect2) -> void:
 func draw_coach() -> void:
 	if coach_t <= 0.0 or coach_text == "":
 		return
+	if not tut_pause:
+		# (1.83) while the fight runs, Gus's tips sit in a slim strip low in the middle, under the
+		# floor line and between the controls: the camera's in close, so a bubble up top covered the robots
+		var tsize := fs(14)
+		var mw := screen.x * (0.42 if touch_device else 0.56)
+		var lab := tr("GUS")
+		var lw2 := font.get_string_size(lab, HORIZONTAL_ALIGNMENT_LEFT, -1, tsize).x + 14.0
+		var ts := font.get_multiline_string_size(coach_text, HORIZONTAL_ALIGNMENT_LEFT, mw - lw2 - 20.0, tsize)
+		var sw := minf(mw, ts.x + lw2 + 24.0)
+		var sh := ts.y + 12.0
+		var sx := (screen.x - sw) * 0.5
+		var sy := screen.y - sh - (14.0 if touch_device else 58.0)
+		var al := minf(1.0, coach_t * 4.0)
+		ci.draw_rect(Rect2(sx, sy, sw, sh), Color(0.05, 0.05, 0.08, 0.78 * al))
+		ci.draw_rect(Rect2(sx, sy, 4.0, sh), Color(0.95, 0.6, 0.25, al))
+		ci.draw_string(font, Vector2(sx + 10.0, sy + tsize + 3.0), lab, HORIZONTAL_ALIGNMENT_LEFT, -1, tsize, Color(0.95, 0.6, 0.25, al))
+		ci.draw_multiline_string(font, Vector2(sx + lw2 + 6.0, sy + tsize + 3.0), coach_text, HORIZONTAL_ALIGNMENT_LEFT, mw - lw2 - 20.0, tsize, -1, Color(1, 1, 1, al))
+		return
 	if gus_here() and gus_head != Vector2.ZERO:
 		# a speech bubble from Gus in the corner
 		# up in the top-left, just under your robot's name: out of the fight, clear of the HUD buttons
@@ -5608,7 +5680,7 @@ func demo_process(delta: float) -> void:
 	arena_redraw_t -= delta
 	if arena_redraw_t <= 0.0 and arena_layer:
 		arena_redraw_t = 1.0 / ARENA_FPS
-		arena_layer.queue_redraw()
+		arena_layer.refresh()
 	redraw_all()
 
 
@@ -6659,7 +6731,7 @@ func replay_process(delta: float) -> void:
 	arena_redraw_t -= delta
 	if arena_redraw_t <= 0.0 and arena_layer:
 		arena_redraw_t = 1.0 / ARENA_FPS
-		arena_layer.queue_redraw()
+		arena_layer.refresh()
 	redraw_all()
 
 
