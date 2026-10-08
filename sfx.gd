@@ -107,8 +107,10 @@ func play_raw(sound: String, pitch_jitter: float = 0.0, volume_db: float = 0.0, 
 
 ## Playlists rotate through their songs; a single track name just loops that track.
 const PLAYLISTS := {
-	"menu": ["menu", "rain_docks", "chiptune_cafe", "harbour_waltz", "night_shift", "lounge", "bossa", "workshop", "rust_shuffle", "sunset_drive", "gamelan", "anthem", "garage"],
-	"garage": ["garage", "rust_shuffle", "sunset_drive", "rain_docks", "workshop", "bossa", "chiptune_cafe", "gamelan", "lounge", "night_shift", "harbour_waltz", "menu"],
+	"menu": ["menu", "rain_docks", "chiptune_cafe", "harbour_waltz", "night_shift", "lounge", "bossa", "workshop", "rust_shuffle", "sunset_drive", "gamelan", "anthem", "garage",
+			"smoke_break", "chrome_morning", "harbour_lights", "scrap_market"],
+	"garage": ["garage", "rust_shuffle", "sunset_drive", "rain_docks", "workshop", "bossa", "chiptune_cafe", "gamelan", "lounge", "night_shift", "harbour_waltz", "menu",
+			"smoke_break", "chrome_morning", "harbour_lights", "scrap_market"],
 	"story": ["story", "lounge"],
 }
 ## Fight themes, picked per opponent (boss gets its own).
@@ -134,6 +136,10 @@ const JUKEBOX := [
 	["bossa", "Dockside Bossa", "Menus and garage"],
 	["gamelan", "Junkyard Gamelan", "Menus and garage"],
 	["night_shift", "Night Shift", "Menus and garage"],
+	["smoke_break", "Smoke Break", "Menus and garage"],
+	["chrome_morning", "Chrome Morning", "Menus and garage"],
+	["harbour_lights", "Harbour Lights", "Menus and garage"],
+	["scrap_market", "Scrap Market", "Menus and garage"],
 	["kane_tower", "Kane Tower", "Kane's scenes"],
 	["walkin_scrap", "Settle Down, You Lot", "Walk-in: the Scrap Heap Ring"],
 	["walkin_arena", "Fight Night Fanfare", "Walk-in: Regional and cups"],
@@ -188,8 +194,8 @@ func music(name: String) -> void:
 		current_track = name
 		return
 	current_track = name
-	playlist = list
-	playlist_pos = randi() % list.size() if list.size() > 1 else 0
+	playlist = _shuffled(list)   # (1.84) shuffled, so the same few songs don't come round in the same order
+	playlist_pos = 0
 	if not GameData.settings.get("music", true):
 		stop_music()
 		return
@@ -208,6 +214,9 @@ func _play_current() -> void:
 	if s is AudioStreamOggVorbis:
 		s.loop = playlist.size() == 1
 	music_player.stream = s
+	recent.append(str(playlist[playlist_pos]))
+	if recent.size() > 4:
+		recent.pop_front()
 	music_player.volume_db = -40.0
 	music_player.play()
 	# fight music fades in gently instead of hitting at full volume
@@ -219,7 +228,23 @@ func _on_music_finished() -> void:
 	if playlist.is_empty() or not GameData.settings.get("music", true):
 		return
 	playlist_pos = (playlist_pos + 1) % playlist.size()
+	if playlist_pos == 0 and playlist.size() > 2 and current_track != "jukebox":
+		playlist = _shuffled(playlist)   # a fresh order every time round
 	_play_current()
+
+
+var recent: Array = []   # the last few songs played: a new shuffle doesn't start with them
+
+
+func _shuffled(list: Array) -> Array:
+	if list.size() <= 2:
+		return list.duplicate()
+	var out := list.duplicate()
+	out.shuffle()
+	# what just played goes to the back
+	var back: Array = out.filter(func(x): return recent.has(x))
+	var front: Array = out.filter(func(x): return not recent.has(x))
+	return front + back
 
 
 func now_playing() -> String:

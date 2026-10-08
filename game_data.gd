@@ -2,7 +2,7 @@ extends Node
 
 # helper scripts, loaded by path so the game also runs without an editor scan
 ## The game's version, shown on the main menu. Bump it with every change (1.1, 1.2, ...).
-const VERSION := "1.83"
+const VERSION := "1.84"
 const Arena = preload("res://arena.gd")
 const I18n = preload("res://i18n.gd")
 const Catalog = preload("res://catalog.gd")
@@ -619,6 +619,7 @@ func new_game() -> void:
 	day_log = {}
 	ledger = []
 	patched_week = -1
+	loan = {}
 	gus_alerts = []
 	inbox_seen = 0
 	social = {}
@@ -2567,7 +2568,6 @@ func next_day() -> void:
 		catch_up_leagues()
 	daily_hate_mail()
 	Social.daily()
-	gus_patch()
 
 
 # ---------------------------------------------------------------- (1.82) Gus's patch job
@@ -2724,18 +2724,134 @@ const DAY_FULL := ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Satu
 
 ## Every line anyone says to you goes in the inbox (Messages): kind = story / talk (pilots,
 ## hate mail, pub) / gus (his remarks on what you do) / news.
+# ---------------------------------------------------------------- (1.84) the loan shark
+## No credit at Gus's, so a broke pilot borrows from Lucky Varga down at the Docks: at most
+## LOAN_MONTHS of your running costs, one loan at a time, LOAN_FEE on top. Half of every purse,
+## prize, salvage bonus and sponsor fee goes to him until it's paid (LOAN_GARNISH), and you can pay
+## early. It's due LOAN_WEEKS after you take it; after that what's owed grows LOAN_LATE a week, and
+## from LOAN_SEIZE weeks late his people take a part a week (the best spare in storage, else a limb).
+## loan = {owed, took (abs week), due (abs week), late (weeks late so far)}
+const LOAN_FEE := 0.4
+const LOAN_MONTHS := 2.0
+const LOAN_WEEKS := 4
+const LOAN_LATE := 0.1
+const LOAN_SEIZE := 2
+const LOAN_GARNISH := 0.5
+const GARNISH_CATS := ["fights", "prizes", "salvage", "sponsors"]
+const LENDER := "LUCKY VARGA"
+var loan := {}
+
+
+func abs_week() -> int:
+	return year * 53 + week
+
+
+func loan_max() -> int:
+	return int(living_cost() * LOAN_MONTHS / 10.0) * 10
+
+
+## "" or why you can't borrow right now.
+func loan_block() -> String:
+	if not loan.is_empty():
+		return tr("Pay off the loan you've got first.")
+	if wins + losses < 1:
+		return tr("Varga lends to pilots, not to rookies. Fight once first.")
+	return ""
+
+
+func take_loan(amount: int) -> String:
+	if loan_block() != "":
+		return loan_block()
+	amount = clampi(amount, 0, loan_max())
+	if amount <= 0:
+		return ""
+	var owe := int(round(amount * (1.0 + LOAN_FEE)))
+	loan = {"owed": owe, "took": abs_week(), "due": abs_week() + LOAN_WEEKS, "late": 0, "lent": amount}
+	book("loan", amount)
+	log_talk(LENDER, tr("$%d, kid. You owe me $%d in %d weeks. Half of every purse comes to me till then. Don't make me come to the bay.") % [amount, owe, LOAN_WEEKS], "loan")
+	log_day(tr("Borrowed $%d from Lucky Varga. $%d owed.") % [amount, owe], "bad")
+	return tr("Borrowed $%d. You owe Varga $%d.") % [amount, owe]
+
+
+## Pay some or all of it back (taken: the purse cut, already off the money).
+func loan_pay_off(amount: int, taken: bool = false) -> void:
+	if loan.is_empty() or amount <= 0:
+		return
+	amount = mini(amount, int(loan["owed"]))
+	if not taken:
+		book("loan", -amount)
+	else:
+		_ledger_add("loan", -amount)
+	loan["owed"] = int(loan["owed"]) - amount
+	if int(loan["owed"]) <= 0:
+		loan = {}
+		log_talk(LENDER, tr("Paid in full. Pleasure doing business. You know where I am."), "loan")
+		log_day(tr("The loan is paid off."), "good")
+
+
+## A week goes by: interest when it's late, and from LOAN_SEIZE weeks late his people take a part.
+func loan_week() -> void:
+	if loan.is_empty() or abs_week() <= int(loan["due"]):
+		return
+	loan["late"] = int(loan["late"]) + 1
+	var add := int(ceil(int(loan["owed"]) * LOAN_LATE))
+	loan["owed"] = int(loan["owed"]) + add
+	if int(loan["late"]) == 1:
+		log_talk(LENDER, tr("You're late, kid. That's $%d more on top. Every week.") % add, "loan")
+		gus_alert(tr("Varga wants his money"), tr("The loan's overdue. It grows by a tenth every week now, and in two weeks his people come for our parts. Pay him off from the Money page."), "money")
+	elif int(loan["late"]) >= LOAN_SEIZE:
+		var took := loan_seize()
+		if took != "":
+			log_talk(LENDER, tr("My boys took the %s. That's off what you owe. Pay up before they come back.") % took, "loan")
+			log_day(tr("Varga's people took the %s.") % took, "bad")
+
+
+## The best spare in storage, else a fitted arm or leg. Its sale value comes off the debt.
+func loan_seize() -> String:
+	var best := {}
+	for p in spares():
+		if best.is_empty() or sell_value(p) > sell_value(best):
+			best = p
+	if best.is_empty():
+		for slot in ["arm_back", "leg_back", "arm_front", "leg_front"]:
+			var p := equipped_inst(slot)
+			if not p.is_empty():
+				equipped[slot] = -1
+				best = p
+				break
+	if best.is_empty():
+		return ""
+	var name := str(part_def(best["id"])["name"])
+	var v := sell_value(best) * 2
+	inventory.erase(best)
+	loan["owed"] = maxi(0, int(loan["owed"]) - v)
+	if int(loan["owed"]) <= 0:
+		loan = {}
+	return name
+
+
 ## (1.79) The money book: every dollar in or out, with what it was for. ledger = [[y, w, d, cat, amount]],
 ## the last LEDGER_WEEKS weeks kept (Season > Money reads it back). Same day + same cat are merged.
 const LEDGER_WEEKS := 16
-const LEDGER_CATS := ["fights", "prizes", "salvage", "sponsors", "sales", "bets", "parts", "repairs", "bay", "bills", "scout", "other"]
+const LEDGER_CATS := ["fights", "prizes", "salvage", "sponsors", "sales", "bets", "loan", "parts", "repairs", "bay", "bills", "scout", "other"]
 const LEDGER_NAMES := {"fights": "Purses", "prizes": "Prizes", "salvage": "Salvage bonus", "sponsors": "Sponsors",
 		"sales": "Parts sold", "bets": "Bets", "parts": "Parts bought", "repairs": "Repairs & bay work",
-		"bay": "Bay upgrades", "bills": "Rent & running costs", "scout": "Scouting", "other": "Other"}
+		"bay": "Bay upgrades", "bills": "Rent & running costs", "scout": "Scouting", "loan": "Loan", "other": "Other"}
 var ledger: Array = []
 
 
 func book(cat: String, amount: int) -> void:
+	# (1.84) a loan takes its cut of whatever you win or earn first
+	if amount > 0 and not loan.is_empty() and GARNISH_CATS.has(cat):
+		var cut := mini(int(loan["owed"]), int(amount * LOAN_GARNISH))
+		if cut > 0:
+			amount -= cut
+			loan_pay_off(cut, true)
 	money += amount
+	_ledger_add(cat, amount)
+
+
+func _ledger_add(cat: String, amount: int) -> void:
 	if amount == 0:
 		return
 	var d := day_index()
@@ -2827,6 +2943,7 @@ func advance_week(n: int = 1) -> void:
 		weekly_rumour()
 		rel_drift(0.96)
 		feuds_week()
+		loan_week()
 		Contracts.week_end()
 		if week % MONTH_WEEKS == 0:
 			book("bills", -(living_cost()))   # end of the month: cost of living
@@ -5039,7 +5156,7 @@ func save_game(path: String = "") -> bool:
 		"owned_chips": owned_chips, "chips": chips, "circuit": circuit, "circuit_offers": circuit_offers,
 		"circuits_won": circuits_won, "pickup": pickup, "setups": setups, "custom_parts": custom_parts,
 		"year": year, "week": week, "day": day, "rank": rank, "event": {}, "leagues": leagues, "title_seeds": title_seeds, "trophies": trophies, "career_stats": career_stats,
-		"pecking_k": pecking_k(), "style": style, "style_locked": style_locked, "shop_stock": shop_stock, "chip_stock": chip_stock, "scout": scout, "wingmen": wingmen, "sending": sending, "pilot_look": pilot_look, "owned_controllers": owned_controllers, "spare_controllers": spare_controllers, "tips_seen": tips_seen, "tips_log": tips_log, "h2h": h2h, "rivals": rivals, "rel": rel, "nemeses": nemeses, "pending_talk": pending_talk, "inbox": inbox, "inbox_seen": inbox_seen, "social": social, "pilot_at": pilot_at, "places_been": places_been, "pilot_used": pilot_used, "film_index": film_index, "film_pending": film_pending, "films_seen": films_seen, "contracts": contracts, "alerts_unseen": alerts_unseen, "day_log": day_log, "ledger": ledger, "patched_week": patched_week, "gus_alerts": gus_alerts, "tour": tour, "streak": streak, "pub_seen": pub_seen, "digs_left": digs_left, "dig_luck": dig_luck, "bills_note": bills_note, "fight_log": fight_log, "bets": bets, "world": world,
+		"pecking_k": pecking_k(), "style": style, "style_locked": style_locked, "shop_stock": shop_stock, "chip_stock": chip_stock, "scout": scout, "wingmen": wingmen, "sending": sending, "pilot_look": pilot_look, "owned_controllers": owned_controllers, "spare_controllers": spare_controllers, "tips_seen": tips_seen, "tips_log": tips_log, "h2h": h2h, "rivals": rivals, "rel": rel, "nemeses": nemeses, "pending_talk": pending_talk, "inbox": inbox, "inbox_seen": inbox_seen, "social": social, "pilot_at": pilot_at, "places_been": places_been, "pilot_used": pilot_used, "film_index": film_index, "film_pending": film_pending, "films_seen": films_seen, "contracts": contracts, "alerts_unseen": alerts_unseen, "day_log": day_log, "ledger": ledger, "patched_week": patched_week, "loan": loan, "gus_alerts": gus_alerts, "tour": tour, "streak": streak, "pub_seen": pub_seen, "digs_left": digs_left, "dig_luck": dig_luck, "bills_note": bills_note, "fight_log": fight_log, "bets": bets, "world": world,
 	}
 	var f := FileAccess.open(slot_path(save_slot) if path == "" else path, FileAccess.WRITE)
 	if f == null:
@@ -5163,6 +5280,7 @@ func load_game(slot: int = -1, mine: bool = false) -> String:
 	day_log = data.get("day_log", {})
 	ledger = data.get("ledger", [])
 	patched_week = int(data.get("patched_week", -1))
+	loan = data.get("loan", {})
 	gus_alerts = data.get("gus_alerts", [])
 	inbox = []
 	for e in data.get("inbox", []):

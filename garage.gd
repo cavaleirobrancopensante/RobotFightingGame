@@ -250,6 +250,11 @@ func _ready() -> void:
 	title_label = UI.label("", 22)   # kept empty: the middle of the top strip is space for ads
 	title_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	top.add_child(title_label)
+	# (1.84) a small music button: the jukebox in a pop-up, wherever you are
+	var mus := UI.button("♪", open_music, 20, Vector2(52, 44))
+	mus.tooltip_text = tr("Music")
+	mus.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	top.add_child(mus)
 	money_label = GUI.readout("", 32, GUI.AMBER)
 	money_label.mouse_filter = Control.MOUSE_FILTER_STOP
 	money_label.tooltip_text = tr("Where the money went")
@@ -7381,6 +7386,7 @@ func build_money_view() -> void:
 		var bl := GUI.text(" ".join(bits), 14, GUI.MUTED)
 		bl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		list_box.add_child(bl)
+	loan_box()
 	section(tr("THE LAST 8 WEEKS"))
 	var ch := MoneyChart.new()
 	var vals: Array = []
@@ -7656,3 +7662,115 @@ class GusBust extends Control:
 		draw_rect(Rect2(c.x - r * 0.3, c.y + r * 0.75, r * 0.6, r * 0.4), Color(look["skin"]).darkened(0.15))
 		PA.draw_head(self, c, r, look, 0.0, 0.0)
 		PA.light = "neutral"
+
+
+# ---------------------------------------------------------------- (1.84) the music pop-up
+
+func song_title(file: String) -> Array:
+	for e in Sfx.JUKEBOX:
+		if e[0] == file:
+			return [tr(e[1]), tr(e[2])]
+	return [file, ""]
+
+
+## The jukebox in a pop-up: what's playing, Prev / Stop / Next, back to the shuffle, and every song.
+func open_music() -> void:
+	Sfx.play("click")
+	var col := open_popup(tr("MUSIC"))
+	col.custom_minimum_size = Vector2(560, 0)
+	var np := Sfx.now_playing()
+	var playing: bool = Sfx.music_player.playing and np != ""
+	var t := song_title(np)
+	col.add_child(GUI.text(tr("NOW PLAYING") if playing else tr("NOTHING PLAYING"), 12, GUI.AMBER, "headb"))
+	if playing:
+		col.add_child(GUI.text(str(t[0]), 22, GUI.TEXT, "headb"))
+		col.add_child(GUI.text(str(t[1]) + ("  ·  " + tr("Jukebox") if Sfx.current_track == "jukebox" else "  ·  " + tr("Shuffle")), 12, GUI.MUTED))
+	if not GameData.settings.get("music", true):
+		col.add_child(GUI.text(tr("Music is switched off in Settings."), 12, GUI.RED))
+	var bar := flow_bar(col)
+	row_button(bar, "‹ " + tr("Prev"), func(): _on_music_step(-1), true, 100)
+	if playing:
+		row_button(bar, tr("Stop"), func(): Sfx.stop_music(); open_music(), true, 100).add_theme_color_override("font_color", GUI.RED)
+	row_button(bar, tr("Next") + " ›", func(): _on_music_step(1), true, 100)
+	row_button(bar, tr("Shuffle all"), func(): Sfx.current_track = ""; Sfx.music("garage"); open_music(), true, 150).add_theme_color_override("font_color", GUI.YELLOW)
+	col.add_child(GUI.text(tr("Tap a song to play it. It carries on down the list."), 12, GUI.MUTED))
+	for k in Sfx.JUKEBOX.size():
+		var e: Array = Sfx.JUKEBOX[k]
+		var on: bool = playing and e[0] == np
+		var num := GUI.readout("%02d" % (k + 1), 18, GUI.AMBER if on else GUI.MUTED)
+		num.custom_minimum_size = Vector2(46, 0)
+		num.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		make_tap_row(num, tr(e[1]), tr(e[2]), func(): Sfx.jukebox(k); open_music(), "", on, col)
+
+
+func _on_music_step(step: int) -> void:
+	if Sfx.current_track == "jukebox":
+		var cur := Sfx.jukebox_index()
+		Sfx.jukebox(posmod((cur if cur >= 0 else 0) + step, Sfx.JUKEBOX.size()))
+	elif not Sfx.playlist.is_empty():
+		Sfx.playlist_pos = posmod(Sfx.playlist_pos + step, Sfx.playlist.size())
+		if GameData.settings.get("music", true):
+			Sfx._play_current()
+	open_music()
+
+
+# ---------------------------------------------------------------- (1.84) the loan, on the Money page
+
+func loan_box() -> void:
+	section(tr("LUCKY VARGA · LOANS DOWN AT THE DOCKS"))
+	var L: Dictionary = GameData.loan
+	if not L.is_empty():
+		var weeks_left := int(L["due"]) - GameData.abs_week()
+		var owed := int(L["owed"])
+		var ol := GUI.readout(tr("OWED %s") % GameData.money_text(owed), 26, GUI.RED)
+		list_box.add_child(ol)
+		var dl := GUI.text(tr("Due in %d weeks.") % weeks_left if weeks_left > 0 else (tr("Due this week.") if weeks_left == 0 else tr("LATE %d weeks: it grows by a tenth every week, and his people take parts.") % int(L["late"])), 14, GUI.AMBER if weeks_left >= 0 else GUI.RED)
+		dl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		list_box.add_child(dl)
+		var gl := GUI.text(tr("Half of every purse, prize and sponsor fee goes to him until it's paid."), 13, GUI.MUTED)
+		gl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		list_box.add_child(gl)
+		var bar := flow_bar()
+		row_button(bar, tr("Pay it all $%d") % owed, func(): _on_loan_pay(owed), GameData.money >= owed, 170)
+		var half := maxi(10, int(owed / 20) * 10)
+		row_button(bar, tr("Pay $%d") % half, func(): _on_loan_pay(half), GameData.money >= half and half < owed, 120)
+		return
+	var mx := GameData.loan_max()
+	var tl := GUI.text(tr("Borrow up to $%d. You pay back %d%% more within %d weeks, and half of every purse goes to him first.") % [mx, int(GameData.LOAN_FEE * 100), GameData.LOAN_WEEKS], 14, GUI.TEXT)
+	tl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	list_box.add_child(tl)
+	var why := GameData.loan_block()
+	if why != "":
+		list_box.add_child(GUI.text(why, 13, GUI.MUTED))
+		return
+	var bar2 := flow_bar()
+	for share in [0.25, 0.5, 1.0]:
+		var amt := int(mx * share / 10.0) * 10
+		if amt <= 0:
+			continue
+		row_button(bar2, tr("Borrow $%d") % amt, func(): _on_loan_take(amt), true, 150)
+
+
+func _on_loan_take(amount: int) -> void:
+	var go := func():
+		note(GameData.take_loan(amount), "buy")
+		GameData.save_game()
+		refresh()
+	if not GameData.story_seen.has("loan_warned"):
+		GameData.mark_story_seen("loan_warned")
+		var owe := int(round(amount * (1.0 + GameData.LOAN_FEE)))
+		gus_card(tr("Varga? Really?"),
+				tr("Borrow $%d and we owe him $%d in %d weeks. He takes half of every purse until then, and if we're late it grows every week and his people come for our parts.") % [amount, owe, GameData.LOAN_WEEKS] + "\n\n" +
+				tr("Only if it wins us more than it costs, kid."),
+				[[tr("Not today"), Callable(), true], [tr("Borrow anyway"), go, false]])
+		return
+	go.call()
+
+
+func _on_loan_pay(amount: int) -> void:
+	if GameData.money < amount:
+		return
+	GameData.loan_pay_off(amount)
+	note(tr("Paid Varga $%d.") % amount, "buy")
+	GameData.save_game()
+	refresh()
