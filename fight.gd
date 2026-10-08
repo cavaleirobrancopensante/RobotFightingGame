@@ -781,6 +781,10 @@ func layout() -> void:
 func _input(event: InputEvent) -> void:
 	if demo_move != "":
 		return
+	# taps on the BotMedia card on the results screen belong to its buttons, not "tap to leave"
+	if post_card != null and is_instance_valid(post_card) and (event is InputEventScreenTouch or event is InputEventMouseButton) \
+			and post_card.get_global_rect().has_point(event.position):
+		return
 	if event is InputEventScreenTouch:
 		if event.pressed:
 			if handle_tap(event.position):
@@ -1945,6 +1949,7 @@ func finish_match() -> void:
 		phase = "results"
 		phase_timer = 0.0
 		Sfx.play("victory")
+		show_post_card()
 		return
 	if mode == "quick" or mode == "test":
 		result = {"won": won, "reward": 0}
@@ -1983,6 +1988,7 @@ func finish_match() -> void:
 	phase = "results"
 	phase_timer = 0.0
 	Sfx.play("victory" if won else "defeat")
+	show_post_card()
 
 
 func leave_after_results() -> void:
@@ -4232,16 +4238,18 @@ func draw_input_readout() -> void:
 
 func draw_results() -> void:
 	ci.draw_rect(Rect2(Vector2.ZERO, screen), Color(0, 0, 0, 0.7))
+	var res_w := results_width()
 	var y := screen.y * 0.2
 	var title := tr("VICTORY!") if won else tr("DEFEAT")
 	if mode == "watch":
 		title = tr("%s WINS") % str(result.get("winner", "?"))
-	ci.draw_string(font, Vector2(0, y), title, HORIZONTAL_ALIGNMENT_CENTER, screen.x, fs(72 if mode != "watch" else 54), Color(1.0, 0.85, 0.2) if won or mode == "watch" else Color(0.9, 0.3, 0.3))
+	ci.draw_string(font, Vector2(0, y), title, HORIZONTAL_ALIGNMENT_CENTER, res_w, fs(72 if mode != "watch" else 54), Color(1.0, 0.85, 0.2) if won or mode == "watch" else Color(0.9, 0.3, 0.3))
 	y += 60.0
 	var lines: Array = []
 	if mode == "watch":
 		lines.append([tr("That's the result on the books. Bets on it pay when the round is over."), Color(0.8, 0.8, 0.85)])
-		lines.append([tr("A post about it is waiting on BotMedia."), Color(0.6, 0.85, 1.0)])
+		if result.get("posted", "") == "" and post_card == null:
+			lines.append([tr("A post about it is waiting on BotMedia."), Color(0.6, 0.85, 1.0)])
 	elif mode == "quick":
 		lines.append([tr("Quick fight, nothing saved."), Color(0.8, 0.8, 0.85)])
 	elif mode == "test":
@@ -4257,6 +4265,8 @@ func draw_results() -> void:
 		var bt: Dictionary = result.get("bets", {})
 		for bl in bt.get("lines", []):
 			lines.append([bl, Color(0.5, 1.0, 0.6) if str(bl).contains("+$") else Color(1.0, 0.45, 0.4)])
+	if result.get("posted", "") != "":
+		lines.append([str(result["posted"]), Color(0.6, 0.85, 1.0)])
 	if result.get("bonus", 0) > 0:
 		lines.append([tr("Dismantle bonus: +$%d") % result["bonus"], Color(0.95, 0.85, 0.2)])
 	if result.get("champion", false):
@@ -4266,16 +4276,16 @@ func draw_results() -> void:
 	if result.get("event_done", "") != "":
 		lines.append([tr("SEASON OVER: %s") % result["event_done"], Color(1.0, 0.5, 0.2)])
 	for l in lines:
-		ci.draw_string(font, Vector2(0, y), l[0], HORIZONTAL_ALIGNMENT_CENTER, screen.x, fs(24), l[1])
+		ci.draw_string(font, Vector2(0, y), l[0], HORIZONTAL_ALIGNMENT_CENTER, res_w, fs(24), l[1])
 		y += 38.0
 	y = draw_result_cards(y)
 	if mode not in ["quick", "test", "watch"]:
-		ci.draw_string(font, Vector2(0, y + 6), tr("The night goes by. Tomorrow morning, back in the bay."), HORIZONTAL_ALIGNMENT_CENTER, screen.x, fs(18), Color(0.6, 0.85, 1.0))
+		ci.draw_string(font, Vector2(0, y + 6), tr("The night goes by. Tomorrow morning, back in the bay."), HORIZONTAL_ALIGNMENT_CENTER, res_w, fs(18), Color(0.6, 0.85, 1.0))
 	if phase_timer > 1.0:
 		# one clear way out (a tap anywhere does the same)
 		var label: String = {"quick": tr("BACK TO THE MENU"), "test": tr("BACK TO THE SCRAPYARD")}.get(mode, tr("BACK TO THE BAY"))
-		var bw := minf(360.0, screen.x * 0.4)
-		var br := Rect2(screen.x * 0.5 - bw * 0.5, screen.y - 78.0, bw, 56.0)
+		var bw := minf(360.0, res_w * 0.6)
+		var br := Rect2(res_w * 0.5 - bw * 0.5, screen.y - 78.0, bw, 56.0)
 		ci.draw_rect(br, Color(0.95, 0.76, 0.19))
 		ci.draw_rect(br, Color(0.08, 0.08, 0.08), false, 3.0)
 		ci.draw_string(font, Vector2(br.position.x, br.position.y + br.size.y * 0.5 + fs(20) * 0.35), label, HORIZONTAL_ALIGNMENT_CENTER, br.size.x, fs(20), Color(0.08, 0.08, 0.08))
@@ -4289,9 +4299,10 @@ func draw_result_cards(y: float) -> float:
 	var tags := {"salvaged": ["SALVAGED", Color(0.5, 1.0, 0.6)], "trophy": ["TROPHY PART", Color(0.5, 1.0, 0.6)],
 			"wrecked": ["WRECKED", Color(1.0, 0.7, 0.3)], "lost": ["LOST", Color(1.0, 0.45, 0.4)], "shattered": ["SHATTERED", Color(0.75, 0.75, 0.8)]}
 	var n := mini(cards.size(), 6)
-	var cw := minf(150.0, (screen.x - 40.0) / n)
+	var res_w := results_width()
+	var cw := minf(150.0, (res_w - 40.0) / n)
 	var icon := minf(cw - 30.0, 84.0)
-	var x0 := screen.x * 0.5 - n * cw * 0.5
+	var x0 := res_w * 0.5 - n * cw * 0.5
 	y += 4.0
 	for k in n:
 		var c: Dictionary = cards[k]
@@ -4312,7 +4323,7 @@ func draw_result_cards(y: float) -> float:
 		ci.draw_string(font, Vector2(cx - cw * 0.5, box.end.y + 18), tr(tag[0]), HORIZONTAL_ALIGNMENT_CENTER, cw, fs(13), tag[1])
 		ci.draw_string(font, Vector2(cx - cw * 0.5, box.end.y + 36), str(d["name"]), HORIZONTAL_ALIGNMENT_CENTER, cw, fs(14), Color(0.92, 0.92, 0.95))
 	if cards.size() > n:
-		ci.draw_string(font, Vector2(0, y + icon + 56), tr("+%d more in Storage") % (cards.size() - n), HORIZONTAL_ALIGNMENT_CENTER, screen.x, fs(14), Color(0.8, 0.8, 0.85))
+		ci.draw_string(font, Vector2(0, y + icon + 56), tr("+%d more in Storage") % (cards.size() - n), HORIZONTAL_ALIGNMENT_CENTER, res_w, fs(14), Color(0.8, 0.8, 0.85))
 	return y + icon + 50.0
 
 
@@ -5975,3 +5986,60 @@ func draw_intro_overlay(ci: CanvasItem) -> void:
 	var b := show_beat()
 	if b.ends_with("zoom"):
 		draw_robot_card(ci, player if b == "a_zoom" else cpu, b == "b_zoom", w, h, font)
+
+
+
+# ---------------------------------------------------------------- posting from the results (1.63)
+
+var post_card: Control = null   # the BotMedia card on the results screen's right side
+
+
+## The results text centres in this width (the post card takes the right side while it's up).
+func results_width() -> float:
+	return screen.x * 0.6 if post_card != null and is_instance_valid(post_card) else screen.x
+
+
+## After your own fight (or one you watched): the post waiting on BotMedia, right there, the same
+## card as BotMedia's Home. Pick one, or Say nothing; leaving keeps it waiting on BotMedia.
+func show_post_card() -> void:
+	if mode in ["quick", "test", "demo"] or GameData.Social.drafts().is_empty():
+		return
+	var holder := ScrollContainer.new()
+	holder.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	holder.position = Vector2(screen.x * 0.61, screen.y * 0.22)
+	holder.size = Vector2(screen.x * 0.37, screen.y * 0.66)
+	var card := GUI.DraftCard.new()
+	card.wrap = true
+	card.custom_minimum_size = Vector2(holder.size.x - 6.0, 0)
+	card.posted.connect(_on_results_post)
+	card.skipped.connect(_on_results_skip)
+	holder.add_child(card)
+	hud_layer.add_child(holder)
+	card.build()
+	post_card = holder
+	redraw_all()
+
+
+func _on_results_post(tone: String) -> void:
+	var before: int = GameData.Social.followers()
+	GameData.Social.publish(tone)
+	var d: int = GameData.Social.followers() - before
+	result["posted"] = tr("Posted on BotMedia. Followers %s%d.") % ["+" if d >= 0 else "", d]
+	Sfx.play("click")
+	GameData.save_game()
+	_close_post_card()
+
+
+func _on_results_skip() -> void:
+	GameData.Social.st()["draft"] = {}
+	result["posted"] = tr("You kept quiet on BotMedia.")
+	Sfx.play("click")
+	GameData.save_game()
+	_close_post_card()
+
+
+func _close_post_card() -> void:
+	if post_card != null and is_instance_valid(post_card):
+		post_card.queue_free()
+	post_card = null
+	redraw_all()

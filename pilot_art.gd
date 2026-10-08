@@ -280,13 +280,13 @@ static func draw_person(ci: CanvasItem, feet: Vector2, s: float, raw: Dictionary
 	var bob := sin(t * 2.0) * 0.8 * s
 	# legs
 	if sitting:
-		_rc(ci, Rect2(feet + Vector2(-8 * s, -26 * s), Vector2(18 * s * dir if dir > 0 else 18 * s, 6 * s)), pants)
-		_rc(ci, Rect2(feet + Vector2(4 * s * dir - 3 * s, -26 * s), Vector2(6 * s, 26 * s)), pants)
+		# (1.63) both legs: the far leg goes behind the body now, the near one over the lap after it
+		_sit_leg(ci, feet, s, dir, pants, 0)
 	else:
 		_blk(ci, Rect2(feet + Vector2(-8 * s, -24 * s), Vector2(7 * s, 24 * s)), pants)
 		_blk(ci, Rect2(feet + Vector2(1 * s, -24 * s), Vector2(7 * s, 24 * s)), pants)
-	_rc(ci, Rect2(feet + Vector2(-9 * s, -3 * s), Vector2(9 * s, 3 * s)), Color(0.13, 0.1, 0.08))
-	_rc(ci, Rect2(feet + Vector2(1 * s, -3 * s), Vector2(9 * s, 3 * s)), Color(0.13, 0.1, 0.08))
+		_rc(ci, Rect2(feet + Vector2(-9 * s, -3 * s), Vector2(9 * s, 3 * s)), Color(0.13, 0.1, 0.08))
+		_rc(ci, Rect2(feet + Vector2(1 * s, -3 * s), Vector2(9 * s, 3 * s)), Color(0.13, 0.1, 0.08))
 	# body
 	var hip := feet + Vector2(0, (-26 if sitting else -24) * s + bob)
 	var neck := hip + Vector2(0, -30 * s)
@@ -299,6 +299,8 @@ static func draw_person(ci: CanvasItem, feet: Vector2, s: float, raw: Dictionary
 		_blk(ci, Rect2(hip + Vector2(-9 * s, -20 * s), Vector2(18 * s, 20 * s)), outfit)
 		_ln2(ci, hip + Vector2(-7 * s, -20 * s), neck + Vector2(-7 * s, 0), outfit, 2.5 * s)
 		_ln2(ci, hip + Vector2(7 * s, -20 * s), neck + Vector2(7 * s, 0), outfit, 2.5 * s)
+	if sitting:
+		_sit_leg(ci, feet, s, dir, pants, 1)
 	# arms: where the hands go for each pose
 	var sh_f := neck + Vector2(10 * s * dir, 3 * s)
 	var sh_b := neck + Vector2(-10 * s * dir, 3 * s)
@@ -530,3 +532,19 @@ static func _head_disc(ci: CanvasItem, c: Vector2, r: float, skin: Color) -> voi
 		RA._round(ci, c, r, skin)
 	else:
 		ci.draw_circle(c, r, skin)
+
+
+## One leg of a sitting person (k 0 = the far leg, a touch back and darker; 1 = the near leg over
+## the lap): the thigh along the seat, the knee bent, the shin down to the floor, the foot flat.
+static func _sit_leg(ci: CanvasItem, feet: Vector2, s: float, dir: float, pants: Color, k: int) -> void:
+	var hy := feet.y - 26 * s
+	var back := (-5.0 if k == 0 else 0.0) * s
+	var pc := pants.darkened(0.2) if k == 0 else pants
+	var hx := feet.x + (-2 * s + back) * dir
+	var kx := feet.x + (24 * s + back) * dir
+	var top := hy - 8 * s + k * 1.5 * s
+	_blk(ci, Rect2(Vector2(minf(hx, kx), top), Vector2(absf(kx - hx), 8 * s)), pc)
+	var sx := minf(kx, kx - 8 * s * dir)
+	_blk(ci, Rect2(Vector2(sx, top + 3 * s), Vector2(8 * s, feet.y - 3 * s - top - 3 * s)), pc)
+	var shoe_x := minf(kx - 8 * s * dir, kx + 4 * s * dir)
+	_rc(ci, Rect2(Vector2(shoe_x, feet.y - 3 * s), Vector2(12 * s, 3 * s)), Color(0.13, 0.1, 0.08).darkened(0.25 if k == 0 else 0.0))

@@ -2,7 +2,7 @@ extends Node
 
 # helper scripts, loaded by path so the game also runs without an editor scan
 ## The game's version, shown on the main menu. Bump it with every change (1.1, 1.2, ...).
-const VERSION := "1.62"
+const VERSION := "1.63"
 const Arena = preload("res://arena.gd")
 const I18n = preload("res://i18n.gd")
 const Catalog = preload("res://catalog.gd")
@@ -316,9 +316,31 @@ var rank := "open"          # your level: open (the gutter, no league) / scrap /
 var event := {}             # the league or playoffs you're in (see career.gd)
 ## Your dad's trophies: on the office wall from day one, yours go up beside them.
 const DAD_TROPHIES := [
-	{"kind": "scrap", "medal": 1, "name": "Scrap League", "dad": true},
-	{"kind": "rust", "medal": 1, "name": "Rust League", "dad": true},
-	{"kind": "iron", "medal": 2, "name": "Iron League", "dad": true},
+	{"kind": "scrap", "medal": 1, "name": "Scrap League", "dad": true, "run": 0},
+	{"kind": "rust", "medal": 1, "name": "Rust League", "dad": true, "run": 1},
+	{"kind": "iron", "medal": 2, "name": "Iron League", "dad": true, "run": 2},
+]
+## Your dad's runs behind those trophies (1.63): the season, the record, the fights people still talk
+## about ([week, won, robot, pilot, note]) and what Gus remembers. Shown when you tap one in the office.
+const DAD_RUNS := [
+	{"season": 2039, "w": 21, "l": 3, "fights": [
+		[4, true, "RUSTBUCKET", "JONNO PRICE", "His first league win. ECHO had one working arm."],
+		[11, false, "GRINDLE", "MAGS OKAFOR", "His first loss. He watched the tape all night."],
+		[19, true, "GRINDLE", "MAGS OKAFOR", "The rematch. Over in forty seconds."],
+		[47, true, "TALLBOY", "RUI SANTOS", "Won the title with a round to spare."]],
+		"gus": "Nobody gave him a chance. He fixed that robot on my floor with parts he dug himself."},
+	{"season": 2040, "w": 20, "l": 4, "fights": [
+		[4, false, "CLADDAGH", "IRONCLAD MAE", "Lost the first three. People said he'd peaked."],
+		[10, true, "CLADDAGH", "IRONCLAD MAE", "Started a run of seventeen wins in a row."],
+		[33, true, "BULLFROG", "TEO VARGA", "Tore off both arms, both whole. The crowd stood up."],
+		[50, true, "WRECKONER", "SAL DUNNE", "Gold. He gave the purse to the pilots' fund."]],
+		"gus": "Seventeen in a row. I stopped locking the bay at night, he never went home anyway."},
+	{"season": 2041, "w": 19, "l": 5, "fights": [
+		[6, true, "HAMMERHEAD", "LENA BRANDT", "Out jabbed the best guard in the league."],
+		[24, false, "VANTAGE", "OTTO KRUSE", "Beaten on a split decision. Still says he won."],
+		[46, true, "SLEDGE", "KOVAC", "The uppercut. SLEDGE's head is still in the rafters."],
+		[50, false, "VANTAGE", "OTTO KRUSE", "Second on parts torn off. One part short."]],
+		"gus": "Silver, one part short of gold. The next season Kane changed everything."},
 ]
 var trophies: Array = []    # [{kind: scrap/regional/championship/cup, medal: 1-3, name, year}]
 var career_stats := {"heads": 0, "arms": 0, "legs": 0, "cores": 0, "parts": 0}

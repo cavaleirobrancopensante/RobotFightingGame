@@ -2302,81 +2302,13 @@ func build_home() -> void:
 	var S = GameData.Social
 	var drafts: Array = S.drafts()
 	if not drafts.is_empty():
-		var panel := PanelContainer.new()
-		var sb := GUI.box(GUI.ROW.lightened(0.04), 10, 10)
-		sb.border_color = GUI.YELLOW
-		sb.set_border_width_all(2)
-		panel.add_theme_stylebox_override("panel", sb)
-		list_box.add_child(panel)
-		var col := VBoxContainer.new()
-		col.add_theme_constant_override("separation", 6)
-		panel.add_child(col)
-		var top := HBoxContainer.new()
-		top.add_theme_constant_override("separation", 10)
-		col.add_child(top)
-		top.add_child(avatar_for("me", 40))
-		var t := GUI.text(tr("POST ABOUT THE FIGHT YOU WATCHED? Pick one.") if S.st()["draft"].get("watch", false) else tr("POST ABOUT TONIGHT? Pick one."), 15, GUI.YELLOW, "headb")
-		t.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		top.add_child(t)
-		var opp := str(S.st()["draft"].get("opp", ""))
-		var watched: bool = S.st()["draft"].get("watch", false)
-		var hints := {"humble": tr("Safe. Sponsors like it. They warm up to you (+4).") if not watched else tr("Safe. Both of them warm up to you (+3)."),
-				"hype": tr("Big if you keep winning.") if not watched else tr("The winner loves it (+6)."),
-				"trash": tr("Fans love it. They won't (-10).") if not watched else tr("Fans love it. Both of them will remember (-10 each)."),
-				"trash_w": tr("Fans love it. The winner won't (-10)."), "trash_l": tr("Fans love it. The loser won't (-10).")}
-		var names := {"humble": tr("HUMBLE"), "hype": tr("HYPE"), "trash": tr("TRASH TALK") if not watched else tr("TRASH TALK: BOTH"),
-				"trash_w": tr("TRASH TALK: WINNER"), "trash_l": tr("TRASH TALK: LOSER")}
-		# what's between you and each pilot named in the drafts: (+52) green, (-61) red
-		var wids: Array = S.draft_wids()
-		var bb_args: Array = []
-		var plain: Array = S.draft_args()
-		for k in plain.size():
-			var nm := str(plain[k])
-			var wid: int = int(wids[k]) if k < wids.size() else -1
-			if wid >= 0 and GameData.rel_bb(wid) != "":
-				nm += " " + GameData.rel_bb(wid)
-			bb_args.append(nm)
-		var no_trash: bool = GameData.Contracts.st()["active"].any(func(c): return c["reqs"].any(func(r): return r["kind"] == "no_trash"))
-		for d in drafts:
-			var tone := str(d[0])
-			var b := Button.new()
-			b.focus_mode = Control.FOCUS_NONE
-			b.custom_minimum_size = Vector2(0, 58)
-			for k in ["normal", "hover", "pressed", "hover_pressed"]:
-				var st := GUI.box(GUI.BG if k == "normal" else GUI.BG.lightened(0.08), 8, 6)
-				b.add_theme_stylebox_override(k, st)
-			b.pressed.connect(_on_publish.bind(tone))
-			col.add_child(b)
-			var v := VBoxContainer.new()
-			v.set_anchors_preset(Control.PRESET_FULL_RECT)
-			v.offset_left = 10
-			v.offset_right = -10
-			v.alignment = BoxContainer.ALIGNMENT_CENTER
-			v.mouse_filter = Control.MOUSE_FILTER_IGNORE
-			v.add_theme_constant_override("separation", 0)
-			b.add_child(v)
-			var warn := tone.begins_with("trash") and no_trash
-			v.add_child(GUI.text(str(names[tone]) + "  ·  " + (tr("Breaks your Harbour Mutual deal!") if warn else str(hints[tone])), 11, GUI.RED if warn or tone.begins_with("trash") else GUI.MUTED, "headb"))
-			var dt := RichTextLabel.new()
-			dt.bbcode_enabled = true
-			dt.fit_content = true
-			dt.scroll_active = false
-			dt.autowrap_mode = TextServer.AUTOWRAP_OFF
-			dt.mouse_filter = Control.MOUSE_FILTER_IGNORE
-			dt.clip_contents = true
-			dt.add_theme_font_override("normal_font", GUI.body())
-			dt.add_theme_font_override("bold_font", GUI.headb())
-			dt.add_theme_font_size_override("normal_font_size", UI.tsz(13))
-			dt.add_theme_font_size_override("bold_font_size", UI.tsz(13))
-			dt.add_theme_color_override("default_color", GUI.TEXT)
-			dt.text = tr(str(d[1])) % bb_args
-			v.add_child(dt)
-		var bar := action_bar(col)
-		var sp := Control.new()
-		sp.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		bar.add_child(sp)
-		var skip := UI.button(tr("Say nothing"), _on_skip_post, 12, Vector2(130, 32))
-		bar.add_child(skip)
+		# (1.63) the same card the results screen shows after a fight
+		var card := GUI.DraftCard.new()
+		card.avatar = avatar_for("me", 40)
+		card.posted.connect(_on_publish)
+		card.skipped.connect(_on_skip_post)
+		list_box.add_child(card)
+		card.build()
 	feed_list("home")
 
 
@@ -5528,8 +5460,20 @@ func open_trophy(i: int) -> void:
 	info.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	row.add_child(info)
 	if tr_.get("dad", false):
-		info.add_child(UI.label(tr("Your dad's. Won before you were born."), 17, Color(1.0, 0.85, 0.4)))
-		var gus := UI.label(tr("Gus: He'd want you to put yours up next to it. Then beat it."), 14, Color(0.75, 0.75, 0.8))
+		# (1.63) his run that season: the record, the fights people still talk about, Gus's memory
+		var run: Dictionary = GameData.DAD_RUNS[clampi(int(tr_.get("run", 0)), 0, GameData.DAD_RUNS.size() - 1)]
+		info.add_child(UI.label(tr("Your dad's. Season %d, piloting ECHO.") % int(run["season"]), 17, Color(1.0, 0.85, 0.4)))
+		info.add_child(UI.label(tr("Record: %d-%d") % [int(run["w"]), int(run["l"])], 17, Color(0.9, 0.9, 0.95)))
+		for f in run["fights"]:
+			var won: bool = f[1]
+			var l := UI.label(tr("Week %d: %s %s") % [int(f[0]), tr("beat") if won else tr("lost to"), tr("%s · %s") % [str(f[2]), str(f[3])]], 14,
+					Color(0.5, 1.0, 0.6) if won else Color(1.0, 0.55, 0.45))
+			l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+			info.add_child(l)
+			var nl := UI.label(tr(str(f[4])), 13, Color(0.68, 0.68, 0.74))
+			nl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+			info.add_child(nl)
+		var gus := UI.label(tr("Gus: %s") % tr(str(run["gus"])), 14, Color(0.95, 0.75, 0.45))
 		gus.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		info.add_child(gus)
 		return

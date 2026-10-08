@@ -118,7 +118,13 @@ func _has_point(point: Vector2) -> bool:
 
 
 func _gui_input(event: InputEvent) -> void:
-	if not interactive or hide_robot:
+	if not interactive:
+		return
+	if hide_robot:
+		# no robot in this scene (the office, the pub, your room): taps go to the scene's own things
+		# (1.63: this used to drop them, so the office's trophies couldn't be opened)
+		if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
+			background_tapped.emit(event.position)
 		return
 	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
 		var k: float = _sc * look.get("scale", 1.0)

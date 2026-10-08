@@ -794,3 +794,114 @@ class EventIcon extends Control:
 	func _draw() -> void:
 		var GUI = load("res://garage_ui.gd")
 		GUI.draw_event_icon(self, kind, size * 0.5, minf(size.x, size.y) * 0.42, ring)
+
+
+## Your post waiting after a fight, as a card: a draft per tone (humble, hype, trash talk; five when
+## you watched), with what each does and everyone's (+52) / (-61) next to their names, then Say
+## nothing. Used on BotMedia's Home and on the results screen of a fight (1.63).
+## Fill avatar first if you want your face in the corner, connect posted / skipped, then build().
+class DraftCard extends PanelContainer:
+	signal posted(tone: String)
+	signal skipped
+	var avatar: Control = null
+	var row_h := 58.0
+	var wrap := false   # narrow places (the results screen): the lines wrap and the rows grow
+
+	func build() -> void:
+		var G = load("res://garage_ui.gd")   # (an inner class can't call the outer script's statics by name)
+		for c in get_children():
+			c.queue_free()
+		var S = GameData.Social
+		var drafts: Array = S.drafts()
+		var sb: StyleBoxFlat = G.box(ROW.lightened(0.04), 10, 10)
+		sb.border_color = YELLOW
+		sb.set_border_width_all(2)
+		add_theme_stylebox_override("panel", sb)
+		var col := VBoxContainer.new()
+		col.add_theme_constant_override("separation", 6)
+		add_child(col)
+		var top := HBoxContainer.new()
+		top.add_theme_constant_override("separation", 10)
+		col.add_child(top)
+		if avatar:
+			top.add_child(avatar)
+		var watched: bool = S.st()["draft"].get("watch", false)
+		var t: Label = G.text(tr("POST ABOUT THE FIGHT YOU WATCHED? Pick one.") if watched else tr("POST ABOUT TONIGHT? Pick one."), 15, YELLOW, "headb")
+		t.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		t.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		top.add_child(t)
+		var hints := {"humble": tr("Safe. Sponsors like it. They warm up to you (+4).") if not watched else tr("Safe. Both of them warm up to you (+3)."),
+				"hype": tr("Big if you keep winning.") if not watched else tr("The winner loves it (+6)."),
+				"trash": tr("Fans love it. They won't (-10).") if not watched else tr("Fans love it. Both of them will remember (-10 each)."),
+				"trash_w": tr("Fans love it. The winner won't (-10)."), "trash_l": tr("Fans love it. The loser won't (-10).")}
+		var names := {"humble": tr("HUMBLE"), "hype": tr("HYPE"), "trash": tr("TRASH TALK") if not watched else tr("TRASH TALK: BOTH"),
+				"trash_w": tr("TRASH TALK: WINNER"), "trash_l": tr("TRASH TALK: LOSER")}
+		# what's between you and each pilot named in the drafts: (+52) green, (-61) red
+		var wids: Array = S.draft_wids()
+		var bb_args: Array = []
+		var plain: Array = S.draft_args()
+		for k in plain.size():
+			var nm := str(plain[k])
+			var wid: int = int(wids[k]) if k < wids.size() else -1
+			if wid >= 0 and GameData.rel_bb(wid) != "":
+				nm += " " + GameData.rel_bb(wid)
+			bb_args.append(nm)
+		var no_trash: bool = GameData.Contracts.st()["active"].any(func(c): return c["reqs"].any(func(r): return r["kind"] == "no_trash"))
+		for d in drafts:
+			var tone := str(d[0])
+			# a tappable row: in the narrow card it's a panel that sizes to its wrapped text
+			var row: Control
+			var v := VBoxContainer.new()
+			v.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			v.add_theme_constant_override("separation", 0)
+			if wrap:
+				var pc := PanelContainer.new()
+				pc.add_theme_stylebox_override("panel", G.box(BG, 8, 8))
+				pc.mouse_filter = Control.MOUSE_FILTER_STOP
+				pc.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+				pc.gui_input.connect(func(e):
+					if (e is InputEventMouseButton and e.pressed and e.button_index == MOUSE_BUTTON_LEFT) or (e is InputEventScreenTouch and e.pressed):
+						posted.emit(tone))
+				pc.add_child(v)
+				row = pc
+			else:
+				var b := Button.new()
+				b.focus_mode = Control.FOCUS_NONE
+				b.custom_minimum_size = Vector2(0, row_h)
+				for k in ["normal", "hover", "pressed", "hover_pressed"]:
+					b.add_theme_stylebox_override(k, G.box(BG if k == "normal" else BG.lightened(0.08), 8, 6))
+				b.pressed.connect(func(): posted.emit(tone))
+				v.set_anchors_preset(Control.PRESET_FULL_RECT)
+				v.offset_left = 10
+				v.offset_right = -10
+				v.alignment = BoxContainer.ALIGNMENT_CENTER
+				b.add_child(v)
+				row = b
+			col.add_child(row)
+			var warn := tone.begins_with("trash") and no_trash
+			var hl: Label = G.text(str(names[tone]) + "  ·  " + (tr("Breaks your Harbour Mutual deal!") if warn else str(hints[tone])), 11, RED if warn or tone.begins_with("trash") else MUTED, "headb")
+			if wrap:
+				hl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+			else:
+				hl.clip_text = true
+			v.add_child(hl)
+			var dt := RichTextLabel.new()
+			dt.bbcode_enabled = true
+			dt.fit_content = true
+			dt.scroll_active = false
+			dt.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART if wrap else TextServer.AUTOWRAP_OFF
+			dt.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			dt.clip_contents = true
+			dt.add_theme_font_override("normal_font", G.body())
+			dt.add_theme_font_override("bold_font", G.headb())
+			dt.add_theme_font_size_override("normal_font_size", UI.tsz(13))
+			dt.add_theme_font_size_override("bold_font_size", UI.tsz(13))
+			dt.add_theme_color_override("default_color", TEXT)
+			dt.text = tr(str(d[1])) % bb_args
+			v.add_child(dt)
+		var bar := HBoxContainer.new()
+		col.add_child(bar)
+		var sp := Control.new()
+		sp.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		bar.add_child(sp)
+		bar.add_child(UI.button(tr("Say nothing"), func(): skipped.emit(), 12, Vector2(130, 32)))
