@@ -94,6 +94,7 @@ class Fighter:
 	var spec := {}
 	var look := {}
 	var pre_walk := false   # (1.71) walking up to its mark during the countdown
+	var pre_mark := -1.0    # (1.72) how far from the middle it waits (from its reach)
 	var look_dirty := true
 	var eff := 1.0
 	var dmg_mult := 1.0
@@ -1771,7 +1772,12 @@ func _process(delta: float) -> void:
 		for k in c_ins.size():
 			var cf: Fighter = team_c[k]
 			c_ins[k] = empty_input()
-			var mark := screen.x * 0.5 + 130.0 + k * 90.0
+			# (1.72) where it waits depends on its reach: long arms or legs hang back so the bell
+			# finds the enemy at the tip of its fist, short ones crowd the line
+			if cf.pre_mark < 0.0:
+				var reach := maxf(strike_reach(cf, "arm", "punch"), strike_reach(cf, "leg", "kick"))
+				cf.pre_mark = clampf(reach, 100.0, 260.0) + k * 90.0
+			var mark := screen.x * 0.5 + cf.pre_mark
 			if cf.pre_walk:
 				if cf.pos.x <= mark:
 					cf.pre_walk = false   # there: stop and hold the guard
