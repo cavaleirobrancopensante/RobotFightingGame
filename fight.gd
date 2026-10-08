@@ -3521,42 +3521,89 @@ const ARENA_FPS := 24.0
 
 func draw_arena(ci: CanvasItem) -> void:
 	var off := Vector2.ZERO
+	var lit := Arena.noir()
 	ci.draw_rect(Rect2(Vector2(-40, -40), screen + Vector2(80, 80)), Color(0.07, 0.07, 0.11))
 	Arena.draw_backdrop(ci, arena_id, screen, floor_y, clock, off)
-	Arena.draw_crowd(ci, crowd, crowd_id, screen, clock, cheer, off)
+	Arena.draw_dim(ci, arena_id, screen, floor_y, clock)
+	Arena.draw_crowd(ci, crowd, crowd_id, screen, clock, cheer, off, fight_light())
 	var top := screen.y * 0.24
 	var ar: Dictionary = Arena.ARENAS[arena_id]
-	ci.draw_rect(Rect2(0, top + 95.0, screen.x, floor_y - top - 95.0), Color(Color(ar["sky"][0]), 0.6))
+	if lit:
+		# the crowd falls back into the dark behind the ring
+		var tint: Color = Arena.mood(arena_id)["tint"]
+		ci.draw_polygon(PackedVector2Array([Vector2(-40, top + 60.0), Vector2(screen.x + 40, top + 60.0), Vector2(screen.x + 40, floor_y), Vector2(-40, floor_y)]),
+				PackedColorArray([Color(tint, 0.0), Color(tint, 0.0), Color(tint, 0.7), Color(tint, 0.7)]))
+	else:
+		ci.draw_rect(Rect2(0, top + 95.0, screen.x, floor_y - top - 95.0), Color(Color(ar["sky"][0]), 0.6))
 	var lc := Color(ar["light"])
 	for k in range(14):
-		ci.draw_circle(Vector2(screen.x * (k + 0.5) / 14.0, screen.y * 0.21), 5.0, Color(lc, 0.45))
+		var lp := Vector2(screen.x * (k + 0.5) / 14.0, screen.y * 0.21)
+		if lit:
+			ci.draw_circle(lp, 11.0, Color(lc, 0.1))
+			ci.draw_circle(lp, 4.0, Color(lc, 0.85))
+		else:
+			ci.draw_circle(lp, 5.0, Color(lc, 0.45))
+	Arena.draw_midground(ci, arena_id, screen, floor_y, clock)
 	Arena.draw_floor(ci, arena_id, screen, floor_y, clock, off)
+	Arena.draw_floor_light(ci, arena_id, screen, floor_y, clock)
 	# ring: corner posts mark the walls, ropes run between them
+	if lit:
+		RobotArt._set_light(fight_light(), 1.0)
+		RobotArt._grade = 3
+		RobotArt._flash = false
 	var post_top := floor_y - 190.0
 	var ring: String = ar.get("ring", "")
+	var key: Color = Light.get_set(fight_light())["key"]
 	for k in range(3):
 		var y := floor_y - 70.0 - k * 50.0
 		if ring == "junk":
 			# chains strung between stacks of oil drums
 			var x := wall_l
 			while x < wall_r:
-				ci.draw_arc(Vector2(x + 6.0, y + sin(x * 0.01) * 4.0), 6.0, 0, TAU, 8, Color(ar["rope"]), 2.5)
+				var cy := y + sin(x * 0.01) * 4.0
+				if lit:
+					ci.draw_arc(Vector2(x + 6.0, cy), 6.0, 0, TAU, 8, RobotArt.OUTLINE, 4.5)
+				ci.draw_arc(Vector2(x + 6.0, cy), 6.0, 0, TAU, 8, Color(ar["rope"]), 2.5)
+				if lit:
+					ci.draw_arc(Vector2(x + 6.0, cy), 6.0, PI * 1.15, PI * 1.6, 4, Color(key, 0.7), 1.2)
 				x += 11.0
 		else:
-			ci.draw_line(Vector2(wall_l, y), Vector2(wall_r, y), Color(Color(ar["rope"]), 0.75), 4.0 if ring != "gold" else 6.0)
+			var rw := 4.0 if ring != "gold" else 6.0
+			if lit:
+				ci.draw_line(Vector2(wall_l, y), Vector2(wall_r, y), RobotArt.OUTLINE, rw + 2.5)
+				ci.draw_line(Vector2(wall_l, y), Vector2(wall_r, y), Color(ar["rope"]).darkened(0.25), rw)
+				ci.draw_line(Vector2(wall_l, y - rw * 0.25), Vector2(wall_r, y - rw * 0.25), Color(key, 0.5), 1.3)
+			else:
+				ci.draw_line(Vector2(wall_l, y), Vector2(wall_r, y), Color(Color(ar["rope"]), 0.75), rw)
 	for x in [wall_l, wall_r]:
 		if ring == "junk":
 			for k in range(3):
 				var dy := floor_y - 62.0 - k * 64.0
 				var dc: Color = [Color(0.5, 0.2, 0.12), Color(0.2, 0.35, 0.5), Color(0.55, 0.45, 0.15)][k]
+				if lit:
+					# oil drums: a lit plate with two ribs
+					RobotArt._plate(ci, RobotArt._chamfer(Rect2(Vector2(x - 20.0, dy), Vector2(40.0, 60.0)), 4.0), dc)
+					for ry in [18.0, 42.0]:
+						ci.draw_line(Vector2(x - 19.0, dy + ry), Vector2(x + 19.0, dy + ry), RobotArt.OUTLINE, 2.5)
+						ci.draw_line(Vector2(x - 17.0, dy + ry - 2.0), Vector2(x + 17.0, dy + ry - 2.0), Color(key, 0.35), 1.2)
+					continue
 				ci.draw_rect(Rect2(Vector2(x - 20.0, dy), Vector2(40.0, 60.0)), dc)
 				ci.draw_line(Vector2(x - 20.0, dy + 18.0), Vector2(x + 20.0, dy + 18.0), dc.darkened(0.35), 3.0)
 				ci.draw_line(Vector2(x - 20.0, dy + 42.0), Vector2(x + 20.0, dy + 42.0), dc.darkened(0.35), 3.0)
 			continue
+		var pad_c := Color(0.9, 0.9, 0.95) if ring != "gold" else Color(0.95, 0.8, 0.4)
+		var cap_c := Color(ar["rope"]) if ring != "gold" else Color(ar["post"]).lightened(0.2)
+		if lit:
+			RobotArt._plate(ci, RobotArt._chamfer(Rect2(Vector2(x - 9.0, post_top), Vector2(18.0, floor_y - post_top)), 3.0), Color(ar["post"]))
+			RobotArt._plate(ci, RobotArt._chamfer(Rect2(Vector2(x - 12.0, post_top - 10.0), Vector2(24.0, 14.0)), 3.0), cap_c)
+			for k in range(3):
+				RobotArt._plate(ci, RobotArt._chamfer(Rect2(Vector2(x - 11.0, floor_y - 76.0 - k * 50.0), Vector2(22.0, 12.0)), 2.5), pad_c.darkened(0.18))
+			continue
 		ci.draw_rect(Rect2(Vector2(x - 9.0, post_top), Vector2(18.0, floor_y - post_top)), Color(ar["post"]))
-		ci.draw_rect(Rect2(Vector2(x - 12.0, post_top - 10.0), Vector2(24.0, 14.0)), Color(ar["rope"]) if ring != "gold" else Color(ar["post"]).lightened(0.2))
+		ci.draw_rect(Rect2(Vector2(x - 12.0, post_top - 10.0), Vector2(24.0, 14.0)), cap_c)
 		for k in range(3):
-			ci.draw_rect(Rect2(Vector2(x - 11.0, floor_y - 76.0 - k * 50.0), Vector2(22.0, 12.0)), Color(0.9, 0.9, 0.95) if ring != "gold" else Color(0.95, 0.8, 0.4))
+			ci.draw_rect(Rect2(Vector2(x - 11.0, floor_y - 76.0 - k * 50.0), Vector2(22.0, 12.0)), pad_c)
+	Arena.draw_beams(ci, arena_id, screen, floor_y, clock)
 
 
 func draw_cables(off: Vector2) -> void:
@@ -5598,6 +5645,11 @@ func draw_walk_in(off: Vector2) -> void:
 			pdir = -1.0
 		"b_call", "b_zoom":
 			pose = "announce"
+	var lit := Arena.noir()
+	if lit:
+		RobotArt._set_light(fight_light(), 1.0)
+		RobotArt._grade = 2
+		RobotArt._flash = false
 	match barrier_kind:
 		"crate", "podium":
 			var bh := 58.0 * s * 0.6 if barrier_kind == "crate" else 74.0 * s * 0.6
@@ -5620,7 +5672,15 @@ func draw_walk_in(off: Vector2) -> void:
 				if lift > 0.0:
 					var held := feet + Vector2(-bw * 0.5 * ps / s, -76.0 * ps - bh * ps / s)   # carried over his head, both hands on it
 					box_r = Rect2(Vector2(mid - bw * 0.5, floor_y - bh).lerp(held, lift), Vector2(bw, bh) * (ps / s))
-				if alpha > 0.0:
+				if lit and alpha >= 0.99:
+					# a lit wooden crate: plate, cross braces, a stencil band
+					var br := Rect2(box_r.position + off, box_r.size)
+					RobotArt._plate(ci, RobotArt._chamfer(br, 4.0), Color(0.55, 0.38, 0.2))
+					var inset := br.grow(-5.0)
+					RobotArt._ln(ci, inset.position, inset.end, Color(0.42, 0.28, 0.14), 4.0)
+					RobotArt._ln(ci, Vector2(inset.end.x, inset.position.y), Vector2(inset.position.x, inset.end.y), Color(0.42, 0.28, 0.14), 4.0)
+					ci.draw_rect(Rect2(br.position.x + 3, br.position.y + br.size.y * 0.42, br.size.x - 6, br.size.y * 0.16), Color(0.1, 0.08, 0.05, 0.55))
+				elif alpha > 0.0:
 					var c := Color(0.55, 0.38, 0.2, alpha)
 					ci.draw_rect(Rect2(box_r.position + off, box_r.size), c)
 					ci.draw_rect(Rect2(box_r.position + off, box_r.size), Color(0.3, 0.2, 0.1, alpha), false, 3.0)
@@ -5630,7 +5690,16 @@ func draw_walk_in(off: Vector2) -> void:
 				# a steel podium with steps and a mic stand; it sinks into the floor during the count
 				var sink := clampf((t - 0.6) / 1.6, 0.0, 1.0)
 				var h := bh * (1.0 - sink)
-				if h > 1.0:
+				if h > 1.0 and lit:
+					var pr2 := Rect2(Vector2(mid - bw * 0.5, floor_y - h) + off, Vector2(bw, h))
+					RobotArt._plate(ci, RobotArt._chamfer(pr2, 4.0), Color(0.42, 0.45, 0.52))
+					if h > 8.0:
+						RobotArt._plate(ci, RobotArt._chamfer(Rect2(pr2.position, Vector2(bw, 7.0)), 2.0), Color(0.95, 0.76, 0.19))
+					for k in 3:
+						var sy := floor_y - h + (k + 1) * h / 4.0
+						ci.draw_line(Vector2(pr2.position.x + 3, sy + off.y), Vector2(pr2.end.x - 3, sy + off.y), RobotArt.OUTLINE, 2.0)
+					ci.draw_rect(Rect2(Vector2(mid - bw * 0.5 - 6, floor_y - 3) + off, Vector2(bw + 12, 3)), Color(0.1, 0.1, 0.1))
+				elif h > 1.0:
 					var pr := Rect2(mid - bw * 0.5, floor_y - h, bw, h)
 					ci.draw_rect(Rect2(pr.position + off, pr.size), Color(0.42, 0.45, 0.52))
 					ci.draw_rect(Rect2(pr.position + off, Vector2(bw, minf(6.0, h))), Color(0.95, 0.76, 0.19))
@@ -5651,11 +5720,20 @@ func draw_walk_in(off: Vector2) -> void:
 			if gh > 1.0:
 				for side in [-1.0, 1.0]:
 					var r := Rect2(mid + (0.0 if side > 0 else -22.0 * s * 0.6), floor_y - gh, 22.0 * s * 0.6, gh)
-					ci.draw_rect(Rect2(r.position + off, r.size), Color(0.2, 0.22, 0.27))
-					ci.draw_rect(Rect2(r.position + off, Vector2(r.size.x, 5)), Color(0.95, 0.76, 0.19))
+					if lit:
+						RobotArt._plate(ci, RobotArt._chamfer(Rect2(r.position + off, r.size), 3.0), Color(0.24, 0.26, 0.32))
+						if gh > 8.0:
+							RobotArt._plate(ci, PackedVector2Array([r.position + off, r.position + off + Vector2(r.size.x, 0), r.position + off + Vector2(r.size.x, 6), r.position + off + Vector2(0, 6)]), Color(0.95, 0.76, 0.19))
+					else:
+						ci.draw_rect(Rect2(r.position + off, r.size), Color(0.2, 0.22, 0.27))
+						ci.draw_rect(Rect2(r.position + off, Vector2(r.size.x, 5)), Color(0.95, 0.76, 0.19))
 					var blink := fmod(clock * 2.0, 1.0) < 0.5
 					for k in int(gh / 30.0):
-						ci.draw_circle(r.position + off + Vector2(r.size.x * 0.5, 14 + k * 30), 4.0, Color(1.0, 0.25, 0.2) if blink != (k % 2 == 0) else Color(0.35, 0.1, 0.08))
+						var on := blink != (k % 2 == 0)
+						var wp := r.position + off + Vector2(r.size.x * 0.5, 14 + k * 30)
+						if lit and on:
+							ci.draw_circle(wp, 10.0, Color(1.0, 0.25, 0.2, 0.18))   # a warning light is a real light
+						ci.draw_circle(wp, 4.0, Color(1.0, 0.25, 0.2) if on else Color(0.35, 0.1, 0.08))
 				ci.draw_rect(Rect2(Vector2(mid - 30 * s, floor_y - 4) + off, Vector2(60 * s, 4)), Color(0.1, 0.1, 0.1))
 			# the gilded announcer's box at the back, above the ring - he stays up there all fight
 			var bx := Vector2(mid, floor_y - screen.y * 0.3) + off * 0.5
@@ -5663,9 +5741,14 @@ func draw_walk_in(off: Vector2) -> void:
 			var bs := clampf(s * 0.75, 1.0, 1.6)
 			PilotArt.draw_person(ci, bx + Vector2(0, 2), bs, ANNOUNCERS["gate"], pdir, pose if phase == "intro" or phase == "ko" else "walk_mic", clock)
 			draw_announcer_prop(bx + Vector2(0, 2), bs, pdir)
-			ci.draw_rect(booth, Color(0.45, 0.08, 0.12))
-			ci.draw_rect(booth, Color(0.88, 0.7, 0.25), false, 3.0)
-			ci.draw_rect(Rect2(booth.position + Vector2(0, -5), Vector2(booth.size.x, 5)), Color(0.88, 0.7, 0.25))
+			if lit:
+				RobotArt._plate(ci, RobotArt._chamfer(booth, 4.0), Color(0.45, 0.08, 0.12))
+				ci.draw_rect(booth.grow(-3.0), Color(0.88, 0.7, 0.25), false, 2.0)
+				RobotArt._plate(ci, RobotArt._chamfer(Rect2(booth.position + Vector2(-2, -6), Vector2(booth.size.x + 4, 6)), 2.0), Color(0.88, 0.7, 0.25))
+			else:
+				ci.draw_rect(booth, Color(0.45, 0.08, 0.12))
+				ci.draw_rect(booth, Color(0.88, 0.7, 0.25), false, 3.0)
+				ci.draw_rect(Rect2(booth.position + Vector2(0, -5), Vector2(booth.size.x, 5)), Color(0.88, 0.7, 0.25))
 			for k in 5:
 				ci.draw_circle(booth.position + Vector2(10 + k * 18, booth.size.y * 0.55), 3.0, Color(0.95, 0.85, 0.4))
 			ci.draw_line(booth.position + Vector2(20, booth.size.y), booth.position + Vector2(8, booth.size.y + 30), Color(0.88, 0.7, 0.25), 3.0)

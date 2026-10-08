@@ -180,8 +180,10 @@ func _draw() -> void:
 	var arena_id := "harbor"
 	draw_rect(Rect2(Vector2.ZERO, screen), Color(0.07, 0.07, 0.11))
 	Arena.draw_backdrop(self, arena_id, screen, floor_y, clock, Vector2.ZERO)
-	Arena.draw_crowd(self, crowd, "packed", screen, clock, 0.0, Vector2.ZERO)
+	Arena.draw_dim(self, arena_id, screen, floor_y, clock)
+	Arena.draw_crowd(self, crowd, "packed", screen, clock, 0.0, Vector2.ZERO, arena_id)
 	Arena.draw_floor(self, arena_id, screen, floor_y, clock, Vector2.ZERO)
+	Arena.draw_floor_light(self, arena_id, screen, floor_y, clock)
 	var wl := screen.x * 0.07
 	var wr := screen.x * 0.93
 	for k in 3:

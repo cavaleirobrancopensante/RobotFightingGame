@@ -6,6 +6,9 @@ extends RefCounted
 ## Each crowd has its own people (size, colors, hats, props) and its own way of cheering.
 
 const I18n = preload("res://i18n.gd")
+const RA = preload("res://robot_art.gd")
+const Light = preload("res://light.gd")
+const OUTLINE := Color(0.035, 0.035, 0.045)
 const ARENAS := {
 	"fish_market": {"name": "The Fish Market Pit", "sky": ["#0d1a1f", "#16303a"], "floor": "#2a3a3e", "rope": "#c0392b", "post": "#7f8c8d", "light": "#ffe7a0"},
 	"docks": {"name": "Dock 9 Arena", "sky": ["#05070f", "#141c33"], "floor": "#4a3a2a", "rope": "#f39c12", "post": "#34495e", "light": "#fff2c0"},
@@ -396,8 +399,16 @@ static func draw_backdrop(ci: CanvasItem, id: String, screen: Vector2, floor_y: 
 
 
 ## The crowd itself.
-static func draw_crowd(ci: CanvasItem, crowd: Array, id: String, screen: Vector2, t: float, cheer: float, off: Vector2) -> void:
+## light_id: the venue's light set (Diagnostic Noir, 1.59): people sink into the dark, get one dark
+## outline and catch the venue's key light on one side and its rim on the other. "" = the old flat look.
+static func draw_crowd(ci: CanvasItem, crowd: Array, id: String, screen: Vector2, t: float, cheer: float, off: Vector2, light_id: String = "") -> void:
 	var c: Dictionary = CROWDS[id]
+	var nz := light_id != "" and noir()
+	var LS := Light.get_set(light_id) if nz else {}
+	var key: Color = LS.get("key", Color.WHITE)
+	var from := float(LS.get("from", 0.0))
+	var rim: Color = LS.get("rim", Color(0, 0, 0, 0))
+	var kang := Vector2(from * 0.8, -1.0).normalized().angle()
 	var top := screen.y * 0.24
 	var hat: String = c["hat"]
 	var bounce: float = c["bounce"]
@@ -420,19 +431,31 @@ static func draw_crowd(ci: CanvasItem, crowd: Array, id: String, screen: Vector2
 		else:
 			b = sin(t * 1.5 + p["phase"]) * idle
 		var colr: Color = (p["color"] as Color).darkened(0.25 * (2 - row))
+		if nz:
+			colr = (p["color"] as Color).darkened(0.4 + 0.08 * (2 - row))   # dim, never black
 		var pos := Vector2(p["x"], y + b) + off * 0.3
 		var hr := 10.0 * s
 		if hat == "robot":
+			if nz:
+				ci.draw_rect(Rect2(pos.x - 13 * s - 1.3, pos.y + 6 * s - 1.3, 26 * s + 2.6, 40 * s + 2.6), OUTLINE)
+				ci.draw_rect(Rect2(pos.x - hr - 1.3, pos.y - hr - 1.3, hr * 2 + 2.6, hr * 1.8 + 2.6), OUTLINE)
 			ci.draw_rect(Rect2(pos.x - 13 * s, pos.y + 6 * s, 26 * s, 40 * s), colr.darkened(0.2))
 			ci.draw_rect(Rect2(pos.x - hr, pos.y - hr, hr * 2, hr * 1.8), colr)
+			if nz:
+				ci.draw_line(Vector2(pos.x - hr + 2, pos.y - hr + 1.5), Vector2(pos.x + hr - 2, pos.y - hr + 1.5), Color(key, 0.6), 1.5)
 			ci.draw_rect(Rect2(pos.x - hr * 0.6, pos.y - hr * 0.3, hr * 1.2, 4), Color(0.3, 1.0, 0.5) if int(p["phase"] * 3) % 2 == 0 else Color(1.0, 0.4, 0.2))
 			ci.draw_line(pos + Vector2(0, -hr), pos + Vector2(0, -hr - 8), colr, 2.0)
 			ci.draw_circle(pos + Vector2(0, -hr - 9), 2.5, Color(1, 0.3, 0.3, 0.5 + 0.5 * sin(t * 5.0 + p["phase"])))
 			continue
 		var dim := 1.0 - 0.25 * (2 - row)
+		if nz:
+			dim = 0.62 - 0.08 * (2 - row)
 		var dc := Color(dim, dim, dim)
 		var pick := int(p["phase"] * 10.0) % 5   # which variant this person wears
 		var body := Rect2(pos.x - 13 * s, pos.y + 6 * s, 26 * s, 40 * s)
+		if nz:
+			ci.draw_rect(body.grow(1.3), OUTLINE)
+			ci.draw_circle(pos, hr + 1.3, OUTLINE)
 		ci.draw_rect(body, colr.darkened(0.2))
 		var skin := colr.lerp(Color(0.85, 0.7, 0.55), 0.35)
 		if hat in ["suit", "tophat", "smart", "overalls", "casual", "scarf"]:
@@ -545,7 +568,17 @@ static func draw_crowd(ci: CanvasItem, crowd: Array, id: String, screen: Vector2
 					ci.draw_line(gp + Vector2(0, 8), gp + Vector2(0, -2), Color(0.85, 0.85, 0.9, 0.8), 1.5)
 					ci.draw_rect(Rect2(gp + Vector2(-2.5, -12), Vector2(5, 10)), Color(1.0, 0.88, 0.45, 0.85))
 		if arm_up:
+			if nz:
+				ci.draw_line(pos + Vector2(8, 10), pos + Vector2(16, -14 + b * 0.5), OUTLINE, 7.5)
 			ci.draw_line(pos + Vector2(8, 10), pos + Vector2(16, -14 + b * 0.5), colr, 5.0)
+		if nz:
+			# the venue's key light catches one side of every head and shoulder, its rim the other
+			var ka := 0.7 - 0.15 * (2 - row)
+			ci.draw_arc(pos, hr - 1.2, kang - 0.8, kang + 0.8, 8, Color(key, ka), 1.6)
+			var sx := body.position.x + (2.0 if from <= 0.0 else body.size.x * 0.5)
+			ci.draw_line(Vector2(sx, body.position.y + 1.2), Vector2(sx + body.size.x * 0.5 - 2.0, body.position.y + 1.2), Color(key, ka * 0.8), 1.5)
+			if rim.a > 0.0 and absf(from) >= 0.2:
+				ci.draw_arc(pos, hr - 1.0, kang + PI - 0.6, kang + PI + 0.6, 6, Color(rim, rim.a * 0.8), 1.3)
 	if piles and cur_row >= 0:
 		draw_pile_row(ci, cur_row, top, screen.x, off)
 
@@ -585,6 +618,8 @@ static func draw_pile_row(ci: CanvasItem, row: int, top: float, w: float, off: V
 static func draw_floor(ci: CanvasItem, id: String, screen: Vector2, floor_y: float, t: float, off: Vector2) -> void:
 	var a: Dictionary = ARENAS[id]
 	var fc := Color(a["floor"])
+	if noir():
+		fc = fc.darkened(float(mood(id).get("floor_dim", 0.35)))
 	var w := screen.x
 	var fh := screen.y - floor_y + 20.0
 	ci.draw_rect(Rect2(Vector2(0, floor_y) + off, Vector2(w, fh)), fc)
@@ -649,4 +684,265 @@ static func draw_floor(ci: CanvasItem, id: String, screen: Vector2, floor_y: flo
 			ci.draw_arc(Vector2.ZERO, 180.0, 0, TAU, 48, Color(0.85, 0.7, 0.3, 0.4), 2.0)
 			ci.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 			ci.draw_string(ThemeDB.fallback_font, Vector2(w * 0.5 - 40, floor_y + 90) + off, I18n.t("K"), HORIZONTAL_ALIGNMENT_CENTER, 80, 40, Color(0.85, 0.7, 0.3, 0.7))
-	ci.draw_line(Vector2(0, floor_y) + off, Vector2(w, floor_y) + off, fc.lightened(0.35), 3.0)
+	if not noir():
+		ci.draw_line(Vector2(0, floor_y) + off, Vector2(w, floor_y) + off, fc.lightened(0.35), 3.0)
+
+
+# ---------------------------------------------------------------- Diagnostic Noir (1.59)
+# Every venue sits in the dark and is lit by its own lamps: the backdrop sinks under a tint, the
+# lamps glow again on top, beams fall on the ring, the floor gets a pool of light where the robots
+# stand and drops off into the dark, wet floors shine. The robots take the venue's light set
+# (light.gd, same id). Settings > Robot look: CLASSIC keeps the old flat look.
+
+## dim: how far the backdrop sinks (alpha of tint over it). lamps: real lights, [x across the
+## screen, y as a share of the floor's height (0 = off the top), x the beam lands on, half the beam's
+## width on the floor (shares of the screen width), colour (else the venue's key)]. beam: how bright
+## the beams are. wet: the floor shines. floor_dim: how much darker the floor gets.
+const MOOD := {
+	"scrap_ring": {"dim": 0.4, "tint": Color(0.06, 0.035, 0.03), "beam": 0.09, "wet": false,
+			"lamps": [[0.035, 0.2, 0.36, 0.2, Color(0.88, 0.93, 1.0)], [0.965, 0.2, 0.64, 0.2, Color(0.88, 0.93, 1.0)]]},
+	"regional_hall": {"dim": 0.3, "tint": Color(0.02, 0.03, 0.06), "beam": 0.06, "wet": false, "floor_dim": 0.3,
+			"lamps": [[0.3, 0.0, 0.36, 0.2], [0.7, 0.0, 0.64, 0.2]]},
+	"regional_final": {"dim": 0.4, "tint": Color(0.02, 0.02, 0.06), "beam": 0.08, "wet": false,
+			"lamps": [[0.5, 0.0, 0.5, 0.26]]},
+	"champ_arena": {"dim": 0.42, "tint": Color(0.0, 0.02, 0.08), "beam": 0.09, "wet": true,
+			"lamps": [[0.2, 0.0, 0.4, 0.16], [0.8, 0.0, 0.6, 0.16]]},
+	"champ_gala": {"dim": 0.36, "tint": Color(0.08, 0.0, 0.02), "beam": 0.06, "wet": true,
+			"lamps": [[0.25, 0.25, 0.38, 0.14], [0.5, 0.25, 0.5, 0.14], [0.75, 0.25, 0.62, 0.14]]},
+	"fish_market": {"dim": 0.36, "tint": Color(0.0, 0.04, 0.05), "beam": 0.07, "wet": true,
+			"lamps": [[0.25, 0.3, 0.3, 0.12], [0.5, 0.3, 0.5, 0.12], [0.75, 0.3, 0.7, 0.12]]},
+	"docks": {"dim": 0.36, "tint": Color(0.01, 0.02, 0.06), "beam": 0.08, "wet": true,
+			"lamps": [[0.25, 0.0, 0.35, 0.18], [0.75, 0.0, 0.65, 0.18]]},
+	"cannery": {"dim": 0.38, "tint": Color(0.05, 0.02, 0.01), "beam": 0.08, "wet": false,
+			"lamps": [[0.5, 0.0, 0.5, 0.28]]},
+	"test_track": {"dim": 0.14, "tint": Color(0.05, 0.06, 0.08), "beam": 0.0, "wet": false, "floor_dim": 0.12, "lamps": []},
+	"harbor": {"dim": 0.28, "tint": Color(0.08, 0.02, 0.1), "beam": 0.0, "wet": true, "lamps": []},
+	"substation": {"dim": 0.45, "tint": Color(0.0, 0.02, 0.06), "beam": 0.08, "wet": true,
+			"lamps": [[0.15, 0.12, 0.32, 0.16], [0.85, 0.12, 0.68, 0.16]]},
+	"steelworks": {"dim": 0.4, "tint": Color(0.08, 0.02, 0.0), "beam": 0.07, "wet": false,
+			"lamps": [[0.1, 0.42, 0.3, 0.16], [0.86, 0.42, 0.7, 0.16]]},
+	"rooftop": {"dim": 0.34, "tint": Color(0.0, 0.01, 0.06), "beam": 0.07, "wet": true,
+			"lamps": [[0.5, 0.0, 0.5, 0.3]]},
+	"dry_dock": {"dim": 0.34, "tint": Color(0.02, 0.03, 0.04), "beam": 0.06, "wet": true,
+			"lamps": [[0.32, 0.3, 0.4, 0.14]]},
+	"main_event": {"dim": 0.45, "tint": Color(0.02, 0.0, 0.05), "beam": 0.1, "wet": true,
+			"lamps": [[0.5, 0.0, 0.5, 0.24]]},
+}
+
+
+static func noir() -> bool:
+	return not RA.classic
+
+
+static func mood(id: String) -> Dictionary:
+	return MOOD.get(id, {"dim": 0.35, "tint": Color(0.02, 0.02, 0.05), "beam": 0.07, "wet": false, "lamps": []})
+
+
+static func key_of(id: String) -> Color:
+	return Light.get_set(id if Light.SETS.has(id) else "fight")["key"]
+
+
+static func lamp_pos(l: Array, screen: Vector2, floor_y: float) -> Vector2:
+	return Vector2(screen.x * float(l[0]), floor_y * float(l[1]))
+
+
+static func lamp_col(l: Array, id: String) -> Color:
+	return l[4] if l.size() > 4 else key_of(id)
+
+
+## After the backdrop, before the crowd: the backdrop sinks into the dark (the top darker, the
+## night), then its real lights glow again.
+static func draw_dim(ci: CanvasItem, id: String, screen: Vector2, floor_y: float, t: float) -> void:
+	if not noir():
+		return
+	var m := mood(id)
+	var tint: Color = m["tint"]
+	ci.draw_rect(Rect2(-40, -40, screen.x + 80, floor_y + 60), Color(tint, float(m["dim"])))
+	var h := floor_y * 0.5
+	ci.draw_polygon(PackedVector2Array([Vector2(-40, -40), Vector2(screen.x + 40, -40), Vector2(screen.x + 40, h), Vector2(-40, h)]),
+			PackedColorArray([Color(tint, 0.55), Color(tint, 0.55), Color(tint, 0.0), Color(tint, 0.0)]))
+	relight(ci, id, screen, floor_y, t)
+	for l in m["lamps"]:
+		var p := lamp_pos(l, screen, floor_y)
+		if p.y < 6.0:
+			continue   # above the frame: only its beam shows
+		var k := lamp_col(l, id)
+		ci.draw_circle(p, 30.0, Color(k, 0.07))
+		ci.draw_circle(p, 16.0, Color(k, 0.14))
+		ci.draw_circle(p, 5.5, k.lightened(0.5))
+
+
+## The backdrop's own light sources, lit again after the dim (only real lights glow).
+static func relight(ci: CanvasItem, id: String, screen: Vector2, floor_y: float, t: float) -> void:
+	var w := screen.x
+	match id:
+		"scrap_ring":
+			ci.draw_circle(Vector2(w * 0.78, floor_y * 0.32), 70.0, Color(1.0, 0.55, 0.25, 0.08))
+			ci.draw_circle(Vector2(w * 0.78, floor_y * 0.32), 40.0, Color(1.0, 0.62, 0.3, 0.4))
+			for k in 18:
+				var x := w * (0.45 + k * 0.03)
+				var y := 26.0 + sin(float(k) / 17.0 * PI) * 22.0
+				var on := 0.55 + 0.45 * sin(t * 2.0 + k * 1.7)
+				ci.draw_circle(Vector2(x, y), 7.0, Color(1.0, 0.8, 0.45, 0.12 * on))
+				ci.draw_circle(Vector2(x, y), 3.0, Color(1.0, 0.88, 0.6, on))
+		"fish_market":
+			for k in 6:
+				var x := w * (k + 0.5) / 6.0 + sin(t * 1.3 + k) * 6.0
+				ci.draw_circle(Vector2(x, 76), 22.0, Color(1.0, 0.9, 0.6, 0.12))
+				ci.draw_circle(Vector2(x, 76), 8.0, Color(1.0, 0.94, 0.72))
+		"docks":
+			ci.draw_circle(Vector2(w * 0.6, 20), 9.0, Color(1, 0.25, 0.2, 0.25 + 0.25 * sin(t * 3.0)))
+			ci.draw_circle(Vector2(w * 0.6, 20), 4.0, Color(1, 0.3, 0.25, 0.5 + 0.5 * sin(t * 3.0)))
+		"harbor":
+			ci.draw_circle(Vector2(w * 0.7, floor_y * 0.55), 90.0, Color(1.0, 0.6, 0.35, 0.1))
+			ci.draw_circle(Vector2(w * 0.7, floor_y * 0.55), 50.0, Color(1.0, 0.75, 0.42, 0.75))
+			for k in 30:
+				var x := w * k / 29.0
+				var y := 20.0 + sin(float(k) / 29.0 * PI * 3.0) * 12.0
+				ci.draw_circle(Vector2(x, y), 3.5, Color.from_hsv(fmod(k * 0.17, 1.0), 0.6, 1.0, 0.6 + 0.4 * sin(t * 4.0 + k)))
+		"steelworks":
+			for side in [0.05, 0.82]:
+				ci.draw_rect(Rect2(w * side + 6, floor_y - 250, 98, 12), Color(1.0, 0.5 + 0.2 * sin(t * 6.0), 0.1))
+				ci.draw_circle(Vector2(w * side + 55, floor_y - 250), 70.0, Color(1.0, 0.45, 0.1, 0.1))
+		"rooftop":
+			ci.draw_circle(Vector2(w * 0.82, 50), 60.0, Color(0.8, 0.85, 1.0, 0.06))
+			ci.draw_circle(Vector2(w * 0.1, 30), 10.0, Color(1, 0.1, 0.1, 0.2 + 0.2 * sin(t * 3.0)))
+		"champ_gala":
+			for k in 3:
+				var cx := w * (0.25 + k * 0.25)
+				for j in 7:
+					var ang := PI * j / 6.0
+					ci.draw_circle(Vector2(cx, 56) + Vector2(cos(ang), sin(ang)) * 30.0, 3.0, Color(1.0, 0.95, 0.75, 0.7 + 0.3 * sin(t * 4.0 + j + k * 3)))
+		"main_event":
+			var sc := Rect2(w * 0.38, 96, w * 0.24, 46)
+			ci.draw_rect(sc, Color(0.05, 0.08, 0.2, 0.6))
+			ci.draw_string(ThemeDB.fallback_font, sc.position + Vector2(0, 33), I18n.t("MAIN EVENT"), HORIZONTAL_ALIGNMENT_CENTER, sc.size.x, fit(I18n.t("MAIN EVENT"), sc.size.x, 24), Color.from_hsv(fmod(t * 0.2, 1.0), 0.6, 1.0))
+		"champ_arena":
+			for k in 16:
+				var x := w * (k + 0.5) / 16.0
+				ci.draw_circle(Vector2(x, 34), 5.0, Color.from_hsv(fmod(k * 0.13 + t * 0.1, 1.0), 0.5, 1.0, 0.9))
+			var msg := "  KANE DYNAMICS  *  CHAMPIONSHIP SEASON  *  PORT FERRUM  *"
+			var mx := fmod(-t * 90.0, 520.0)
+			while mx < w:
+				ci.draw_string(ThemeDB.fallback_font, Vector2(mx, 163), msg, HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Color(1.0, 0.75, 0.25))
+				mx += 520.0
+		"regional_hall", "regional_final":
+			ci.draw_string(ThemeDB.fallback_font, Vector2(w * 0.05, 139), "%02d:%02d" % [int(t / 60.0) % 60, int(t) % 60], HORIZONTAL_ALIGNMENT_CENTER, 90, 22, Color(1.0, 0.3, 0.2))
+		"substation":
+			if fmod(t, 2.3) < 0.15:
+				var x := w * (0.15 + (int(t) % 3) * 0.35)
+				ci.draw_circle(Vector2(x, 40), 50.0, Color(0.5, 0.9, 1.0, 0.18))
+
+
+## Venue things that stand between the crowd and the ring (the scrap ring's fence, its floodlight
+## towers and the fire barrel).
+static func draw_midground(ci: CanvasItem, id: String, screen: Vector2, floor_y: float, t: float) -> void:
+	if not noir():
+		return
+	var w := screen.x
+	match id:
+		"scrap_ring":
+			# chain-link fence: a diamond mesh between posts
+			var top := screen.y * 0.3
+			var mesh := Color(0.62, 0.64, 0.66, 0.22)
+			var step := 22.0
+			var x := -floor_y
+			while x < w + floor_y:
+				ci.draw_line(Vector2(x, top), Vector2(x + (floor_y - top), floor_y), mesh, 1.2)
+				ci.draw_line(Vector2(x + (floor_y - top), top), Vector2(x, floor_y), mesh, 1.2)
+				x += step
+			ci.draw_line(Vector2(0, top), Vector2(w, top), Color(0.55, 0.57, 0.6, 0.6), 3.0)
+			for k in 7:
+				var px := w * (k + 0.5) / 7.0
+				ci.draw_line(Vector2(px, top - 6), Vector2(px, floor_y), OUTLINE, 6.5)
+				ci.draw_line(Vector2(px, top - 6), Vector2(px, floor_y), Color(0.32, 0.33, 0.35), 4.0)
+				ci.draw_line(Vector2(px - 1, top - 4), Vector2(px - 1, floor_y), Color(1.0, 0.72, 0.42, 0.4), 1.0)
+			# floodlight towers in the corners
+			for side in [0.035, 0.965]:
+				var lx: float = w * float(side)
+				var ly := floor_y * 0.2
+				ci.draw_line(Vector2(lx, ly), Vector2(lx, floor_y), OUTLINE, 9.0)
+				ci.draw_line(Vector2(lx, ly), Vector2(lx, floor_y), Color(0.26, 0.27, 0.3), 6.0)
+				var head := Rect2(lx - 22, ly - 12, 44, 16)
+				ci.draw_rect(head.grow(1.5), OUTLINE)
+				ci.draw_rect(head, Color(0.3, 0.31, 0.34))
+				ci.draw_rect(Rect2(head.position.x + 3, head.end.y - 5, head.size.x - 6, 4), Color(0.95, 0.97, 1.0))
+			# a fire in an oil drum, left of the ring: real light, it flickers
+			var bx := w * 0.16
+			var dr := Rect2(bx - 16, floor_y - 44, 32, 44)
+			var fl := 0.8 + 0.2 * sin(t * 13.0) * sin(t * 7.3)
+			ci.draw_circle(Vector2(bx, floor_y - 50), 120.0 * fl, Color(1.0, 0.45, 0.12, 0.07))
+			ci.draw_circle(Vector2(bx, floor_y - 50), 60.0 * fl, Color(1.0, 0.5, 0.15, 0.1))
+			ci.draw_rect(dr.grow(1.5), OUTLINE)
+			ci.draw_rect(dr, Color(0.28, 0.2, 0.16))
+			ci.draw_rect(Rect2(dr.position.x, dr.position.y, 10, dr.size.y), Color(0.42, 0.26, 0.15))
+			for k in 2:
+				ci.draw_line(Vector2(dr.position.x, dr.position.y + 12 + k * 18), Vector2(dr.end.x, dr.position.y + 12 + k * 18), OUTLINE, 2.0)
+			for k in 4:
+				var fx := bx - 10 + k * 7
+				var fh := (18.0 + 10.0 * sin(t * 9.0 + k * 2.1)) * fl
+				ci.draw_colored_polygon(PackedVector2Array([Vector2(fx - 5, dr.position.y), Vector2(fx + 1, dr.position.y - fh), Vector2(fx + 6, dr.position.y)]), Color(1.0, 0.55 + 0.15 * (k % 2), 0.15, 0.9))
+			ci.draw_colored_polygon(PackedVector2Array([Vector2(bx - 8, dr.position.y), Vector2(bx, dr.position.y - 12 * fl), Vector2(bx + 8, dr.position.y)]), Color(1.0, 0.9, 0.5))
+
+
+## After the floor: the floor falls away into the dark, a pool of light where the fighters stand,
+## the floor's edge catches the light, wet floors throw back the lamps.
+static func draw_floor_light(ci: CanvasItem, id: String, screen: Vector2, floor_y: float, t: float) -> void:
+	if not noir():
+		return
+	var m := mood(id)
+	var w := screen.x
+	var k := key_of(id)
+	var tint: Color = m["tint"]
+	var by := screen.y + 40.0
+	ci.draw_polygon(PackedVector2Array([Vector2(-40, floor_y), Vector2(w + 40, floor_y), Vector2(w + 40, by), Vector2(-40, by)]),
+			PackedColorArray([Color(tint, 0.1), Color(tint, 0.1), Color(tint, 0.75), Color(tint, 0.75)]))
+	ci.draw_set_transform(Vector2(w * 0.5, floor_y + 34), 0.0, Vector2(1.0, 0.2))
+	ci.draw_circle(Vector2.ZERO, w * 0.4, Color(k, 0.05))
+	ci.draw_circle(Vector2.ZERO, w * 0.28, Color(k, 0.06))
+	ci.draw_circle(Vector2.ZERO, w * 0.16, Color(k, 0.05))
+	ci.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+	if m.get("wet", false):
+		for l in m["lamps"]:
+			var lx := w * float(l[2])
+			var lc := lamp_col(l, id)
+			ci.draw_polygon(PackedVector2Array([Vector2(lx - 16, floor_y + 3), Vector2(lx + 16, floor_y + 3), Vector2(lx + 6, floor_y + 110), Vector2(lx - 6, floor_y + 110)]),
+					PackedColorArray([Color(lc, 0.16), Color(lc, 0.16), Color(lc, 0.0), Color(lc, 0.0)]))
+		for j in 4:
+			var sy := floor_y + 18 + j * 26
+			ci.draw_line(Vector2(w * (0.12 + 0.17 * j), sy), Vector2(w * (0.3 + 0.17 * j), sy), Color(k, 0.07), 2.0)
+	if id == "scrap_ring":
+		# hazard paint along the edge of the ring floor
+		var hy := floor_y + 2.0
+		ci.draw_rect(Rect2(0, hy, w, 9), Color(0.08, 0.07, 0.05))
+		var x := -20.0
+		while x < w:
+			ci.draw_colored_polygon(PackedVector2Array([Vector2(x, hy + 9), Vector2(x + 9, hy), Vector2(x + 19, hy), Vector2(x + 10, hy + 9)]), Color(0.78, 0.6, 0.12))
+			x += 22.0
+	ci.draw_line(Vector2(0, floor_y), Vector2(w, floor_y), Color(k, 0.5), 2.0)
+
+
+## Last thing behind the fighters: the lamps' beams over everything, and the edges of the screen
+## falling into the dark.
+static func draw_beams(ci: CanvasItem, id: String, screen: Vector2, floor_y: float, t: float) -> void:
+	if not noir():
+		return
+	var m := mood(id)
+	var a := float(m.get("beam", 0.07))
+	if a > 0.0:
+		for l in m["lamps"]:
+			var p := lamp_pos(l, screen, floor_y)
+			var k := lamp_col(l, id)
+			var tx := screen.x * float(l[2])
+			var hw := screen.x * float(l[3])
+			var fy := floor_y + 26.0
+			ci.draw_polygon(PackedVector2Array([p + Vector2(-8, 0), p + Vector2(8, 0), Vector2(tx + hw, fy), Vector2(tx - hw, fy)]),
+					PackedColorArray([Color(k, a * 1.4), Color(k, a * 1.4), Color(k, a * 0.35), Color(k, a * 0.35)]))
+			ci.draw_polygon(PackedVector2Array([p + Vector2(-3, 0), p + Vector2(3, 0), Vector2(tx + hw * 0.45, fy), Vector2(tx - hw * 0.45, fy)]),
+					PackedColorArray([Color(k, a * 0.8), Color(k, a * 0.8), Color(k, a * 0.15), Color(k, a * 0.15)]))
+	var sw := screen.x * 0.16
+	var dark := Color(0.0, 0.0, 0.02)
+	ci.draw_polygon(PackedVector2Array([Vector2(-40, -40), Vector2(sw, -40), Vector2(sw, screen.y + 40), Vector2(-40, screen.y + 40)]),
+			PackedColorArray([Color(dark, 0.5), Color(dark, 0.0), Color(dark, 0.0), Color(dark, 0.5)]))
+	ci.draw_polygon(PackedVector2Array([Vector2(screen.x - sw, -40), Vector2(screen.x + 40, -40), Vector2(screen.x + 40, screen.y + 40), Vector2(screen.x - sw, screen.y + 40)]),
+			PackedColorArray([Color(dark, 0.0), Color(dark, 0.5), Color(dark, 0.5), Color(dark, 0.0)]))
