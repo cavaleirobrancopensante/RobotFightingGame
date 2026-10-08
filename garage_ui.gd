@@ -508,6 +508,11 @@ class RailButton extends Button:
 				draw_line(c + Vector2(-3, 9), c + Vector2(3, 9), col, w)
 				draw_rect(Rect2(c + Vector2(-4, -6), Vector2(8, 6)), col, false, 1.5)
 				draw_line(c + Vector2(-2, 0), c + Vector2(-4, 3), col, 1.5)
+			"city":   # a map pin over a folded map: the City
+				draw_polyline(PackedVector2Array([c + Vector2(-11, -4), c + Vector2(-4, -7), c + Vector2(4, -4), c + Vector2(11, -7), c + Vector2(11, 9), c + Vector2(4, 12), c + Vector2(-4, 9), c + Vector2(-11, 12), c + Vector2(-11, -4)]), col, w)
+				draw_arc(c + Vector2(0, -3), 4.0, PI * 0.85, PI * 2.15, 10, col, w)
+				draw_line(c + Vector2(-3.4, -1), c + Vector2(0, 5), col, w)
+				draw_line(c + Vector2(3.4, -1), c + Vector2(0, 5), col, w)
 			"menu":
 				for k in 3:
 					draw_line(c + Vector2(-10, -7 + k * 7), c + Vector2(10, -7 + k * 7), col, w)

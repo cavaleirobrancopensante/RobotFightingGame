@@ -183,7 +183,7 @@ class ChipIcon extends Control:
 func _ready() -> void:
 	# first time in the bay after a fight: Gus explains how things work around here.
 	# Everything else that opens up waits with a star; Gus explains it when you first tap it.
-	if GameData.open_tab != "" and tab_list().has(GameData.open_tab):
+	if GameData.open_tab != "" and (tab_list().has(GameData.open_tab) or CITY_TABS.has(GameData.open_tab)):
 		tab = GameData.open_tab
 	GameData.open_tab = ""
 	Sfx.music("garage")
@@ -239,6 +239,14 @@ func _ready() -> void:
 		date_button.add_theme_color_override(c, GUI.GREEN)
 	date_button.pressed.connect(func(): _on_tab("Season"); season_view = "calendar"; refresh())
 	top.add_child(date_button)
+	# (1.77) your pilot's own hours this part of the day (going places spends them); tap = the City
+	pilot_clock = PilotClock.new()
+	pilot_clock.custom_minimum_size = Vector2(UI.px(16) * 4.0 + 20.0, 0)
+	pilot_clock.tooltip_text = tr("Your hours this part of the day. Going out costs them; the bay works either way.")
+	pilot_clock.gui_input.connect(func(e):
+		if (e is InputEventMouseButton and e.pressed and e.button_index == MOUSE_BUTTON_LEFT) or (e is InputEventScreenTouch and not e.pressed):
+			_on_tab("City"))
+	top.add_child(pilot_clock)
 	title_label = UI.label("", 22)   # kept empty: the middle of the top strip is space for ads
 	title_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	top.add_child(title_label)
@@ -401,21 +409,22 @@ func _ready() -> void:
 ## The rail's sections, as they unlock. "Parts" is shown as Get Parts.
 func tab_list() -> Array:
 	# in the order of a day: the robot, its parts, the week's plan, the town, your phone, the crew
-	var t := ["Bay", "Storage", "Parts"]
+	var t := ["Bay", "Storage"]
 	if GameData.unlocked("season"):
 		t.append("Season")
-	t += ["Pub", "Feed"]
+	t += ["City", "Feed"]   # (1.77) the City holds the scrapyard, Parts-R-Us and the Rusty Bolt
 	if GameData.team_unlocked():
 		t.append("Crew")
 	return t
 
 
-const SECTION_LABELS := {"Bay": "Bay", "Storage": "Storage", "Parts": "Get Parts", "Pub": "Rusty Bolt", "Feed": "BotMedia", "Season": "Season", "Crew": "Crew"}
-const SECTION_ICONS := {"Bay": "bay", "Storage": "storage", "Parts": "parts", "Pub": "pub", "Feed": "feed", "Season": "season", "Crew": "crew"}
+const SECTION_LABELS := {"Bay": "Bay", "Storage": "Storage", "Parts": "Get Parts", "Pub": "Rusty Bolt", "Feed": "BotMedia", "Season": "Season", "Crew": "Crew", "City": "City"}
+const SECTION_ICONS := {"Bay": "bay", "Storage": "storage", "Parts": "parts", "Pub": "pub", "Feed": "feed", "Season": "season", "Crew": "crew", "City": "city"}
+const CITY_TABS := ["City", "Parts", "Pub"]   # places out in the city: the rail lights City for all of them
 ## Where each feature lives now: [section, toggle]. Gus's unlock scene returns you there.
 const FEATURE_PLACE := {"scrapyard": ["Parts", "scrap"], "storage": ["Storage", ""], "style": ["Bay", "style"],
 		"shop": ["Parts", "dealer"], "season": ["Season", "calendar"], "scout": ["", "scout"], "moves": ["Bay", "chips"],
-		"cups": ["Season", "cups"], "team": ["Crew", "backups"], "workshop": ["Parts", "order"], "pilot": ["Feed", "gear"],
+		"cups": ["Season", "cups"], "team": ["Crew", "backups"], "workshop": ["Bay", "order"], "pilot": ["Feed", "gear"],
 		"paint": ["Bay", "style"], "setups": ["Bay", "setups"], "randomize": ["Bay", "robot"]}
 
 
@@ -430,12 +439,12 @@ func segs_of(t: String) -> Array:
 				out.append(["chips", tr("Chips %d/%d") % [GameData.active_chips().size(), GameData.chip_slots()], "moves"])
 			if GameData.unlocked("style"):
 				out.append(["style", tr("Style & paint") if GameData.unlocked("paint") else tr("Style"), "style"])
+			if GameData.unlocked("workshop"):
+				out.append(["order", tr("Workshop"), "workshop"])   # (1.77) Made to order lives in Gus's building
 		"Parts":
 			out.append(["scrap", tr("Scrapyard"), "scrapyard"])
 			if GameData.unlocked("shop"):
-				out.append(["dealer", tr("Dealer"), "shop"])
-			if GameData.unlocked("workshop"):
-				out.append(["order", tr("Made to order"), "workshop"])
+				out.append(["dealer", tr("Parts-R-Us"), "shop"])
 		"Season":
 			out.append(["calendar", tr("Calendar"), ""])
 			out.append(["table", tr("Standings"), ""])
@@ -519,8 +528,8 @@ func build_rail() -> void:
 		var b := GUI.RailButton.new()
 		b.kind = SECTION_ICONS[t]
 		b.label = tr(SECTION_LABELS[t])
-		b.on = t == tab
-		GUI.mark_new(b, section_new(t))
+		b.on = t == tab or (t == "City" and CITY_TABS.has(tab))
+		GUI.mark_new(b, section_new(t) or (t == "City" and (section_new("Parts") or section_new("Pub"))))
 		b.font = GUI.head()
 		b.pressed.connect(func(): Sfx.play("click", 0.05); _on_tab(t))
 		rail_box.add_child(b)
@@ -554,6 +563,16 @@ func build_seg_bar() -> void:
 	for c in tabs_box.get_children():
 		c.queue_free()
 	var list := segs_of(tab)
+	if tab == "Parts" or tab == "Pub":
+		# (1.77) a place in the city: back to the map, and the place's own name / views
+		tabs_box.add_child(UI.button(tr("‹ City"), func(): Sfx.play("click"); _on_tab("City"), 13, Vector2(96, 34)))
+		if tab == "Parts":
+			var pt := GUI.text(tr("PARTS-R-US") if seg() == "dealer" else tr("THE SCRAPYARD"), 18, GUI.TEXT, "headb")
+			pt.custom_minimum_size = Vector2(0, 40)
+			pt.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+			pt.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			tabs_box.add_child(pt)
+			return
 	if list.is_empty() or tab == "Storage":
 		var t := GUI.text(tr("STORAGE") if tab == "Storage" else tr(SECTION_LABELS[tab]).to_upper(), 18, GUI.TEXT, "headb")
 		t.custom_minimum_size = Vector2(0, 40)
@@ -997,7 +1016,7 @@ func refresh() -> void:
 	preview.look = GameData.player_look()
 	body_map.health = body_health()
 	body_map.queue_redraw()
-	if not tab_list().has(tab):
+	if not tab_list().has(tab) and not CITY_TABS.has(tab):
 		tab = "Bay"
 	set_seg(seg())
 	set_scene_for_tab()
@@ -1020,6 +1039,8 @@ func refresh() -> void:
 					build_moves_tab()
 				"style":
 					build_style_view()
+				"order":
+					build_order()
 				"jobs":
 					build_jobs_view()
 				_:
@@ -1039,6 +1060,8 @@ func refresh() -> void:
 					build_scrapyard_tab()
 		"Season":
 			build_season_tab()
+		"City":
+			build_city()
 		"Feed":
 			if seg() != "alerts":
 				alerts_fresh = 0
@@ -1715,12 +1738,26 @@ func _on_sell_picked_confirmed() -> void:
 
 ## Jump to a section (and one of its toggles).
 func go_to(t: String, key: String = "") -> void:
+	# (1.77) a place out in the city: going there takes the pilot's time
+	var place := place_of(t, key)
+	var passed := 0
+	var began := false
+	if place != "" and place != GameData.pilot_at and GameData.place_locked(place) == "":
+		began = true
+		var th := GameData.travel_hours(GameData.pilot_at, place)
+		time_begin()
+		passed = GameData.travel_to(place)
+		note(tr("Off to %s: %s.") % [tr(str(GameData.PLACES[place]["name"])), hours_text(th)])
 	tab = t
 	if key != "":
 		set_seg(key)
 	if t == "Bay" and (key == "" or key == "robot"):
 		selected = ""
 	refresh()
+	if passed > 0:
+		time_end()
+	elif began:
+		tp = {}
 
 
 func _on_storage_filter(key: String) -> void:
@@ -1849,7 +1886,7 @@ func tour_steps() -> Array:
 	return [
 		{"target": "repair", "text": tr("The robot's dented. Repair all puts the dents on the job board. Check the price, then tap it.")},
 		{"target": "next", "text": tr("Time only moves when you press the big yellow button. The bay works on the jobs while it runs.")},
-		{"target": "rail:Parts", "text": tr("Get Parts. The scrapyard's out back, one free dig a day.")},
+		{"target": "rail:City", "text": tr("The City, on your tablet. The scrapyard's down at the Docks, an hour away. One dig a day.")},
 		{"target": "dig", "text": tr("Tap Dig anywhere. Some days there's nothing, but it's free.")},
 		{"target": "fight", "text": tr("Saturday is the Open Trials. Two wins put us in the Scrap League, two losses and we're out. Practise at the Rusty Bolt.")},
 	]
@@ -3769,7 +3806,9 @@ func body_health() -> Dictionary:
 func set_scene_for_tab() -> void:
 	match tab:
 		"Bay":
-			scene = {"chips": "moves", "style": "paint"}.get(seg(), "build")
+			scene = {"chips": "moves", "style": "paint", "order": "workshop"}.get(seg(), "build")
+		"City":
+			scene = "phone"   # your pilot, looking at the map on the tablet
 		"Storage":
 			scene = "storage"
 		"Parts":
@@ -3965,7 +4004,14 @@ func _on_emergency_junk(slot: String) -> void:
 
 
 func _on_dig(kind: String = "") -> void:
+	# (1.77) digging happens at the scrapyard, and takes an hour of your day
+	var passed := 0
+	if GameData.pilot_at != "scrapyard":
+		passed += GameData.travel_to("scrapyard")
 	var res := GameData.dig_scrap(kind)
+	passed += GameData.spend_pilot(GameData.DIG_HOURS)
+	if passed > 0:
+		note(tr("%s now. The bay worked while you were out.") % tr(GameData.PHASE_NAMES[GameData.phase]).capitalize())
 	dig_at = Time.get_ticks_msec() / 1000.0
 	dig_found = tr("Found something!") if res["part"] != "" else ""
 	note(res["text"], "buy" if res.has("chip") or res.has("controller") else ("break" if res["part"] != "" else "land"))
@@ -6043,7 +6089,7 @@ func _on_order_kind(k: String) -> void:
 func _on_go_workshop(kind: String) -> void:
 	reset_workshop(kind)
 	order_kind = "part"
-	tab = "Parts"
+	tab = "Bay"
 	_on_seg("order")
 
 
@@ -6912,3 +6958,173 @@ class FilmBar extends Control:
 		var GUI2 = load("res://garage_ui.gd")
 		var p: float = Film.progress(key)
 		GUI2.draw_blocks(self, Rect2(0, 4, size.x, size.y - 8), 30, p * 30.0, GUI2.YELLOW)
+
+
+# ---------------------------------------------------------------- the City (1.77)
+# Port Ferrum on your pilot's tablet: tap a place, see the route and the hours, Go. Gus's building
+# (the bay, storage, the office) is always a call away; going OUT is what costs time.
+
+var pilot_clock: Control = null
+var city_map: Control = null
+var city_card: VBoxContainer = null
+var city_pick := ""
+
+
+class PilotClock extends Control:
+	func _process(_d: float) -> void:
+		queue_redraw()
+
+	func _draw() -> void:
+		var G = load("res://garage_ui.gd")
+		var left: float = GameData.pilot_left()
+		var r := Rect2(10, size.y * 0.5 - 8, size.x - 20, 16)
+		G.draw_blocks(self, r, 4, left, Color(0.55, 1.0, 0.65) if left > 1.0 else Color(1.0, 0.75, 0.3))
+		draw_string(ThemeDB.fallback_font, Vector2(10, size.y * 0.5 - 12), tr("YOUR TIME"), HORIZONTAL_ALIGNMENT_LEFT, -1, load("res://ui.gd").px(9), Color(0.6, 0.65, 0.7))
+
+
+func hours_text(h: float) -> String:
+	return tr("%s h") % ("%.1f" % h).trim_suffix(".0")
+
+
+## Which city place a section / view is (going there costs time), "" for Gus's building.
+func place_of(t: String, key: String = "") -> String:
+	if t == "Pub":
+		return "pub"
+	if t == "Parts":
+		var k := key if key != "" else str(segs_on.get("Parts", "scrap"))
+		return "partsrus" if k == "dealer" else "scrapyard"
+	return ""
+
+
+func build_city() -> void:
+	var vh := get_viewport_rect().size.y
+	# the tablet on the left, what you picked on the right
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 12)
+	list_box.add_child(row)
+	var map = load("res://city_map.gd").new()
+	map.custom_minimum_size = Vector2(300, maxf(260.0, vh - 250.0))
+	map.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	map.size_flags_stretch_ratio = 1.6
+	map.selected = city_pick
+	map.picked.connect(_on_city_pick)
+	map.arrived.connect(_on_city_arrived)
+	row.add_child(map)
+	city_map = map
+	var side := VBoxContainer.new()
+	side.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	side.add_theme_constant_override("separation", 8)
+	row.add_child(side)
+	# your time this part of the day
+	side.add_child(GUI.text(tr("YOUR TIME THIS %s") % tr(GameData.PHASE_NAMES[GameData.phase]), 13, GUI.MUTED, "headb"))
+	var bar := GUI.BlockBar.new()
+	bar.block_w = 22.0
+	bar.height = 16.0
+	bar.setup(GameData.pilot_left(), 1.0, GameData.PILOT_HOURS, GUI.GREEN)
+	side.add_child(bar)
+	var tl := GUI.text(tr("%s left. The bay works either way.") % hours_text(GameData.pilot_left()), 13, GUI.TEXT)
+	tl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	side.add_child(tl)
+	side.add_child(GUI.HazardStrip.new())
+	city_card = VBoxContainer.new()
+	city_card.add_theme_constant_override("separation", 8)
+	side.add_child(city_card)
+	fill_city_card()
+
+
+func _on_city_pick(place: String) -> void:
+	city_pick = place
+	fill_city_card()
+
+
+const PLACE_TEXT := {"home": "Gus's building: the bay, storage and the office. You can call Gus from anywhere, so the bay never needs you here.",
+		"pub": "The Rusty Bolt. Scrap and Rust pilots drinking. Pick a fight, place bets, play the jukebox.",
+		"partsrus": "Parts-R-Us. New parts at your grade, a couple one grade up. New stock on Sundays.",
+		"scrapyard": "The Scrapyard. Mountains of dead robots. One dig a day, an hour of digging.",
+		"scrap_ring": "The scrap ring. Pickups and the Scrap League fight here.",
+		"sports_hall": "Ferrum Sports Hall. The Rust League's fight nights.",
+		"regional_hall": "The Regional Hall. The Iron League's fight nights.",
+		"champ_arena": "The Championship Arena. The Steel League's fight nights.",
+		"kane_arena": "Kane Arena. The Titanium Championship. Everyone in Port Ferrum wants a night in there."}
+
+
+func fill_city_card() -> void:
+	if city_card == null or not is_instance_valid(city_card):
+		return
+	for c in city_card.get_children():
+		c.queue_free()
+	var place := city_pick
+	if place == "" or not GameData.PLACES.has(place):
+		var l := GUI.text(tr("You're at %s. Tap a place on the map.") % tr(str(GameData.PLACES[GameData.pilot_at]["name"])), 15, GUI.TEXT)
+		l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		city_card.add_child(l)
+		return
+	var pl: Dictionary = GameData.PLACES[place]
+	var nl := GUI.text(tr(str(pl["name"])).to_upper(), 17, GUI.YELLOW, "headb")
+	nl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	city_card.add_child(nl)
+	city_card.add_child(GUI.text(tr(GameData.DISTRICTS[pl["district"]]), 12, GUI.MUTED, "headb"))
+	var d := GUI.text(tr(PLACE_TEXT.get(place, "")), 14, GUI.TEXT)
+	d.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	city_card.add_child(d)
+	var lock := GameData.place_locked(place)
+	var bar := VBoxContainer.new()
+	bar.add_theme_constant_override("separation", 8)
+	city_card.add_child(bar)
+	if place == GameData.pilot_at:
+		bar.add_child(GUI.text(tr("You're here."), 14, GUI.GREEN, "headb"))
+		if place != "home":
+			bar.add_child(UI.button(tr("Go in ▸"), enter_place.bind(place), 15, Vector2(0, 46)))
+		return
+	if lock != "":
+		bar.add_child(GUI.text(tr(lock), 14, GUI.MUTED))
+		return
+	var h := GameData.travel_hours(GameData.pilot_at, place)
+	var after := GameData.pilot_left() - h
+	var when := tr("%s left this %s.") % [hours_text(after), tr(GameData.PHASE_NAMES[GameData.phase]).to_lower()] if after > 0.01 or GameData.phase == 2 \
+			else tr("You'd get there in the %s.") % tr(GameData.PHASE_NAMES[mini(2, GameData.phase + 1)]).to_lower()
+	var wl := GUI.text(tr("%s from here. %s") % [hours_text(h), when], 14, GUI.AMBER if after < 0.0 else GUI.TEXT)
+	wl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	wl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	bar.add_child(wl)
+	bar.add_child(UI.button(tr("Go ▸ %s") % hours_text(h), _on_city_go.bind(place), 15, Vector2(0, 46)))
+
+
+func _on_city_go(place: String) -> void:
+	if city_map != null and is_instance_valid(city_map):
+		Sfx.play("click")
+		city_map.go(place)   # the little figure walks there, then _on_city_arrived
+
+
+func _on_city_arrived(place: String) -> void:
+	var h := GameData.travel_hours(GameData.pilot_at, place)
+	time_begin()
+	var passed := GameData.travel_to(place)
+	note(tr("At %s. That took %s.") % [tr(str(GameData.PLACES[place]["name"])), hours_text(h)])
+	city_pick = ""
+	enter_place(place)
+	if passed > 0:
+		time_end()
+	else:
+		tp = {}
+
+
+## Walk in the door: the place's own screen and scene.
+func enter_place(place: String) -> void:
+	match place:
+		"pub":
+			tab = "Pub"
+			set_seg("bar")
+		"partsrus":
+			tab = "Parts"
+			segs_on["Parts"] = "dealer"
+			gus_explains("shop")
+		"scrapyard":
+			tab = "Parts"
+			segs_on["Parts"] = "scrap"
+			if GameData.tour >= 0 and GameData.is_new("scrapyard"):
+				GameData.mark_story_seen("unlock_scrapyard")   # the tour's line already said it
+			gus_explains("scrapyard")
+		_:
+			tab = "Bay"
+	refresh()

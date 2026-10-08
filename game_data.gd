@@ -2,7 +2,7 @@ extends Node
 
 # helper scripts, loaded by path so the game also runs without an editor scan
 ## The game's version, shown on the main menu. Bump it with every change (1.1, 1.2, ...).
-const VERSION := "1.76"
+const VERSION := "1.77"
 const Arena = preload("res://arena.gd")
 const I18n = preload("res://i18n.gd")
 const Catalog = preload("res://catalog.gd")
@@ -1060,6 +1060,8 @@ const WRECK_TIME := 1.5            # rebuilding a wreck
 const MECHANIC_WAGE := 0.3         # a mechanic's monthly wage: this share of your running costs
 const OVERTIME_PRICE := 80         # per pair of hands per night, x3 a grade
 var phase := 0                     # 0 morning, 1 afternoon, 2 evening (fights are in the evening)
+var pilot_at := "home"             # (1.77) where your pilot is in Port Ferrum (the City map)
+var pilot_used := 0.0              # (1.77) hours of this part of the day your pilot has spent going places
 var jobs: Array = []               # the job board, in order: {kind: "repair"/"swap", uid, robot, slot, total, done, rush, start}
 var bolted := {}                   # robot ("m", "w0", "w1") -> {slot: uid} fully bolted on
 var mechanics := 0
@@ -1332,6 +1334,7 @@ func bell_hp_ratio(p: Dictionary, h: float = -1.0) -> float:
 
 ## Move the clock on one step (morning -> afternoon -> evening -> next morning), working the bay.
 func advance_phase() -> void:
+	pilot_used = 0.0
 	if phase < 2:
 		work(SHIFT_HOURS)
 		phase += 1
@@ -2545,6 +2548,7 @@ func day_index() -> int:
 ## week starts on Monday.
 func next_day() -> void:
 	phase = 0
+	pilot_at = "home"   # (1.77) every day starts at Gus's
 	passive_repair()
 	# every day the pile settles a little more: the odds of finding something go up (a dig spends them)
 	dig_luck = minf(DIG_LUCK_MAX, dig_luck + DIG_LUCK_STEP)
@@ -4880,7 +4884,7 @@ func save_game() -> bool:
 		"owned_chips": owned_chips, "chips": chips, "circuit": circuit, "circuit_offers": circuit_offers,
 		"circuits_won": circuits_won, "pickup": pickup, "setups": setups, "custom_parts": custom_parts,
 		"year": year, "week": week, "day": day, "rank": rank, "event": {}, "leagues": leagues, "title_seeds": title_seeds, "trophies": trophies, "career_stats": career_stats,
-		"pecking_k": pecking_k(), "style": style, "style_locked": style_locked, "shop_stock": shop_stock, "chip_stock": chip_stock, "scout": scout, "wingmen": wingmen, "sending": sending, "pilot_look": pilot_look, "owned_controllers": owned_controllers, "spare_controllers": spare_controllers, "tips_seen": tips_seen, "tips_log": tips_log, "h2h": h2h, "rivals": rivals, "rel": rel, "nemeses": nemeses, "pending_talk": pending_talk, "inbox": inbox, "inbox_seen": inbox_seen, "social": social, "film_index": film_index, "film_pending": film_pending, "films_seen": films_seen, "contracts": contracts, "alerts_unseen": alerts_unseen, "day_log": day_log, "tour": tour, "streak": streak, "pub_seen": pub_seen, "digs_left": digs_left, "dig_luck": dig_luck, "bills_note": bills_note, "fight_log": fight_log, "bets": bets, "world": world,
+		"pecking_k": pecking_k(), "style": style, "style_locked": style_locked, "shop_stock": shop_stock, "chip_stock": chip_stock, "scout": scout, "wingmen": wingmen, "sending": sending, "pilot_look": pilot_look, "owned_controllers": owned_controllers, "spare_controllers": spare_controllers, "tips_seen": tips_seen, "tips_log": tips_log, "h2h": h2h, "rivals": rivals, "rel": rel, "nemeses": nemeses, "pending_talk": pending_talk, "inbox": inbox, "inbox_seen": inbox_seen, "social": social, "pilot_at": pilot_at, "pilot_used": pilot_used, "film_index": film_index, "film_pending": film_pending, "films_seen": films_seen, "contracts": contracts, "alerts_unseen": alerts_unseen, "day_log": day_log, "tour": tour, "streak": streak, "pub_seen": pub_seen, "digs_left": digs_left, "dig_luck": dig_luck, "bills_note": bills_note, "fight_log": fight_log, "bets": bets, "world": world,
 	}
 	var f := FileAccess.open(slot_path(save_slot), FileAccess.WRITE)
 	if f == null:
@@ -5022,6 +5026,8 @@ func load_game(slot: int = -1) -> String:
 			if typeof(cd0) == TYPE_DICTIONARY:
 				clips = cd0
 		clips_dirty = false
+	pilot_at = str(data.get("pilot_at", "home"))
+	pilot_used = float(data.get("pilot_used", 0.0))
 	film_index = data.get("film_index", {})
 	film_pending = data.get("film_pending", [])
 	films_seen = data.get("films_seen", [])
@@ -5723,3 +5729,82 @@ func feuds_week() -> void:
 			fd.erase(k)
 		else:
 			fd[k] = v
+
+
+# ---------------------------------------------------------------- the City (1.77)
+# Port Ferrum on your pilot's tablet: places on a map, grouped in districts. Gus's building is home
+# and the bay is always one call away; going OUT costs the pilot's own hours (PILOT_HOURS a part of
+# the day, the same 4 the bay works). When they run out, that part of the day is over. Every day
+# starts at home. Fights in the evening: Gus drives you to the venue.
+
+const PILOT_HOURS := 4.0
+## place -> {name, district, pos (on the 1000 x 560 map), road (anchor on the avenue), kind,
+## feature (unlocks it), venue (a landmark you fight in, not a place you go)}
+const PLACES := {
+	"home": {"name": "Gus's building", "district": "oldtown", "pos": [318, 300], "road": 2, "kind": "home"},
+	"pub": {"name": "The Rusty Bolt", "district": "oldtown", "pos": [430, 236], "road": 3, "kind": "pub"},
+	"partsrus": {"name": "Parts-R-Us", "district": "oldtown", "pos": [410, 372], "road": 3, "kind": "shop", "feature": "shop"},
+	"scrapyard": {"name": "The Scrapyard", "district": "docks", "pos": [150, 452], "road": 1, "kind": "scrap"},
+	"scrap_ring": {"name": "The scrap ring", "district": "docks", "pos": [246, 484], "road": 1, "kind": "venue", "venue": "scrap"},
+	"sports_hall": {"name": "Ferrum Sports Hall", "district": "midtown", "pos": [596, 360], "road": 4, "kind": "venue", "venue": "rust"},
+	"regional_hall": {"name": "The Regional Hall", "district": "midtown", "pos": [700, 300], "road": 5, "kind": "venue", "venue": "iron"},
+	"champ_arena": {"name": "The Championship Arena", "district": "heights", "pos": [800, 236], "road": 5, "kind": "venue", "venue": "steel"},
+	"kane_arena": {"name": "Kane Arena", "district": "heights", "pos": [880, 120], "road": 6, "kind": "venue", "venue": "title"},
+}
+const DISTRICTS := {"oldtown": "OLD TOWN", "docks": "THE DOCKS", "midtown": "MIDTOWN", "heights": "KANE HEIGHTS"}
+const DISTRICT_HOURS := {"oldtown": {"docks": 1.0, "midtown": 1.0, "heights": 2.0}, "docks": {"oldtown": 1.0, "midtown": 1.5, "heights": 2.5},
+		"midtown": {"oldtown": 1.0, "docks": 1.5, "heights": 1.0}, "heights": {"oldtown": 2.0, "docks": 2.5, "midtown": 1.0}}
+const DIG_HOURS := 1.0
+
+
+func travel_hours(from: String, to: String) -> float:
+	if from == to or not PLACES.has(from) or not PLACES.has(to):
+		return 0.0
+	var a := str(PLACES[from]["district"])
+	var b := str(PLACES[to]["district"])
+	if a == b:
+		return 0.5
+	return float(DISTRICT_HOURS[a].get(b, 1.0))
+
+
+func pilot_left() -> float:
+	return maxf(0.0, PILOT_HOURS - pilot_used)
+
+
+## Can you go there? "" = yes, else why not.
+func place_locked(place: String) -> String:
+	var pl: Dictionary = PLACES.get(place, {})
+	if pl.is_empty():
+		return "Nowhere."
+	if pl.has("venue"):
+		return "Fight nights only. Gus drives you."
+	var f := str(pl.get("feature", ""))
+	if f != "" and not unlocked(f):
+		return "Opens after your second fight."
+	return ""
+
+
+## The pilot spends hours (a trip, a dig). Running out ends this part of the day (the bay works
+## its shift) and the rest carries into the next. Returns how many parts of the day went by.
+func spend_pilot(h: float) -> int:
+	var passed := 0
+	pilot_used += h
+	while pilot_used >= PILOT_HOURS - 0.01 and phase < 2:
+		var carry := pilot_used - PILOT_HOURS
+		advance_phase()
+		pilot_used = maxf(0.0, carry)
+		passed += 1
+	if phase == 2:
+		pilot_used = minf(pilot_used, PILOT_HOURS)
+	return passed
+
+
+## Go somewhere: the hours it takes are spent. Returns the parts of the day that went by.
+func travel_to(place: String) -> int:
+	if place == pilot_at or not PLACES.has(place):
+		return 0
+	var h := travel_hours(pilot_at, place)
+	pilot_at = place
+	var passed := spend_pilot(h)
+	save_game()
+	return passed
