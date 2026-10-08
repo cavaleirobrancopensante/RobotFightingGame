@@ -3408,7 +3408,7 @@ func set_scene_for_tab() -> void:
 	preview.spot = GarageArt.robot_spot(scene)
 	preview.facing = 1 if scene == "paint" else -1
 	preview.front = scene == "build"   # in the bay the robot hangs on Gus's gantry, facing you
-	preview.light = "bay" if scene in ["build", "moves", "storage", "workshop", "team"] else "neutral"   # Gus's building: the work lamp
+	preview.light = GarageArt.scene_light(scene)   # (1.61) every place lights the robot its own way
 	preview.hide_robot = scene in ["pub", "office", "phone"]  # the robot stays in the bay when you're at the pub or in the office
 	preview.queue_redraw()
 	if scene == "pub" and not talk_story:
