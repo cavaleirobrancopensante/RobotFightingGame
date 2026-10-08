@@ -2477,9 +2477,9 @@ func post_card(card: Dictionary, parent: Control) -> void:
 				# a tap opens it; a swipe that starts or ends on it only scrolls
 				if (e is InputEventMouseButton and e.button_index == MOUSE_BUTTON_LEFT) or e is InputEventScreenTouch:
 					if e.pressed:
-						down[0] = e.global_position if e is InputEventMouseButton else e.position
+						down[0] = e.position   # (1.88) local for touch and mouse alike: a phone sends both
 					elif down[0] != Vector2.INF:
-						var at: Vector2 = e.global_position if e is InputEventMouseButton else e.position
+						var at: Vector2 = e.position
 						if at.distance_to(down[0]) < 14.0:
 							open_clip(cid)
 						down[0] = Vector2.INF)
