@@ -445,6 +445,7 @@ func segs_of(t: String) -> Array:
 			# Contracts open from the profile; hidden = no button on the bar)
 			out.append(["home", tr("Home"), ""])
 			out.append(["explore", tr("Explore"), ""])
+			out.append(["people", tr("People"), ""])
 			out.append(["alerts", tr("Alerts %d") % GameData.alerts_unseen if GameData.alerts_unseen > 0 else tr("Alerts"), ""])
 			out.append(["all", tr("DMs"), ""])
 			out.append(["profile", tr("Profile"), ""])
@@ -1043,6 +1044,8 @@ func refresh() -> void:
 					build_home()
 				"explore":
 					build_explore()
+				"people":
+					build_people()
 				"alerts":
 					build_alerts()
 				"profile":
@@ -1197,7 +1200,7 @@ func row_text(title: String, subtitle: String, tag: String, wrap: bool) -> VBoxC
 
 
 ## A whole-row button (tap anywhere on it), with an icon, two lines of text and extra widgets.
-func make_tap_row(icon: Control, title: String, subtitle: String, cb: Callable, tag: String = "", sel: bool = false) -> Container:
+func make_tap_row(icon: Control, title: String, subtitle: String, cb: Callable, tag: String = "", sel: bool = false, parent: Control = null) -> Container:
 	var b := Button.new()
 	b.custom_minimum_size = Vector2(0, 62)
 	b.focus_mode = Control.FOCUS_NONE
@@ -1211,7 +1214,7 @@ func make_tap_row(icon: Control, title: String, subtitle: String, cb: Callable, 
 	pr.set_border_width_all(2)
 	for st in [["normal", n], ["hover", h], ["pressed", pr], ["hover_pressed", pr]]:
 		b.add_theme_stylebox_override(st[0], st[1])
-	list_box.add_child(b)
+	(parent if parent != null else list_box).add_child(b)
 	var row := GUI.WrapRow.new()
 	row.set_anchors_preset(Control.PRESET_FULL_RECT)
 	row.offset_left = 6
@@ -2444,6 +2447,107 @@ func build_explore() -> void:
 			row_button(row, tr("Follow"), _on_follow.bind(k, true), true, 110)
 	section(tr("EVERYTHING ON BOTMEDIA"))
 	feed_list("all")
+
+
+## People (1.69): every pilot in Port Ferrum as a person, not a ranking: search by name or robot,
+## filters, what's between you, followers, Follow; a row opens the pilot card. "Rankings ›" goes to
+## Season > Pilots (which has "BotMedia People ›" back).
+var people_query := ""
+var people_filter := "all"
+var people_rows: VBoxContainer
+
+
+func build_people() -> void:
+	var bar := action_bar()
+	var q := LineEdit.new()
+	q.placeholder_text = tr("Search a pilot or robot")
+	q.text = people_query
+	q.clear_button_enabled = true
+	q.custom_minimum_size = Vector2(240, 40)
+	q.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	q.add_theme_font_size_override("font_size", UI.tsz(14))
+	q.text_changed.connect(func(t): people_query = t; fill_people())
+	bar.add_child(q)
+	row_button(bar, tr("Rankings ›"), go_to.bind("Season", "pilots"), true, 140)
+	var fb := flow_bar()
+	for f in [["all", tr("Everyone")], ["following", tr("Following")], ["friends", tr("Friends")], ["rivals", tr("Rivals")],
+			["bar", tr("At the bar today")], ["league", tr("Your league")]]:
+		var b := row_button(fb, str(f[1]), func(): people_filter = str(f[0]); refresh(), true, 0)
+		b.toggle_mode = true
+		b.button_pressed = people_filter == str(f[0])
+	people_rows = VBoxContainer.new()
+	people_rows.add_theme_constant_override("separation", 6)
+	list_box.add_child(people_rows)
+	fill_people()
+
+
+func fill_people() -> void:
+	if people_rows == null or not is_instance_valid(people_rows):
+		return
+	for c in people_rows.get_children():
+		c.queue_free()
+	var S = GameData.Social
+	var W = GameData.World
+	var bar_ids: Array = GameData.patrons_today().map(func(x): return int(x["wid"]))
+	var q := people_query.strip_edges().to_lower()
+	var pool: Array = []
+	for p in W.active():
+		var wid := int(p["wid"])
+		var key := "w:%d" % wid
+		var rel: float = GameData.rel_of(wid)
+		match people_filter:
+			"following":
+				if not S.follows(key):
+					continue
+			"friends":
+				if rel < GameData.REL_FRIEND:
+					continue
+			"rivals":
+				if rel > GameData.REL_RIVAL and not GameData.nemeses.has(wid):
+					continue
+			"bar":
+				if not bar_ids.has(wid):
+					continue
+			"league":
+				if str(p["tier"]) != GameData.rank:
+					continue
+		if q != "" and not str(p["name"]).to_lower().contains(q) and not str(p["bot"].get("name", "")).to_lower().contains(q):
+			continue
+		pool.append(p)
+	# the people who matter to you first, then the famous
+	pool.sort_custom(func(a, b):
+		var ra := absf(GameData.rel_of(int(a["wid"])))
+		var rb := absf(GameData.rel_of(int(b["wid"])))
+		if (ra >= 15.0) != (rb >= 15.0):
+			return ra >= 15.0
+		return S.pilot_fol(a) > S.pilot_fol(b))
+	if pool.is_empty():
+		people_rows.add_child(GUI.text(tr("Nobody matches."), 14, GUI.MUTED))
+		return
+	var shown := 0
+	for p in pool:
+		var wid := int(p["wid"])
+		var key := "w:%d" % wid
+		var name := str(p["name"]) + "  " + GameData.rel_text(wid)
+		var word: String = GameData.rel_word(wid)
+		if word != "":
+			name += " " + tr(word)
+		var sub := "%s · %s · %s" % [str(p["bot"].get("name", "?")), tr(Career.STAGES[str(p["tier"])]["name"]), tr("%s followers") % S.fol_text(S.pilot_fol(p))]
+		if bar_ids.has(wid):
+			sub += " · " + tr("at the bar")
+		var row := make_tap_row(avatar_for(key), name, sub, open_pilot.bind(wid), "", false, people_rows)
+		var on: bool = S.follows(key)
+		row_button(row, tr("Following") if on else tr("Follow"), _on_people_follow.bind(key, not on), true, 120)
+		shown += 1
+		if shown >= 60:
+			people_rows.add_child(GUI.text(tr("Search to find the rest."), 13, GUI.MUTED))
+			break
+
+
+func _on_people_follow(key: String, on: bool) -> void:
+	GameData.Social.follow(key, on)
+	Sfx.play("click", 0.05)
+	fill_people()
 
 
 ## An account's header in Explore: avatar, name, handle, followers, Follow, and the pilot card.
@@ -4578,6 +4682,9 @@ func open_pilot(wid: int) -> void:
 	var msb := UI.button(tr("Message"), func(): close_popup(); open_dm(key), 14, Vector2(0, 42))
 	msb.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	sbar.add_child(msb)
+	var rkb := UI.button(tr("Rankings ›"), func(): close_popup(); go_to("Season", "pilots"), 14, Vector2(0, 42))
+	rkb.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	sbar.add_child(rkb)
 	# at the bar tonight? then you can take them on from here
 	if GameData.patrons_today().any(func(x): return int(x["wid"]) == wid) and GameData.can_pass_day():
 		var cb := UI.button(tr("Challenge ($%d)") % GameData.pickup_purse(str(p["tier"])), func(): close_popup(); _on_challenge(wid), 16, Vector2(0, 46))
@@ -4844,6 +4951,8 @@ func _on_juke_stop() -> void:
 func build_pilots_view() -> void:
 	var World = GameData.World
 	section("Port Ferrum's pilots, ranked by the bookies. Tap a pilot for their card. The town's news is on BotMedia.")
+	var pb := action_bar()
+	row_button(pb, tr("BotMedia People ›"), go_to.bind("Feed", "people"), true, 220)
 	var order: Array = [GameData.rank] + World.TIERS.filter(func(t): return t != GameData.rank)
 	var widths := [34, 0, 70, 78, 96]
 	for tier in order:
@@ -5225,6 +5334,7 @@ func build_league_view() -> void:
 		var b := row_button(tabs, label, _on_table_div.bind(st), true, 0)
 		b.toggle_mode = true
 		b.button_pressed = st == stage
+	row_button(tabs, tr("BotMedia People ›"), go_to.bind("Feed", "people"), true, 0)
 	var ev: Dictionary = GameData.leagues.get(stage, {})
 	if ev.is_empty():
 		section("No table yet.")
