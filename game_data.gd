@@ -2,7 +2,7 @@ extends Node
 
 # helper scripts, loaded by path so the game also runs without an editor scan
 ## The game's version, shown on the main menu. Bump it with every change (1.1, 1.2, ...).
-const VERSION := "1.56"
+const VERSION := "1.57"
 const Arena = preload("res://arena.gd")
 const I18n = preload("res://i18n.gd")
 const Catalog = preload("res://catalog.gd")
@@ -3139,7 +3139,7 @@ func record_watch(a_won: bool, hp: Array, ripped: Array) -> Dictionary:
 					break
 	var winner_name := str(Career.robot_of(ev, w).get("pilot", Career.pilot(ev, w).get("pilot", "?")))
 	var loser_name := str(Career.robot_of(ev, l).get("pilot", Career.pilot(ev, l).get("pilot", "?")))
-	Social.watched_fight(winner_name, loser_name, int(Career.pilot(ev, w).get("wid", -1)), stage)   # a post waiting on BotMedia
+	Social.watched_fight(winner_name, loser_name, int(Career.pilot(ev, w).get("wid", -1)), stage, int(Career.pilot(ev, l).get("wid", -1)))   # a post waiting on BotMedia
 	watching = {}
 	save_game()
 	return {"winner": winner_name}

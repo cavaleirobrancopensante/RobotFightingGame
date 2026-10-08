@@ -358,7 +358,10 @@ static func drafts() -> Array:
 		return []   # three days on, nobody cares any more
 	if d.get("watch", false):
 		# a fight you watched from ringside (1.56): winner, loser
+		# (1.57) five options: trash talk the winner, the loser, or both
 		return [["humble", "Watched %s beat %s from ringside. Respect to both."], ["hype", "%s over %s! Somebody put that on the big screen."],
+				["trash_w", "%s beat %s and still looked slow. Lucky night."],
+				["trash_l", "%s won, sure. But %s was never going to. Retire."],
 				["trash", "%s beat %s and still looked slow. I'd take either of them."]]
 	if d["won"]:
 		return [["humble", "Good fight, %s. I got lucky with that last one."], ["hype", "ANOTHER ONE. %s didn't know what hit them."],
@@ -374,8 +377,16 @@ static func draft_args() -> Array:
 
 
 ## A fight you watched: a post waiting about it (the draft replaces any older one).
-static func watched_fight(winner: String, loser: String, wid: int, stage: String) -> void:
-	st()["draft"] = {"watch": true, "opp": winner, "args": [winner, loser], "wid": wid, "won": true, "tag": tag_for(stage), "at": now_t()}
+static func watched_fight(winner: String, loser: String, wid: int, stage: String, lwid: int = -1) -> void:
+	st()["draft"] = {"watch": true, "opp": winner, "args": [winner, loser], "wid": wid, "lwid": lwid, "won": true, "tag": tag_for(stage), "at": now_t()}
+
+
+## The pilot ids behind draft_args() (-1 = not a world pilot), to mark rivals in the drafts.
+static func draft_wids() -> Array:
+	var d: Dictionary = st()["draft"]
+	if d.get("watch", false):
+		return [int(d.get("wid", -1)), int(d.get("lwid", -1))]
+	return [int(d.get("wid", -1))]
 
 
 ## You picked a draft (or a reply): followers move, grudges move, contracts may care.
@@ -394,10 +405,13 @@ static func publish(tone: String) -> void:
 			f *= 1.005
 		"hype":
 			f *= 1.02 if d["won"] else 0.98
-		"trash":
+		"trash", "trash_w", "trash_l":
 			f *= 1.01
-			if int(d.get("wid", -1)) >= 0:
+			# who takes it personally: your opponent; when you watched, the winner, the loser or both
+			if tone != "trash_l" and int(d.get("wid", -1)) >= 0:
 				GameData.grudge_bump(int(d["wid"]), 1.5)
+			if tone != "trash_w" and d.get("watch", false) and int(d.get("lwid", -1)) >= 0:
+				GameData.grudge_bump(int(d["lwid"]), 1.5)
 	s["followers"] = int(round(f))
 	post("me", text, draft_args(), {}, [str(d.get("tag", ""))])
 	count_post()

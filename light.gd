@@ -15,6 +15,9 @@ const SETS := {
 	"bay": {"key": Color(1.0, 0.8, 0.45), "from": -0.35, "rim": Color(0.37, 0.83, 1.0, 0.75), "amb": 0.34},
 	# fights until each venue gets its own set (1.51 / 1.52): cold floodlights, a warm rim
 	"fight": {"key": Color(0.9, 0.94, 1.0), "from": -0.35, "rim": Color(1.0, 0.6, 0.3, 0.55), "amb": 0.32},
+	# the Scrap Heap ring (1.57): a low orange sun from the right over the junk piles, a cold work
+	# light rim from the floodlight on the crane
+	"scrap_ring": {"key": Color(1.0, 0.72, 0.42), "from": 0.55, "rim": Color(0.55, 0.78, 1.0, 0.6), "amb": 0.36},
 }
 
 

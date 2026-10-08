@@ -2281,8 +2281,21 @@ func build_home() -> void:
 		t.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		top.add_child(t)
 		var opp := str(S.st()["draft"].get("opp", ""))
-		var hints := {"humble": tr("Safe. Sponsors like it."), "hype": tr("Big if you keep winning."), "trash": tr("Fans love it. They won't.")}
-		var names := {"humble": tr("HUMBLE"), "hype": tr("HYPE"), "trash": tr("TRASH TALK")}
+		var watched: bool = S.st()["draft"].get("watch", false)
+		var hints := {"humble": tr("Safe. Sponsors like it."), "hype": tr("Big if you keep winning."), "trash": tr("Fans love it. They won't.") if not watched else tr("Fans love it. Both of them will remember."),
+				"trash_w": tr("Fans love it. The winner won't."), "trash_l": tr("Fans love it. The loser won't.")}
+		var names := {"humble": tr("HUMBLE"), "hype": tr("HYPE"), "trash": tr("TRASH TALK") if not watched else tr("TRASH TALK: BOTH"),
+				"trash_w": tr("TRASH TALK: WINNER"), "trash_l": tr("TRASH TALK: LOSER")}
+		# names of pilots you already have bad blood with stand out in the drafts
+		var wids: Array = S.draft_wids()
+		var bb_args: Array = []
+		var plain: Array = S.draft_args()
+		for k in plain.size():
+			var nm := str(plain[k])
+			var wid: int = int(wids[k]) if k < wids.size() else -1
+			if wid >= 0 and (GameData.is_rival(wid) or GameData.hates_me(wid)):
+				nm = "[color=#ff6a4d][b]%s[/b][/color]" % nm
+			bb_args.append(nm)
 		var no_trash: bool = GameData.Contracts.st()["active"].any(func(c): return c["reqs"].any(func(r): return r["kind"] == "no_trash"))
 		for d in drafts:
 			var tone := str(d[0])
@@ -2302,10 +2315,21 @@ func build_home() -> void:
 			v.mouse_filter = Control.MOUSE_FILTER_IGNORE
 			v.add_theme_constant_override("separation", 0)
 			b.add_child(v)
-			var warn := tone == "trash" and no_trash
-			v.add_child(GUI.text(str(names[tone]) + "  ·  " + (tr("Breaks your Harbour Mutual deal!") if warn else str(hints[tone])), 11, GUI.RED if warn or tone == "trash" else GUI.MUTED, "headb"))
-			var dt := GUI.text(tr(str(d[1])) % S.draft_args(), 13, GUI.TEXT)
-			dt.clip_text = true
+			var warn := tone.begins_with("trash") and no_trash
+			v.add_child(GUI.text(str(names[tone]) + "  ·  " + (tr("Breaks your Harbour Mutual deal!") if warn else str(hints[tone])), 11, GUI.RED if warn or tone.begins_with("trash") else GUI.MUTED, "headb"))
+			var dt := RichTextLabel.new()
+			dt.bbcode_enabled = true
+			dt.fit_content = true
+			dt.scroll_active = false
+			dt.autowrap_mode = TextServer.AUTOWRAP_OFF
+			dt.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			dt.clip_contents = true
+			dt.add_theme_font_override("normal_font", GUI.body())
+			dt.add_theme_font_override("bold_font", GUI.headb())
+			dt.add_theme_font_size_override("normal_font_size", UI.tsz(13))
+			dt.add_theme_font_size_override("bold_font_size", UI.tsz(13))
+			dt.add_theme_color_override("default_color", GUI.TEXT)
+			dt.text = tr(str(d[1])) % bb_args
 			v.add_child(dt)
 		var bar := action_bar(col)
 		var sp := Control.new()

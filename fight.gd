@@ -1,4 +1,5 @@
 extends Node2D
+const Light = preload("res://light.gd")
 
 # helper scripts, loaded by path so the game also runs without an editor scan
 const Arena = preload("res://arena.gd")
@@ -336,6 +337,40 @@ var exhibition := false
 var mode := "story"
 var title_text := ""
 var screen := Vector2(1152, 648)
+## Where draw calls go (1.57): the fight node itself for the world (the camera zooms and follows it),
+## the HUD canvas on its own layer for everything on the glass (bars, buttons, captions), which stays
+## sharp and the same size whatever the camera does.
+var ci: CanvasItem
+var hud_layer: CanvasLayer
+var hud_canvas: HudCanvas
+
+
+func _init() -> void:
+	ci = self
+
+
+## The screen layer: it asks the fight to draw the HUD onto it.
+class HudCanvas extends Node2D:
+	var fight: Node2D
+
+	func _draw() -> void:
+		if fight:
+			fight.draw_ui(self)
+
+
+## A point in the ring (world) to where it shows on the screen, through the camera.
+func w2s(p: Vector2) -> Vector2:
+	return position + p * scale
+
+
+func s2w(p: Vector2) -> Vector2:
+	return (p - position) / scale
+
+
+func redraw_all() -> void:
+	queue_redraw()
+	if hud_canvas:
+		hud_canvas.queue_redraw()
 var floor_y := 420.0
 var font: Font
 var clock := 0.0
@@ -580,6 +615,12 @@ func _ready() -> void:
 		course_step = 0   # the very first fight: Old Pike, Gus's five-step course
 	if mode == "test" or GameData.settings.get("skip_intros", false) or course_step >= 0:
 		intro_step = "count"
+	hud_layer = CanvasLayer.new()
+	hud_layer.layer = 3
+	add_child(hud_layer)
+	hud_canvas = HudCanvas.new()
+	hud_canvas.fight = self
+	hud_layer.add_child(hud_canvas)
 	intro_layer = CanvasLayer.new()
 	intro_layer.layer = 5
 	add_child(intro_layer)
@@ -861,10 +902,11 @@ func handle_tap(p: Vector2) -> bool:
 			return false
 	var slot := ""
 	var who: Fighter = null
+	var wp := s2w(p)   # the tap, in the ring (the camera may be zoomed in)
 	for e in team_c:
 		if e.state == "ko":
 			continue
-		slot = part_at(e, p)
+		slot = part_at(e, wp)
 		if slot != "":
 			who = e
 			break
@@ -1653,15 +1695,15 @@ func _process(delta: float) -> void:
 		return
 	layout()
 	if tut_pause:
-		queue_redraw()
+		redraw_all()
 		return
 	if paused:
-		queue_redraw()
+		redraw_all()
 		return
 	update_coach(delta)
 	if hitstop > 0.0:
 		hitstop -= delta
-		queue_redraw()
+		redraw_all()
 		return
 	moment_t = maxf(0.0, moment_t - delta)
 	if slowmo > 0.0:
@@ -1755,7 +1797,7 @@ func _process(delta: float) -> void:
 	if arena_redraw_t <= 0.0 and arena_layer:
 		arena_redraw_t = 1.0 / ARENA_FPS
 		arena_layer.queue_redraw()
-	queue_redraw()
+	redraw_all()
 
 
 func update_effects(delta: float) -> void:
@@ -3325,29 +3367,29 @@ func _draw() -> void:
 	for d in debris:
 		var sz: Vector2 = d["size"]
 		if d.has("def"):
-			PartIcon.draw_part_at(self, d["pos"] + off, sz.x, d["def"], 0.25, d["rot"])   # the real part, lying where it fell
+			PartIcon.draw_part_at(ci, d["pos"] + off, sz.x, d["def"], 0.25, d["rot"])   # the real part, lying where it fell
 			continue
-		draw_set_transform(d["pos"] + off, d["rot"], Vector2.ONE)
+		ci.draw_set_transform(d["pos"] + off, d["rot"], Vector2.ONE)
 		var col: Color = d["color"]
 		if d.has("life"):
 			col.a = clampf(float(d["life"]) / 0.6, 0.0, 1.0)
-		draw_colored_polygon(PackedVector2Array([Vector2(-sz.x * 0.5, -sz.y * 0.3), Vector2(sz.x * 0.4, -sz.y * 0.5), Vector2(sz.x * 0.5, sz.y * 0.4), Vector2(-sz.x * 0.2, sz.y * 0.5)]), col)
-	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+		ci.draw_colored_polygon(PackedVector2Array([Vector2(-sz.x * 0.5, -sz.y * 0.3), Vector2(sz.x * 0.4, -sz.y * 0.5), Vector2(sz.x * 0.5, sz.y * 0.4), Vector2(-sz.x * 0.2, sz.y * 0.5)]), col)
+	ci.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
 	for s in smoke:
 		var t: float = s["t"] / 1.2
 		var c := Color(0.08, 0.08, 0.08, 0.65 * (1.0 - t)) if s["dark"] else Color(0.35, 0.35, 0.37, 0.45 * (1.0 - t))
-		draw_circle(s["pos"] + off, (6.0 + t * 14.0) * float(s.get("k", 1.0)), c)
+		ci.draw_circle(s["pos"] + off, (6.0 + t * 14.0) * float(s.get("k", 1.0)), c)
 	for s in sparks:
 		var t: float = s["t"] / 0.25
 		var c: Color = s["color"]
 		c.a = 1.0 - t
-		draw_circle(s["pos"] + off, s["size"] * (0.4 + t), c)
+		ci.draw_circle(s["pos"] + off, s["size"] * (0.4 + t), c)
 	for r in rings:
 		var t: float = r["t"] / 0.4
 		var c: Color = r["color"]
 		c.a = 1.0 - t
-		draw_arc(r["pos"] + off, r["r"] * t, 0, TAU, 40, c, 6.0)
+		ci.draw_arc(r["pos"] + off, r["r"] * t, 0, TAU, 40, c, 6.0)
 
 	if hitbox_view:
 		draw_hitboxes(off)
@@ -3360,14 +3402,27 @@ func _draw() -> void:
 		var t: float = p["t"] / 1.4
 		var c: Color = p["color"]
 		c.a = 1.0 - t * t
-		draw_string(font, p["pos"] + Vector2(-260, -40.0 - t * 50.0), p["text"], HORIZONTAL_ALIGNMENT_CENTER, 520, fs(26), c)
+		ci.draw_string(font, p["pos"] + Vector2(-260, -40.0 - t * 50.0), p["text"], HORIZONTAL_ALIGNMENT_CENTER, 520, fs(26), c)
 
 	if demo_move != "":
 		return   # the move showcase: just the robots
 	if phase == "intro" and intro_step == "show":
 		draw_show_marks(off)
+
+
+## Everything on the glass, drawn onto the HUD layer (c): it doesn't zoom with the camera.
+func draw_ui(c: CanvasItem) -> void:
+	if demo_move != "" or player == null:
+		return
+	ci = c
+	_draw_ui()
+	ci = self
+
+
+func _draw_ui() -> void:
+	if phase == "intro" and intro_step == "show":
 		return   # the show: no HUD, no buttons - the overlay does the talking
-	if moment_t > 0.0 or (cam_z > 1.02 and phase != "results"):
+	if moment_t > 0.0:
 		draw_moment_caption()
 		return   # a big moment: the camera's in close, the HUD steps aside
 	draw_hud()
@@ -3383,10 +3438,10 @@ func _draw() -> void:
 	if paused:
 		draw_moves_list()
 	if tut_pause:
-		draw_rect(Rect2(Vector2.ZERO, screen), Color(0, 0, 0, 0.55))
+		ci.draw_rect(Rect2(Vector2.ZERO, screen), Color(0, 0, 0, 0.55))
 		draw_coach()
 		if Time.get_ticks_msec() - tut_pause_at > TUT_GRACE_MS:
-			draw_string(font, Vector2(0, screen.y * 0.62), tr("Tap to continue"), HORIZONTAL_ALIGNMENT_CENTER, screen.x, fs(26),
+			ci.draw_string(font, Vector2(0, screen.y * 0.62), tr("Tap to continue"), HORIZONTAL_ALIGNMENT_CENTER, screen.x, fs(26),
 					Color(1, 1, 1, 0.6 + 0.4 * sin(Time.get_ticks_msec() / 200.0)))
 
 
@@ -3404,13 +3459,13 @@ func draw_hitboxes(off: Vector2) -> void:
 				var pts := PackedVector2Array()
 				for c in [rc.position, Vector2(rc.end.x, rc.position.y), rc.end, Vector2(rc.position.x, rc.end.y), rc.position]:
 					pts.append(visual_point(f, c) + off)
-				draw_polyline(pts, hc, 2.0)
+				ci.draw_polyline(pts, hc, 2.0)
 			else:
 				var a2 := visual_point(f, sh[2]) + off
 				var b2 := visual_point(f, sh[3]) + off
 				var rr: float = float(sh[4]) * f.scale
-				draw_line(a2, b2, Color(hc.r, hc.g, hc.b, 0.25), rr * 2.0)
-				draw_circle(b2, rr, Color(hc.r, hc.g, hc.b, 0.25))
+				ci.draw_line(a2, b2, Color(hc.r, hc.g, hc.b, 0.25), rr * 2.0)
+				ci.draw_circle(b2, rr, Color(hc.r, hc.g, hc.b, 0.25))
 		var pose := strike_pose(f)
 		var live: bool = (ATTACKS.has(f.state) or f.state == "special") and pose != ""
 		var limb: String = f.attack_limb if live else f.next_limb("arm", true)
@@ -3418,8 +3473,8 @@ func draw_hitboxes(off: Vector2) -> void:
 			continue
 		var line := strike_line(f, limb, pose if live else "punch")
 		var col := Color(1.0, 0.9, 0.2) if live else Color(1.0, 1.0, 1.0, 0.35)
-		draw_line(line["a"] + off, line["b"] + off, col, 3.0)
-		draw_arc(line["b"] + off, line["r"], 0.0, TAU, 20, col, 2.0)
+		ci.draw_line(line["a"] + off, line["b"] + off, col, 3.0)
+		ci.draw_arc(line["b"] + off, line["r"], 0.0, TAU, 20, col, 2.0)
 
 
 ## The arena lives on its own layer behind the fighters and is redrawn ~24 times a second
@@ -3483,7 +3538,7 @@ func draw_cables(off: Vector2) -> void:
 			var owner: Fighter = p["owner"]
 			var g := RobotArt.geom(owner.get_look())
 			var s := to_world_point(owner, g[shoulder_key(p["slot"])])
-			draw_line(s + off, p["pos"] + off, Color(0.3, 0.3, 0.32), 3.0)
+			ci.draw_line(s + off, p["pos"] + off, Color(0.3, 0.3, 0.32), 3.0)
 
 
 func draw_projectiles(off: Vector2) -> void:
@@ -3493,23 +3548,23 @@ func draw_projectiles(off: Vector2) -> void:
 		var dir := Vector2(signf(p["vel"].x), 0.0) if not p["returning"] else -Vector2(owner.facing, 0)
 		match p["kind"]:
 			"bolt":
-				draw_set_transform(pos, p["spin"], Vector2.ONE)
-				draw_rect(Rect2(-8, -8, 16, 16), Color(1.0, 0.45, 0.15))
-				draw_circle(Vector2.ZERO, 4.0, Color(1.0, 0.9, 0.5))
-				draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+				ci.draw_set_transform(pos, p["spin"], Vector2.ONE)
+				ci.draw_rect(Rect2(-8, -8, 16, 16), Color(1.0, 0.45, 0.15))
+				ci.draw_circle(Vector2.ZERO, 4.0, Color(1.0, 0.9, 0.5))
+				ci.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 			"fist":
 				var arm: Dictionary = owner.parts[p["slot"]]
-				RobotArt.draw_rocket_fist(self, pos, dir, 14.0 * owner.scale, arm["color"], owner.spec["trim"], not p["returning"], clock)
+				RobotArt.draw_rocket_fist(ci, pos, dir, 14.0 * owner.scale, arm["color"], owner.spec["trim"], not p["returning"], clock)
 			"claw":
-				draw_circle(pos, 8.0, Color(0.3, 0.55, 0.55))
-				draw_line(pos, pos + dir * 16.0 + Vector2(0, 9), Color(0.8, 0.8, 0.85), 4.0)
-				draw_line(pos, pos + dir * 16.0 - Vector2(0, 9), Color(0.8, 0.8, 0.85), 4.0)
+				ci.draw_circle(pos, 8.0, Color(0.3, 0.55, 0.55))
+				ci.draw_line(pos, pos + dir * 16.0 + Vector2(0, 9), Color(0.8, 0.8, 0.85), 4.0)
+				ci.draw_line(pos, pos + dir * 16.0 - Vector2(0, 9), Color(0.8, 0.8, 0.85), 4.0)
 			"laser":
-				draw_line(pos - dir * 70.0, pos, Color(1.0, 0.2, 0.3, 0.6), 8.0)
-				draw_line(pos - dir * 70.0, pos, Color(1.0, 0.9, 0.9), 3.0)
+				ci.draw_line(pos - dir * 70.0, pos, Color(1.0, 0.2, 0.3, 0.6), 8.0)
+				ci.draw_line(pos - dir * 70.0, pos, Color(1.0, 0.9, 0.9), 3.0)
 			"shell":
-				draw_circle(pos, 11.0, Color(0.25, 0.25, 0.25))
-				draw_circle(pos - dir * 14.0, 7.0, Color(1.0, 0.6, 0.2, 0.7))
+				ci.draw_circle(pos, 11.0, Color(0.25, 0.25, 0.25))
+				ci.draw_circle(pos - dir * 14.0, 7.0, Color(1.0, 0.6, 0.2, 0.7))
 
 
 ## How the robot stands right now: the lean, lunge, squash and stretch of its pose. The drawing and
@@ -3693,9 +3748,9 @@ func body_pose(f: Fighter) -> Dictionary:
 
 
 func draw_fighter(f: Fighter, off: Vector2) -> void:
-	draw_set_transform(Vector2(f.pos.x, floor_y) + off, 0.0, Vector2(1.0, 0.22))
-	draw_circle(Vector2.ZERO, 42.0 * f.scale, Color(0, 0, 0, 0.35))
-	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+	ci.draw_set_transform(Vector2(f.pos.x, floor_y) + off, 0.0, Vector2(1.0, 0.22))
+	ci.draw_circle(Vector2.ZERO, 42.0 * f.scale, Color(0, 0, 0, 0.35))
+	ci.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 	var bp := body_pose(f)
 	var base: Vector2 = bp["base"] + off
 	var rot: float = bp["rot"]
@@ -3712,9 +3767,10 @@ func draw_fighter(f: Fighter, off: Vector2) -> void:
 		var c := to_world_point(f, pivot) + Vector2(dx, 0)
 		var a0 := 0.0 if f.facing == 1 else PI
 		var span: float = {"uppercut": -0.9, "sweep": 0.5, "high_kick": -0.85, "low_punch": 0.4}.get(state, -0.5)
-		draw_arc(c, 100.0 * f.scale, a0 + span * f.facing - 0.35, a0 + span * f.facing + 0.35, 14, Color(1, 1, 1, 0.28), 14.0 * f.scale)
+		ci.draw_arc(c, 100.0 * f.scale, a0 + span * f.facing - 0.35, a0 + span * f.facing + 0.35, 14, Color(1, 1, 1, 0.28), 14.0 * f.scale)
 	var fist_out: Array = f.fist_out.keys()
-	RobotArt.draw(self, base, f.get_look(), {
+	RobotArt.draw(ci, base, f.get_look(), {
+		"light": fight_light(),
 		"facing": f.facing, "state": state, "extended": extended, "attack_limb": f.attack_limb, "aim": f.aim_ang,
 		"swing": sin(f.walk_phase) * 10.0 if (f.state == "walk" or (f.on_ground and absf(f.vel.x) > 20.0 and f.state in ["punch", "low_punch", "uppercut", "charge"])) and f.legs() == 2 else 0.0,
 		"drop": f.vis_pose.get("drop", 0.0),
@@ -3732,32 +3788,31 @@ func draw_fighter(f: Fighter, off: Vector2) -> void:
 	if f.state == "special" and TELEGRAPH.has(f.special_id) and f.timer < float(Specials.MOVES[f.special_id]["startup"]):
 		# a heavy special winding up: an orange glow round the body
 		var gc2 := visual_point(f, RobotArt.part_center(f.get_look(), "torso")) + off
-		draw_circle(gc2, (70.0 + sin(clock * 30.0) * 6.0) * f.scale, Color(1.0, 0.5, 0.1, 0.22))
+		ci.draw_circle(gc2, (70.0 + sin(clock * 30.0) * 6.0) * f.scale, Color(1.0, 0.5, 0.1, 0.22))
 	if f.state == "charge" and f.attack_limb != "":
 		# the charging fist (foot) glows brighter as the charge fills
 		var ck := clampf((f.charge_t - CHARGE_TAP) / (CHARGE_MAX - CHARGE_TAP), 0.0, 1.0)
 		var tip := visual_point(f, RobotArt.limb_strike(f.get_look(), f.attack_limb, "charge" if f.attack_limb.begins_with("arm") else "stand")["b"]) + off
 		var gc := Color(1.0, 0.85, 0.3).lerp(Color(1.0, 0.3, 0.15), ck)
-		draw_circle(tip, (14.0 + 18.0 * ck + sin(clock * 30.0) * 3.0) * f.scale, Color(gc.r, gc.g, gc.b, 0.25 + 0.3 * ck))
-		draw_arc(tip, (20.0 + 20.0 * ck) * f.scale, 0.0, TAU * ck, 24, gc, 3.0)
+		ci.draw_circle(tip, (14.0 + 18.0 * ck + sin(clock * 30.0) * 3.0) * f.scale, Color(gc.r, gc.g, gc.b, 0.25 + 0.3 * ck))
+		ci.draw_arc(tip, (20.0 + 20.0 * ck) * f.scale, 0.0, TAU * ck, 24, gc, 3.0)
 
 
 ## Over a big moment: cinema bars, and the move's name or the K.O., drawn straight onto the screen
 ## (the camera's zoom is undone for it).
 func draw_moment_caption() -> void:
-	draw_set_transform_matrix(get_transform().affine_inverse())
 	var bar := screen.y * 0.09 * clampf(moment_t * 4.0, 0.0, 1.0)
-	draw_rect(Rect2(0, 0, screen.x, bar), Color(0, 0, 0, 0.9))
-	draw_rect(Rect2(0, screen.y - bar, screen.x, bar), Color(0, 0, 0, 0.9))
+	ci.draw_rect(Rect2(0, 0, screen.x, bar), Color(0, 0, 0, 0.9))
+	ci.draw_rect(Rect2(0, screen.y - bar, screen.x, bar), Color(0, 0, 0, 0.9))
 	if moment_name != "" and moment_t > 0.0:
 		var a := clampf(moment_t * 3.0, 0.0, 1.0)
 		var col := Color(1.0, 0.2, 0.1, a) if moment_kind == "ko" else Color(1.0, 0.85, 0.2, a)
 		var size := fs(84) if moment_kind == "ko" else fs(56)
-		draw_string(font, Vector2(4, screen.y * 0.36 + 4), moment_name, HORIZONTAL_ALIGNMENT_CENTER, screen.x, size, Color(0, 0, 0, a * 0.7))
-		draw_string(font, Vector2(0, screen.y * 0.36), moment_name, HORIZONTAL_ALIGNMENT_CENTER, screen.x, size, col)
+		ci.draw_string(font, Vector2(4, screen.y * 0.36 + 4), moment_name, HORIZONTAL_ALIGNMENT_CENTER, screen.x, size, Color(0, 0, 0, a * 0.7))
+		ci.draw_string(font, Vector2(0, screen.y * 0.36), moment_name, HORIZONTAL_ALIGNMENT_CENTER, screen.x, size, col)
 		if moment_kind == "ko":
-			draw_string(font, Vector2(0, screen.y * 0.36 + 56), tr(ko_text) if ko_text != "TIME!" else "", HORIZONTAL_ALIGNMENT_CENTER, screen.x, fs(26), Color(1, 1, 1, a))
-	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+			ci.draw_string(font, Vector2(0, screen.y * 0.36 + 56), tr(ko_text) if ko_text != "TIME!" else "", HORIZONTAL_ALIGNMENT_CENTER, screen.x, fs(26), Color(1, 1, 1, a))
+	ci.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
 
 ## The heavy specials that shake and glow while they wind up, so a slow big hit can be read and answered.
@@ -3800,13 +3855,13 @@ func draw_burnout(f: Fighter, off: Vector2) -> void:
 	var bolt := PackedVector2Array([c + Vector2(4, -26) * s, c + Vector2(-12, 2) * s, c + Vector2(-1, 2) * s,
 			c + Vector2(-6, 24) * s, c + Vector2(12, -6) * s, c + Vector2(1, -6) * s])
 	if on:
-		draw_circle(c, 30.0 * s, Color(1.0, 0.2, 0.1, 0.18))
-	draw_colored_polygon(bolt, red)
-	draw_polyline(bolt + PackedVector2Array([bolt[0]]), Color(0.15, 0.02, 0.02), 2.0)
+		ci.draw_circle(c, 30.0 * s, Color(1.0, 0.2, 0.1, 0.18))
+	ci.draw_colored_polygon(bolt, red)
+	ci.draw_polyline(bolt + PackedVector2Array([bolt[0]]), Color(0.15, 0.02, 0.02), 2.0)
 	var fsz := fs(20)
 	var tw := font.get_string_size("BURNOUT", HORIZONTAL_ALIGNMENT_LEFT, -1, fsz).x
-	draw_string(font, Vector2(c.x - tw * 0.5 + 2, c.y - 34.0 * s + 2), tr("BURNOUT"), HORIZONTAL_ALIGNMENT_LEFT, -1, fsz, Color(0, 0, 0, 0.7))
-	draw_string(font, Vector2(c.x - tw * 0.5, c.y - 34.0 * s), tr("BURNOUT"), HORIZONTAL_ALIGNMENT_LEFT, -1, fsz, red)
+	ci.draw_string(font, Vector2(c.x - tw * 0.5 + 2, c.y - 34.0 * s + 2), tr("BURNOUT"), HORIZONTAL_ALIGNMENT_LEFT, -1, fsz, Color(0, 0, 0, 0.7))
+	ci.draw_string(font, Vector2(c.x - tw * 0.5, c.y - 34.0 * s), tr("BURNOUT"), HORIZONTAL_ALIGNMENT_LEFT, -1, fsz, red)
 
 
 ## Team fights: who's who. Your robots show their pad number, the focused enemy gets a red marker.
@@ -3818,12 +3873,12 @@ func draw_tag(f: Fighter, off: Vector2) -> void:
 	top.y = minf(top.y, f.pos.y - 200.0 * f.scale) - (mates.find(f) % 2) * 22.0   # stagger so names don't overlap
 	if f.team == 0:
 		if f.tag != "":
-			draw_circle(top, 15.0, Color(0.2, 0.6, 1.0, 0.85))
-			draw_string(font, top + Vector2(-20, 7), f.tag, HORIZONTAL_ALIGNMENT_CENTER, 40, fs(16), Color.WHITE)
+			ci.draw_circle(top, 15.0, Color(0.2, 0.6, 1.0, 0.85))
+			ci.draw_string(font, top + Vector2(-20, 7), f.tag, HORIZONTAL_ALIGNMENT_CENTER, 40, fs(16), Color.WHITE)
 	elif f == cpu:
 		var r := 10.0 + sin(clock * 6.0) * 2.0
-		draw_colored_polygon(PackedVector2Array([top + Vector2(-r, -r), top + Vector2(r, -r), top + Vector2(0, r * 0.4)]), Color(1.0, 0.25, 0.2, 0.9))
-	draw_string(font, top + Vector2(-100, -20), f.label, HORIZONTAL_ALIGNMENT_CENTER, 200, fs(12), Color(1, 1, 1, 0.7))
+		ci.draw_colored_polygon(PackedVector2Array([top + Vector2(-r, -r), top + Vector2(r, -r), top + Vector2(0, r * 0.4)]), Color(1.0, 0.25, 0.2, 0.9))
+	ci.draw_string(font, top + Vector2(-100, -20), f.label, HORIZONTAL_ALIGNMENT_CENTER, 200, fs(12), Color(1, 1, 1, 0.7))
 
 
 func draw_crosshair(slot: String, f: Fighter, c: Color, off: Vector2, size: float) -> void:
@@ -3831,15 +3886,15 @@ func draw_crosshair(slot: String, f: Fighter, c: Color, off: Vector2, size: floa
 		return
 	var p := visual_point(f, RobotArt.part_center(f.get_look(), slot)) + off
 	var r := (22.0 + sin(clock * 6.0) * 3.0) * size
-	draw_arc(p, r, 0.0, TAU, 32, c, 3.0)
+	ci.draw_arc(p, r, 0.0, TAU, 32, c, 3.0)
 	var spin := clock * 2.0 * (1.0 if size >= 1.0 else -1.0)
 	for k in 4:
 		var a := spin + k * PI / 2.0
 		var dir := Vector2(cos(a), sin(a))
-		draw_line(p + dir * (r - 8.0), p + dir * (r + 10.0), c, 3.0)
-	draw_circle(p, 3.0, c)
+		ci.draw_line(p + dir * (r - 8.0), p + dir * (r + 10.0), c, 3.0)
+	ci.draw_circle(p, 3.0, c)
 	var label: String = tr(PART_LABELS[slot]) if size >= 1.0 else tr("ENEMY AIM: ") + tr(PART_LABELS[slot])
-	draw_string(font, p + Vector2(-120, -r - 10.0), label, HORIZONTAL_ALIGNMENT_CENTER, 240, fs(15), c)
+	ci.draw_string(font, p + Vector2(-120, -r - 10.0), label, HORIZONTAL_ALIGNMENT_CENTER, 240, fs(15), c)
 
 
 ## Scanner: a small pulsing marker on the enemy's weakest part (hits there do +15%).
@@ -3852,9 +3907,9 @@ func draw_weak_point(f: Fighter, off: Vector2) -> void:
 	var p := visual_point(f, RobotArt.part_center(f.get_look(), slot)) + off
 	var r := 9.0 + sin(clock * 5.0) * 2.0
 	var c := Color(1.0, 0.9, 0.2, 0.85)
-	draw_colored_polygon(PackedVector2Array([p + Vector2(0, -r), p + Vector2(r, 0), p + Vector2(0, r), p + Vector2(-r, 0)]), Color(c.r, c.g, c.b, 0.25))
-	draw_polyline(PackedVector2Array([p + Vector2(0, -r), p + Vector2(r, 0), p + Vector2(0, r), p + Vector2(-r, 0), p + Vector2(0, -r)]), c, 2.0)
-	draw_string(font, p + Vector2(-60, r + 16), tr("WEAK"), HORIZONTAL_ALIGNMENT_CENTER, 120, fs(11), c)
+	ci.draw_colored_polygon(PackedVector2Array([p + Vector2(0, -r), p + Vector2(r, 0), p + Vector2(0, r), p + Vector2(-r, 0)]), Color(c.r, c.g, c.b, 0.25))
+	ci.draw_polyline(PackedVector2Array([p + Vector2(0, -r), p + Vector2(r, 0), p + Vector2(0, r), p + Vector2(-r, 0), p + Vector2(0, -r)]), c, 2.0)
+	ci.draw_string(font, p + Vector2(-60, r + 16), tr("WEAK"), HORIZONTAL_ALIGNMENT_CENTER, 120, fs(11), c)
 
 
 func draw_part_map(f: Fighter, at: Vector2, _mirror: bool, k: float = UI_SCALE) -> void:
@@ -3872,21 +3927,21 @@ func draw_part_map(f: Fighter, at: Vector2, _mirror: bool, k: float = UI_SCALE) 
 		r = Rect2(at + r.position * k, r.size * k)
 		# green, amber, red by health (the same marks as DENTED / CRACKED on the walk-in card); ripped = an empty outline
 		if f.state == "ko" or not f.alive(slot):
-			draw_rect(r, Color(0.12, 0.12, 0.14, 0.8))
-			draw_rect(r, Color(0.45, 0.45, 0.5, 0.8), false, 1.0)
+			ci.draw_rect(r, Color(0.12, 0.12, 0.14, 0.8))
+			ci.draw_rect(r, Color(0.45, 0.45, 0.5, 0.8), false, 1.0)
 		else:
 			var h := f.ratio(slot)
 			var c := Color(0.3, 0.9, 0.35) if h >= 0.6 else (Color(1.0, 0.72, 0.2) if h >= 0.3 else Color(0.95, 0.25, 0.2))
-			draw_rect(r, c)
+			ci.draw_rect(r, c)
 			if h < 0.999:
-				draw_rect(Rect2(r.position, Vector2(r.size.x, r.size.y * (1.0 - h))), Color(0, 0, 0, 0.35))   # the missing share, darker
+				ci.draw_rect(Rect2(r.position, Vector2(r.size.x, r.size.y * (1.0 - h))), Color(0, 0, 0, 0.35))   # the missing share, darker
 		if f.state != "ko" and f == player.foe and f.alive(slot) and slot == player.weak:
 			var wc := r.get_center()
 			var wr := 5.0 * k * 0.8
-			draw_colored_polygon(PackedVector2Array([wc + Vector2(0, -wr), wc + Vector2(wr, 0), wc + Vector2(0, wr), wc + Vector2(-wr, 0)]), Color(1.0, 0.9, 0.2, 0.95))
+			ci.draw_colored_polygon(PackedVector2Array([wc + Vector2(0, -wr), wc + Vector2(wr, 0), wc + Vector2(0, wr), wc + Vector2(-wr, 0)]), Color(1.0, 0.9, 0.2, 0.95))
 		var aimed: bool = (f == cpu and player.target == slot) or (f == player and cpu.target == slot)
 		if aimed:
-			draw_rect(r.grow(2.0), Color(1, 0.2, 0.2) if f == cpu else Color(1, 0.6, 0.1), false, 2.0)
+			ci.draw_rect(r.grow(2.0), Color(1, 0.2, 0.2) if f == cpu else Color(1, 0.6, 0.1), false, 2.0)
 
 
 func part_map_step() -> float:
@@ -3908,26 +3963,26 @@ func draw_head_icons(f: Fighter, at: Vector2, right: bool) -> void:
 	var col := Color(1.0, 0.35, 0.3) if ready else Color(0.75, 0.75, 0.8)
 	if ready and f == player:
 		col.a = 0.6 + 0.4 * sin(clock * 8.0)
-	draw_circle(c, r + 2.0, Color(0, 0, 0, 0.55))
-	draw_arc(c, r, -PI / 2.0, -PI / 2.0 + TAU * k, 24, col, 3.0)
-	draw_line(c + Vector2(-r * 0.6, 0), c + Vector2(r * 0.6, 0), col, 1.5)
-	draw_line(c + Vector2(0, -r * 0.6), c + Vector2(0, r * 0.6), col, 1.5)
-	draw_string(font, c + Vector2(-40, r + fs(10) + 2.0), tr("AIM") if ready else "%.1f" % f.aim_cd, HORIZONTAL_ALIGNMENT_CENTER, 80, fs(10), col)
+	ci.draw_circle(c, r + 2.0, Color(0, 0, 0, 0.55))
+	ci.draw_arc(c, r, -PI / 2.0, -PI / 2.0 + TAU * k, 24, col, 3.0)
+	ci.draw_line(c + Vector2(-r * 0.6, 0), c + Vector2(r * 0.6, 0), col, 1.5)
+	ci.draw_line(c + Vector2(0, -r * 0.6), c + Vector2(0, r * 0.6), col, 1.5)
+	ci.draw_string(font, c + Vector2(-40, r + fs(10) + 2.0), tr("AIM") if ready else "%.1f" % f.aim_cd, HORIZONTAL_ALIGNMENT_CENTER, 80, fs(10), col)
 	# radar / weak spot
 	var c2 := at + Vector2(step, 0)
-	draw_circle(c2, r + 2.0, Color(0, 0, 0, 0.55))
+	ci.draw_circle(c2, r + 2.0, Color(0, 0, 0, 0.55))
 	if f.weak != "":
 		var wc := Color(1.0, 0.9, 0.2)
-		draw_colored_polygon(PackedVector2Array([c2 + Vector2(0, -r * 0.8), c2 + Vector2(r * 0.8, 0), c2 + Vector2(0, r * 0.8), c2 + Vector2(-r * 0.8, 0)]), wc)
-		draw_string(font, c2 + Vector2(-40, r + fs(10) + 2.0), tr("WEAK"), HORIZONTAL_ALIGNMENT_CENTER, 80, fs(10), wc)
+		ci.draw_colored_polygon(PackedVector2Array([c2 + Vector2(0, -r * 0.8), c2 + Vector2(r * 0.8, 0), c2 + Vector2(0, r * 0.8), c2 + Vector2(-r * 0.8, 0)]), wc)
+		ci.draw_string(font, c2 + Vector2(-40, r + fs(10) + 2.0), tr("WEAK"), HORIZONTAL_ALIGNMENT_CENTER, 80, fs(10), wc)
 	else:
 		var sc := Color(0.4, 1.0, 0.55)
 		var sk := clampf(f.scan_t / maxf(0.01, f.scan_time), 0.0, 1.0)
-		draw_arc(c2, r, 0.0, TAU, 24, Color(sc.r, sc.g, sc.b, 0.35), 1.5)
-		draw_arc(c2, r, -PI / 2.0, -PI / 2.0 + TAU * sk, 24, sc, 3.0)
+		ci.draw_arc(c2, r, 0.0, TAU, 24, Color(sc.r, sc.g, sc.b, 0.35), 1.5)
+		ci.draw_arc(c2, r, -PI / 2.0, -PI / 2.0 + TAU * sk, 24, sc, 3.0)
 		var a := clock * 5.0
-		draw_line(c2, c2 + Vector2(cos(a), sin(a)) * r * 0.9, sc, 2.0)
-		draw_string(font, c2 + Vector2(-40, r + fs(10) + 2.0), tr("SCAN"), HORIZONTAL_ALIGNMENT_CENTER, 80, fs(10), sc)
+		ci.draw_line(c2, c2 + Vector2(cos(a), sin(a)) * r * 0.9, sc, 2.0)
+		ci.draw_string(font, c2 + Vector2(-40, r + fs(10) + 2.0), tr("SCAN"), HORIZONTAL_ALIGNMENT_CENTER, 80, fs(10), sc)
 
 
 ## A body map for every robot on a team (smaller when there are several).
@@ -3947,7 +4002,7 @@ func draw_part_maps(team: Array, y: float, right: bool) -> void:
 		if f.state == "ko":
 			t = "KO"
 		if t != "":
-			draw_string(font, at + Vector2(-30, 58.0 * k + 14.0), t, HORIZONTAL_ALIGNMENT_CENTER, 60, fs(12), c)
+			ci.draw_string(font, at + Vector2(-30, 58.0 * k + 14.0), t, HORIZONTAL_ALIGNMENT_CENTER, 60, fs(12), c)
 
 
 ## Core health bars: one big bar, or a thin bar per robot in team fights.
@@ -3968,9 +4023,9 @@ func draw_team_bars(team: Array, x: float, y: float, w: float, bh: float, right:
 		var hb := Rect2(x + (w - hw if right else 0.0), by, hw, h - ph - 2.0)
 		var hp: float = f.parts["torso"].get("hp", 0.0) if not f.parts["torso"].is_empty() and f.state != "ko" else 0.0
 		var edge := Color(1.0, 0.35, 0.3) if (right and f == cpu and n > 1) else Color(1, 1, 1, 0.8)
-		draw_rect(hb.grow(2.0), Color(0.02, 0.02, 0.03, 0.9))
-		GUI.draw_blocks(self, hb, hn, hp / GUI.HP_UNIT, Color(0.95, 0.85, 0.2) if f.state != "ko" else Color(0.4, 0.4, 0.4), Color(0.3, 0.06, 0.06), right)
-		draw_rect(hb.grow(2.0), edge, false, 1.5)
+		ci.draw_rect(hb.grow(2.0), Color(0.02, 0.02, 0.03, 0.9))
+		GUI.draw_blocks(ci, hb, hn, hp / GUI.HP_UNIT, Color(0.95, 0.85, 0.2) if f.state != "ko" else Color(0.4, 0.4, 0.4), Color(0.3, 0.06, 0.06), right)
+		ci.draw_rect(hb.grow(2.0), edge, false, 1.5)
 		# power in blocks under it - 1 block = 1 point of power
 		var pn := int(ceilf(f.power_max))
 		var pw := w * minf(1.0, pn / 60.0)   # same idea: 60 power fills the slot
@@ -3980,10 +4035,10 @@ func draw_team_bars(team: Array, x: float, y: float, w: float, bh: float, right:
 			pc = Color(1.0, 0.3, 0.2) if fmod(clock, 0.3) < 0.15 else Color(0.3, 0.3, 0.35)
 		elif f.power < f.power_max * 0.25:
 			pc = POWER_COLOR.lerp(Color.WHITE, 0.5 + 0.5 * sin(clock * 14.0))
-		GUI.draw_blocks(self, pr, pn, clampf(f.power, 0.0, f.power_max), pc, Color(0.02, 0.06, 0.1, 0.85), right)
+		GUI.draw_blocks(ci, pr, pn, clampf(f.power, 0.0, f.power_max), pc, Color(0.02, 0.06, 0.1, 0.85), right)
 		if n > 1:
 			var t := (tr("%s  ") % f.tag if f.tag != "" else "") + f.label + (tr("  · DOWN") if f.state == "ko" else "")
-			draw_string(font, Vector2(x + 6, by + h - 1), t, HORIZONTAL_ALIGNMENT_RIGHT if right else HORIZONTAL_ALIGNMENT_LEFT, w - 12, int(h * 0.95), Color(0.08, 0.08, 0.1))
+			ci.draw_string(font, Vector2(x + 6, by + h - 1), t, HORIZONTAL_ALIGNMENT_RIGHT if right else HORIZONTAL_ALIGNMENT_LEFT, w - 12, int(h * 0.95), Color(0.08, 0.08, 0.1))
 
 
 func draw_hud() -> void:
@@ -3991,8 +4046,8 @@ func draw_hud() -> void:
 	var y := screen.y * 0.03
 	var bh := 28.0
 	# soft dark band so the HUD reads on bright arenas
-	for k in 6:
-		draw_rect(Rect2(0, k * (y + bh + 50) / 6.0, screen.x, (y + bh + 50) / 6.0 + 1), Color(0, 0, 0, 0.42 * (1.0 - k / 6.0)))
+	for k in 6:   # (1.57: a slimmer, lighter band)
+		ci.draw_rect(Rect2(0, k * (y + bh + 34) / 6.0, screen.x, (y + bh + 34) / 6.0 + 1), Color(0, 0, 0, 0.3 * (1.0 - k / 6.0)))
 	# one body map per robot in the corners; the health bars move over to make room
 	var px := 118.0 if team_p.size() == 1 else 30.0 + team_p.size() * part_map_step()
 	var cx := screen.x - (118.0 if team_c.size() == 1 else 30.0 + team_c.size() * part_map_step()) - w
@@ -4001,16 +4056,16 @@ func draw_hud() -> void:
 	var my_team := player.label
 	if team_p.size() > 1:
 		my_team = str(GameData.quick["player"]["name"]) if mode == "quick" else tr("TEAM %s") % GameData.robot_name
-	draw_string(font, Vector2(px, y + bh + 28), my_team, HORIZONTAL_ALIGNMENT_LEFT, -1, fs(22), Color.WHITE)
-	draw_string(font, Vector2(cx, y + bh + 28), cpu.label if team_c.size() == 1 else str(opp["name"]), HORIZONTAL_ALIGNMENT_RIGHT, w, fs(22), Color.WHITE)
+	ci.draw_string(font, Vector2(px, y + bh + 28), my_team, HORIZONTAL_ALIGNMENT_LEFT, -1, fs(22), Color.WHITE)
+	ci.draw_string(font, Vector2(cx, y + bh + 28), cpu.label if team_c.size() == 1 else str(opp["name"]), HORIZONTAL_ALIGNMENT_RIGHT, w, fs(22), Color.WHITE)
 	for f in ([player, cpu] if team_p.size() == 1 and team_c.size() == 1 else []):
 		if Catalog.STYLES.has(f.style):
 			var st: Dictionary = Catalog.STYLES[f.style]
 			var sw := font.get_string_size(f.label, HORIZONTAL_ALIGNMENT_LEFT, -1, fs(22)).x
 			if f == player:
-				draw_string(font, Vector2(px + sw + 12, y + bh + 26), tr(st["name"]).to_upper(), HORIZONTAL_ALIGNMENT_LEFT, -1, fs(14), Color(st["color"]).lightened(0.35))
+				ci.draw_string(font, Vector2(px + sw + 12, y + bh + 26), tr(st["name"]).to_upper(), HORIZONTAL_ALIGNMENT_LEFT, -1, fs(14), Color(st["color"]).lightened(0.35))
 			else:
-				draw_string(font, Vector2(cx, y + bh + 26), tr(st["name"]).to_upper(), HORIZONTAL_ALIGNMENT_RIGHT, w - sw - 12, fs(14), Color(st["color"]).lightened(0.35))
+				ci.draw_string(font, Vector2(cx, y + bh + 26), tr(st["name"]).to_upper(), HORIZONTAL_ALIGNMENT_RIGHT, w - sw - 12, fs(14), Color(st["color"]).lightened(0.35))
 	var status: Array = []
 	if player.eff < 1.0:
 		status.append(tr("OVERLOADED"))
@@ -4030,13 +4085,13 @@ func draw_hud() -> void:
 	var pl_y := y + bh + 28 + fs(17) + 2
 	var has_pilots := false
 	if team_p.size() == 1 and player.pilot_name != "":
-		draw_string(font, Vector2(px, pl_y), tr("PILOT %s") % player.pilot_name.to_upper(), HORIZONTAL_ALIGNMENT_LEFT, -1, fs(15), Color(0.75, 0.85, 1.0))
+		ci.draw_string(font, Vector2(px, pl_y), tr("PILOT %s") % player.pilot_name.to_upper(), HORIZONTAL_ALIGNMENT_LEFT, -1, fs(15), Color(0.75, 0.85, 1.0))
 		has_pilots = true
 	if team_c.size() == 1 and cpu.pilot_name != "":
-		draw_string(font, Vector2(cx, pl_y), tr("PILOT %s") % cpu.pilot_name.to_upper(), HORIZONTAL_ALIGNMENT_RIGHT, w, fs(15), Color(0.75, 0.85, 1.0))
+		ci.draw_string(font, Vector2(cx, pl_y), tr("PILOT %s") % cpu.pilot_name.to_upper(), HORIZONTAL_ALIGNMENT_RIGHT, w, fs(15), Color(0.75, 0.85, 1.0))
 		has_pilots = true
 	if not status.is_empty():
-		draw_string(font, Vector2(px, (pl_y + fs(15) + 4) if has_pilots else (y + bh + 50)), "  ".join(status), HORIZONTAL_ALIGNMENT_LEFT, -1, fs(16), Color(1.0, 0.5, 0.2))
+		ci.draw_string(font, Vector2(px, (pl_y + fs(15) + 4) if has_pilots else (y + bh + 50)), "  ".join(status), HORIZONTAL_ALIGNMENT_LEFT, -1, fs(16), Color(1.0, 0.5, 0.2))
 	draw_part_maps(team_p, y, false)
 	draw_part_maps(team_c, y, true)
 	if phase == "fight" or phase == "intro":
@@ -4047,7 +4102,7 @@ func draw_hud() -> void:
 	for f in [player, cpu]:
 		if f.combo >= 2 and f.combo_show > 0.0:
 			var x := px if f == player else cx
-			draw_string(font, Vector2(x, y + bh + 70), tr("%d HIT COMBO!") % f.combo, HORIZONTAL_ALIGNMENT_LEFT if f == player else HORIZONTAL_ALIGNMENT_RIGHT,
+			ci.draw_string(font, Vector2(x, y + bh + 70), tr("%d HIT COMBO!") % f.combo, HORIZONTAL_ALIGNMENT_LEFT if f == player else HORIZONTAL_ALIGNMENT_RIGHT,
 					w, fs(30), Color(1.0, 0.85, 0.2, minf(1.0, f.combo_show * 2.0)))
 
 	# the fight name and clock hang on a board between the health bars
@@ -4060,9 +4115,9 @@ func draw_hud() -> void:
 		if mode == "test":
 			hud_btns = [[quit_rect, "LEAVE"], [moves_rect, "MOVES"], [reset_rect, "RESET"], [hitbox_rect, "HITBOX"]]
 		for rr in hud_btns:
-			draw_rect(rr[0], Color(1, 1, 1, 0.1))
-			draw_rect(rr[0], Color(1, 1, 1, 0.4), false, 2.0)
-			draw_string(font, (rr[0] as Rect2).position + Vector2(0, 31), tr(rr[1]), HORIZONTAL_ALIGNMENT_CENTER, (rr[0] as Rect2).size.x, fs(19), Color(1, 1, 1, 0.75))
+			ci.draw_rect(rr[0], Color(1, 1, 1, 0.1))
+			ci.draw_rect(rr[0], Color(1, 1, 1, 0.4), false, 2.0)
+			ci.draw_string(font, (rr[0] as Rect2).position + Vector2(0, 31), tr(rr[1]), HORIZONTAL_ALIGNMENT_CENTER, (rr[0] as Rect2).size.x, fs(19), Color(1, 1, 1, 0.75))
 
 	var cy := screen.y * 0.42
 	match phase:
@@ -4070,20 +4125,20 @@ func draw_hud() -> void:
 			if intro_step == "count":
 				var n := clampi(3 - int(count_t / COUNT_STEP), 1, 3)
 				var k := fmod(count_t, COUNT_STEP) / COUNT_STEP
-				draw_string(font, Vector2(0, screen.y * 0.36), str(n), HORIZONTAL_ALIGNMENT_CENTER, screen.x, fs(110 - 30 * k), Color(1.0, 0.85, 0.2, 1.0 - k * 0.6))
-				draw_string(font, Vector2(0, floor_y + 44), tr("You can move, but no hitting before the bell!"), HORIZONTAL_ALIGNMENT_CENTER, screen.x, fs(18), Color(0.9, 0.9, 0.95, 0.85))
+				ci.draw_string(font, Vector2(0, screen.y * 0.36), str(n), HORIZONTAL_ALIGNMENT_CENTER, screen.x, fs(110 - 30 * k), Color(1.0, 0.85, 0.2, 1.0 - k * 0.6))
+				ci.draw_string(font, Vector2(0, w2s(Vector2(0, floor_y + 44)).y), tr("You can move, but no hitting before the bell!"), HORIZONTAL_ALIGNMENT_CENTER, screen.x, fs(18), Color(0.9, 0.9, 0.95, 0.85))
 		"fight":
 			if fight_flash > 0.0:
-				draw_string(font, Vector2(0, screen.y * 0.36), tr("FIGHT!"), HORIZONTAL_ALIGNMENT_CENTER, screen.x, fs(96), Color(1.0, 0.3, 0.2, minf(1.0, fight_flash * 2.0)))
+				ci.draw_string(font, Vector2(0, screen.y * 0.36), tr("FIGHT!"), HORIZONTAL_ALIGNMENT_CENTER, screen.x, fs(96), Color(1.0, 0.3, 0.2, minf(1.0, fight_flash * 2.0)))
 		"ko":
 			var big := tr("K.O.") if ko_text != "TIME!" else tr("TIME!")
-			draw_string(font, Vector2(0, cy), big, HORIZONTAL_ALIGNMENT_CENTER, screen.x, fs(84), Color(1.0, 0.2, 0.1))
+			ci.draw_string(font, Vector2(0, cy), big, HORIZONTAL_ALIGNMENT_CENTER, screen.x, fs(84), Color(1.0, 0.2, 0.1))
 			var sub := tr(ko_text) if ko_text != "TIME!" else tr("Judges' decision")
-			draw_string(font, Vector2(0, cy + 55), sub, HORIZONTAL_ALIGNMENT_CENTER, screen.x, fs(26), Color.WHITE)
+			ci.draw_string(font, Vector2(0, cy + 55), sub, HORIZONTAL_ALIGNMENT_CENTER, screen.x, fs(26), Color.WHITE)
 			var winner_name: String = (team_p[0].label if team_p.size() == 1 or mode == "watch" else tr("YOUR TEAM")) if won else str(opp["name"])
-			draw_string(font, Vector2(0, cy + 100), tr("%s WINS") % winner_name, HORIZONTAL_ALIGNMENT_CENTER, screen.x, fs(32), Color(1.0, 0.85, 0.2))
+			ci.draw_string(font, Vector2(0, cy + 100), tr("%s WINS") % winner_name, HORIZONTAL_ALIGNMENT_CENTER, screen.x, fs(32), Color(1.0, 0.85, 0.2))
 			if phase_timer > 2.0:
-				draw_string(font, Vector2(0, cy + 145), tr("Tap to continue"), HORIZONTAL_ALIGNMENT_CENTER, screen.x, fs(22), Color(0.8, 0.8, 0.8))
+				ci.draw_string(font, Vector2(0, cy + 145), tr("Tap to continue"), HORIZONTAL_ALIGNMENT_CENTER, screen.x, fs(22), Color(0.8, 0.8, 0.8))
 		"results":
 			draw_results()
 
@@ -4096,18 +4151,18 @@ func draw_input_readout() -> void:
 			toks.append(b["tok"])
 	var y := screen.y * 0.04 + 112.0
 	var box := Rect2(screen.x * 0.5 - 220, y, 440, 40)
-	draw_rect(box, Color(0, 0, 0, 0.55))
-	draw_string(font, box.position + Vector2(12, 27), tr("INPUT"), HORIZONTAL_ALIGNMENT_LEFT, -1, fs(14), Color(0.6, 0.6, 0.65))
-	draw_string(font, box.position + Vector2(80, 28), Specials.seq_text(toks) if not toks.is_empty() else "-", HORIZONTAL_ALIGNMENT_LEFT, 350, fs(22), Color(0.55, 1.0, 0.65))
+	ci.draw_rect(box, Color(0, 0, 0, 0.55))
+	ci.draw_string(font, box.position + Vector2(12, 27), tr("INPUT"), HORIZONTAL_ALIGNMENT_LEFT, -1, fs(14), Color(0.6, 0.6, 0.65))
+	ci.draw_string(font, box.position + Vector2(80, 28), Specials.seq_text(toks) if not toks.is_empty() else "-", HORIZONTAL_ALIGNMENT_LEFT, 350, fs(22), Color(0.55, 1.0, 0.65))
 
 
 func draw_results() -> void:
-	draw_rect(Rect2(Vector2.ZERO, screen), Color(0, 0, 0, 0.7))
+	ci.draw_rect(Rect2(Vector2.ZERO, screen), Color(0, 0, 0, 0.7))
 	var y := screen.y * 0.2
 	var title := tr("VICTORY!") if won else tr("DEFEAT")
 	if mode == "watch":
 		title = tr("%s WINS") % str(result.get("winner", "?"))
-	draw_string(font, Vector2(0, y), title, HORIZONTAL_ALIGNMENT_CENTER, screen.x, fs(72 if mode != "watch" else 54), Color(1.0, 0.85, 0.2) if won or mode == "watch" else Color(0.9, 0.3, 0.3))
+	ci.draw_string(font, Vector2(0, y), title, HORIZONTAL_ALIGNMENT_CENTER, screen.x, fs(72 if mode != "watch" else 54), Color(1.0, 0.85, 0.2) if won or mode == "watch" else Color(0.9, 0.3, 0.3))
 	y += 60.0
 	var lines: Array = []
 	if mode == "watch":
@@ -4137,19 +4192,19 @@ func draw_results() -> void:
 	if result.get("event_done", "") != "":
 		lines.append([tr("SEASON OVER: %s") % result["event_done"], Color(1.0, 0.5, 0.2)])
 	for l in lines:
-		draw_string(font, Vector2(0, y), l[0], HORIZONTAL_ALIGNMENT_CENTER, screen.x, fs(24), l[1])
+		ci.draw_string(font, Vector2(0, y), l[0], HORIZONTAL_ALIGNMENT_CENTER, screen.x, fs(24), l[1])
 		y += 38.0
 	y = draw_result_cards(y)
 	if mode not in ["quick", "test", "watch"]:
-		draw_string(font, Vector2(0, y + 6), tr("The night goes by. Tomorrow morning, back in the bay."), HORIZONTAL_ALIGNMENT_CENTER, screen.x, fs(18), Color(0.6, 0.85, 1.0))
+		ci.draw_string(font, Vector2(0, y + 6), tr("The night goes by. Tomorrow morning, back in the bay."), HORIZONTAL_ALIGNMENT_CENTER, screen.x, fs(18), Color(0.6, 0.85, 1.0))
 	if phase_timer > 1.0:
 		# one clear way out (a tap anywhere does the same)
 		var label: String = {"quick": tr("BACK TO THE MENU"), "test": tr("BACK TO THE SCRAPYARD")}.get(mode, tr("BACK TO THE BAY"))
 		var bw := minf(360.0, screen.x * 0.4)
 		var br := Rect2(screen.x * 0.5 - bw * 0.5, screen.y - 78.0, bw, 56.0)
-		draw_rect(br, Color(0.95, 0.76, 0.19))
-		draw_rect(br, Color(0.08, 0.08, 0.08), false, 3.0)
-		draw_string(font, Vector2(br.position.x, br.position.y + br.size.y * 0.5 + fs(20) * 0.35), label, HORIZONTAL_ALIGNMENT_CENTER, br.size.x, fs(20), Color(0.08, 0.08, 0.08))
+		ci.draw_rect(br, Color(0.95, 0.76, 0.19))
+		ci.draw_rect(br, Color(0.08, 0.08, 0.08), false, 3.0)
+		ci.draw_string(font, Vector2(br.position.x, br.position.y + br.size.y * 0.5 + fs(20) * 0.35), label, HORIZONTAL_ALIGNMENT_CENTER, br.size.x, fs(20), Color(0.08, 0.08, 0.08))
 
 
 ## Parts won and lost, as picture cards: green for parts you got, orange wrecked, red lost.
@@ -4175,32 +4230,32 @@ func draw_result_cards(y: float) -> float:
 		# cards appear one after another
 		if phase_timer < 0.3 + k * 0.25:
 			continue
-		PartIcon.draw_part(self, box, d, float(c.get("health", 1.0)))
-		draw_rect(box, tag[1], false, 3.0)
+		PartIcon.draw_part(ci, box, d, float(c.get("health", 1.0)))
+		ci.draw_rect(box, tag[1], false, 3.0)
 		if c["what"] == "lost" or c["what"] == "shattered":
-			draw_line(box.position + Vector2(6, 6), box.end - Vector2(6, 6), Color(1.0, 0.3, 0.25, 0.85), 4.0)
-			draw_line(Vector2(box.end.x - 6, box.position.y + 6), Vector2(box.position.x + 6, box.end.y - 6), Color(1.0, 0.3, 0.25, 0.85), 4.0)
-		draw_string(font, Vector2(cx - cw * 0.5, box.end.y + 18), tr(tag[0]), HORIZONTAL_ALIGNMENT_CENTER, cw, fs(13), tag[1])
-		draw_string(font, Vector2(cx - cw * 0.5, box.end.y + 36), str(d["name"]), HORIZONTAL_ALIGNMENT_CENTER, cw, fs(14), Color(0.92, 0.92, 0.95))
+			ci.draw_line(box.position + Vector2(6, 6), box.end - Vector2(6, 6), Color(1.0, 0.3, 0.25, 0.85), 4.0)
+			ci.draw_line(Vector2(box.end.x - 6, box.position.y + 6), Vector2(box.position.x + 6, box.end.y - 6), Color(1.0, 0.3, 0.25, 0.85), 4.0)
+		ci.draw_string(font, Vector2(cx - cw * 0.5, box.end.y + 18), tr(tag[0]), HORIZONTAL_ALIGNMENT_CENTER, cw, fs(13), tag[1])
+		ci.draw_string(font, Vector2(cx - cw * 0.5, box.end.y + 36), str(d["name"]), HORIZONTAL_ALIGNMENT_CENTER, cw, fs(14), Color(0.92, 0.92, 0.95))
 	if cards.size() > n:
-		draw_string(font, Vector2(0, y + icon + 56), tr("+%d more in Storage") % (cards.size() - n), HORIZONTAL_ALIGNMENT_CENTER, screen.x, fs(14), Color(0.8, 0.8, 0.85))
+		ci.draw_string(font, Vector2(0, y + icon + 56), tr("+%d more in Storage") % (cards.size() - n), HORIZONTAL_ALIGNMENT_CENTER, screen.x, fs(14), Color(0.8, 0.8, 0.85))
 	return y + icon + 50.0
 
 
 func draw_buttons() -> void:
 	for b in (buttons if touch_device else []):
 		var held: bool = held_buttons.get(b["name"], false)
-		draw_circle(b["pos"], b["r"], Color(1, 1, 1, 0.35 if held else 0.12))
-		draw_arc(b["pos"], b["r"], 0.0, TAU, 40, Color(1, 1, 1, 0.5), 2.0)
+		ci.draw_circle(b["pos"], b["r"], Color(1, 1, 1, 0.3 if held else 0.07))   # see-through, so the fight shows behind
+		ci.draw_arc(b["pos"], b["r"], 0.0, TAU, 40, Color(1, 1, 1, 0.38), 1.5)
 		var size := fs(17) if str(b["label"]).length() <= 5 else fs(14)
 		var btxt := tr(b["label"])
 		while size > 9 and font.get_string_size(btxt, HORIZONTAL_ALIGNMENT_LEFT, -1, size).x > b["r"] * 1.9:
 			size -= 1
-		draw_string(font, b["pos"] + Vector2(-b["r"], size * 0.35), btxt, HORIZONTAL_ALIGNMENT_CENTER, b["r"] * 2.0, size, Color(1, 1, 1, 0.85))
+		ci.draw_string(font, b["pos"] + Vector2(-b["r"], size * 0.35), btxt, HORIZONTAL_ALIGNMENT_CENTER, b["r"] * 2.0, size, Color(1, 1, 1, 0.85))
 		if player.state == "charge" and player.charge_btn == b["name"]:
 			# the charge fills round the button
 			var ck := clampf((player.charge_t - CHARGE_TAP) / (CHARGE_MAX - CHARGE_TAP), 0.0, 1.0)
-			draw_arc(b["pos"], b["r"] + 6.0, -PI / 2.0, -PI / 2.0 + TAU * ck, 40, Color(1.0, 0.85, 0.3).lerp(Color(1.0, 0.35, 0.2), ck), 6.0)
+			ci.draw_arc(b["pos"], b["r"] + 6.0, -PI / 2.0, -PI / 2.0 + TAU * ck, 40, Color(1.0, 0.85, 0.3).lerp(Color(1.0, 0.35, 0.2), ck), 6.0)
 	for b in gadget_buttons:
 		var g: Dictionary = b["gadget"]
 		var id: String = g["id"]
@@ -4209,13 +4264,13 @@ func draw_buttons() -> void:
 		var ready := cd <= 0.0 and owner.gadget_working(g) and not (id == "overcharge" and owner.overcharged) \
 				and not (owner.fist_out.has(g["slot"])) and owner.state != "ko"
 		var col := Color(0.4, 0.8, 1.0) if ready else Color(0.5, 0.5, 0.55)
-		draw_circle(b["pos"], b["r"], Color(col.r, col.g, col.b, 0.3 if held_buttons.get(b["name"], false) else 0.15))
-		draw_arc(b["pos"], b["r"], 0.0, TAU, 40, col, 3.0)
+		ci.draw_circle(b["pos"], b["r"], Color(col.r, col.g, col.b, 0.3 if held_buttons.get(b["name"], false) else 0.15))
+		ci.draw_arc(b["pos"], b["r"], 0.0, TAU, 40, col, 3.0)
 		if cd > 0.0 and id != "overcharge":
 			var frac := cd / float(Specials.GADGETS[id]["cd"])
-			draw_arc(b["pos"], b["r"] - 5.0, -PI / 2.0, -PI / 2.0 + TAU * frac, 32, Color(1, 1, 1, 0.5), 6.0)
+			ci.draw_arc(b["pos"], b["r"] - 5.0, -PI / 2.0, -PI / 2.0 + TAU * frac, 32, Color(1, 1, 1, 0.5), 6.0)
 		var glabel: String = tr(b["label"]) if touch_device else "%d  %s" % [gadget_buttons.find(b) + 1, tr(b["label"])]
-		draw_string(font, b["pos"] + Vector2(-b["r"] - 10, 7.0), glabel, HORIZONTAL_ALIGNMENT_CENTER, b["r"] * 2.0 + 20, fs(15), col)
+		ci.draw_string(font, b["pos"] + Vector2(-b["r"] - 10, 7.0), glabel, HORIZONTAL_ALIGNMENT_CENTER, b["r"] * 2.0 + 20, fs(15), col)
 
 
 ## On a computer the touch buttons are hidden: one line of keys along the bottom instead.
@@ -4224,19 +4279,19 @@ func draw_key_strip() -> void:
 	var size := fs(15)
 	var w := font.get_string_size(t, HORIZONTAL_ALIGNMENT_LEFT, -1, size).x + 28.0
 	var r := Rect2(screen.x * 0.5 - w * 0.5, screen.y - size - 22.0, w, size + 14.0)
-	draw_rect(r, Color(0, 0, 0, 0.55))
-	draw_string(font, Vector2(r.position.x, r.end.y - 9.0), t, HORIZONTAL_ALIGNMENT_CENTER, r.size.x, size, Color(1, 1, 1, 0.8))
+	ci.draw_rect(r, Color(0, 0, 0, 0.55))
+	ci.draw_string(font, Vector2(r.position.x, r.end.y - 9.0), t, HORIZONTAL_ALIGNMENT_CENTER, r.size.x, size, Color(1, 1, 1, 0.8))
 
 
 const PC_KEYS := "ON A COMPUTER: A D (or the arrows) move · W / S (up / down) aim your hit high or low, S alone crouches · Space jump · J punch · K kick · L block · hold J or K to charge · 1 2 3 gadgets · click an enemy part to aim · Esc or M pause · Enter to continue."
 
 
 func draw_moves_list() -> void:
-	draw_rect(Rect2(Vector2.ZERO, screen), Color(0.02, 0.02, 0.03, 0.94))
+	ci.draw_rect(Rect2(Vector2.ZERO, screen), Color(0.02, 0.02, 0.03, 0.94))
 	var x := screen.x * 0.08
 	var y := screen.y * 0.1
 	if quit_ask:
-		draw_string(font, Vector2(0, y), tr("QUIT THIS FIGHT?"), HORIZONTAL_ALIGNMENT_CENTER, screen.x, fs(30), Color(1.0, 0.45, 0.2))
+		ci.draw_string(font, Vector2(0, y), tr("QUIT THIS FIGHT?"), HORIZONTAL_ALIGNMENT_CENTER, screen.x, fs(30), Color(1.0, 0.45, 0.2))
 		y += 50.0
 	else:
 		y = draw_pause_tabs(screen.y * 0.04) + 14.0
@@ -4247,7 +4302,7 @@ func draw_moves_list() -> void:
 	quit_rect_p = Rect2(screen.x * 0.5 + 12.0, screen.y - bh - 18.0, bw, bh)
 	if quit_ask:
 		var q := tr("Nothing is lost in a quick fight.") if mode == "quick" else tr("You throw in the towel: it counts as a loss, there's no pay, and the damage comes home with you.")
-		draw_multiline_string(font, Vector2(screen.x * 0.15, y + 20.0), q, HORIZONTAL_ALIGNMENT_CENTER, screen.x * 0.7, fs(20), -1, Color(0.9, 0.9, 0.95))
+		ci.draw_multiline_string(font, Vector2(screen.x * 0.15, y + 20.0), q, HORIZONTAL_ALIGNMENT_CENTER, screen.x * 0.7, fs(20), -1, Color(0.9, 0.9, 0.95))
 	else:
 		match pause_tab:
 			"how":
@@ -4261,12 +4316,12 @@ func draw_moves_list() -> void:
 	for bt in [[resume_rect_p, tr("KEEP FIGHTING") if quit_ask else tr("RESUME"), Color(0.3, 0.3, 0.38)],
 			[quit_rect_p, tr("YES, QUIT") if quit_ask else tr("QUIT FIGHT"), Color(0.55, 0.2, 0.15) if quit_ask else Color(0.3, 0.3, 0.38)]]:
 		var rr: Rect2 = bt[0]
-		draw_rect(rr, bt[2])
-		draw_rect(rr, Color(1, 1, 1, 0.4), false, 2.0)
-		draw_string(font, Vector2(rr.position.x, rr.position.y + rr.size.y * 0.5 + fs(18) * 0.35), bt[1], HORIZONTAL_ALIGNMENT_CENTER, rr.size.x, fs(18), Color.WHITE)
+		ci.draw_rect(rr, bt[2])
+		ci.draw_rect(rr, Color(1, 1, 1, 0.4), false, 2.0)
+		ci.draw_string(font, Vector2(rr.position.x, rr.position.y + rr.size.y * 0.5 + fs(18) * 0.35), bt[1], HORIZONTAL_ALIGNMENT_CENTER, rr.size.x, fs(18), Color.WHITE)
 	if not touch_device:
 		var hint := tr("Esc / Space: resume      Tab: next page      Q: quit") if not quit_ask else tr("Esc: keep fighting      Q: quit")
-		draw_string(font, Vector2(0, screen.y - 4.0), hint, HORIZONTAL_ALIGNMENT_CENTER, screen.x, fs(13), Color(0.75, 0.75, 0.8))
+		ci.draw_string(font, Vector2(0, screen.y - 4.0), hint, HORIZONTAL_ALIGNMENT_CENTER, screen.x, fs(13), Color(0.75, 0.75, 0.8))
 
 
 
@@ -4297,10 +4352,10 @@ func draw_pause_tabs(y: float) -> float:
 		var r := Rect2(x, y, w, h)
 		pause_tab_rects[k] = r
 		var on: bool = k == pause_tab
-		draw_rect(r, Color(0.2, 0.2, 0.26) if on else Color(0.1, 0.1, 0.13))
+		ci.draw_rect(r, Color(0.2, 0.2, 0.26) if on else Color(0.1, 0.1, 0.13))
 		if on:
-			draw_rect(Rect2(r.position.x, r.end.y - 4.0, r.size.x, 4.0), GUI.YELLOW)
-		draw_string(font, Vector2(r.position.x, r.position.y + h * 0.5 + size * 0.35), names[k], HORIZONTAL_ALIGNMENT_CENTER, w, size, Color.WHITE if on else Color(0.65, 0.65, 0.7))
+			ci.draw_rect(Rect2(r.position.x, r.end.y - 4.0, r.size.x, 4.0), GUI.YELLOW)
+		ci.draw_string(font, Vector2(r.position.x, r.position.y + h * 0.5 + size * 0.35), names[k], HORIZONTAL_ALIGNMENT_CENTER, w, size, Color.WHITE if on else Color(0.65, 0.65, 0.7))
 		x += w + 8.0
 	return y + h
 
@@ -4331,8 +4386,8 @@ func draw_how_cards(area: Rect2) -> void:
 	var t := Time.get_ticks_msec() / 1000.0
 	for k in cards.size():
 		var r := Rect2(area.position + Vector2((k % cols) * (cw + gap), (k / cols) * (ch + gap)), Vector2(cw, ch))
-		draw_rect(r, Color(0.09, 0.09, 0.12))
-		draw_rect(r, Color(0.25, 0.25, 0.3), false, 2.0)
+		ci.draw_rect(r, Color(0.09, 0.09, 0.12))
+		ci.draw_rect(r, Color(0.25, 0.25, 0.3), false, 2.0)
 		var icon := minf(ch - 16.0, 64.0)
 		draw_how_icon(cards[k][0], Rect2(r.position + Vector2(8, (ch - icon) * 0.5), Vector2(icon, icon)), t)
 		var tx := r.position.x + icon + 18.0
@@ -4343,8 +4398,8 @@ func draw_how_cards(area: Rect2) -> void:
 		while bs > 9 and font.get_multiline_string_size(cards[k][2], HORIZONTAL_ALIGNMENT_LEFT, tw, bs).y + ts + 14.0 > ch:
 			bs -= 1
 			ts = maxi(bs + 2, ts - 1)
-		draw_string(font, Vector2(tx, r.position.y + ts + 6.0), cards[k][1], HORIZONTAL_ALIGNMENT_LEFT, tw, ts, GUI.YELLOW)
-		draw_multiline_string(font, Vector2(tx, r.position.y + ts + bs + 12.0), cards[k][2], HORIZONTAL_ALIGNMENT_LEFT, tw, bs, -1, Color(0.85, 0.85, 0.9))
+		ci.draw_string(font, Vector2(tx, r.position.y + ts + 6.0), cards[k][1], HORIZONTAL_ALIGNMENT_LEFT, tw, ts, GUI.YELLOW)
+		ci.draw_multiline_string(font, Vector2(tx, r.position.y + ts + bs + 12.0), cards[k][2], HORIZONTAL_ALIGNMENT_LEFT, tw, bs, -1, Color(0.85, 0.85, 0.9))
 
 
 ## The little pictures on the HOW FIGHTING WORKS cards (drawn, so they follow the game's look).
@@ -4354,62 +4409,62 @@ func draw_how_icon(kind: String, r: Rect2, t: float) -> void:
 	var y := GUI.YELLOW
 	var w := Color(0.9, 0.9, 0.95)
 	var bl := Color(0.45, 0.75, 1.0)
-	draw_rect(r, Color(0.05, 0.05, 0.07))
+	ci.draw_rect(r, Color(0.05, 0.05, 0.07))
 	match kind:
 		"highlow":
-			draw_line(c + Vector2(-14, 18) * u, c + Vector2(-14, -18) * u, w, 4.0 * u)
-			draw_colored_polygon(PackedVector2Array([c + Vector2(-24, -12) * u, c + Vector2(-4, -12) * u, c + Vector2(-14, -26) * u]), w)
-			draw_line(c + Vector2(14, -18) * u, c + Vector2(14, 18) * u, y, 4.0 * u)
-			draw_colored_polygon(PackedVector2Array([c + Vector2(4, 12) * u, c + Vector2(24, 12) * u, c + Vector2(14, 26) * u]), y)
+			ci.draw_line(c + Vector2(-14, 18) * u, c + Vector2(-14, -18) * u, w, 4.0 * u)
+			ci.draw_colored_polygon(PackedVector2Array([c + Vector2(-24, -12) * u, c + Vector2(-4, -12) * u, c + Vector2(-14, -26) * u]), w)
+			ci.draw_line(c + Vector2(14, -18) * u, c + Vector2(14, 18) * u, y, 4.0 * u)
+			ci.draw_colored_polygon(PackedVector2Array([c + Vector2(4, 12) * u, c + Vector2(24, 12) * u, c + Vector2(14, 26) * u]), y)
 		"charge":
 			var k := fmod(t * 0.8, 1.0)
-			draw_arc(c, 24.0 * u, -PI / 2.0, -PI / 2.0 + TAU * k, 32, Color(1.0, 0.85, 0.3).lerp(Color(1.0, 0.35, 0.2), k), 5.0 * u)
-			draw_rect(Rect2(c - Vector2(10, 9) * u, Vector2(20, 18) * u), w)
+			ci.draw_arc(c, 24.0 * u, -PI / 2.0, -PI / 2.0 + TAU * k, 32, Color(1.0, 0.85, 0.3).lerp(Color(1.0, 0.35, 0.2), k), 5.0 * u)
+			ci.draw_rect(Rect2(c - Vector2(10, 9) * u, Vector2(20, 18) * u), w)
 			for i in 3:
-				draw_line(c + Vector2(-10 + i * 7, -9) * u, c + Vector2(-10 + i * 7, -3) * u, Color(0.3, 0.3, 0.35), 1.5 * u)
+				ci.draw_line(c + Vector2(-10 + i * 7, -9) * u, c + Vector2(-10 + i * 7, -3) * u, Color(0.3, 0.3, 0.35), 1.5 * u)
 		"counters":
 			var pts := [c + Vector2(0, -22) * u, c + Vector2(20, 14) * u, c + Vector2(-20, 14) * u]
 			for i in 3:
-				draw_line(pts[i], pts[(i + 1) % 3], Color(0.5, 0.5, 0.55), 2.0 * u)
+				ci.draw_line(pts[i], pts[(i + 1) % 3], Color(0.5, 0.5, 0.55), 2.0 * u)
 			for i in 3:
-				draw_circle(pts[i], 8.0 * u, [bl, y, Color(1.0, 0.5, 0.3)][i])
-			draw_string(font, pts[0] + Vector2(-4, 5) * u, "B", HORIZONTAL_ALIGNMENT_LEFT, -1, int(11 * u), Color.BLACK)
-			draw_string(font, pts[1] + Vector2(-4, 5) * u, "P", HORIZONTAL_ALIGNMENT_LEFT, -1, int(11 * u), Color.BLACK)
-			draw_string(font, pts[2] + Vector2(-4, 5) * u, "K", HORIZONTAL_ALIGNMENT_LEFT, -1, int(11 * u), Color.BLACK)
+				ci.draw_circle(pts[i], 8.0 * u, [bl, y, Color(1.0, 0.5, 0.3)][i])
+			ci.draw_string(font, pts[0] + Vector2(-4, 5) * u, "B", HORIZONTAL_ALIGNMENT_LEFT, -1, int(11 * u), Color.BLACK)
+			ci.draw_string(font, pts[1] + Vector2(-4, 5) * u, "P", HORIZONTAL_ALIGNMENT_LEFT, -1, int(11 * u), Color.BLACK)
+			ci.draw_string(font, pts[2] + Vector2(-4, 5) * u, "K", HORIZONTAL_ALIGNMENT_LEFT, -1, int(11 * u), Color.BLACK)
 		"aim":
-			draw_arc(c, 20.0 * u, 0.0, TAU, 32, Color(1.0, 0.4, 0.3), 3.0 * u)
-			draw_arc(c, 20.0 * u, -PI / 2.0, -PI / 2.0 + TAU * fmod(t * 0.5, 1.0), 32, Color(1.0, 0.75, 0.3), 3.0 * u)
+			ci.draw_arc(c, 20.0 * u, 0.0, TAU, 32, Color(1.0, 0.4, 0.3), 3.0 * u)
+			ci.draw_arc(c, 20.0 * u, -PI / 2.0, -PI / 2.0 + TAU * fmod(t * 0.5, 1.0), 32, Color(1.0, 0.75, 0.3), 3.0 * u)
 			for d in [Vector2(1, 0), Vector2(-1, 0), Vector2(0, 1), Vector2(0, -1)]:
-				draw_line(c + d * 12.0 * u, c + d * 27.0 * u, Color(1.0, 0.4, 0.3), 2.5 * u)
+				ci.draw_line(c + d * 12.0 * u, c + d * 27.0 * u, Color(1.0, 0.4, 0.3), 2.5 * u)
 		"weak":
 			var a := t * 3.0
-			draw_arc(c, 24.0 * u, 0.0, TAU, 32, Color(0.3, 1.0, 0.5, 0.5), 2.0 * u)
-			draw_line(c, c + Vector2(cos(a), sin(a)) * 24.0 * u, Color(0.3, 1.0, 0.5), 2.0 * u)
-			draw_colored_polygon(PackedVector2Array([c + Vector2(0, -10) * u, c + Vector2(10, 0) * u, c + Vector2(0, 10) * u, c + Vector2(-10, 0) * u]), y)
+			ci.draw_arc(c, 24.0 * u, 0.0, TAU, 32, Color(0.3, 1.0, 0.5, 0.5), 2.0 * u)
+			ci.draw_line(c, c + Vector2(cos(a), sin(a)) * 24.0 * u, Color(0.3, 1.0, 0.5), 2.0 * u)
+			ci.draw_colored_polygon(PackedVector2Array([c + Vector2(0, -10) * u, c + Vector2(10, 0) * u, c + Vector2(0, 10) * u, c + Vector2(-10, 0) * u]), y)
 		"stance":
-			draw_line(c + Vector2(-20, -8) * u, c + Vector2(18, -8) * u, w, 3.5 * u)
-			draw_colored_polygon(PackedVector2Array([c + Vector2(14, -15) * u, c + Vector2(24, -8) * u, c + Vector2(14, -1) * u]), w)
-			draw_line(c + Vector2(20, 8) * u, c + Vector2(-18, 8) * u, y, 3.5 * u)
-			draw_colored_polygon(PackedVector2Array([c + Vector2(-14, 1) * u, c + Vector2(-24, 8) * u, c + Vector2(-14, 15) * u]), y)
+			ci.draw_line(c + Vector2(-20, -8) * u, c + Vector2(18, -8) * u, w, 3.5 * u)
+			ci.draw_colored_polygon(PackedVector2Array([c + Vector2(14, -15) * u, c + Vector2(24, -8) * u, c + Vector2(14, -1) * u]), w)
+			ci.draw_line(c + Vector2(20, 8) * u, c + Vector2(-18, 8) * u, y, 3.5 * u)
+			ci.draw_colored_polygon(PackedVector2Array([c + Vector2(-14, 1) * u, c + Vector2(-24, 8) * u, c + Vector2(-14, 15) * u]), y)
 		"power":
 			var lvl := 0.5 + 0.5 * sin(t * 1.5)
-			draw_rect(Rect2(c + Vector2(-12, -20) * u, Vector2(24, 40) * u), Color(0.5, 0.5, 0.55), false, 3.0 * u)
-			draw_rect(Rect2(c + Vector2(-5, -25) * u, Vector2(10, 5) * u), Color(0.5, 0.5, 0.55))
-			draw_rect(Rect2(c + Vector2(-9, 17 - 34 * lvl) * u, Vector2(18, 34 * lvl) * u), POWER_COLOR if lvl > 0.2 else Color(1.0, 0.35, 0.3))
+			ci.draw_rect(Rect2(c + Vector2(-12, -20) * u, Vector2(24, 40) * u), Color(0.5, 0.5, 0.55), false, 3.0 * u)
+			ci.draw_rect(Rect2(c + Vector2(-5, -25) * u, Vector2(10, 5) * u), Color(0.5, 0.5, 0.55))
+			ci.draw_rect(Rect2(c + Vector2(-9, 17 - 34 * lvl) * u, Vector2(18, 34 * lvl) * u), POWER_COLOR if lvl > 0.2 else Color(1.0, 0.35, 0.3))
 		"air":
 			var pts2 := PackedVector2Array()
 			for i in 13:
 				var f := i / 12.0
 				pts2.append(c + Vector2(-22 + 44 * f, 14 - 60 * f * (1.0 - f) * 1.4) * u)
-			draw_polyline(pts2, Color(0.6, 0.6, 0.65), 2.0 * u)
-			draw_line(c + Vector2(10, -6) * u, c + Vector2(20, 18) * u, y, 5.0 * u)
-			draw_line(c + Vector2(-26, 20) * u, c + Vector2(26, 20) * u, Color(0.4, 0.4, 0.45), 2.0 * u)
+			ci.draw_polyline(pts2, Color(0.6, 0.6, 0.65), 2.0 * u)
+			ci.draw_line(c + Vector2(10, -6) * u, c + Vector2(20, 18) * u, y, 5.0 * u)
+			ci.draw_line(c + Vector2(-26, 20) * u, c + Vector2(26, 20) * u, Color(0.4, 0.4, 0.45), 2.0 * u)
 		"rips":
-			draw_line(c + Vector2(-20, -14) * u, c + Vector2(-2, 0) * u, Color(0.6, 0.62, 0.68), 7.0 * u)
-			draw_line(c + Vector2(6, 4) * u, c + Vector2(22, 18) * u, Color(0.6, 0.62, 0.68), 7.0 * u)
-			draw_circle(c + Vector2(22, 18) * u, 5.0 * u, Color(0.5, 0.5, 0.55))
+			ci.draw_line(c + Vector2(-20, -14) * u, c + Vector2(-2, 0) * u, Color(0.6, 0.62, 0.68), 7.0 * u)
+			ci.draw_line(c + Vector2(6, 4) * u, c + Vector2(22, 18) * u, Color(0.6, 0.62, 0.68), 7.0 * u)
+			ci.draw_circle(c + Vector2(22, 18) * u, 5.0 * u, Color(0.5, 0.5, 0.55))
 			for d in [Vector2(2, -8), Vector2(-6, 9), Vector2(9, -2)]:
-				draw_line(c + Vector2(2, 2) * u, c + Vector2(2, 2) * u + d * u, Color(1.0, 0.6, 0.2), 2.0 * u)
+				ci.draw_line(c + Vector2(2, 2) * u, c + Vector2(2, 2) * u + d * u, Color(1.0, 0.6, 0.2), 2.0 * u)
 
 
 ## THE ROBOTS: both robots' parts and how much of each is left, side by side.
@@ -4427,7 +4482,7 @@ func draw_pause_tips(x: float, y: float, bottom: float) -> void:
 	tips.reverse()
 	var width := screen.x - x * 2.0
 	if tips.is_empty():
-		draw_string(font, Vector2(x, y + fs(18)), tr("No tips yet. Gus speaks up the first time something matters."), HORIZONTAL_ALIGNMENT_LEFT, width, fs(18), Color(0.7, 0.7, 0.75))
+		ci.draw_string(font, Vector2(x, y + fs(18)), tr("No tips yet. Gus speaks up the first time something matters."), HORIZONTAL_ALIGNMENT_LEFT, width, fs(18), Color(0.7, 0.7, 0.75))
 		return
 	var size := fs(16)
 	for t in tips:
@@ -4435,8 +4490,8 @@ func draw_pause_tips(x: float, y: float, bottom: float) -> void:
 		var hgt := font.get_multiline_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, width - 30.0, size).y
 		if y + hgt > bottom:
 			break
-		draw_rect(Rect2(x, y + 4.0, 6.0, hgt - 6.0), Color(0.95, 0.6, 0.25))
-		draw_multiline_string(font, Vector2(x + 18.0, y + size), text, HORIZONTAL_ALIGNMENT_LEFT, width - 30.0, size, -1, Color(0.92, 0.9, 0.85))
+		ci.draw_rect(Rect2(x, y + 4.0, 6.0, hgt - 6.0), Color(0.95, 0.6, 0.25))
+		ci.draw_multiline_string(font, Vector2(x + 18.0, y + size), text, HORIZONTAL_ALIGNMENT_LEFT, width - 30.0, size, -1, Color(0.92, 0.9, 0.85))
 		y += hgt + 10.0
 
 
@@ -4471,7 +4526,7 @@ func _draw_pause_lines(x: float, y: float, bottom: float) -> void:
 			break
 		size -= 1
 	for l in lines:
-		draw_multiline_string(font, Vector2(x, y), l[0], HORIZONTAL_ALIGNMENT_LEFT, width, size, -1, l[1])
+		ci.draw_multiline_string(font, Vector2(x, y), l[0], HORIZONTAL_ALIGNMENT_LEFT, width, size, -1, l[1])
 		y += font.get_multiline_string_size(l[0], HORIZONTAL_ALIGNMENT_LEFT, width, size).y + 5.0
 
 
@@ -4605,13 +4660,13 @@ func draw_pilot(pd: Dictionary, off: Vector2) -> void:
 		var tw := 30.0 * s
 		var th := 22.0 * s
 		var top := base + Vector2(-tw * 0.5, -th - 40.0 * s)
-		draw_rect(Rect2(base + Vector2(-4 * s, -40 * s), Vector2(8 * s, 40 * s)), Color(0.2, 0.2, 0.24))
-		draw_rect(Rect2(top, Vector2(tw, th)), Color(0.1, 0.1, 0.13))
-		draw_rect(Rect2(top + Vector2(3, 3), Vector2(tw - 6, th - 6)), Color(0.02, 0.08, 0.04))
+		ci.draw_rect(Rect2(base + Vector2(-4 * s, -40 * s), Vector2(8 * s, 40 * s)), Color(0.2, 0.2, 0.24))
+		ci.draw_rect(Rect2(top, Vector2(tw, th)), Color(0.1, 0.1, 0.13))
+		ci.draw_rect(Rect2(top + Vector2(3, 3), Vector2(tw - 6, th - 6)), Color(0.02, 0.08, 0.04))
 		for k in 4:
 			var w := (tw - 12) * (0.4 + 0.6 * absf(sin(clock * 3.0 + k * 1.7)))
-			draw_rect(Rect2(top + Vector2(6, 6 + k * (th - 12) / 4.0), Vector2(w, 2)), Color(0.3, 1.0, 0.5, 0.8))
-		draw_string(font, top + Vector2(0, -4), tr("KANE"), HORIZONTAL_ALIGNMENT_CENTER, tw, int(9 * s), Color(0.88, 0.72, 0.29))
+			ci.draw_rect(Rect2(top + Vector2(6, 6 + k * (th - 12) / 4.0), Vector2(w, 2)), Color(0.3, 1.0, 0.5, 0.8))
+		ci.draw_string(font, top + Vector2(0, -4), tr("KANE"), HORIZONTAL_ALIGNMENT_CENTER, tw, int(9 * s), Color(0.88, 0.72, 0.29))
 		draw_pilot_bubble(pd, top + Vector2(tw * 0.5, -14.0 * s))
 		return
 	var outfit := Color(look.get("outfit", "#34495e"))
@@ -4629,27 +4684,27 @@ func draw_pilot(pd: Dictionary, off: Vector2) -> void:
 		lean = -0.15
 	var bob := absf(sin(clock * 6.0)) * 2.0 * s if r.state == "walk" else sin(clock * 2.0 + team) * 0.6 * s
 	# legs
-	draw_rect(Rect2(base + Vector2(-9 * s, -24 * s), Vector2(7 * s, 24 * s)), outfit.darkened(0.45))
-	draw_rect(Rect2(base + Vector2(2 * s, -24 * s), Vector2(7 * s, 24 * s)), outfit.darkened(0.45))
-	draw_rect(Rect2(base + Vector2(-10 * s, -3 * s), Vector2(9 * s, 3 * s)), Color(0.12, 0.12, 0.12))
-	draw_rect(Rect2(base + Vector2(1 * s, -3 * s), Vector2(9 * s, 3 * s)), Color(0.12, 0.12, 0.12))
+	ci.draw_rect(Rect2(base + Vector2(-9 * s, -24 * s), Vector2(7 * s, 24 * s)), outfit.darkened(0.45))
+	ci.draw_rect(Rect2(base + Vector2(2 * s, -24 * s), Vector2(7 * s, 24 * s)), outfit.darkened(0.45))
+	ci.draw_rect(Rect2(base + Vector2(-10 * s, -3 * s), Vector2(9 * s, 3 * s)), Color(0.12, 0.12, 0.12))
+	ci.draw_rect(Rect2(base + Vector2(1 * s, -3 * s), Vector2(9 * s, 3 * s)), Color(0.12, 0.12, 0.12))
 	# torso
 	var hip := base + Vector2(0, -24 * s - bob)
 	var neck := hip + Vector2(face * lean * 6 * s, -30 * s)
-	draw_colored_polygon(PackedVector2Array([hip + Vector2(-11 * s, 0), hip + Vector2(11 * s, 0), neck + Vector2(12 * s, 0), neck + Vector2(-12 * s, 0)]), outfit)
+	ci.draw_colored_polygon(PackedVector2Array([hip + Vector2(-11 * s, 0), hip + Vector2(11 * s, 0), neck + Vector2(12 * s, 0), neck + Vector2(-12 * s, 0)]), outfit)
 	# head
 	var hc := neck + Vector2(face * lean * 3 * s, -11 * s)
 	var hr := 10.0 * s
 	var shouting: bool = pd["bubble_t"] > 0.0
-	PilotArt.draw_head(self, hc, hr, look, face, hr * (0.35 if shouting else 0.12))
+	PilotArt.draw_head(ci, hc, hr, look, face, hr * (0.35 if shouting else 0.12))
 	# arms and controller: little jerks when the robot attacks, held up high when it wins
 	var j: float = pd["jerk"] / 0.22
 	var jx := sin(clock * 40.0) * 3.0 * s * j
 	var pad := neck + Vector2(face * (14 + lean * 4) * s + jx, (10 - hands_up * 26) * s - j * 4 * s)
 	for side in [-1.0, 1.0]:
 		var sh := neck + Vector2(side * 10 * s, 3 * s)
-		draw_line(sh, pad + Vector2(side * 6 * s, 0), outfit.darkened(0.15), 5 * s)
-	PilotArt.draw_controller(self, pad, s, str(look.get("controller", "gamepad")), j > 0.0, clock)
+		ci.draw_line(sh, pad + Vector2(side * 6 * s, 0), outfit.darkened(0.15), 5 * s)
+	PilotArt.draw_controller(ci, pad, s, str(look.get("controller", "gamepad")), j > 0.0, clock)
 	draw_pilot_bubble(pd, hc + Vector2(0, -hr - 10 * s))
 
 
@@ -4667,10 +4722,10 @@ func draw_pilot_bubble(pd: Dictionary, anchor: Vector2) -> void:
 	var by := anchor.y - h - 10.0
 	var a := minf(1.0, pd["bubble_t"] * 4.0)
 	var bg := Color(1, 1, 1, 0.92 * a) if not pd["auto"] else Color(0.05, 0.12, 0.07, 0.9 * a)
-	draw_rect(Rect2(bx, by, w, h), bg)
-	draw_colored_polygon(PackedVector2Array([Vector2(anchor.x - 6, by + h), Vector2(anchor.x + 6, by + h), Vector2(anchor.x, by + h + 9)]), bg)
+	ci.draw_rect(Rect2(bx, by, w, h), bg)
+	ci.draw_colored_polygon(PackedVector2Array([Vector2(anchor.x - 6, by + h), Vector2(anchor.x + 6, by + h), Vector2(anchor.x, by + h + 9)]), bg)
 	var tc := Color(0.08, 0.08, 0.1, a) if not pd["auto"] else Color(0.3, 1.0, 0.5, a)
-	draw_string(font, Vector2(bx + 9, by + h - 9), text, HORIZONTAL_ALIGNMENT_LEFT, -1, size, tc)
+	ci.draw_string(font, Vector2(bx + 9, by + h - 9), text, HORIZONTAL_ALIGNMENT_LEFT, -1, size, tc)
 
 
 # ---------------------------------------------------------------- Gus's tips during fights
@@ -4936,11 +4991,11 @@ func draw_course() -> void:
 	var gw := maxf(font.get_string_size(goal, HORIZONTAL_ALIGNMENT_LEFT, -1, gs).x, font.get_string_size(head, HORIZONTAL_ALIGNMENT_LEFT, -1, hs).x) + 40.0
 	var r := Rect2(screen.x * 0.5 - gw * 0.5, screen.y * 0.04 + 104.0, gw, hs + gs + 34.0)
 	var ok := course_gap > 0.0
-	draw_rect(r, Color(0.04, 0.04, 0.06, 0.88))
-	draw_rect(r, Color(0.4, 1.0, 0.5) if ok else GUI.YELLOW.lerp(Color.WHITE, course_flash), false, 3.0)
-	draw_string(font, Vector2(r.position.x, r.position.y + hs + 6.0), head, HORIZONTAL_ALIGNMENT_CENTER, r.size.x, hs, Color(0.7, 0.7, 0.75))
-	draw_string(font, Vector2(r.position.x, r.position.y + hs + gs + 8.0), ("✓ " if ok else "") + goal, HORIZONTAL_ALIGNMENT_CENTER, r.size.x, gs, Color(0.5, 1.0, 0.6) if ok else Color.WHITE)
-	GUI.draw_blocks(self, Rect2(r.position.x + 14.0, r.end.y - 12.0, r.size.x - 28.0, 6.0), need, float(done), Color(0.5, 1.0, 0.6) if ok else GUI.YELLOW, Color(0.2, 0.2, 0.24))
+	ci.draw_rect(r, Color(0.04, 0.04, 0.06, 0.88))
+	ci.draw_rect(r, Color(0.4, 1.0, 0.5) if ok else GUI.YELLOW.lerp(Color.WHITE, course_flash), false, 3.0)
+	ci.draw_string(font, Vector2(r.position.x, r.position.y + hs + 6.0), head, HORIZONTAL_ALIGNMENT_CENTER, r.size.x, hs, Color(0.7, 0.7, 0.75))
+	ci.draw_string(font, Vector2(r.position.x, r.position.y + hs + gs + 8.0), ("✓ " if ok else "") + goal, HORIZONTAL_ALIGNMENT_CENTER, r.size.x, gs, Color(0.5, 1.0, 0.6) if ok else Color.WHITE)
+	GUI.draw_blocks(ci, Rect2(r.position.x + 14.0, r.end.y - 12.0, r.size.x - 28.0, 6.0), need, float(done), Color(0.5, 1.0, 0.6) if ok else GUI.YELLOW, Color(0.2, 0.2, 0.24))
 	if ok:
 		return
 	# marching stripes round the buttons to press (touch), or the keys in the strip (computer)
@@ -4951,18 +5006,18 @@ func draw_course() -> void:
 		# the arm to aim at: stripes round it
 		for slot in ["arm_front", "arm_back"]:
 			if cpu.alive(slot):
-				var c := visual_point(cpu, RobotArt.part_center(cpu.get_look(), slot))
-				_course_ring(c, 46.0 * cpu.scale, t)
+				var c := w2s(visual_point(cpu, RobotArt.part_center(cpu.get_look(), slot)))
+				_course_ring(c, 46.0 * cpu.scale * scale.x, t)
 				break
 
 
 ## A ring of marching hazard stripes (yellow / black), turning.
 func _course_ring(c: Vector2, rad: float, t: float) -> void:
-	draw_arc(c, rad, 0.0, TAU, 48, Color(0.08, 0.08, 0.08), 6.0)
+	ci.draw_arc(c, rad, 0.0, TAU, 48, Color(0.08, 0.08, 0.08), 6.0)
 	var n := 12
 	for k in n:
 		var a0 := t * 1.6 + k * TAU / n
-		draw_arc(c, rad, a0, a0 + TAU / n * 0.5, 6, GUI.YELLOW, 6.0)
+		ci.draw_arc(c, rad, a0, a0 + TAU / n * 0.5, 6, GUI.YELLOW, 6.0)
 
 
 # ---------------------------------------------------------------- Gus coaching live
@@ -5144,30 +5199,30 @@ func draw_gus(off: Vector2) -> void:
 	var overalls := Color(0.2, 0.3, 0.45)
 	var shirt := Color(0.55, 0.42, 0.3)
 	# legs
-	draw_rect(Rect2(base + Vector2(-8 * s, -24 * s), Vector2(7 * s, 24 * s)), overalls.darkened(0.2))
-	draw_rect(Rect2(base + Vector2(1 * s, -24 * s), Vector2(7 * s, 24 * s)), overalls.darkened(0.2))
-	draw_rect(Rect2(base + Vector2(-9 * s, -3 * s), Vector2(9 * s, 3 * s)), Color(0.15, 0.1, 0.08))
-	draw_rect(Rect2(base + Vector2(1 * s, -3 * s), Vector2(9 * s, 3 * s)), Color(0.15, 0.1, 0.08))
+	ci.draw_rect(Rect2(base + Vector2(-8 * s, -24 * s), Vector2(7 * s, 24 * s)), overalls.darkened(0.2))
+	ci.draw_rect(Rect2(base + Vector2(1 * s, -24 * s), Vector2(7 * s, 24 * s)), overalls.darkened(0.2))
+	ci.draw_rect(Rect2(base + Vector2(-9 * s, -3 * s), Vector2(9 * s, 3 * s)), Color(0.15, 0.1, 0.08))
+	ci.draw_rect(Rect2(base + Vector2(1 * s, -3 * s), Vector2(9 * s, 3 * s)), Color(0.15, 0.1, 0.08))
 	# body: shirt with overalls over it, a bit of a belly
 	var hip := base + Vector2(0, -24 * s)
-	draw_rect(Rect2(hip + Vector2(-12 * s, -30 * s), Vector2(24 * s, 30 * s)), shirt)
-	draw_rect(Rect2(hip + Vector2(-9 * s, -20 * s), Vector2(18 * s, 20 * s)), overalls)
-	draw_line(hip + Vector2(-7 * s, -20 * s), hip + Vector2(-7 * s, -30 * s), overalls, 2.5 * s)
-	draw_line(hip + Vector2(7 * s, -20 * s), hip + Vector2(7 * s, -30 * s), overalls, 2.5 * s)
+	ci.draw_rect(Rect2(hip + Vector2(-12 * s, -30 * s), Vector2(24 * s, 30 * s)), shirt)
+	ci.draw_rect(Rect2(hip + Vector2(-9 * s, -20 * s), Vector2(18 * s, 20 * s)), overalls)
+	ci.draw_line(hip + Vector2(-7 * s, -20 * s), hip + Vector2(-7 * s, -30 * s), overalls, 2.5 * s)
+	ci.draw_line(hip + Vector2(7 * s, -20 * s), hip + Vector2(7 * s, -30 * s), overalls, 2.5 * s)
 	var neck := hip + Vector2(0, -30 * s)
 	# left arm: hand on hip. Right arm: the Kane-built robot arm, pointing at the ring while he talks
-	draw_line(neck + Vector2(-11 * s, 2 * s), hip + Vector2(-15 * s, -10 * s), shirt.darkened(0.1), 5 * s)
-	draw_line(hip + Vector2(-15 * s, -10 * s), hip + Vector2(-9 * s, -6 * s), shirt.darkened(0.1), 5 * s)
+	ci.draw_line(neck + Vector2(-11 * s, 2 * s), hip + Vector2(-15 * s, -10 * s), shirt.darkened(0.1), 5 * s)
+	ci.draw_line(hip + Vector2(-15 * s, -10 * s), hip + Vector2(-9 * s, -6 * s), shirt.darkened(0.1), 5 * s)
 	var wave := sin(clock * 9.0) * 3.0 * s if talking else 0.0
 	# talking: points up over the pilot's head at the ring. Quiet: hand on the pilot's shoulder
 	var hand := neck + (Vector2(24 * s, -22 * s + wave) if talking else Vector2(17 * s, 6 * s))
-	draw_line(neck + Vector2(11 * s, 2 * s), hand, Color(0.62, 0.62, 0.68), 5 * s)
-	draw_circle(neck + Vector2(11 * s, 2 * s), 3.5 * s, Color(0.45, 0.45, 0.5))
-	draw_circle(hand, 3 * s, Color(1.0, 0.6, 0.2) if talking else Color(0.5, 0.5, 0.55))
+	ci.draw_line(neck + Vector2(11 * s, 2 * s), hand, Color(0.62, 0.62, 0.68), 5 * s)
+	ci.draw_circle(neck + Vector2(11 * s, 2 * s), 3.5 * s, Color(0.45, 0.45, 0.5))
+	ci.draw_circle(hand, 3 * s, Color(1.0, 0.6, 0.2) if talking else Color(0.5, 0.5, 0.55))
 	# head
 	var hc := neck + Vector2(1 * s, -11 * s)
 	var mouth := 10.0 * s * (0.15 + 0.25 * absf(sin(clock * 16.0))) if talking else 1.5 * s
-	PilotArt.draw_head(self, hc, 10.0 * s, GUS_LOOK, 1.0, mouth)
+	PilotArt.draw_head(ci, hc, 10.0 * s, GUS_LOOK, 1.0, mouth)
 	gus_head = hc + Vector2(0, -10.0 * s)
 
 
@@ -5199,11 +5254,11 @@ func draw_title_board(r: Rect2) -> void:
 	var hurry := time_left < 10.0
 	match board_style():
 		"chalk":
-			Scoreboard.draw_chalk(self, Rect2(r.position + Vector2(r.size.x * 0.04, 12), r.size - Vector2(r.size.x * 0.08, 20)), title, time_left, hurry, clock, font)
+			Scoreboard.draw_chalk(ci, Rect2(r.position + Vector2(r.size.x * 0.04, 12), r.size - Vector2(r.size.x * 0.08, 20)), title, time_left, hurry, clock, font)
 		"flip":
-			Scoreboard.draw_flip(self, Rect2(r.position + Vector2(0, 10), r.size - Vector2(0, 10)), title, time_left, hurry, font, fs(17))
+			Scoreboard.draw_flip(ci, Rect2(r.position + Vector2(0, 10), r.size - Vector2(0, 10)), title, time_left, hurry, font, fs(17))
 		_:
-			Scoreboard.draw_dots(self, r, title, time_left, hurry, clock)
+			Scoreboard.draw_dots(ci, r, title, time_left, hurry, clock)
 
 
 func draw_coach() -> void:
@@ -5221,14 +5276,14 @@ func draw_coach() -> void:
 		var by := screen.y * 0.03 + 28.0 + 38.0
 		var a := minf(1.0, coach_t * 4.0)
 		var bg := Color(1.0, 0.97, 0.9, 0.95 * a)
-		draw_rect(Rect2(bx, by, w, h), bg)
-		draw_rect(Rect2(bx, by, w, h), Color(0.95, 0.6, 0.25, a), false, 3.0)
+		ci.draw_rect(Rect2(bx, by, w, h), bg)
+		ci.draw_rect(Rect2(bx, by, w, h), Color(0.95, 0.6, 0.25, a), false, 3.0)
 		# the tail points down to Gus in the corner
 		var tail_x := clampf(gus_head.x, bx + 14.0, bx + w - 14.0)
-		draw_colored_polygon(PackedVector2Array([Vector2(tail_x - 8, by + h), Vector2(tail_x + 8, by + h), Vector2(gus_head.x, by + h + 18)]), bg)
-		draw_line(Vector2(gus_head.x, by + h + 18), gus_head + Vector2(0, -4), Color(1.0, 0.97, 0.9, 0.35 * a), 2.0)
-		draw_string(font, Vector2(bx + 12, by + size + 4), tr("GUS"), HORIZONTAL_ALIGNMENT_LEFT, -1, int(size * 0.85), Color(0.85, 0.45, 0.1, a))
-		draw_multiline_string(font, Vector2(bx + 12, by + size * 2 + 8), coach_text, HORIZONTAL_ALIGNMENT_LEFT, maxw, size, -1, Color(0.1, 0.08, 0.06, a))
+		ci.draw_colored_polygon(PackedVector2Array([Vector2(tail_x - 8, by + h), Vector2(tail_x + 8, by + h), Vector2(gus_head.x, by + h + 18)]), bg)
+		ci.draw_line(Vector2(gus_head.x, by + h + 18), gus_head + Vector2(0, -4), Color(1.0, 0.97, 0.9, 0.35 * a), 2.0)
+		ci.draw_string(font, Vector2(bx + 12, by + size + 4), tr("GUS"), HORIZONTAL_ALIGNMENT_LEFT, -1, int(size * 0.85), Color(0.85, 0.45, 0.1, a))
+		ci.draw_multiline_string(font, Vector2(bx + 12, by + size * 2 + 8), coach_text, HORIZONTAL_ALIGNMENT_LEFT, maxw, size, -1, Color(0.1, 0.08, 0.06, a))
 		return
 	var size := fs(17)
 	var label := tr("GUS: ")
@@ -5238,10 +5293,10 @@ func draw_coach() -> void:
 	var x := (screen.x - w) * 0.5
 	var y := screen.y * 0.23
 	var a := minf(1.0, coach_t * 3.0)
-	draw_rect(Rect2(x, y, w, size + 18.0), Color(0.05, 0.05, 0.08, 0.85 * a))
-	draw_rect(Rect2(x, y, w, size + 18.0), Color(0.95, 0.65, 0.35, 0.8 * a), false, 2.0)
-	draw_string(font, Vector2(x + 14, y + size + 6), label, HORIZONTAL_ALIGNMENT_LEFT, -1, size, Color(0.95, 0.65, 0.35, a))
-	draw_string(font, Vector2(x + 14 + lw, y + size + 6), coach_text, HORIZONTAL_ALIGNMENT_LEFT, w - lw - 28.0, size, Color(1, 1, 1, a))
+	ci.draw_rect(Rect2(x, y, w, size + 18.0), Color(0.05, 0.05, 0.08, 0.85 * a))
+	ci.draw_rect(Rect2(x, y, w, size + 18.0), Color(0.95, 0.65, 0.35, 0.8 * a), false, 2.0)
+	ci.draw_string(font, Vector2(x + 14, y + size + 6), label, HORIZONTAL_ALIGNMENT_LEFT, -1, size, Color(0.95, 0.65, 0.35, a))
+	ci.draw_string(font, Vector2(x + 14 + lw, y + size + 6), coach_text, HORIZONTAL_ALIGNMENT_LEFT, w - lw - 28.0, size, Color(1, 1, 1, a))
 
 
 # ---------------------------------------------------------------- move showcase (garage)
@@ -5316,7 +5371,7 @@ func demo_process(delta: float) -> void:
 	time_left = FIGHT_TIME
 	if hitstop > 0.0:
 		hitstop -= delta
-		queue_redraw()
+		redraw_all()
 		return
 	if slowmo > 0.0:
 		slowmo -= delta
@@ -5346,7 +5401,7 @@ func demo_process(delta: float) -> void:
 	if arena_redraw_t <= 0.0 and arena_layer:
 		arena_redraw_t = 1.0 / ARENA_FPS
 		arena_layer.queue_redraw()
-	queue_redraw()
+	redraw_all()
 
 
 
@@ -5430,9 +5485,45 @@ func show_beat() -> String:
 
 
 ## The camera: wide for the announcer, close on a robot while he talks it up, back out for the fight.
+## The fight camera (1.57): it follows the fighters and closes in when they're close (up to
+## CAM_CLOSE), pulling back out to the whole ring as they part. The floor line stays put on the
+## screen; the zoom crops the sky and the sides. The HUD is on its own layer and doesn't zoom.
+const CAM_CLOSE := 1.25
+const CAM_NEAR := 260.0      # gap between the robots at full zoom
+const CAM_FAR := 620.0       # gap at which the camera is all the way out
+
+
+## The light set the robots stand in: the venue's own when it has one (light.gd), else "fight".
+func fight_light() -> String:
+	return arena_id if Light.SETS.has(arena_id) else "fight"
+
+
+func follow_view() -> Array:
+	var xs: Array = []
+	for f in all_fighters():
+		if f.state != "ko":
+			xs.append(f.pos.x)
+	if xs.size() < 2:
+		return [1.0, screen * 0.5]
+	var lo: float = xs.min()
+	var hi: float = xs.max()
+	var gap := hi - lo
+	var z := lerpf(CAM_CLOSE, 1.0, clampf((gap - CAM_NEAR) / (CAM_FAR - CAM_NEAR), 0.0, 1.0))
+	var hw := screen.x * 0.5 / z
+	var hh := screen.y * 0.5 / z
+	# the floor line stays where it is on the screen: the robots grow up from it, the sky is cropped
+	var cy := floor_y - (floor_y - screen.y * 0.5) / z
+	var c := Vector2(clampf((lo + hi) * 0.5, hw, screen.x - hw), clampf(cy, hh, screen.y - hh))
+	return [z, c]
+
+
 func update_camera(delta: float) -> void:
 	var tz := 1.0
 	var tc := screen * 0.5
+	if (phase == "fight" or (phase == "intro" and intro_step == "count")) and demo_move == "" and not GameData.settings.get("still_camera", false):
+		var fv := follow_view()
+		tz = fv[0]
+		tc = fv[1]
 	match show_beat():
 		"a_call", "b_call":
 			tz = 1.25
@@ -5504,26 +5595,26 @@ func draw_walk_in(off: Vector2) -> void:
 					box_r = Rect2(Vector2(mid - bw * 0.5, floor_y - bh).lerp(held, lift), Vector2(bw, bh) * (ps / s))
 				if alpha > 0.0:
 					var c := Color(0.55, 0.38, 0.2, alpha)
-					draw_rect(Rect2(box_r.position + off, box_r.size), c)
-					draw_rect(Rect2(box_r.position + off, box_r.size), Color(0.3, 0.2, 0.1, alpha), false, 3.0)
-					draw_line(box_r.position + off, box_r.end + off, Color(0.35, 0.24, 0.12, alpha), 3.0)
-					draw_line(Vector2(box_r.end.x, box_r.position.y) + off, Vector2(box_r.position.x, box_r.end.y) + off, Color(0.35, 0.24, 0.12, alpha), 3.0)
+					ci.draw_rect(Rect2(box_r.position + off, box_r.size), c)
+					ci.draw_rect(Rect2(box_r.position + off, box_r.size), Color(0.3, 0.2, 0.1, alpha), false, 3.0)
+					ci.draw_line(box_r.position + off, box_r.end + off, Color(0.35, 0.24, 0.12, alpha), 3.0)
+					ci.draw_line(Vector2(box_r.end.x, box_r.position.y) + off, Vector2(box_r.position.x, box_r.end.y) + off, Color(0.35, 0.24, 0.12, alpha), 3.0)
 			else:
 				# a steel podium with steps and a mic stand; it sinks into the floor during the count
 				var sink := clampf((t - 0.6) / 1.6, 0.0, 1.0)
 				var h := bh * (1.0 - sink)
 				if h > 1.0:
 					var pr := Rect2(mid - bw * 0.5, floor_y - h, bw, h)
-					draw_rect(Rect2(pr.position + off, pr.size), Color(0.42, 0.45, 0.52))
-					draw_rect(Rect2(pr.position + off, Vector2(bw, minf(6.0, h))), Color(0.95, 0.76, 0.19))
+					ci.draw_rect(Rect2(pr.position + off, pr.size), Color(0.42, 0.45, 0.52))
+					ci.draw_rect(Rect2(pr.position + off, Vector2(bw, minf(6.0, h))), Color(0.95, 0.76, 0.19))
 					for k in 3:
 						var sy := floor_y - h + (k + 1) * h / 4.0
-						draw_line(Vector2(pr.position.x, sy) + off, Vector2(pr.end.x, sy) + off, Color(0.3, 0.32, 0.38), 2.0)
-					draw_rect(Rect2(Vector2(mid - bw * 0.5 - 6, floor_y - 3) + off, Vector2(bw + 12, 3)), Color(0.1, 0.1, 0.1))
+						ci.draw_line(Vector2(pr.position.x, sy) + off, Vector2(pr.end.x, sy) + off, Color(0.3, 0.32, 0.38), 2.0)
+					ci.draw_rect(Rect2(Vector2(mid - bw * 0.5 - 6, floor_y - 3) + off, Vector2(bw + 12, 3)), Color(0.1, 0.1, 0.1))
 			if alpha > 0.0 and t < 99.0:
 				var look: Dictionary = ANNOUNCERS[barrier_kind]
 				var p2 := pose if t <= 0.0 else ("carry_up" if barrier_kind == "crate" and t > 0.35 else "walk_mic")
-				PilotArt.draw_person(self, feet + off, ps, look, pdir if t <= 0.0 else 1.0, p2, clock)
+				PilotArt.draw_person(ci, feet + off, ps, look, pdir if t <= 0.0 else 1.0, p2, clock)
 				if barrier_kind == "gate":
 					draw_announcer_prop(feet + off, ps, pdir)
 		"gate":
@@ -5533,25 +5624,25 @@ func draw_walk_in(off: Vector2) -> void:
 			if gh > 1.0:
 				for side in [-1.0, 1.0]:
 					var r := Rect2(mid + (0.0 if side > 0 else -22.0 * s * 0.6), floor_y - gh, 22.0 * s * 0.6, gh)
-					draw_rect(Rect2(r.position + off, r.size), Color(0.2, 0.22, 0.27))
-					draw_rect(Rect2(r.position + off, Vector2(r.size.x, 5)), Color(0.95, 0.76, 0.19))
+					ci.draw_rect(Rect2(r.position + off, r.size), Color(0.2, 0.22, 0.27))
+					ci.draw_rect(Rect2(r.position + off, Vector2(r.size.x, 5)), Color(0.95, 0.76, 0.19))
 					var blink := fmod(clock * 2.0, 1.0) < 0.5
 					for k in int(gh / 30.0):
-						draw_circle(r.position + off + Vector2(r.size.x * 0.5, 14 + k * 30), 4.0, Color(1.0, 0.25, 0.2) if blink != (k % 2 == 0) else Color(0.35, 0.1, 0.08))
-				draw_rect(Rect2(Vector2(mid - 30 * s, floor_y - 4) + off, Vector2(60 * s, 4)), Color(0.1, 0.1, 0.1))
+						ci.draw_circle(r.position + off + Vector2(r.size.x * 0.5, 14 + k * 30), 4.0, Color(1.0, 0.25, 0.2) if blink != (k % 2 == 0) else Color(0.35, 0.1, 0.08))
+				ci.draw_rect(Rect2(Vector2(mid - 30 * s, floor_y - 4) + off, Vector2(60 * s, 4)), Color(0.1, 0.1, 0.1))
 			# the gilded announcer's box at the back, above the ring - he stays up there all fight
 			var bx := Vector2(mid, floor_y - screen.y * 0.3) + off * 0.5
 			var booth := Rect2(bx + Vector2(-46, 0), Vector2(92, 34))
 			var bs := clampf(s * 0.75, 1.0, 1.6)
-			PilotArt.draw_person(self, bx + Vector2(0, 2), bs, ANNOUNCERS["gate"], pdir, pose if phase == "intro" or phase == "ko" else "walk_mic", clock)
+			PilotArt.draw_person(ci, bx + Vector2(0, 2), bs, ANNOUNCERS["gate"], pdir, pose if phase == "intro" or phase == "ko" else "walk_mic", clock)
 			draw_announcer_prop(bx + Vector2(0, 2), bs, pdir)
-			draw_rect(booth, Color(0.45, 0.08, 0.12))
-			draw_rect(booth, Color(0.88, 0.7, 0.25), false, 3.0)
-			draw_rect(Rect2(booth.position + Vector2(0, -5), Vector2(booth.size.x, 5)), Color(0.88, 0.7, 0.25))
+			ci.draw_rect(booth, Color(0.45, 0.08, 0.12))
+			ci.draw_rect(booth, Color(0.88, 0.7, 0.25), false, 3.0)
+			ci.draw_rect(Rect2(booth.position + Vector2(0, -5), Vector2(booth.size.x, 5)), Color(0.88, 0.7, 0.25))
 			for k in 5:
-				draw_circle(booth.position + Vector2(10 + k * 18, booth.size.y * 0.55), 3.0, Color(0.95, 0.85, 0.4))
-			draw_line(booth.position + Vector2(20, booth.size.y), booth.position + Vector2(8, booth.size.y + 30), Color(0.88, 0.7, 0.25), 3.0)
-			draw_line(booth.position + Vector2(booth.size.x - 20, booth.size.y), booth.position + Vector2(booth.size.x - 8, booth.size.y + 30), Color(0.88, 0.7, 0.25), 3.0)
+				ci.draw_circle(booth.position + Vector2(10 + k * 18, booth.size.y * 0.55), 3.0, Color(0.95, 0.85, 0.4))
+			ci.draw_line(booth.position + Vector2(20, booth.size.y), booth.position + Vector2(8, booth.size.y + 30), Color(0.88, 0.7, 0.25), 3.0)
+			ci.draw_line(booth.position + Vector2(booth.size.x - 20, booth.size.y), booth.position + Vector2(booth.size.x - 8, booth.size.y + 30), Color(0.88, 0.7, 0.25), 3.0)
 
 
 ## What each announcer holds up to his mouth (and the tux's bow tie).
@@ -5560,9 +5651,9 @@ func draw_announcer_prop(feet: Vector2, s: float, dir: float) -> void:
 	if barrier_kind != "gate":
 		return
 	var neck := feet + Vector2(0, -53.0 * s)
-	draw_colored_polygon(PackedVector2Array([neck + Vector2(-4 * s, 2 * s), neck + Vector2(4 * s, 2 * s), neck + Vector2(0, 12 * s)]), Color(0.95, 0.95, 0.95))
-	draw_colored_polygon(PackedVector2Array([neck + Vector2(-4 * s, 0), neck, neck + Vector2(-4 * s, 3 * s)]), Color(0.6, 0.05, 0.1))
-	draw_colored_polygon(PackedVector2Array([neck + Vector2(4 * s, 0), neck, neck + Vector2(4 * s, 3 * s)]), Color(0.6, 0.05, 0.1))
+	ci.draw_colored_polygon(PackedVector2Array([neck + Vector2(-4 * s, 2 * s), neck + Vector2(4 * s, 2 * s), neck + Vector2(0, 12 * s)]), Color(0.95, 0.95, 0.95))
+	ci.draw_colored_polygon(PackedVector2Array([neck + Vector2(-4 * s, 0), neck, neck + Vector2(-4 * s, 3 * s)]), Color(0.6, 0.05, 0.1))
+	ci.draw_colored_polygon(PackedVector2Array([neck + Vector2(4 * s, 0), neck, neck + Vector2(4 * s, 3 * s)]), Color(0.6, 0.05, 0.1))
 
 
 ## Robots' special parts and moves get pulsing rings while the camera is on them.
@@ -5578,7 +5669,7 @@ func draw_show_marks(off: Vector2) -> void:
 	for slot in special_slots(f):
 		var p := visual_point(f, RobotArt.part_center(f.get_look(), slot)) + off
 		var r := 16.0 + sin(clock * 6.0) * 3.0
-		draw_arc(p, r, 0, TAU, 28, Color(1.0, 0.85, 0.2), 3.0)
+		ci.draw_arc(p, r, 0, TAU, 28, Color(1.0, 0.85, 0.2), 3.0)
 
 
 ## Parts worth shouting about: ones with a trait or a gadget.

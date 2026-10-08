@@ -484,7 +484,7 @@ static func podium(medal: int) -> int:
 
 
 static func on_post(tone: String) -> void:
-	if tone != "trash":
+	if not tone.begins_with("trash"):
 		return
 	for c in st()["active"].duplicate():
 		for r in c["reqs"]:
