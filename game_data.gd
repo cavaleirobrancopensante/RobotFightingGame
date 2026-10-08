@@ -2,7 +2,7 @@ extends Node
 
 # helper scripts, loaded by path so the game also runs without an editor scan
 ## The game's version, shown on the main menu. Bump it with every change (1.1, 1.2, ...).
-const VERSION := "1.57"
+const VERSION := "1.58"
 const Arena = preload("res://arena.gd")
 const I18n = preload("res://i18n.gd")
 const Catalog = preload("res://catalog.gd")
@@ -329,13 +329,19 @@ var leagues: Dictionary = {}
 var title_seeds: Array = []     # who's in next year's Titanium Championship (event entries, best first; "player" = you)
 var h2h: Dictionary = {}        # world pilot wid -> [your wins, your losses] against them
 var rivals: Array = []          # wids of the pilots who've become your rivals
-var grudge: Dictionary = {}     # wid -> [how much you resent them, how much they resent you]
+var rel: Dictionary = {}        # wid -> -100 (nemesis) .. +100 (best friend): what's between you two (1.58)
+var nemeses: Array = []         # wids that crossed REL_NEMESIS: they stay rivals till you beat them
 var pending_talk: Array = []    # emergent lines waiting for the garage (hate mail etc.)
 var inbox: Array = []           # everything anyone said to you, oldest first: {y, w, d, ph, who, text, kind, look}
 const INBOX_MAX := 400
 var tour := -1                  # Gus's tour of the bay after the first fight: the step you're on (-1 = done / none)
 var inbox_seen := 0             # how much of the inbox you've looked at (the rail shows a star for new)
-const GRUDGE_LINE := 3.0        # past this, it's a rivalry (one-sided if only one of you is past it)
+const REL_RIVAL := -40.0        # at or below: a rival (taunts, revenge, hate mail)
+const REL_NEMESIS := -80.0      # at or below: your nemesis (stuck at -40 or worse until you beat them)
+const REL_FRIEND := 40.0        # at or above: a friend (greets you, teams up, cheers you on)
+const REL_BEST := 80.0          # at or above: a best friend
+const REL_SOCIAL_CAP := 40.0    # likes, reposts and replies alone only get you this far: the rest is earned in the ring
+const REL_FIGHT_K := 10.0       # a fight moves it this much x what the fight meant
 var streak := 0                 # + wins in a row, - losses in a row
 var pub_seen := ""              # the day you last walked into The Rusty Bolt (the patron says hi once)
 const Talk = preload("res://talk_lines.gd")   # this year's division tables: stage -> event (yours is also `event`)
@@ -574,7 +580,8 @@ func new_game() -> void:
 	tips_log = []
 	h2h = {}
 	rivals = []
-	grudge = {}
+	rel = {}
+	nemeses = []
 	pending_talk = []
 	inbox = []
 	day_log = {}
@@ -1748,7 +1755,9 @@ func current_opponent(apply_scout: bool = true) -> Dictionary:
 		"story":
 			o = Career.robot_of(event, Career.player_opponent(event))
 		"pickup":
-			if pickup.has("wid") and not World.pilot(int(pickup["wid"])).is_empty():
+			if pickup.get("tag", false):
+				o = tag_opponent()
+			elif pickup.has("wid") and not World.pilot(int(pickup["wid"])).is_empty():
 				o = World.robot(int(pickup["wid"]))
 			else:
 				o = (pickup["enemy"] as Dictionary).duplicate(true)
@@ -1914,7 +1923,7 @@ func fight_title() -> String:
 		"exhibition":
 			return tr("EXHIBITION")
 		"pickup":
-			return tr("PICKUP FIGHT")
+			return tr("TAG TEAM PICKUP") if pickup.get("tag", false) else tr("PICKUP FIGHT")
 		"story":
 			return tr("%s · %s") % [tr(Career.STAGES[event["stage"]]["short"]), tr(Career.round_name(event)).to_upper()]
 	return tr("YEAR %d, WEEK %d") % [year, week]
@@ -2003,19 +2012,24 @@ func night_patrons(y: int, w: int, di: int) -> Array:
 	var out: Array = []
 	var taken := {}
 	var ri := maxi(0, rank_index())
-	# someone with a grudge against you, now and then (one roll a day, not one per grudge, so the
-	# same sore loser isn't propping up the bar every night)
-	var haters: Array = []
-	for key in grudge:
-		var wid := int(key)
-		var p := World.pilot(wid)
-		if hates_me(wid) and not p.is_empty() and not p["retired"] and not tonight.has(wid):
-			haters.append(p)
-	haters.sort_custom(func(a, b): return int(a["wid"]) < int(b["wid"]))
-	if not haters.is_empty() and rng.randf() < 0.2:
-		var h: Dictionary = haters[rng.randi() % haters.size()]
-		out.append(h)
-		taken[int(h["wid"])] = true
+	# someone who can't stand you, now and then, or a friend (one roll each a night, not one per
+	# pilot, so the same sore loser isn't propping up the bar every night)
+	for want in ["rival", "friend"]:
+		var who: Array = []
+		for key in rel:
+			if str(key).begins_with("_"):
+				continue
+			var wid := int(key)
+			var p := World.pilot(wid)
+			var r := rel_of(wid)
+			var ok := r <= REL_RIVAL if want == "rival" else r >= 15.0
+			if ok and not p.is_empty() and not p["retired"] and not tonight.has(wid) and not taken.has(wid):
+				who.append(p)
+		who.sort_custom(func(a, b): return int(a["wid"]) < int(b["wid"]))
+		if not who.is_empty() and rng.randf() < (0.2 if want == "rival" else 0.3):
+			var h: Dictionary = who[rng.randi() % who.size()]
+			out.append(h)
+			taken[int(h["wid"])] = true
 	var guard := 0
 	while out.size() < count and guard < 40:
 		guard += 1
@@ -2062,24 +2076,98 @@ func pilot_line(wid: int, text: String) -> Array:
 	return [str(p.get("name", "?")), text, {"look": World.look_of(wid), "wid": wid}]
 
 
-func grudge_of(wid: int) -> Array:
-	var g: Array = grudge.get(str(wid), [0.0, 0.0])
-	return [float(g[0]), float(g[1])]
+## What's between you and a world pilot: -100 (your nemesis) .. 0 (strangers) .. +100 (best friends).
+func rel_of(wid: int) -> float:
+	return float(rel.get(str(wid), 0.0))
 
 
-## A post or a reply moved their grudge against you (+ hotter, - cooler).
-func grudge_bump(wid: int, amount: float) -> void:
-	var g := grudge_of(wid)
-	g[1] = clampf(g[1] + amount, 0.0, 12.0)
-	grudge[str(wid)] = g
+## Move it. Likes, reposts and replies pass cap = REL_SOCIAL_CAP (they never push it past that on
+## their own); fights and teaming up pass 100. A nemesis stays at -40 or worse until you beat them.
+func rel_add(wid: int, amount: float, cap: float = 100.0) -> void:
+	if wid < 0 or World.pilot(wid).is_empty():
+		return
+	var v0 := rel_of(wid)
+	var v := v0
+	if amount > 0.0:
+		v = maxf(v, minf(v + amount, cap))
+	else:
+		v += amount
+	v = clampf(v, -100.0, 100.0)
+	if nemeses.has(wid):
+		v = minf(v, -40.0)
+	rel[str(wid)] = v
+	var name := str(World.pilot(wid)["name"])
+	if v <= REL_NEMESIS and not nemeses.has(wid):
+		nemeses.append(wid)
+		pending_talk.append({"lines": [["GUS", tr(Talk.pick(Talk.GUS_NEMESIS, name)) % name, {}]]})
+	elif v0 < REL_FRIEND and v >= REL_FRIEND:
+		pending_talk.append({"lines": [pilot_line(wid, tr(Talk.pick(Talk.FRIEND_BORN, name)) % pilot_name)]})
 
 
+## "(+52)" green / "(-61)" red as BBCode (with_word: "(+52) FRIEND"), or "" while you're strangers.
+func rel_bb(wid: int, with_word: bool = false) -> String:
+	var v := roundi(rel_of(wid))
+	if absi(v) < 5:
+		return ""
+	var w := rel_word(wid)
+	return "[color=#%s]%s[/color]" % [rel_color(wid).to_html(false), rel_text(wid) + (" " + tr(w) if with_word and w != "" else "")]
+
+
+## "(+52)", "(-61)" or "" (plain text).
+func rel_text(wid: int) -> String:
+	var v := roundi(rel_of(wid))
+	if absi(v) < 5:
+		return ""
+	return "(%s%d)" % ["+" if v > 0 else "", v]
+
+
+func rel_color(wid: int) -> Color:
+	return Color(0.45, 0.95, 0.5) if rel_of(wid) > 0.0 else Color(1.0, 0.42, 0.3)
+
+
+## The word for it: NEMESIS, RIVAL, COLD, FRIENDLY, FRIEND, BEST FRIEND, or "".
+func rel_word(wid: int) -> String:
+	var v := rel_of(wid)
+	if v <= REL_NEMESIS or nemeses.has(wid):
+		return "NEMESIS"
+	if v <= REL_RIVAL:
+		return "RIVAL"
+	if v <= -15.0:
+		return "COLD"
+	if v >= REL_BEST:
+		return "BEST FRIEND"
+	if v >= REL_FRIEND:
+		return "FRIEND"
+	if v >= 15.0:
+		return "FRIENDLY"
+	return ""
+
+
+## Rivals: they taunt you, hunt the rematch and their aim is a level sharper against you.
 func is_rival(wid: int) -> bool:
-	return grudge_of(wid)[0] >= GRUDGE_LINE
+	return rel_of(wid) <= REL_RIVAL
 
 
 func hates_me(wid: int) -> bool:
-	return grudge_of(wid)[1] >= GRUDGE_LINE
+	return rel_of(wid) <= REL_RIVAL
+
+
+func is_friend(wid: int) -> bool:
+	return rel_of(wid) >= REL_FRIEND
+
+
+## Every week a little of it fades (a nemesis doesn't).
+func rel_drift(k: float) -> void:
+	for key in rel.keys():
+		if str(key).begins_with("_"):
+			continue
+		var v := float(rel[key]) * k
+		if nemeses.has(int(key)):
+			v = minf(v, -40.0)
+		if absf(v) < 1.0:
+			rel.erase(key)
+		else:
+			rel[key] = v
 
 
 ## How much tonight's fight matters to one side (1 = an ordinary night). League: fighting to stay
@@ -2110,10 +2198,10 @@ func fight_stakes(ev: Dictionary, id: int, mode: String, wid: int = -1) -> float
 	return 0.8
 
 
-## Stories nobody wrote. Every fight leaves a grudge on the loser's side, heavier when the fight
-## mattered more to them, and heavier again if it's the same person beating them over and over.
-## Your grudge and theirs are kept apart: someone can hate you while you barely know their name.
-## Crossing the line sets off talk: gloats, rivalries, revenge, "I'll get you next time".
+## Stories nobody wrote. Every fight pushes what's between you and them down (1.58: one number,
+## -100 nemesis .. +100 best friend), harder when the fight mattered more, and harder again if it's
+## the same person beating the other over and over. Friends take it half as hard. Crossing the
+## rival line sets off talk: gloats, rivalries, revenge, "I'll get you next time".
 func emergent_talk(o: Dictionary, won: bool) -> void:
 	streak = (maxi(streak, 0) + 1) if won else (mini(streak, 0) - 1)
 	var lines: Array = []
@@ -2128,40 +2216,50 @@ func emergent_talk(o: Dictionary, won: bool) -> void:
 		h2h[key] = rec
 		var ev: Dictionary = event if mode == "story" else (circuit if mode == "circuit" else {})
 		var their_id := Career.player_opponent(ev) if not ev.is_empty() else -1
-		var g := grudge_of(wid)
-		var mine0: float = g[0]
-		var theirs0: float = g[1]
-		if won:
-			g[1] += fight_stakes(ev, their_id, mode, wid) * (1.0 + 0.5 * maxi(0, int(rec[0]) - 1))
-			g[0] = maxf(0.0, g[0] - 0.3)
+		var r0 := rel_of(wid)
+		var settled := false
+		if won and nemeses.has(wid):
+			# you beat your nemesis: the score's settled, back to plain rivals
+			nemeses.erase(wid)
+			rel[key] = maxf(r0, -60.0)
+			settled = true
 		else:
-			g[0] += fight_stakes(ev, 0, mode) * (1.0 + 0.5 * maxi(0, int(rec[1]) - 1))
-			g[1] = maxf(0.0, g[1] - 0.3)
-		g = [minf(g[0], 12.0), minf(g[1], 12.0)]
-		grudge[key] = g
+			var stakes := fight_stakes(ev, their_id, mode, wid) if won else fight_stakes(ev, 0, mode)
+			var again := 1.0 + 0.5 * mini(4, maxi(0, int(rec[0 if won else 1]) - 1))
+			var hit := REL_FIGHT_K * stakes * again * (1.0 if won else 0.8)
+			if r0 > 0.0:
+				hit *= 0.5   # friends take it better
+			rel_add(wid, -hit)
+		var r1 := rel_of(wid)
 		var name := str(World.pilot(wid)["name"])
 		var me := pilot_name
-		if not won and losses == 1:
+		if settled:
+			lines.append(pilot_line(wid, tr(Talk.pick(Talk.REVENGE, seed_text)) % me))
+			lines.append(["GUS", tr(Talk.pick(Talk.GUS_NEMESIS_DOWN, seed_text)) % name, {}])
+		elif r0 >= 15.0:
+			lines.append(pilot_line(wid, tr(Talk.pick(Talk.FRIEND_FIGHT_LOST if won else Talk.FRIEND_FIGHT_WON, seed_text)) % me))
+		elif not won and losses == 1:
 			lines.append(pilot_line(wid, tr(Talk.pick(Talk.GLOAT, seed_text)) % me))
-		elif not won and mine0 < GRUDGE_LINE and g[0] >= GRUDGE_LINE:
+		elif not won and r0 > REL_RIVAL and r1 <= REL_RIVAL:
 			if not rivals.has(wid):
 				rivals.append(wid)
 			lines.append(pilot_line(wid, tr(Talk.pick(Talk.RIVAL_BORN, seed_text)) % me))
 			lines.append(["GUS", tr(Talk.pick(Talk.GUS_RIVAL, seed_text)) % name, {}])
-		elif won and theirs0 < GRUDGE_LINE and g[1] >= GRUDGE_LINE:
+		elif won and r0 > REL_RIVAL and r1 <= REL_RIVAL:
+			if not rivals.has(wid):
+				rivals.append(wid)
 			lines.append(pilot_line(wid, tr(Talk.pick(Talk.THEY_HATE, seed_text)) % me))
-			if g[0] < 1.0:
-				lines.append(["GUS", tr(Talk.pick(Talk.GUS_THEY_HATE, seed_text)) % name, {}])
-		elif won and mine0 >= GRUDGE_LINE:
+			lines.append(["GUS", tr(Talk.pick(Talk.GUS_THEY_HATE, seed_text)) % name, {}])
+		elif won and r0 <= REL_RIVAL and int(rec[1]) > 0 and roll < 0.5:
 			lines.append(pilot_line(wid, tr(Talk.pick(Talk.REVENGE, seed_text)) % me))
 			lines.append(["GUS", tr(Talk.pick(Talk.GUS_REVENGE, seed_text)) % name, {}])
-		elif won and theirs0 >= GRUDGE_LINE and roll < minf(0.9, g[1] / 6.0):
+		elif won and r0 <= REL_RIVAL and roll < minf(0.9, -r1 / 60.0):
 			lines.append(pilot_line(wid, tr(Talk.pick(Talk.NEXT_TIME, seed_text)) % me))
-		elif not won and mine0 >= GRUDGE_LINE and roll < 0.5:
+		elif not won and r0 <= REL_RIVAL and roll < 0.5:
 			lines.append(pilot_line(wid, tr(Talk.pick(Talk.RIVAL_AGAIN, seed_text)) % me))
 		elif won and Career.ORDER.find(str(World.pilot(wid).get("tier", ""))) > rank_index():
 			lines.append(["GUS", tr(Talk.pick(Talk.GIANT_KILL, seed_text)) % [name, tr(Career.STAGES[World.pilot(wid)["tier"]]["name"])], {}])
-		elif not won and roll < minf(0.35, g[0] / 10.0):
+		elif not won and roll < minf(0.35, -r1 / 100.0):
 			lines.append(pilot_line(wid, tr(Talk.pick(Talk.GLOAT, seed_text)) % me))   # a gloat, now and then
 	if lines.is_empty():
 		if streak == -3:
@@ -2175,22 +2273,22 @@ func emergent_talk(o: Dictionary, won: bool) -> void:
 ## A new day: someone who hates you might get in touch (more likely the more they hate you).
 func daily_hate_mail() -> void:
 	var best := -1
-	var best_g := 0.0
-	for key in grudge:
+	var best_r := 0.0
+	for key in rel:
 		if str(key).begins_with("_"):
 			continue
-		var g := grudge_of(int(key))
-		if g[1] >= GRUDGE_LINE * 0.8 and g[1] > best_g and not World.pilot(int(key)).get("retired", true):
+		var r := rel_of(int(key))
+		if r <= REL_RIVAL * 0.8 and r < best_r and not World.pilot(int(key)).get("retired", true):
 			best = int(key)
-			best_g = g[1]
+			best_r = r
 	if best < 0:
 		return
 	var roll := float(absi(hash("%d:%d:%s:mail" % [year, week, day])) % 1000) / 1000.0
 	# at most one letter every three weeks, and even then only now and then
-	if week + year * 100 - int(grudge.get("_mail", -99)) < 3:
+	if week + year * 100 - int(rel.get("_mail", -99)) < 3:
 		return
-	if roll < minf(0.06, best_g / 80.0):
-		grudge["_mail"] = week + year * 100
+	if roll < minf(0.06, -best_r / 800.0):
+		rel["_mail"] = week + year * 100
 		var t := tr(Talk.pick(Talk.HATE_MAIL, "%d:%d:%s" % [year, week, day]))
 		var last_w := week
 		for e in fight_log:
@@ -2204,7 +2302,7 @@ func daily_hate_mail() -> void:
 func rival_taunt() -> Array:
 	var o := current_opponent()
 	var wid := int(o.get("wid", -1))
-	if wid < 0 or not (is_rival(wid) or hates_me(wid)):
+	if wid < 0 or not is_rival(wid):
 		return []
 	return [pilot_line(wid, tr(Talk.pick(Talk.TAUNT, "%d:%d:%d" % [year, week, wid])) % pilot_name)]
 
@@ -2220,15 +2318,17 @@ func pub_greeting() -> Array:
 	pub_seen = stamp
 	var pat: Dictionary = all[0]
 	for p in all:
-		if hates_me(int(p["wid"])) or is_rival(int(p["wid"])):
+		if is_rival(int(p["wid"])) or rel_of(int(p["wid"])) >= 15.0:
 			pat = p
 	var wid := int(pat["wid"])
 	var list: Array = Talk.PUB_PEER
 	var ti := Career.ORDER.find(str(pat["tier"]))
 	if pat.get("hungover", false):
 		list = Talk.PUB_HUNGOVER
-	elif is_rival(wid) or hates_me(wid):
+	elif is_rival(wid):
 		list = Talk.PUB_RIVAL
+	elif rel_of(wid) >= 15.0:
+		list = Talk.PUB_FRIEND
 	elif ti > rank_index():
 		list = Talk.PUB_STAR
 	elif ti < rank_index():
@@ -2271,6 +2371,103 @@ func start_pickup(wid: int = -1) -> void:
 	var bot := random_bot(rng, [200.0, 300.0, 900.0, 2700.0, 8000.0][clampi(rank_index(), 0, 4)], lv)
 	bot["pilot"] = Career.PILOT_NAMES[rng.randi() % Career.PILOT_NAMES.size()]
 	pickup = {"enemy": bot, "week": week, "year": year}
+
+
+# ---------------------------------------------------------------- tag teams (1.58)
+# A pilot at the bar who likes you well enough (not cold) will team up: you and them against two
+# others from tonight's crowd (or anyone hanging around their league). The purse is a pickup's.
+# Fighting side by side is the best way to make a friend: +8, +15 if you win.
+
+const REL_TAG := 8.0
+const REL_TAG_WIN := 15.0
+const REL_TAG_MIN := -15.0   # colder than this, they won't fight beside you
+
+
+func is_tag() -> bool:
+	return fight_mode() == "pickup" and pickup.get("tag", false)
+
+
+func can_team_up(wid: int) -> bool:
+	return rel_of(wid) > REL_TAG_MIN
+
+
+## Book a tag team pickup with `ally`. Returns "" or why not.
+func start_tag(ally: int) -> String:
+	if not can_team_up(ally):
+		return tr("They won't fight beside you.")
+	var rng := RandomNumberGenerator.new()
+	rng.seed = year * 1000 + week * 10 + day_index() + ally * 7
+	var tier := str(World.pilot(ally).get("tier", rank))
+	var foes: Array = []
+	for p in patrons_today():
+		var w := int(p["wid"])
+		if w != ally and not p.get("hungover", false) and not is_friend(w) and foes.size() < 2:
+			foes.append(w)
+	var busy: Array = World.busy_ids().keys()
+	var guard := 0
+	while foes.size() < 2 and guard < 10:
+		guard += 1
+		var p := World.pick_pickup(rng, tier, busy + foes + [ally])
+		if p.is_empty():
+			p = World.pick_pickup(rng, rank if rank != "" else "open", busy + foes + [ally])
+		if not p.is_empty():
+			foes.append(int(p["wid"]))
+	if foes.size() < 2:
+		return tr("Nobody wants to take on the two of you tonight.")
+	var top := tier
+	for w in foes:
+		var t := str(World.pilot(w).get("tier", tier))
+		if Career.ORDER.find(t) > Career.ORDER.find(top):
+			top = t
+	pickup = {"tag": true, "ally": ally, "wid": int(foes[0]), "foes": foes, "enemy": World.robot(int(foes[0])), "week": week, "year": year, "tier": top}
+	return ""
+
+
+## A world pilot's robot built down to a tag team member (two robots share one heavyweight's power).
+func tag_bot(wid: int) -> Dictionary:
+	var b := World.robot(wid)
+	var mods: Dictionary = TEAM_MODS[2]
+	b["hp"] = float(b["hp"]) * float(mods["hp"])
+	b["damage"] = float(b["damage"]) * float(mods["damage"])
+	b["power_share"] = TEAM_POWER / 2.0
+	return b
+
+
+## The two across the ring: the first is the lead (their pilot is "the opponent" for posts and talk).
+func tag_opponent() -> Dictionary:
+	var foes: Array = pickup.get("foes", [])
+	if foes.size() < 2 or World.pilot(int(foes[0])).is_empty() or World.pilot(int(foes[1])).is_empty():
+		return {}
+	var a := tag_bot(int(foes[0]))
+	var b := tag_bot(int(foes[1]))
+	a["bot_name"] = a["name"]
+	a["name"] = tr("%s & %s") % [a["name"], b["name"]]
+	a["pilot"] = tr("%s & %s") % [str(World.pilot(int(foes[0]))["name"]), str(World.pilot(int(foes[1]))["name"])]
+	a["team"] = [b]
+	a["team_label"] = TEAM_MODS[2]["label"]
+	a["ally"] = int(pickup.get("ally", -1))
+	return a
+
+
+## After a tag fight: your partner likes you more (a lot more if you won), the second robot across the
+## ring takes it like a loss to you, and your partner says something.
+func tag_after(won: bool) -> void:
+	var ally := int(pickup.get("ally", -1))
+	var foes: Array = pickup.get("foes", [])
+	if ally >= 0 and not World.pilot(ally).is_empty():
+		rel_add(ally, REL_TAG_WIN if won else REL_TAG)
+		var p := World.pilot(ally)
+		if won:
+			p["w"] = int(p.get("w", 0)) + 1
+		else:
+			p["l"] = int(p.get("l", 0)) + 1
+		var seed_text := "%d:%d:%s:tag" % [year, week, day]
+		pending_stories.append({"lines": [pilot_line(ally, tr(Talk.pick(Talk.TAG_WON if won else Talk.TAG_LOST, seed_text)) % pilot_name)]})
+		if won:
+			Social.post("w:%d" % ally, ["Tag team with %s tonight. We cleaned house.", "Me and %s, unbeatable. Who's next?"][absi(hash(seed_text)) % 2],
+					[pilot_name], {}, ["TagTeam"], true)
+	if foes.size() >= 2 and won:
+		rel_add(int(foes[1]), -REL_FIGHT_K * 0.5)
 
 
 # ---------------------------------------------------------------- calendar
@@ -2449,6 +2646,7 @@ func advance_week(n: int = 1) -> void:
 	for k in n:
 		World.week_passed(year, week, World.busy_ids())   # the rest of Port Ferrum fights and shops too
 		weekly_rumour()
+		rel_drift(0.96)
 		Contracts.week_end()
 		if week % MONTH_WEEKS == 0:
 			money -= living_cost()   # end of the month: cost of living
@@ -2494,9 +2692,7 @@ func new_year() -> void:
 			continue
 		title_seeds.append(e)
 	World.year_end(rng, leagues)
-	for key in grudge:
-		if not str(key).begins_with("_"):
-			grudge[key] = [float(grudge[key][0]) * 0.7, float(grudge[key][1]) * 0.7]   # time heals (a bit)
+	rel_drift(0.7)   # time heals (a bit)
 	start_year()
 
 
@@ -3222,7 +3418,14 @@ func fight_player_team() -> Array:
 		solo["wingman"] = sending
 		return [solo]
 	var team: Array = [bench_spec(player_spec(), "m")]
-	if is_team_fight():
+	if is_tag():
+		# a tag team: you and a pilot from the bar, two against two
+		var ab := tag_bot(int(pickup["ally"]))
+		var aspec := opponent_spec_from(ab, 1.0)
+		aspec["ally"] = int(pickup["ally"])
+		aspec["ai_src"] = World.robot(int(pickup["ally"]))
+		team.append(aspec)
+	elif is_team_fight():
 		for k in wingmen.size():
 			if wingman_ready(k):
 				var spec := bench_spec(player_spec(wingmen[k], wingman_name(k)), "w%d" % k)
@@ -3233,6 +3436,8 @@ func fight_player_team() -> Array:
 		var mods: Dictionary = TEAM_MODS[team.size()]
 		var share := TEAM_POWER / team.size()
 		for spec in team:
+			if spec.has("ally"):
+				continue   # your tag partner's robot already fights at team strength (tag_bot)
 			spec["damage_mult"] = spec["damage_mult"] * mods["damage"]
 			spec["hp_scale"] = mods["hp"]
 			var st := stats(wingmen[spec["wingman"]] if spec.has("wingman") else equipped)
@@ -3872,6 +4077,8 @@ func record_result(won: bool, part_hp: Dictionary, destroyed: int, salvage_ids: 
 	if fight_log.size() > 400:
 		fight_log.pop_front()
 	emergent_talk(o, won)
+	if is_tag():
+		tag_after(won)
 
 	# carry the damage over, lose destroyed parts
 	var lost: Array = []
@@ -4614,7 +4821,7 @@ func save_game() -> bool:
 		"owned_chips": owned_chips, "chips": chips, "circuit": circuit, "circuit_offers": circuit_offers,
 		"circuits_won": circuits_won, "pickup": pickup, "setups": setups, "custom_parts": custom_parts,
 		"year": year, "week": week, "day": day, "rank": rank, "event": {}, "leagues": leagues, "title_seeds": title_seeds, "trophies": trophies, "career_stats": career_stats,
-		"pecking_k": pecking_k(), "style": style, "style_locked": style_locked, "shop_stock": shop_stock, "chip_stock": chip_stock, "scout": scout, "wingmen": wingmen, "sending": sending, "pilot_look": pilot_look, "owned_controllers": owned_controllers, "spare_controllers": spare_controllers, "tips_seen": tips_seen, "tips_log": tips_log, "h2h": h2h, "rivals": rivals, "grudge": grudge, "pending_talk": pending_talk, "inbox": inbox, "inbox_seen": inbox_seen, "social": social, "contracts": contracts, "alerts_unseen": alerts_unseen, "day_log": day_log, "tour": tour, "streak": streak, "pub_seen": pub_seen, "digs_left": digs_left, "dig_luck": dig_luck, "bills_note": bills_note, "fight_log": fight_log, "bets": bets, "world": world,
+		"pecking_k": pecking_k(), "style": style, "style_locked": style_locked, "shop_stock": shop_stock, "chip_stock": chip_stock, "scout": scout, "wingmen": wingmen, "sending": sending, "pilot_look": pilot_look, "owned_controllers": owned_controllers, "spare_controllers": spare_controllers, "tips_seen": tips_seen, "tips_log": tips_log, "h2h": h2h, "rivals": rivals, "rel": rel, "nemeses": nemeses, "pending_talk": pending_talk, "inbox": inbox, "inbox_seen": inbox_seen, "social": social, "contracts": contracts, "alerts_unseen": alerts_unseen, "day_log": day_log, "tour": tour, "streak": streak, "pub_seen": pub_seen, "digs_left": digs_left, "dig_luck": dig_luck, "bills_note": bills_note, "fight_log": fight_log, "bets": bets, "world": world,
 	}
 	var f := FileAccess.open(slot_path(save_slot), FileAccess.WRITE)
 	if f == null:
@@ -4711,7 +4918,17 @@ func load_game(slot: int = -1) -> String:
 	tips_log = data.get("tips_log", []).duplicate()
 	h2h = data.get("h2h", {})
 	rivals = data.get("rivals", []).map(func(x): return int(x))
-	grudge = data.get("grudge", {})
+	rel = data.get("rel", {})
+	nemeses = data.get("nemeses", []).map(func(x): return int(x))
+	if not data.has("rel"):
+		# (1.58) the old grudges [yours, theirs] become one number: 3 + 3 = -84
+		for key in data.get("grudge", {}):
+			var g = data["grudge"][key]
+			if str(key).begins_with("_") or typeof(g) != TYPE_ARRAY:
+				continue
+			var v := -14.0 * (float(g[0]) + float(g[1]))
+			if v <= -1.0:
+				rel[str(key)] = maxf(-100.0, v)
 	pending_talk = data.get("pending_talk", [])
 	day_log = data.get("day_log", {})
 	inbox = []

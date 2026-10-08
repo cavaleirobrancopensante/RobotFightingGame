@@ -2200,12 +2200,36 @@ func post_row(p: Dictionary, parent: Control = null) -> void:
 		lc.add_theme_color_override("font_color", GUI.RED if on else GUI.MUTED)
 		Sfx.play("click", 0.05))
 	acts.add_child(lb)
-	for f in [["repost", "reposts"], ["reply", "replies"]]:
-		var h := HBoxContainer.new()
-		h.add_theme_constant_override("separation", 4)
-		h.add_child(Glyph.new(f[0], GUI.MUTED, 20))
-		h.add_child(GUI.text(S.fol_text(S.grown(p, f[1])), 13, GUI.MUTED))
-		acts.add_child(h)
+	# repost (1.58): a pilot whose post you share warms up to you
+	var can_rp: bool = by != "me" and not S.reposted(id)
+	var done_rp: bool = S.reposted(id)
+	var rpb := Button.new()
+	rpb.flat = true
+	rpb.focus_mode = Control.FOCUS_NONE
+	rpb.disabled = not can_rp
+	var rph := HBoxContainer.new()
+	rph.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	rph.add_theme_constant_override("separation", 4)
+	rpb.add_child(rph)
+	var rpc: Color = GUI.GREEN if done_rp else GUI.MUTED
+	var rpg := Glyph.new("repost", rpc, 20)
+	rph.add_child(rpg)
+	var rpl := GUI.text(S.fol_text(S.grown(p, "reposts")), 13, rpc)
+	rph.add_child(rpl)
+	rpb.custom_minimum_size = Vector2(84, 40)
+	rph.position = Vector2(4, 10)
+	rpb.pressed.connect(func():
+		S.repost(id)
+		Sfx.play("click", 0.05)
+		note(tr("Reposted."), "equip")
+		GameData.save_game()
+		refresh())
+	acts.add_child(rpb)
+	var h := HBoxContainer.new()
+	h.add_theme_constant_override("separation", 4)
+	h.add_child(Glyph.new("reply", GUI.MUTED, 20))
+	h.add_child(GUI.text(S.fol_text(S.grown(p, "replies")), 13, GUI.MUTED))
+	acts.add_child(h)
 	if p.get("mention", false) and by != "me" and not p.get("replied", false) and not acc.has("logo"):
 		var rb := UI.button(tr("Reply"), open_reply.bind(id), 12, Vector2(80, 28))
 		acts.add_child(rb)
@@ -2243,6 +2267,19 @@ func post_card(card: Dictionary, parent: Control) -> void:
 		"ad":
 			h.add_child(Logos.LogoIcon.new("kane", 36))
 			h.add_child(GUI.text(tr("SPONSORED"), 11, GUI.MUTED, "headb"))
+		"quote":
+			# a repost: the original post, small
+			var q: Dictionary = GameData.Social.find_post(int(card.get("id", -1)))
+			if q.is_empty():
+				panel.queue_free()
+				return
+			var qv := VBoxContainer.new()
+			qv.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			h.add_child(qv)
+			qv.add_child(GUI.text(str(GameData.Social.account(str(q["by"]))["name"]), 13, GUI.TEXT, "headb"))
+			var qt := GUI.text(GameData.Social.text_of(q), 13, GUI.MUTED)
+			qt.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+			qv.add_child(qt)
 		_:
 			panel.queue_free()
 
@@ -2282,19 +2319,21 @@ func build_home() -> void:
 		top.add_child(t)
 		var opp := str(S.st()["draft"].get("opp", ""))
 		var watched: bool = S.st()["draft"].get("watch", false)
-		var hints := {"humble": tr("Safe. Sponsors like it."), "hype": tr("Big if you keep winning."), "trash": tr("Fans love it. They won't.") if not watched else tr("Fans love it. Both of them will remember."),
-				"trash_w": tr("Fans love it. The winner won't."), "trash_l": tr("Fans love it. The loser won't.")}
+		var hints := {"humble": tr("Safe. Sponsors like it. They warm up to you (+4).") if not watched else tr("Safe. Both of them warm up to you (+3)."),
+				"hype": tr("Big if you keep winning.") if not watched else tr("The winner loves it (+6)."),
+				"trash": tr("Fans love it. They won't (-10).") if not watched else tr("Fans love it. Both of them will remember (-10 each)."),
+				"trash_w": tr("Fans love it. The winner won't (-10)."), "trash_l": tr("Fans love it. The loser won't (-10).")}
 		var names := {"humble": tr("HUMBLE"), "hype": tr("HYPE"), "trash": tr("TRASH TALK") if not watched else tr("TRASH TALK: BOTH"),
 				"trash_w": tr("TRASH TALK: WINNER"), "trash_l": tr("TRASH TALK: LOSER")}
-		# names of pilots you already have bad blood with stand out in the drafts
+		# what's between you and each pilot named in the drafts: (+52) green, (-61) red
 		var wids: Array = S.draft_wids()
 		var bb_args: Array = []
 		var plain: Array = S.draft_args()
 		for k in plain.size():
 			var nm := str(plain[k])
 			var wid: int = int(wids[k]) if k < wids.size() else -1
-			if wid >= 0 and (GameData.is_rival(wid) or GameData.hates_me(wid)):
-				nm = "[color=#ff6a4d][b]%s[/b][/color]" % nm
+			if wid >= 0 and GameData.rel_bb(wid) != "":
+				nm += " " + GameData.rel_bb(wid)
 			bb_args.append(nm)
 		var no_trash: bool = GameData.Contracts.st()["active"].any(func(c): return c["reqs"].any(func(r): return r["kind"] == "no_trash"))
 		for d in drafts:
@@ -2483,7 +2522,7 @@ func open_reply(id: int) -> void:
 	var acc: Dictionary = S.account(str(p["by"]))
 	var col := open_popup(tr("REPLY TO @%s") % acc["handle"])
 	post_row(p, col)
-	var hints := {"friendly": tr("Cools a grudge."), "cool": tr("Says nothing, looks calm."), "cutting": tr("Fans love it. So do grudges.")}
+	var hints := {"friendly": tr("They warm up to you (+5)."), "cool": tr("Says nothing, looks calm."), "cutting": tr("Fans love it. They won't (-8).")}
 	for r in S.reply_options():
 		var b := UI.button((tr(str(r[1])) % ("@" + str(acc["handle"]))) + "\n" + str(hints[r[0]]), _on_reply.bind(id, str(r[0])), 13, Vector2(0, 58))
 		col.add_child(b)
@@ -4279,7 +4318,7 @@ func open_pilot(wid: int) -> void:
 	if p.is_empty():
 		return
 	Sfx.play("click")
-	var col := open_popup(str(p["name"]) + (("  " + grudge_tag(wid)) if grudge_tag(wid) != "" else ""))
+	var col := open_popup(str(p["name"]) + (("  " + GameData.rel_text(wid)) if GameData.rel_text(wid) != "" else ""))
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 14)
 	col.add_child(row)
@@ -4301,12 +4340,18 @@ func open_pilot(wid: int) -> void:
 		info.add_child(GUI.text(tr("Against you: you %d, them %d") % [int(h[0]), int(h[1])], 14, GUI.AMBER))
 	else:
 		info.add_child(GUI.text(tr("You've never fought."), 14, GUI.MUTED))
-	var g := grudge_tag(wid)
-	if g != "":
-		var gl := GUI.text({tr("(bad blood)"): tr("Bad blood both ways. Neither of you has forgotten."), tr("(rival)"): tr("You've got a score to settle with them."),
-				tr("(hates you)"): tr("They hold a grudge against you.")}.get(g, ""), 14, GUI.RED)
-		gl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		info.add_child(gl)
+	# what's between you: a number from -100 (nemesis) to +100 (best friend)
+	var rw := GameData.rel_word(wid)
+	var rv := roundi(GameData.rel_of(wid))
+	var rl := GUI.text((tr("%s %s") % [GameData.rel_text(wid), tr(rw)]).strip_edges() if rw != "" else (tr("Strangers %s") % GameData.rel_text(wid)).strip_edges(), 15,
+			GameData.rel_color(wid) if absi(rv) >= 5 else GUI.MUTED, "headb")
+	info.add_child(rl)
+	var why: String = {"NEMESIS": tr("Your nemesis. Only beating them settles it."), "RIVAL": tr("You've got a score to settle with them."),
+			"COLD": tr("No love lost between you."), "FRIENDLY": tr("They like you. Likes, replies and a tag team or two make friends."),
+			"FRIEND": tr("A friend. They'll team up with you at the Rusty Bolt."), "BEST FRIEND": tr("Your best friend in Port Ferrum.")}.get(rw, tr("Like their posts, reply kindly, team up: that makes friends. Fights and trash talk make rivals."))
+	var gl := GUI.text(why, 13, GUI.MUTED)
+	gl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	info.add_child(gl)
 	var bot: Dictionary = W.robot(wid)
 	var brow := HBoxContainer.new()
 	brow.add_theme_constant_override("separation", 14)
@@ -4337,20 +4382,8 @@ func open_pilot(wid: int) -> void:
 	if GameData.patrons_today().any(func(x): return int(x["wid"]) == wid) and GameData.can_pass_day():
 		var cb := UI.button(tr("Challenge ($%d)") % GameData.pickup_purse(str(p["tier"])), func(): close_popup(); _on_challenge(wid), 16, Vector2(0, 46))
 		popup_footer.add_child(cb)
-
-
-## How you two feel about each other: "(rival)" (you resent them), "(hates you)" (they resent
-## you), "(bad blood)" (both), or "".
-func grudge_tag(wid: int) -> String:
-	var mine := GameData.is_rival(wid)
-	var theirs := GameData.hates_me(wid)
-	if mine and theirs:
-		return tr("(bad blood)")
-	if mine:
-		return tr("(rival)")
-	if theirs:
-		return tr("(hates you)")
-	return ""
+		if GameData.can_team_up(wid):
+			popup_footer.add_child(UI.button(tr("Team up"), func(): close_popup(); _on_team_up(wid), 16, Vector2(0, 46)))
 
 
 ## Today's pilots in the pub and the TV.
@@ -4370,7 +4403,7 @@ func build_pub_cards() -> void:
 		var sub := GameData.pilot_standing(wid) + "   " + tr("Record %d-%d") % [int(pat["w"]), int(pat["l"])]
 		if int(rec[0]) + int(rec[1]) > 0:
 			sub += "   " + tr("You vs them: %d-%d") % [int(rec[0]), int(rec[1])]
-		var tag := grudge_tag(wid)
+		var tag := GameData.rel_bb(wid, true)
 		if tag != "":
 			sub += "   " + tag
 		if pat.get("hungover", false):
@@ -4378,7 +4411,9 @@ func build_pub_cards() -> void:
 		var row := make_tap_row(bot_preview(o), tr("%s · %s") % [str(pat["name"]), str(o.get("name", "?"))], sub, open_pilot.bind(wid))
 		var purse: int = GameData.pickup_purse(str(pat["tier"]))
 		row_button(row, tr("Challenge ($%d)") % purse if can else tr("Your fight's tonight"), _on_challenge.bind(wid), can, 150)
-		if tag != "":
+		if can and GameData.can_team_up(wid) and not pat.get("hungover", false):
+			row_button(row, tr("Team up"), _on_team_up.bind(wid), true, 110)
+		if GameData.rel_word(wid) in ["RIVAL", "NEMESIS", "FRIEND", "BEST FRIEND"]:
 			# a pilot with something to say to you: the stripes say "go and talk"
 			var host: Node = row
 			while host != null and not (host is Button):
@@ -4400,6 +4435,17 @@ func build_pub_cards() -> void:
 
 
 ## Challenge the pilot at the bar: tonight's pickup fight is against them.
+## A tag team pickup with a pilot at the bar (1.58): two of you against two of them.
+func _on_team_up(wid: int) -> void:
+	var err := GameData.start_tag(wid)
+	if err != "":
+		note(err, "error")
+		return
+	GameData.save_game()
+	refresh()
+	open_fight_popup()
+
+
 func _on_challenge(wid: int = -1) -> void:
 	GameData.start_pickup(wid)
 	GameData.save_game()
@@ -5077,11 +5123,7 @@ func show_table(ev: Dictionary) -> void:
 			bg = Color(1.0, 0.7, 0.2, 0.2)
 		var medal := Career.medal_of(ev, id)
 		var mark: String = tr(["", " (GOLD)", " (SILVER)", " (BRONZE)"][medal])
-		if e.has("wid"):
-			var tg := grudge_tag(int(e["wid"]))
-			if tg != "":
-				mark += "  " + tg
-		table_row([str(pos + 1), who(ev, id) + mark, "%d-%d" % [t[0], t[1]], str(t[2]), str(t[3])], widths, col, bg, int(e.get("wid", -1)))
+		table_row([str(pos + 1), who(ev, id) + mark, "%d-%d" % [t[0], t[1]], str(t[2]), str(t[3])], widths, col, bg, int(e.get("wid", -1)), 1)
 
 
 func show_bracket(ev: Dictionary) -> void:
@@ -5114,7 +5156,8 @@ func who(ev: Dictionary, id: int) -> String:
 	return tr("%s · %s") % [pilot, o.get("name", "?")]
 
 
-func table_row(cells: Array, widths: Array, col: Color, bg: Color, wid: int = -1) -> void:
+## rel_cell: the cell that gets the pilot's (+52) / (-61) after it, in green or red (-1 = none).
+func table_row(cells: Array, widths: Array, col: Color, bg: Color, wid: int = -1, rel_cell: int = -1) -> void:
 	var p := PanelContainer.new()
 	if wid >= 0:
 		# a pilot's row: tap it for their pilot card
@@ -5133,11 +5176,23 @@ func table_row(cells: Array, widths: Array, col: Color, bg: Color, wid: int = -1
 	for k in cells.size():
 		var l := UI.label(str(cells[k]), 15, col)
 		l.clip_text = true
-		if int(widths[k]) > 0:
-			l.custom_minimum_size = Vector2(float(widths[k]) * grow, 0)
-		else:
+		var host: Control = l
+		if k == rel_cell and wid >= 0 and GameData.rel_text(wid) != "":
+			# name, then the number right after it in its own colour
+			var hb := HBoxContainer.new()
+			hb.add_theme_constant_override("separation", 6)
+			hb.mouse_filter = Control.MOUSE_FILTER_IGNORE
 			l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		row.add_child(l)
+			hb.add_child(l)
+			var rv := UI.label(GameData.rel_text(wid), 14, GameData.rel_color(wid))
+			rv.size_flags_horizontal = Control.SIZE_SHRINK_END
+			hb.add_child(rv)
+			host = hb
+		if int(widths[k]) > 0:
+			host.custom_minimum_size = Vector2(float(widths[k]) * grow, 0)
+		else:
+			host.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		row.add_child(host)
 	list_box.add_child(p)
 
 
@@ -6084,8 +6139,8 @@ func open_fight_popup() -> void:
 	# who, and for how much
 	var who_p := str(o.get("pilot", ""))
 	col.add_child(GUI.text(GameData.fight_title(), 14, GUI.MUTED, "headb"))
-	var opp_line := HBoxContainer.new()
-	opp_line.add_theme_constant_override("separation", 10)
+	var opp_line := HFlowContainer.new()   # (wraps: a tag team's names are long)
+	opp_line.add_theme_constant_override("h_separation", 10)
 	col.add_child(opp_line)
 	opp_line.add_child(name_button(tr("%s, piloted by %s") % [o.get("name", "?"), who_p] if who_p != "" else str(o.get("name", "?")), int(o.get("wid", -1)), 18, GUI.YELLOW))
 	opp_line.add_child(GUI.readout(tr("Purse $%d") % GameData.current_reward(), 20, GUI.AMBER))
@@ -6093,6 +6148,20 @@ func open_fight_popup() -> void:
 		col.add_child(GUI.text(tr("Their Read %s: how fast they aim and find your weak spots.") % GameData.aim_dots(GameData.pilot_aim_level(o)), 14, GUI.TEXT))
 		if o.get("rattled", false):
 			col.add_child(GUI.text(tr("RATTLED: a bad run has got to them. Their Read is down for now."), 14, GUI.GREEN))
+	if GameData.is_tag():
+		# your tag partner, and what a tag team means for your robot
+		var ally := int(GameData.pickup.get("ally", -1))
+		var aline := HFlowContainer.new()
+		aline.add_theme_constant_override("h_separation", 10)
+		col.add_child(aline)
+		aline.add_child(GUI.text(tr("YOUR PARTNER"), 14, GUI.MUTED, "headb"))
+		var ap: Dictionary = GameData.World.pilot(ally)
+		aline.add_child(name_button(tr("%s, piloting %s") % [str(ap.get("name", "?")), str(GameData.World.robot(ally).get("name", "?"))], ally, 16, GUI.GREEN))
+		if GameData.rel_text(ally) != "":
+			aline.add_child(GUI.text(GameData.rel_text(ally), 15, GameData.rel_color(ally), "headb"))
+		var tl := GUI.text(tr("Two on two. Both robots share one heavyweight's power, with less health and punch. Fight side by side and you make a friend."), 14, GUI.CYAN)
+		tl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		col.add_child(tl)
 	# sponsors check their rules at the bell
 	for c in GameData.Contracts.st()["active"]:
 		for r in c["reqs"]:

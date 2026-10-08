@@ -154,6 +154,8 @@ static func grown(p: Dictionary, field: String) -> int:
 		mine = 1
 	elif field == "replies" and p.get("replied", false):
 		mine = 1   # your own reply counts
+	elif field == "reposts" and reposted(int(p["id"])):
+		mine = 1
 	return int(float(p.get(field, 0)) * k) + mine
 
 
@@ -208,6 +210,54 @@ static func toggle_like(id: int) -> void:
 		liked.erase(str(id))
 	else:
 		liked[str(id)] = true
+		# (1.58) liking a pilot's post warms them up a little: once a day per pilot
+		var wid := wid_of_post(id)
+		var seen: Dictionary = st().get("rel_like", {})
+		st()["rel_like"] = seen
+		var today := "%d:%d:%s" % [GameData.year, GameData.week, GameData.day]
+		if wid >= 0 and str(seen.get(str(wid), "")) != today:
+			seen[str(wid)] = today
+			GameData.rel_add(wid, REL_LIKE, GameData.REL_SOCIAL_CAP)
+
+
+## What a like, a repost, a reply or a post does to what's between you (1.58).
+const REL_LIKE := 1.0
+const REL_REPOST := 3.0
+const REL_REPLY_FRIENDLY := 5.0
+const REL_REPLY_CUTTING := -8.0
+const REL_TRASH := -10.0
+const REL_HUMBLE := 4.0
+const REL_HYPE_WATCHED := 6.0
+const REL_HUMBLE_WATCHED := 3.0
+
+
+## The world pilot behind a post (-1 = not a pilot).
+static func wid_of_post(id: int) -> int:
+	var p := find_post(id)
+	if p.is_empty():
+		return -1
+	var by := str(p["by"])
+	return int(by.substr(2)) if by.begins_with("w:") else -1
+
+
+static func reposted(id: int) -> bool:
+	return st().get("reposted", {}).has(str(id))
+
+
+## Repost somebody's post: it shows on your profile, counts as a post, and the pilot likes it.
+static func repost(id: int) -> void:
+	var p := find_post(id)
+	if p.is_empty() or reposted(id) or str(p["by"]) == "me":
+		return
+	var r: Dictionary = st().get("reposted", {})
+	st()["reposted"] = r
+	r[str(id)] = true
+	var acc := account(str(p["by"]))
+	post("me", "Reposted @%s", [str(acc["handle"])], {"kind": "quote", "id": id}, p.get("tags", []))
+	count_post()
+	var wid := wid_of_post(id)
+	if wid >= 0:
+		GameData.rel_add(wid, REL_REPOST, GameData.REL_SOCIAL_CAP)
 
 
 ## Hashtags most used over the last two weeks.
@@ -400,18 +450,26 @@ static func publish(tone: String) -> void:
 		if dr[0] == tone:
 			text = dr[1]
 	var f := float(s["followers"])
+	var watched: bool = d.get("watch", false)
+	var w1 := int(d.get("wid", -1))
+	var w2 := int(d.get("lwid", -1)) if watched else -1
 	match tone:
 		"humble":
 			f *= 1.005
+			# kind words: your opponent (or both of them, when you watched) warm up a little
+			GameData.rel_add(w1, REL_HUMBLE_WATCHED if watched else REL_HUMBLE, GameData.REL_SOCIAL_CAP)
+			GameData.rel_add(w2, REL_HUMBLE_WATCHED, GameData.REL_SOCIAL_CAP)
 		"hype":
 			f *= 1.02 if d["won"] else 0.98
+			if watched:
+				GameData.rel_add(w1, REL_HYPE_WATCHED, GameData.REL_SOCIAL_CAP)   # the winner loves it
 		"trash", "trash_w", "trash_l":
 			f *= 1.01
 			# who takes it personally: your opponent; when you watched, the winner, the loser or both
-			if tone != "trash_l" and int(d.get("wid", -1)) >= 0:
-				GameData.grudge_bump(int(d["wid"]), 1.5)
-			if tone != "trash_w" and d.get("watch", false) and int(d.get("lwid", -1)) >= 0:
-				GameData.grudge_bump(int(d["lwid"]), 1.5)
+			if tone != "trash_l":
+				GameData.rel_add(w1, REL_TRASH)
+			if tone != "trash_w":
+				GameData.rel_add(w2, REL_TRASH)
 	s["followers"] = int(round(f))
 	post("me", text, draft_args(), {}, [str(d.get("tag", ""))])
 	count_post()
@@ -447,14 +505,12 @@ static func reply(id: int, tone: String) -> void:
 	var wid := int(acc.get("wid", -1))
 	match tone:
 		"friendly":
-			if wid >= 0:
-				GameData.grudge_bump(wid, -1.0)
+			GameData.rel_add(wid, REL_REPLY_FRIENDLY, GameData.REL_SOCIAL_CAP)
 		"cool":
 			st()["followers"] = int(followers() * 1.003)
 		"cutting":
 			st()["followers"] = int(followers() * 1.01)
-			if wid >= 0:
-				GameData.grudge_bump(wid, 1.0)
+			GameData.rel_add(wid, REL_REPLY_CUTTING)
 			GameData.Contracts.on_post("trash")
 	post("me", text, ["@" + str(acc["handle"])], {}, p.get("tags", []))
 	count_post()

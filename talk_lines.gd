@@ -118,6 +118,53 @@ const PUB_RIVAL := [
 	"%s. Sit somewhere else. Or meet me at the scrapyard and make it quick.",
 ]
 
+## A friend is at the bar. (%s = your name)
+const PUB_FRIEND := [
+	"%s! Pull up a stool. Want to team up tonight? I know two clowns who need a lesson.",
+	"There's my favourite pilot. Tag team tonight, %s? You take the big one.",
+	"Good to see you, %s. First round's on me. Second round we fight together.",
+]
+
+# ---------------------------------------------------------------- relationships (1.58)
+
+## Gus, when someone turns into your nemesis. (%s = their name)
+const GUS_NEMESIS := [
+	"%s again. That's not a rival any more, kid. That's your nemesis. Beat them and it's settled.",
+	"You and %s are past rivals. Nemesis. Only a win against them settles it.",
+]
+## Gus, when you beat your nemesis. (%s = their name)
+const GUS_NEMESIS_DOWN := [
+	"You beat %s. Score settled. They're just a rival now. Sleep well tonight, kid.",
+	"That's %s dealt with. Nemesis no more. I'm buying the beers.",
+]
+## Crossing into friendship: a message from them. (%s = your name)
+const FRIEND_BORN := [
+	"Hey %s. You're alright. Need a hand some night, you know where I drink.",
+	"%s, I've got your back. Tag team any time, just ask at the Rusty Bolt.",
+	"Friends don't come easy in this city, %s. Glad I found one.",
+]
+## A friend beat you. (%s = your name)
+const FRIEND_FIGHT_WON := [
+	"No hard feelings, %s. Drinks are on me tonight.",
+	"Good fight, %s. You made me work for it.",
+]
+## You beat a friend. (%s = your name)
+const FRIEND_FIGHT_LOST := [
+	"You earned that one, %s. Next time I won't go easy.",
+	"Fair and square, %s. Still friends. Barely.",
+]
+## Your tag partner, after a win together. (%s = your name)
+const TAG_WON := [
+	"That's how it's done, %s! Same time next week?",
+	"We make a good team, %s. Remind me never to fight you.",
+	"Ha! Did you see their faces, %s? Beers on me.",
+]
+## Your tag partner, after a loss together. (%s = your name)
+const TAG_LOST := [
+	"We'll get them next time, %s. Thanks for having my back.",
+	"Rough night, %s. Still glad you were in my corner.",
+]
+
 
 static func pick(list: Array, seed_text: String) -> String:
 	return str(list[absi(hash(seed_text)) % list.size()])

@@ -551,9 +551,10 @@ func _ready() -> void:
 	player = team_p[0]
 	cpu = team_c[0]
 	var split: bool = GameData.settings.get("team_controls", "linked") == "split"
-	control_pads = team_p.size() if team_p.size() > 1 and split and touch_device else 1   # keyboard: every robot follows WASD
-	if team_p.size() > 1:
-		for k in team_p.size():
+	var humans := team_p.filter(func(f): return not f.spec.has("ai_src")).size()   # a tag partner drives itself
+	control_pads = humans if humans > 1 and split and touch_device else 1   # keyboard: every robot follows WASD
+	if humans > 1:
+		for k in humans:
 			team_p[k].tag = str(k + 1) if control_pads > 1 else "▲"
 	layout()
 	screen = get_viewport_rect().size
@@ -575,6 +576,24 @@ func _ready() -> void:
 		ai_save(f)
 	for f in team_p:
 		f.foe = cpu
+	# a tag partner (1.58): a world pilot on your side, with their own brain
+	for f in team_p:
+		if f.spec.has("ai_src") and mode != "watch":
+			var src: Dictionary = f.spec["ai_src"]
+			f.ai = {"timer": randf() * 0.3, "plan": {}, "think": maxf(THINK_MIN, float(src.get("think", 0.4)) * THINK_K),
+					"block": minf(0.85, float(src.get("block", 0.2))), "smart": float(src.get("smart", 0.0)),
+					"special_cd": 3.0 + randf(), "gadget_cd": 1.5 + randf(), "kit": {}}
+			set_aim_level(f, GameData.pilot_aim_level(src))
+			f.ai_rattled = bool(src.get("rattled", false))
+			f.pilot_name = str(src.get("pilot", ""))
+			f.foe = team_c[0]
+			ai_load(f)
+			ai_build_kit()
+			ai_save(f)
+	if GameData.is_tag() and team_c.size() > 1:
+		var foes: Array = GameData.pickup.get("foes", [])
+		for k in mini(foes.size(), team_c.size()):
+			team_c[k].pilot_name = str(GameData.World.pilot(int(foes[k])).get("name", ""))
 	if mode == "test":
 		# Gus's Junkers: each one has a silly habit instead of a brain, and there's no clock
 		for f in team_c:
@@ -1718,6 +1737,14 @@ func _process(delta: float) -> void:
 		for k in team_p.size():
 			p_ins[k] = ai_input_for(team_p[k], delta)
 		assign_foes()
+	else:
+		var any_ally := false
+		for k in team_p.size():
+			if team_p[k].spec.has("ai_src"):
+				p_ins[k] = ai_input_for(team_p[k], delta)   # your tag partner fights on its own
+				any_ally = true
+		if any_ally:
+			assign_foes()
 	var c_ins: Array = []
 	for f in team_c:
 		c_ins.append(ai_input_for(f, delta))
