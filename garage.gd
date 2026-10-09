@@ -10,6 +10,7 @@ const RobotPreview = preload("res://robot_preview.gd")
 const Specials = preload("res://specials.gd")
 const UI = preload("res://ui.gd")
 const MoveDemo = preload("res://move_demo.gd")
+const StatIcons = preload("res://stat_icons.gd")   # (1.91) stat glyphs, tap = name
 ## Garage, organised in sections:
 ##   BUILD    - your robot slot by slot. Tap a slot (or a part on the robot picture) to swap,
 ##              repair or remove it. Setups, Paint and Storage open as popups.
@@ -1154,7 +1155,7 @@ func refresh_stats() -> void:
 	var s := GameData.stats()
 	var grid := GridContainer.new()
 	grid.columns = 6
-	grid.add_theme_constant_override("h_separation", 8)
+	grid.add_theme_constant_override("h_separation", 6)
 	grid.add_theme_constant_override("v_separation", 4)
 	stats_box.add_child(grid)
 	var over: bool = s["power_used"] > s["power_output"]
@@ -1185,8 +1186,9 @@ func _seg(value: float, maximum: float, unit: float, col: Color) -> Control:
 
 
 func stat_cell(grid: GridContainer, title: String, bar: Control, value: String, col: Color) -> void:
-	var t := GUI.text(tr(title).to_upper(), 10, GUI.MUTED, "headb")
-	t.custom_minimum_size = Vector2(52, 0)
+	# (1.91) an icon instead of the word: tap it for the name
+	var t := StatIcons.icon({"Core": "core", "Power": "power", "Damage": "damage", "Speed": "speed"}.get(title, "hp"), 17)
+	t.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	grid.add_child(t)
 	bar.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	grid.add_child(bar)
@@ -1227,7 +1229,7 @@ func make_row(icon: Control, title: String, subtitle: String, parent: Control = 
 
 
 ## A part's name (with its slot as a small tag) over one line of details.
-func row_text(title: String, subtitle: String, tag: String, wrap: bool) -> VBoxContainer:
+func row_text(title: String, subtitle: String, tag: String, wrap: bool, extra: Control = null) -> VBoxContainer:
 	var info := VBoxContainer.new()
 	info.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	info.alignment = BoxContainer.ALIGNMENT_CENTER
@@ -1266,11 +1268,13 @@ func row_text(title: String, subtitle: String, tag: String, wrap: bool) -> VBoxC
 		else:
 			sl.clip_text = true
 		info.add_child(sl)
+	if extra != null:
+		info.add_child(extra)   # (1.91) stat chips under the name
 	return info
 
 
 ## A whole-row button (tap anywhere on it), with an icon, two lines of text and extra widgets.
-func make_tap_row(icon: Control, title: String, subtitle: String, cb: Callable, tag: String = "", sel: bool = false, parent: Control = null) -> Container:
+func make_tap_row(icon: Control, title: String, subtitle: String, cb: Callable, tag: String = "", sel: bool = false, parent: Control = null, extra: Control = null) -> Container:
 	var b := Button.new()
 	b.custom_minimum_size = Vector2(0, 62)
 	b.focus_mode = Control.FOCUS_NONE
@@ -1300,7 +1304,7 @@ func make_tap_row(icon: Control, title: String, subtitle: String, cb: Callable, 
 	icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	icon.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	row.add_child(icon)
-	row.add_child(row_text(title, subtitle, tag, true))
+	row.add_child(row_text(title, subtitle, tag, true, extra))
 	return row
 
 
@@ -1338,6 +1342,19 @@ const COMPARE_STATS := {
 	"back": [["output", "Power out", "", false], ["draw", "Power use", "", true]],
 	"reactor": [["output", "Power out", "", false]],
 }
+
+
+const STAT_GROUP := {"hp": "TOUGHNESS", "armor": "TOUGHNESS", "damage": "FIGHTING", "speed": "FIGHTING", "reach": "FIGHTING",
+		"aim": "HEAD", "chips": "HEAD", "output": "POWER", "draw": "POWER"}
+
+
+## A stat's icon and its name side by side (the detail pane has room for both).
+func stat_label(key: String, name: String) -> HBoxContainer:
+	var h := HBoxContainer.new()
+	h.add_theme_constant_override("separation", 4)
+	h.add_child(StatIcons.icon(key, 13))
+	h.add_child(GUI.text(name, 12, GUI.MUTED))
+	return h
 
 
 func _ctx() -> String:
@@ -1479,6 +1496,8 @@ func build_detail() -> void:
 	head.add_child(x)
 	# (1.90) who made it, and how close the robot is to that maker's set
 	maker_strip(d, inv, detail_box)
+	# (1.91) every stat at a glance as icons (tap one for its name)
+	detail_box.add_child(StatIcons.chips(GameData.part_stats(d), 15))
 	# notes and extras (traits, gadgets)
 	for n in PartNotes.notes(d, kind, health, str(p.get("uid", d["id"]))):
 		var warn := str(n).begins_with("!")
@@ -1510,9 +1529,14 @@ func build_detail() -> void:
 			var cur := GameData.equipped_inst(sl)
 			var cm := "" if cur.is_empty() else str(GameData.part_def(cur["id"]).get("maker", ""))
 			grid.add_child(GUI.text("-" if cur.is_empty() else GameData.Makers.short(cm), 12, GameData.Makers.color(cm).lightened(0.25), "headb"))
+		var group_row := func(name: String) -> void:
+			grid.add_child(GUI.text(tr(name), 11, GUI.YELLOW, "headb"))
+			for k in 1 + slots.size():
+				grid.add_child(Control.new())
 		if not GameData.UNDAMAGEABLE.has(kind):
+			group_row.call("TOUGHNESS")
 			# the health they have right now (a battered spare against a fresh one, and the other way round)
-			grid.add_child(GUI.text(tr("HP now"), 12, GUI.MUTED))
+			grid.add_child(stat_label("hp", tr("HP now")))
 			var hv: float = float(p["hp"]) if inv else float(d["hp"])
 			grid.add_child(GUI.readout("%d" % ceili(hv), 17, GUI.TEXT))
 			for sl in slots:
@@ -1520,8 +1544,13 @@ func build_detail() -> void:
 				var ch: float = 0.0 if cur.is_empty() else float(cur["hp"])
 				var dh := hv - ch
 				grid.add_child(GUI.readout("=" if absf(dh) < 0.5 else "%+d" % int(round(dh)), 17, GUI.MUTED if absf(dh) < 0.5 else (GUI.GREEN if dh > 0.0 else GUI.RED)))
+		var last_group := "TOUGHNESS" if not GameData.UNDAMAGEABLE.has(kind) else ""
 		for st in stats:
-			grid.add_child(GUI.text(tr(st[1]), 12, GUI.MUTED))
+			var grp: String = STAT_GROUP.get(str(st[0]), "")
+			if grp != last_group:
+				group_row.call(grp)
+				last_group = grp
+			grid.add_child(stat_label(str(st[0]), tr(st[1])))
 			var v := _stat_val(d, st[0])
 			grid.add_child(GUI.readout("%d%s" % [int(v), st[2]], 17, GUI.TEXT))
 			for sl in slots:
@@ -1549,6 +1578,9 @@ func build_detail() -> void:
 		b.disabled = not enabled
 		b.add_theme_color_override("font_color", col)
 		btns.add_child(b)
+	# (1.91) the compare tray: pin it, then see up to three side by side
+	var pinned := is_pinned(detail)
+	add_btn.call(tr("Unpin from compare") if pinned else tr("Pin to compare (%d/%d)") % [cmp_pins.size(), PIN_MAX], _on_pin.bind(detail), true, GUI.YELLOW if pinned else GUI.TEXT)
 	if inv:
 		var wreck := GameData.is_wreck(p)
 		if fitted_slot != "":
@@ -1751,6 +1783,14 @@ func part_icon(def: Dictionary, health: float = 1.0) -> PartIcon:
 
 
 func row_button(row: Control, text: String, cb: Callable, enabled: bool = true, width: float = 100.0) -> Button:
+	if row.has_meta("card"):
+		# (1.91) on a part card: a full-width, smaller button
+		var cb2 := UI.button(text, cb, 12, Vector2(0, 40))
+		cb2.disabled = not enabled
+		cb2.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		cb2.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		row.add_child(cb2)
+		return cb2
 	var b := UI.button(text, cb, 15, Vector2(width, 48))
 	b.disabled = not enabled
 	b.size_flags_vertical = Control.SIZE_SHRINK_CENTER
@@ -1811,7 +1851,7 @@ func maker_entries(ids: Array) -> Array:
 	var junk := ids.filter(func(i): return str(GameData.part_def(str(i)).get("maker", "")) == "").size()
 	var out := [["all", "All makers", ids.size()]]
 	for m in GameData.Makers.ORDER:
-		out.append([m, str(GameData.Makers.info(m)["name"]), int(c.get(m, 0))])
+		out.append([m, GameData.Makers.label(m), int(c.get(m, 0))])
 	out.append(["junk", "Junk", junk])
 	return out
 
@@ -1826,6 +1866,569 @@ func maker_ok(d: Dictionary) -> bool:
 func _on_maker_filter(key: String) -> void:
 	maker_filter = key
 	refresh()
+
+
+# ---------------------------------------------------------------- parts screens (1.91)
+# Storage, the dealer, the scrapyard's finds and a slot's lists share these: part cards (or rows, for
+# big text and small screens), one filter / sort bar remembered per screen, stat icons, and the compare tray.
+
+const PF_SORTS := [["new", "Newest"], ["price", "Price"], ["grade", "Grade"], ["health", "Health"], ["damage", "Damage"]]
+const PF_CONDS := [["all", "All"], ["ready", "Ready to fit"], ["damaged", "Damaged"], ["wreck", "Wrecks"]]
+const PIN_MAX := 3
+var cmp_pins: Array = []   # the compare tray: [{"src": "inv", "uid": n} or {"src": "shop", "id": id}], up to PIN_MAX
+
+
+func pf_get(screen: String, field: String, def := "all") -> String:
+	var all: Dictionary = GameData.settings.get("part_filters", {})
+	return str(all.get(screen, {}).get(field, def))
+
+
+func pf_store(screen: String, field: String, v: String) -> void:
+	var all: Dictionary = GameData.settings.get("part_filters", {})
+	var one: Dictionary = all.get(screen, {})
+	one[field] = v
+	all[screen] = one
+	GameData.settings["part_filters"] = all
+	GameData.save_settings()
+
+
+func pf_set(screen: String, field: String, v: String) -> void:
+	pf_store(screen, field, v)
+	PlayLog.add("filter", "%s %s = %s" % [screen, field, v])
+	refresh()
+
+
+## Cards or rows: the player's pick, or by itself cards unless the text is huge or the screen narrow.
+func cards_on() -> bool:
+	var v := str(GameData.settings.get("parts_view", "auto"))
+	if v == "auto":
+		return int(GameData.settings.get("text", UI.TEXT_DEFAULT)) < 4 and get_viewport_rect().size.x >= 900.0
+	return v == "cards"
+
+
+func _on_parts_view() -> void:
+	GameData.settings["parts_view"] = "list" if cards_on() else "cards"
+	GameData.save_settings()
+	refresh()
+
+
+## items: [{"d": def, "p": inst or {}, "i": order}] -> the ones this screen's filters let through, sorted.
+func pf_apply(screen: String, items: Array) -> Array:
+	var kind := pf_get(screen, "kind")
+	var mk := pf_get(screen, "maker")
+	var gr := pf_get(screen, "grade")
+	var cond := pf_get(screen, "cond")
+	var out: Array = []
+	for it in items:
+		var d: Dictionary = it["d"]
+		var p: Dictionary = it["p"]
+		if screen != "slot" and kind != "all" and str(d["kind"]) != kind:
+			continue
+		if mk != "all":
+			var m := str(d.get("maker", ""))
+			if not ((m == "" and mk == "junk") or m == mk):
+				continue
+		if gr != "all" and str(int(d.get("grade", 0))) != gr:
+			continue
+		if cond != "all" and not p.is_empty() and not cond_ok(cond, d, p):
+			continue
+		out.append(it)
+	var sort := pf_get(screen, "sort", "new")
+	var key := func(it: Dictionary) -> float:
+		var d: Dictionary = it["d"]
+		var p: Dictionary = it["p"]
+		match sort:
+			"price":
+				return float(d["cost"])
+			"grade":
+				return float(d.get("grade", 0)) * 1000000.0 + float(d["cost"])
+			"health":
+				return float(p["hp"]) if not p.is_empty() else float(d["hp"])
+			"damage":
+				return (100.0 + float(d["damage"])) * float(d.get("gm", 1.0)) + float(d["output"]) * 0.01
+		return float(p["uid"]) if not p.is_empty() else -float(it.get("i", 0))
+	out.sort_custom(func(a, b): return key.call(a) > key.call(b))
+	return out
+
+
+func cond_ok(cond: String, d: Dictionary, p: Dictionary) -> bool:
+	var wreck := GameData.is_wreck(p)
+	var h := 1.0 if GameData.UNDAMAGEABLE.has(d["kind"]) else GameData.hp_ratio(p)
+	match cond:
+		"wreck":
+			return wreck
+		"damaged":
+			return not wreck and h < 0.999
+		"ready":
+			return not wreck and h >= 0.999
+	return true
+
+
+## A "Maker: Old Iron (3) ▾" dropdown that sets one of this screen's filters. entries: [[key, label, count]] (no count = always shown).
+func pf_drop(bar: Control, screen: String, field: String, entries: Array, prefix: String) -> void:
+	var def := "new" if field == "sort" else "all"
+	var cur := pf_get(screen, field, def)
+	var shown: Array = entries.filter(func(e): return e.size() < 3 or e[0] == "all" or int(e[2]) > 0 or e[0] == cur)
+	if not shown.any(func(e): return e[0] == cur):
+		cur = def
+		pf_store(screen, field, def)   # that category ran empty: back to everything, quietly
+	var ob := OptionButton.new()
+	ob.custom_minimum_size = Vector2(0, 46)
+	ob.add_theme_font_size_override("font_size", UI.tsz(13))
+	ob.get_popup().add_theme_font_size_override("font_size", UI.px(22))
+	ob.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
+	ob.focus_mode = Control.FOCUS_NONE
+	for i in shown.size():
+		var e: Array = shown[i]
+		var t := "%s: %s" % [tr(prefix), tr(str(e[1]))]
+		if e.size() >= 3 and field != "sort":
+			t += " (%d)" % int(e[2])
+		ob.add_item(t, i)
+		if e[0] == cur:
+			ob.select(i)
+	ob.item_selected.connect(func(i): pf_set(screen, field, str(shown[i][0])))
+	if cur != def and field != "sort":
+		ob.add_theme_color_override("font_color", GUI.YELLOW)   # a filter is on: say so
+	bar.add_child(ob)
+
+
+## The one bar over a parts list: Show, Maker, Grade, Condition, Sort, and Cards / List.
+## extra_kinds: more Show entries ([key, label, count]: chips, controllers).
+func part_filter_bar(screen: String, items: Array, extra_kinds: Array = [], parent: Control = null) -> HFlowContainer:
+	var bar := flow_bar(parent)
+	if screen != "slot":
+		var kinds: Array = items.map(func(it): return str(it["d"]["kind"]))
+		var total := items.size()
+		for e in extra_kinds:
+			total += int(e[2])
+		var ke := [["all", "All", total]]
+		for k in GameData.KINDS:
+			ke.append([k, GameData.KIND_NAMES[k], kinds.count(k)])
+		ke.append_array(extra_kinds)
+		pf_drop(bar, screen, "kind", ke, "Show")
+	var me := maker_entries(items.map(func(it): return it["d"]["id"]))
+	me[0][1] = "All"
+	pf_drop(bar, screen, "maker", me, "Maker")
+	var ge := [["all", "All", items.size()]]
+	for g in GameData.GRADES.size():
+		ge.append([str(g), GameData.GRADES[g], items.filter(func(it): return int(it["d"].get("grade", 0)) == g).size()])
+	pf_drop(bar, screen, "grade", ge, "Grade")
+	var insts: Array = items.filter(func(it): return not it["p"].is_empty())
+	if not insts.is_empty():
+		var ce: Array = []
+		for c in PF_CONDS:
+			ce.append([c[0], c[1], insts.size() if c[0] == "all" else insts.filter(func(it): return cond_ok(c[0], it["d"], it["p"])).size()])
+		pf_drop(bar, screen, "cond", ce, "Condition")
+	var se: Array = []
+	for so in PF_SORTS:
+		if so[0] == "health" and insts.is_empty():
+			continue
+		se.append([so[0], so[1]])
+	pf_drop(bar, screen, "sort", se, "Sort")
+	var vb := UI.button(tr("View: List") if cards_on() else tr("View: Cards"), _on_parts_view, 13, Vector2(0, 46))
+	vb.tooltip_text = tr("Cards or rows. Rows fit more on small screens and with big text.")
+	bar.add_child(vb)
+	compare_tray(parent)
+	return bar
+
+
+## A part's maker as a stat chip: logo and short name, tap = who they are and their set perk.
+func maker_chip(d: Dictionary) -> Array:
+	var m := str(d.get("maker", ""))
+	if m == "":
+		return ["mk:", tr("JUNK"), null, tr("JUNK: nobody's name is on it.")]
+	var M = GameData.Makers
+	var inf: Dictionary = M.info(m)
+	return ["mk:" + m, M.short(m), null, "%s. %s" % [str(inf["name"]), tr("Set of %d: %s. %s") % [M.SET_AT, tr(str(inf["perk_name"])), tr(str(inf["perk"]))]]]
+
+
+## The chips for a part: its maker, then its stats (short = cards: the ones that tell parts apart).
+func part_chips(d: Dictionary, short := false) -> Array:
+	return [maker_chip(d)] + GameData.part_stats(d, short)
+
+
+## Against what's in the slot now, as chips: "+12" green when better, "-5%" red when worse.
+func delta_chips(d: Dictionary, slot: String) -> Array:
+	var cur := GameData.equipped_inst(slot)
+	var cd: Dictionary = {} if cur.is_empty() else GameData.part_def(cur["id"])
+	var out: Array = [maker_chip(d)]
+	for st in COMPARE_STATS.get(str(d["kind"]), []):
+		var diff := _stat_val(d, st[0]) - _stat_val(cd, st[0])
+		if absf(diff) < 0.5:
+			continue
+		var good: bool = (diff < 0.0) if st[3] else (diff > 0.0)
+		out.append([str(st[0]), "%+d%s" % [int(diff), st[2]], GUI.GREEN if good else GUI.RED,
+				tr("%s against what's fitted: %+d%s") % [tr(StatIcons.name_of(str(st[0]))), int(diff), st[2]]])
+	return out
+
+
+## One part in a list, as a card or a row. p = the part you own ({} for shop stock). Returns where the
+## caller adds its buttons (the row, or the card's button strip).
+func part_entry(d: Dictionary, p: Dictionary, title: String, tag: String, cb: Callable, sel: bool, chips: Array,
+		line := "", parent: Control = null) -> Container:
+	var health := 1.0 if p.is_empty() else (0.0 if GameData.is_wreck(p) else GameData.hp_ratio(p))
+	var hurt := not GameData.UNDAMAGEABLE.has(str(d["kind"]))
+	if not cards_on():
+		var row := make_tap_row(part_icon(d, health), title, line, cb, tag, sel, parent, StatIcons.chips(chips, 13))
+		if hurt:
+			if p.is_empty():
+				var hb := GUI.SegBar.new()
+				hb.setup(float(d["hp"]), float(d["hp"]), GUI.GREEN)
+				hb.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+				hb.mouse_filter = Control.MOUSE_FILTER_IGNORE
+				row.add_child(hb)
+			else:
+				row.add_child(hp_widget(p))
+		return row
+	# a card: picture, name, health, stat icons, buttons
+	var host: Control = parent if parent != null else list_box
+	var flow: HFlowContainer = null
+	if host.get_child_count() > 0:
+		var last := host.get_child(host.get_child_count() - 1)
+		if last is HFlowContainer and last.has_meta("cards") and not last.is_queued_for_deletion():
+			flow = last
+	if flow == null:
+		flow = HFlowContainer.new()
+		flow.set_meta("cards", true)
+		flow.add_theme_constant_override("h_separation", 8)
+		flow.add_theme_constant_override("v_separation", 8)
+		host.add_child(flow)
+	var cw := roundf(206.0 * UI.tk(15.0) / 15.0)
+	var b := Button.new()
+	b.custom_minimum_size = Vector2(cw, 120)
+	b.focus_mode = Control.FOCUS_NONE
+	b.pressed.connect(func(): Sfx.play("click", 0.05))
+	b.pressed.connect(func(): PlayLog.add("card", title))
+	b.pressed.connect(cb)
+	var mc := GameData.Makers.color(str(d.get("maker", "")))
+	var n := GUI.box(GUI.ROW, 10, 4)
+	n.border_color = mc.darkened(0.25) if str(d.get("maker", "")) != "" else GUI.BTN_EDGE
+	n.border_width_top = 3
+	var h := n.duplicate()
+	h.bg_color = GUI.ROW.lightened(0.05)
+	var pr := n.duplicate()
+	pr.border_color = GUI.YELLOW
+	pr.set_border_width_all(2)
+	for st in [["normal", n], ["hover", h], ["pressed", pr], ["hover_pressed", pr]]:
+		b.add_theme_stylebox_override(st[0], st[1])
+	GUI.mark_new(b, sel)
+	flow.add_child(b)
+	var v := VBoxContainer.new()
+	v.set_anchors_preset(Control.PRESET_FULL_RECT)
+	v.offset_left = 7
+	v.offset_right = -7
+	v.offset_top = 7
+	v.offset_bottom = -6
+	v.add_theme_constant_override("separation", 3)
+	v.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	b.add_child(v)
+	v.minimum_size_changed.connect(func(): b.custom_minimum_size.y = maxf(120.0, v.get_combined_minimum_size().y + 13.0))
+	var top := HBoxContainer.new()
+	top.add_theme_constant_override("separation", 6)
+	top.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	v.add_child(top)
+	var icon := part_icon(d, health)
+	icon.custom_minimum_size = Vector2(76, 76)
+	icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	top.add_child(icon)
+	var names := VBoxContainer.new()
+	names.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	names.add_theme_constant_override("separation", 0)
+	names.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	top.add_child(names)
+	if tag != "":
+		var tg := GUI.text(tag.strip_edges().to_upper(), 10, GUI.MUTED, "headb")
+		tg.clip_text = true
+		names.add_child(tg)
+	var nl := GUI.text(title.strip_edges(), 14, GUI.TEXT, "bold")
+	nl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	nl.max_lines_visible = 3
+	names.add_child(nl)
+	if not p.is_empty() and GameData.is_wreck(p):
+		names.add_child(GUI.text(tr("WRECKED"), 11, GUI.RED, "headb"))
+	elif p.is_empty():
+		names.add_child(GUI.readout("$%d" % int(d["cost"]), 18, GUI.AMBER))
+	if hurt:
+		var hb := GUI.SegBar.new()
+		var hp := float(d["hp"]) if p.is_empty() else float(p["hp"])
+		hb.setup(hp, float(d["hp"]), GUI.GREEN if health > 0.7 else (GUI.AMBER if health > 0.4 else GUI.RED))
+		hb.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		var hr := HBoxContainer.new()
+		hr.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		hr.add_theme_constant_override("separation", 4)
+		hr.add_child(hb)
+		var hn := GUI.readout("%d" % ceili(hp) if p.is_empty() else "%d/%d" % [ceili(hp), int(d["hp"])], 14, GUI.MUTED)
+		hn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		hn.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+		hr.add_child(hn)
+		v.add_child(hr)
+	if line != "":
+		var ll: Control
+		if line.contains("[color="):
+			var rl := RichTextLabel.new()
+			rl.bbcode_enabled = true
+			rl.fit_content = true
+			rl.scroll_active = false
+			rl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+			rl.add_theme_font_override("normal_font", GUI.body())
+			rl.add_theme_font_size_override("normal_font_size", UI.px(11))
+			rl.add_theme_color_override("default_color", Color(0.68, 0.68, 0.75))
+			rl.text = line
+			ll = rl
+		else:
+			var lb := GUI.text(line, 11, Color(0.68, 0.68, 0.75))
+			lb.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+			ll = lb
+		ll.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		v.add_child(ll)
+	v.add_child(StatIcons.chips(chips, 13))
+	var acts := HFlowContainer.new()
+	acts.set_meta("card", true)
+	acts.add_theme_constant_override("h_separation", 4)
+	acts.add_theme_constant_override("v_separation", 4)
+	acts.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	acts.size_flags_vertical = Control.SIZE_EXPAND_FILL | Control.SIZE_SHRINK_END
+	v.add_child(acts)
+	return acts
+
+
+# ---------------------------------------------------------------- the compare tray (1.91)
+
+func pin_of(x: Dictionary) -> Dictionary:
+	return {"src": "inv", "uid": int(x["uid"])} if x.get("src", "") == "inv" else {"src": "shop", "id": str(x["id"])}
+
+
+func is_pinned(x: Dictionary) -> bool:
+	return cmp_pins.has(pin_of(x))
+
+
+## The pinned parts that still exist: [{"d", "p", "pin"}].
+func pinned_parts() -> Array:
+	var out: Array = []
+	for pin in cmp_pins.duplicate():
+		if pin["src"] == "inv":
+			var p := GameData.inst(int(pin["uid"]))
+			if p.is_empty():
+				cmp_pins.erase(pin)
+				continue
+			out.append({"d": GameData.part_def(p["id"]), "p": p, "pin": pin})
+		else:
+			if not GameData.shop_stock.has(pin["id"]):
+				cmp_pins.erase(pin)
+				continue
+			out.append({"d": GameData.part_def(pin["id"]), "p": {}, "pin": pin})
+	return out
+
+
+func _on_pin(x: Dictionary) -> void:
+	var pin := pin_of(x)
+	if cmp_pins.has(pin):
+		cmp_pins.erase(pin)
+	else:
+		cmp_pins.append(pin)
+		if cmp_pins.size() > PIN_MAX:
+			cmp_pins.pop_front()
+		note(tr("Pinned to compare (%d of %d).") % [cmp_pins.size(), PIN_MAX])
+	refresh()
+
+
+func _on_pins_clear() -> void:
+	cmp_pins.clear()
+	refresh()
+
+
+## The tray over a parts list: the pinned parts' pictures, Compare ›, Clear.
+func compare_tray(parent: Control = null) -> void:
+	var pins := pinned_parts()
+	if pins.is_empty():
+		return
+	var panel := PanelContainer.new()
+	var sb := GUI.box(Color(0.12, 0.11, 0.06), 8, 6)
+	sb.border_color = GUI.YELLOW.darkened(0.3)
+	sb.set_border_width_all(1)
+	panel.add_theme_stylebox_override("panel", sb)
+	(parent if parent else list_box).add_child(panel)
+	var row := HFlowContainer.new()
+	row.add_theme_constant_override("h_separation", 6)
+	panel.add_child(row)
+	var t := GUI.text(tr("COMPARE"), 13, GUI.YELLOW, "headb")
+	t.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	row.add_child(t)
+	for it in pins:
+		var ib := Button.new()
+		ib.custom_minimum_size = Vector2(48, 48)
+		ib.flat = true
+		ib.focus_mode = Control.FOCUS_NONE
+		ib.tooltip_text = str(it["d"]["name"])
+		ib.pressed.connect(_on_detail.bind(it["pin"]))
+		var ic := part_icon(it["d"], 1.0 if it["p"].is_empty() else GameData.hp_ratio(it["p"]))
+		ic.set_anchors_preset(Control.PRESET_FULL_RECT)
+		ic.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		ib.add_child(ic)
+		row.add_child(ib)
+	row_button(row, tr("Side by side ›"), open_compare, true, 150).add_theme_color_override("font_color", GUI.YELLOW)
+	row_button(row, tr("Clear"), _on_pins_clear, true, 80)
+
+
+const CMP_ROWS := [["hp", "", false], ["gm", "x", false], ["armor", "%", false], ["damage", "%", false], ["speed", "%", false],
+		["reach", "%", false], ["aim", "%", false], ["aim_in", "s", true], ["scan", "s", true], ["chips", "", false],
+		["output", "", false], ["draw", "", true], ["cost", "$", false]]
+
+
+func _cmp_val(d: Dictionary, key: String) -> float:
+	match key:
+		"gm":
+			return float(d.get("gm", 1.0))
+		"aim_in", "scan":
+			if str(d.get("kind", "")) != "head":
+				return NAN
+			return float(GameData.head_times(d)[0 if key == "aim_in" else 1])
+		"reach":
+			return float(GameData.reach_pct(d)) if str(d.get("kind", "")) in ["arm", "leg"] else NAN
+		"chips":
+			return float(d.get("chips", 0)) if str(d.get("kind", "")) == "head" else NAN
+	return float(d.get(key, 0))
+
+
+## The pinned parts side by side (and what's fitted for the first one's kind), best number in green.
+func open_compare() -> void:
+	var pins := pinned_parts()
+	if pins.is_empty():
+		return
+	var cols: Array = []
+	for it in pins:
+		cols.append({"d": it["d"], "p": it["p"], "pin": it["pin"], "label": tr("YOURS") if not it["p"].is_empty() else tr("SHOP")})
+	var kind := str(pins[0]["d"]["kind"])
+	var fitted := 0
+	for sl in slots_for(kind):
+		var cur := GameData.equipped_inst(sl)
+		if cur.is_empty() or fitted >= 4 - cols.size() or pins.any(func(it): return not it["p"].is_empty() and int(it["p"]["uid"]) == int(cur["uid"])):
+			continue
+		cols.append({"d": GameData.part_def(cur["id"]), "p": cur, "label": tr("FITTED · %s") % tr(SHORT_SLOT.get(sl, GameData.SLOT_NAMES[sl])).to_upper()})
+		fitted += 1
+	var col := open_popup("SIDE BY SIDE")
+	var grid := GridContainer.new()
+	grid.columns = 1 + cols.size()
+	grid.add_theme_constant_override("h_separation", 14)
+	grid.add_theme_constant_override("v_separation", 4)
+	col.add_child(grid)
+	grid.add_child(Control.new())
+	for c in cols:
+		var v := VBoxContainer.new()
+		v.add_theme_constant_override("separation", 1)
+		v.custom_minimum_size.x = 130
+		v.add_child(GUI.text(str(c["label"]), 10, GUI.YELLOW if str(c["label"]).begins_with(tr("FITTED")) else GUI.MUTED, "headb"))
+		var ic := part_icon(c["d"], 1.0 if c["p"].is_empty() else GameData.hp_ratio(c["p"]))
+		ic.custom_minimum_size = Vector2(84, 84)
+		v.add_child(ic)
+		var nl := GUI.text(str(c["d"]["name"]), 13, GUI.TEXT, "bold")
+		nl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		nl.custom_minimum_size.x = 130
+		v.add_child(nl)
+		if c.has("pin"):
+			var ub := UI.button(tr("Unpin"), _on_unpin.bind(c["pin"]), 12, Vector2(0, 36))
+			ub.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+			v.add_child(ub)
+		grid.add_child(v)
+	# maker
+	grid.add_child(GUI.text(tr("Maker"), 12, GUI.MUTED, "headb"))
+	for c in cols:
+		grid.add_child(StatIcons.chips([maker_chip(c["d"])], 14))
+	# health right now
+	grid.add_child(StatIcons.icon("hp", 15))
+	var best_hp := -1.0
+	for c in cols:
+		best_hp = maxf(best_hp, float(c["d"]["hp"]) if c["p"].is_empty() else float(c["p"]["hp"]))
+	for c in cols:
+		var hv := float(c["d"]["hp"]) if c["p"].is_empty() else float(c["p"]["hp"])
+		grid.add_child(GUI.readout(("%d" % ceili(hv)) if c["p"].is_empty() else "%d/%d" % [ceili(hv), int(c["d"]["hp"])], 18, GUI.GREEN if hv >= best_hp - 0.5 and cols.size() > 1 else GUI.TEXT))
+	for r in CMP_ROWS:
+		var key: String = r[0]
+		if key == "hp":
+			continue
+		var vals: Array = cols.map(func(c): return _cmp_val(c["d"], key))
+		if vals.all(func(x): return is_nan(x) or (absf(x) < 0.001 and key != "cost") or (key == "gm" and x <= 1.001)):
+			continue
+		var real: Array = vals.filter(func(x): return not is_nan(x))
+		var best: float = real.min() if r[2] else real.max()
+		grid.add_child(StatIcons.icon("price" if key == "cost" else key, 15))
+		for x in vals:
+			if is_nan(x):
+				grid.add_child(GUI.text("-", 14, GUI.MUTED))
+				continue
+			var txt := ""
+			match r[1]:
+				"x":
+					txt = "x%.1f" % x
+				"s":
+					txt = "%.1fs" % x
+				"$":
+					txt = "$%d" % int(x)
+				"%":
+					txt = ("%+d%%" if key in ["damage", "speed", "aim"] else "%d%%") % int(x)
+				_:
+					txt = "%d" % int(x)
+			var good: bool = absf(x - best) < 0.01 and real.size() > 1 and real.any(func(o): return absf(o - best) >= 0.01) and key != "cost"
+			grid.add_child(GUI.readout(txt, 18, GUI.GREEN if good else GUI.TEXT))
+	# traits and gadgets in words
+	for c in cols:
+		var extra: Array = GameData.part_stat_text(c["d"]).split("  |  ")
+		for k in range(1, extra.size()):
+			var el := GUI.text("%s: %s" % [str(c["d"]["name"]), str(extra[k])], 12, GUI.CYAN)
+			el.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+			col.add_child(el)
+	col.add_child(GUI.text(tr("Green = the best of the ones shown. Tap an icon for its name."), 12, GUI.MUTED))
+	await get_tree().process_frame
+	_fit_popup()
+
+
+func _on_unpin(pin: Dictionary) -> void:
+	cmp_pins.erase(pin)
+	close_popup()
+	refresh()
+	if not cmp_pins.is_empty():
+		open_compare()
+
+
+# ---------------------------------------------------------------- the robot's makers (1.91)
+
+## On Bay > Robot: who built the robot ("Old Iron 3 · Volta 2" as logo chips), the sets that are on,
+## and the ones a single part away.
+func makers_panel(ids: Array, parent: Control = null) -> void:
+	var M = GameData.Makers
+	var c: Dictionary = M.counts(ids)
+	if c.is_empty():
+		return
+	var box := VBoxContainer.new()
+	box.add_theme_constant_override("separation", 1)
+	(parent if parent else list_box).add_child(box)
+	var chips: Array = []
+	for m in M.ORDER:
+		var n := int(c.get(m, 0))
+		if n <= 0:
+			continue
+		var on: bool = n >= M.SET_AT
+		var inf: Dictionary = M.info(m)
+		chips.append(["mk:" + m, "%d/%d" % [n, M.SET_AT], GUI.GREEN if on else null,
+				"%s: %d %s. %s: %s" % [str(inf["name"]), n, tr("parts") if n != 1 else tr("part"), tr(str(inf["perk_name"])), tr(str(inf["perk"]))]])
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 6)
+	box.add_child(row)
+	var t := GUI.text(tr("MAKERS"), 11, GUI.MUTED, "headb")
+	t.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	row.add_child(t)
+	row.add_child(StatIcons.chips(chips, 14))
+	for m in M.ORDER:
+		var n := int(c.get(m, 0))
+		var inf: Dictionary = M.info(m)
+		if n >= M.SET_AT:
+			var l := GUI.text(tr("SET ON: %s. %s") % [tr(str(inf["perk_name"])), tr(str(inf["perk"]))], 12, GUI.GREEN, "headb")
+			l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+			box.add_child(l)
+		elif n == M.SET_AT - 1:
+			var l := GUI.text(tr("One more %s part wakes %s: %s") % [M.label(m), tr(str(inf["perk_name"])), tr(str(inf["perk"]))], 12, GUI.CYAN)
+			l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+			box.add_child(l)
 
 
 func kind_entries(kinds: Array, all_label: String) -> Array:
@@ -1993,12 +2596,8 @@ func build_overview() -> void:
 	var pad := Control.new()
 	pad.custom_minimum_size = Vector2(100, 0)
 	key.add_child(pad)
-	# (1.90) the robot's makers and the sets that are on
-	var mkl := makers_line(GameData.equipped_ids().values())
-	if mkl != "":
-		var ml := GUI.text(mkl, 12, GUI.CYAN, "headb")
-		ml.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		list_box.add_child(ml)
+	# (1.90/1.91) the robot's makers as logo chips, the sets that are on, and the ones a part away
+	makers_panel(GameData.equipped_ids().values())
 	for slot in GameData.SLOTS:
 		if not GameData.slot_available(slot):
 			continue   # extra heads/arms need a torso with mounts for them
@@ -2010,7 +2609,8 @@ func build_overview() -> void:
 			continue
 		var d := GameData.part_def(p["id"])
 		var off_note := GameData.off_label_text(d, slot)
-		var row := make_tap_row(part_icon(d, GameData.hp_ratio(p)), d["name"], job_line("m", slot, p) + (part_info(d) if off_note == "" else "[color=#f2b84a]%s[/color]" % (tr("OFF-LABEL") + ": " + off_note)), _on_slot.bind(slot), slot_name)
+		var row := make_tap_row(part_icon(d, GameData.hp_ratio(p)), d["name"], job_line("m", slot, p).strip_edges() + ("" if off_note == "" else "[color=#f2b84a]%s[/color]" % (tr("OFF-LABEL") + ": " + off_note)),
+				_on_slot.bind(slot), slot_name, false, null, StatIcons.chips(part_chips(d, true), 13))
 		if not GameData.UNDAMAGEABLE.has(d["kind"]):
 			row.add_child(hp_widget(p))
 			var c := GameData.repair_cost(p)
@@ -3582,7 +4182,8 @@ func build_slot(slot: String) -> void:
 	else:
 		var d := GameData.part_def(p["id"])
 		var off_t := GameData.off_label_text(d, slot)
-		var row := make_row(part_icon(d, GameData.hp_ratio(p)), d["name"], part_info(d) if off_t == "" else "[color=#f2b84a]%s[/color]" % (tr("OFF-LABEL") + ": " + off_t))
+		var row := make_tap_row(part_icon(d, GameData.hp_ratio(p)), d["name"], "" if off_t == "" else "[color=#f2b84a]%s[/color]" % (tr("OFF-LABEL") + ": " + off_t),
+				_on_detail.bind({"src": "inv", "uid": p["uid"]}), "", is_detail("inv", p["uid"]), null, StatIcons.chips(part_chips(d), 13))
 		var c := GameData.repair_cost(p)
 		if c > 0:
 			row_button(row, tr("Fix $%d · %s") % [c, GameData.hours_text(GameData.repair_hours(p))], _on_repair.bind(p["uid"]), GameData.can_repair(c), 130).add_theme_color_override("font_color", GUI.AMBER)
@@ -3598,34 +4199,48 @@ func build_slot(slot: String) -> void:
 	for sp in GameData.spares():
 		if GameData.part_def(sp["id"])["kind"] == kind:
 			(wrecks if GameData.is_wreck(sp) else options).append(sp)
-	section("Swap in from storage:" if not options.is_empty() else tr("No spare %s in storage.") % tr(str(GameData.KIND_NAMES[kind])).to_lower())
-	for sp in options:
-		var d := GameData.part_def(sp["id"])
-		var row := make_tap_row(part_icon(d, GameData.hp_ratio(sp)), d["name"] + ("" if d["shop"] else tr("  (rare)")), delta_text(d, slot),
-				_on_detail.bind({"src": "inv", "uid": sp["uid"]}), "", is_detail("inv", sp["uid"]))
-		if not GameData.UNDAMAGEABLE.has(d["kind"]):
-			row.add_child(hp_widget(sp))
-		row_button(row, tr("Fit · %s") % GameData.hours_text(GameData.swap_hours(d)), _on_equip.bind(sp["uid"], slot), true, 110)
-	for sp in wrecks:
-		var d := GameData.part_def(sp["id"])
-		var c := GameData.repair_cost(sp)
-		var row := make_tap_row(part_icon(d, 0.0), d["name"] + tr("  (WRECKED)"), tr("Rebuild it to use it again."),
-				_on_detail.bind({"src": "inv", "uid": sp["uid"]}), "", is_detail("inv", sp["uid"]))
-		row_button(row, tr("Rebuild $%d · %s") % [c, GameData.hours_text(GameData.repair_hours(sp))], _on_repair.bind(sp["uid"]), GameData.can_repair(c), 160).add_theme_color_override("font_color", GUI.AMBER)
 	# off-label: other kinds of part that can stand in here (a leg for an arm, a reactor on the shoulder...)
 	var offs: Array = []
 	for sp in GameData.spares():
 		var od := GameData.part_def(sp["id"])
 		if od["kind"] != kind and GameData.fits(od, slot) and not GameData.is_wreck(sp):
 			offs.append(sp)
-	if not offs.is_empty():
+	var for_sale: Array = GameData.shop_stock.filter(func(id): return GameData.part_def(id)["kind"] == kind)
+	if not GameData.unlocked("shop"):
+		for_sale = []
+	# (1.91) the same filter / sort bar as Storage (no Show: it's this slot's kind), when there's a list to sort
+	var to_item := func(sp): return {"d": GameData.part_def(sp["id"]), "p": sp}
+	var all_items: Array = (options + wrecks + offs).map(to_item)
+	for i in for_sale.size():
+		all_items.append({"d": GameData.part_def(for_sale[i]), "p": {}, "i": i})
+	if all_items.size() > 3:
+		part_filter_bar("slot", all_items)
+	else:
+		compare_tray()
+	var opt_items := pf_apply("slot", options.map(to_item)) if all_items.size() > 3 else options.map(to_item)
+	var wreck_items := pf_apply("slot", wrecks.map(to_item)) if all_items.size() > 3 else wrecks.map(to_item)
+	section("Swap in from storage:" if not options.is_empty() else tr("No spare %s in storage.") % tr(str(GameData.KIND_NAMES[kind])).to_lower())
+	for it in opt_items:
+		var sp: Dictionary = it["p"]
+		var d: Dictionary = it["d"]
+		var row := part_entry(d, sp, str(d["name"]) + ("" if d["shop"] else tr("  (rare)")), "", _on_detail.bind({"src": "inv", "uid": sp["uid"]}),
+				is_detail("inv", sp["uid"]), delta_chips(d, slot), tr("vs fitted:") if not cards_on() else "")
+		row_button(row, tr("Fit · %s") % GameData.hours_text(GameData.swap_hours(d)), _on_equip.bind(sp["uid"], slot), true, 110)
+	for it in wreck_items:
+		var sp: Dictionary = it["p"]
+		var d: Dictionary = it["d"]
+		var c := GameData.repair_cost(sp)
+		var row := part_entry(d, sp, str(d["name"]) + (tr("  (WRECKED)") if not cards_on() else ""), "", _on_detail.bind({"src": "inv", "uid": sp["uid"]}),
+				is_detail("inv", sp["uid"]), [maker_chip(d)], tr("Rebuild it to use it again."))
+		row_button(row, tr("Rebuild $%d · %s") % [c, GameData.hours_text(GameData.repair_hours(sp))], _on_repair.bind(sp["uid"]), GameData.can_repair(c), 160).add_theme_color_override("font_color", GUI.AMBER)
+	var off_items := pf_apply("slot", offs.map(to_item)) if all_items.size() > 3 else offs.map(to_item)
+	if not off_items.is_empty():
 		section(tr("Off-label, for when you're short:"))
-		for sp in offs:
-			var d := GameData.part_def(sp["id"])
-			var row := make_tap_row(part_icon(d, GameData.hp_ratio(sp)), d["name"], "[color=#f2b84a]" + GameData.off_label_text(d, slot) + "[/color]",
-					_on_detail.bind({"src": "inv", "uid": sp["uid"]}), tr(str(d["kind"]).to_upper()), is_detail("inv", sp["uid"]))
-			if not GameData.UNDAMAGEABLE.has(d["kind"]):
-				row.add_child(hp_widget(sp))   # (1.83) off-label spares show their health like any other
+		for it in off_items:
+			var sp: Dictionary = it["p"]
+			var d: Dictionary = it["d"]
+			var row := part_entry(d, sp, str(d["name"]), tr(str(d["kind"]).to_upper()), _on_detail.bind({"src": "inv", "uid": sp["uid"]}),
+					is_detail("inv", sp["uid"]), [maker_chip(d)], "[color=#f2b84a]" + GameData.off_label_text(d, slot) + "[/color]")
 			row_button(row, tr("Fit · %s") % GameData.hours_text(GameData.swap_hours(d)), _on_equip.bind(sp["uid"], slot), true, 110)
 	# never stuck: if this slot is empty and there's nothing to fit, Gus has some junk lying around
 	if p.is_empty() and options.is_empty() and slot in ["head", "torso"]:
@@ -3633,14 +4248,18 @@ func build_slot(slot: String) -> void:
 		var jd := GameData.part_def(GameData.STARTER[slot])
 		var row := make_row(part_icon(jd, 0.4), jd["name"], "Rusty and half broken, but it'll get you in the ring. Free.")
 		row_button(row, "Take", _on_emergency_junk.bind(slot), true, 95)
-	var for_sale: Array = GameData.shop_stock.filter(func(id): return GameData.part_def(id)["kind"] == kind)
-	if not GameData.unlocked("shop"):
-		for_sale = []
-	if not for_sale.is_empty():
+	var sale_items: Array = []
+	for i in for_sale.size():
+		sale_items.append({"d": GameData.part_def(for_sale[i]), "p": {}, "i": i})
+	if all_items.size() > 3:
+		sale_items = pf_apply("slot", sale_items)
+	if not sale_items.is_empty():
 		section("In the dealer's stock right now:")
-		for id in for_sale:
-			var d := GameData.part_def(id)
-			var row := make_tap_row(part_icon(d), d["name"], delta_text(d, slot), _on_detail.bind({"src": "shop", "id": id}), "", is_detail("shop", id))
+		for it in sale_items:
+			var d: Dictionary = it["d"]
+			var id := str(d["id"])
+			var row := part_entry(d, {}, str(d["name"]), "", _on_detail.bind({"src": "shop", "id": id}), is_detail("shop", id),
+					delta_chips(d, slot), tr("vs fitted:") if not cards_on() else "")
 			row_button(row, tr("Buy & fit $%d · %s") % [d["cost"], GameData.hours_text(GameData.swap_hours(d))], _on_buy_fit.bind(id, slot), GameData.money >= d["cost"], 180)
 	var more := flow_bar()
 	if GameData.unlocked("shop"):
@@ -3657,15 +4276,13 @@ func build_storage() -> void:
 	if list.is_empty() and pads.is_empty():
 		section("Storage is empty. Parts you remove, extra purchases, trophies and salvage end up here.")
 		return
-	var kinds: Array = list.map(func(p): return GameData.part_def(p["id"])["kind"])
-	var top_bar := action_bar()
-	var entries := kind_entries(kinds, "All parts")
-	entries[0][2] = int(entries[0][2]) + pads.size()
-	entries.append(["controller", "Controllers", pads.size()])
-	storage_filter = category_dropdown(entries, storage_filter, _on_storage_filter, top_bar)
-	var gap := Control.new()
-	gap.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	top_bar.add_child(gap)
+	var items: Array = list.map(func(p): return {"d": GameData.part_def(p["id"]), "p": p})
+	# (1.91) one bar: Show, Maker, Grade, Condition, Sort, Cards / List (remembered)
+	var top_bar := part_filter_bar("storage", items, [["controller", "Controllers", pads.size()]])
+	var shown := pf_apply("storage", items)
+	var pf_kind := pf_get("storage", "kind")
+	if selling:
+		top_bar = flow_bar()
 	if selling:
 		var total := 0
 		for uid in sell_picks:
@@ -3675,35 +4292,28 @@ func build_storage() -> void:
 		var sb := row_button(top_bar, tr("Sell %d · $%d") % [sell_picks.size(), total], _on_sell_picked, not sell_picks.is_empty(), 150)
 		sb.add_theme_color_override("font_color", GUI.AMBER)
 		row_button(top_bar, "Cancel", _on_select_mode, true, 90)
-		section("Tick the parts to sell, then tap Sell.")
-		# (1.87) quick picks: everything in this filter, or only the wrecks
-		var shown: Array = []
-		var wrecks: Array = []
-		for p in list:
-			if (storage_filter == "all" or GameData.part_def(p["id"])["kind"] == storage_filter) and maker_ok(GameData.part_def(p["id"])):
-				shown.append(p["uid"])
-				if GameData.is_wreck(p):
-					wrecks.append(p["uid"])
-		var qb := flow_bar()
-		var all_on := not shown.is_empty() and shown.all(func(u): return sell_picks.has(u))
-		row_button(qb, tr("Untick all") if all_on else tr("Tick all shown (%d)") % shown.size(), _on_pick_many.bind(shown, not all_on), not shown.is_empty(), 190)
+		# (1.87) quick picks: everything shown, or only the wrecks
+		var uids: Array = shown.map(func(it): return it["p"]["uid"])
+		var wrecks: Array = shown.filter(func(it): return GameData.is_wreck(it["p"])).map(func(it): return it["p"]["uid"])
+		var all_on := not uids.is_empty() and uids.all(func(u): return sell_picks.has(u))
+		row_button(top_bar, tr("Untick all") if all_on else tr("Tick all shown (%d)") % uids.size(), _on_pick_many.bind(uids, not all_on), not uids.is_empty(), 190)
 		if not wrecks.is_empty():
-			row_button(qb, tr("Tick the wrecks (%d)") % wrecks.size(), _on_pick_many.bind(wrecks, true), true, 190)
+			row_button(top_bar, tr("Tick the wrecks (%d)") % wrecks.size(), _on_pick_many.bind(wrecks, true), true, 190)
+		section("Tick the parts to sell, then tap Sell.")
 	else:
 		row_button(top_bar, tr("Sell several"), _on_select_mode, true, 140)
-	maker_filter = category_dropdown(maker_entries(list.map(func(p): return p["id"])), maker_filter, _on_maker_filter, null, "Maker:")
-	for p in list:
-		var d := GameData.part_def(p["id"])
-		if (storage_filter != "all" and d["kind"] != storage_filter) or not maker_ok(d):
-			continue
+		var cnt := GUI.text(tr("%d of %d parts shown") % [shown.size(), list.size()], 12, GUI.MUTED, "headb")
+		cnt.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		top_bar.add_child(cnt)
+	for it in shown:
+		var p: Dictionary = it["p"]
+		var d: Dictionary = it["d"]
 		var wreck := GameData.is_wreck(p)
-		var tag := tr("  (WRECKED)") if wreck else ("" if d["shop"] else tr("  (rare)"))
+		var tag := tr(str(d["kind"]).to_upper()) + ("" if d["shop"] else "  ·  " + tr("RARE"))
 		var picked: bool = sell_picks.has(p["uid"])
 		var cb_tap: Callable = _on_pick_sell.bind(not picked, p["uid"]) if selling else _on_detail.bind({"src": "inv", "uid": p["uid"]})
-		var row := make_tap_row(part_icon(d, GameData.hp_ratio(p)), str(d["name"]) + tag, part_info(d), cb_tap, tr(str(d["kind"]).to_upper()),
-				is_detail("inv", p["uid"]) or (selling and picked))
-		if not GameData.UNDAMAGEABLE.has(d["kind"]):
-			row.add_child(hp_widget(p))
+		var row := part_entry(d, p, str(d["name"]) + (tr("  (WRECKED)") if wreck and not cards_on() else ""), tag, cb_tap,
+				is_detail("inv", p["uid"]) or (selling and picked), part_chips(d, cards_on()))
 		if selling:
 			var cb := CheckBox.new()
 			cb.button_pressed = picked
@@ -3711,8 +4321,10 @@ func build_storage() -> void:
 			cb.mouse_filter = Control.MOUSE_FILTER_IGNORE
 			cb.text = tr("$%d") % GameData.sell_value(p)
 			row.add_child(cb)
+	if shown.is_empty() and pf_kind != "controller":
+		section(tr("Nothing here with these filters."))
 	# controllers from the scrapyard sit here like parts: onto your gear shelf, or sold
-	if storage_filter == "all" or storage_filter == "controller":
+	if pf_kind == "all" or pf_kind == "controller":
 		for i in pads.size():
 			var cid: String = pads[i]
 			var icon := ControllerIcon.new()
@@ -3781,9 +4393,11 @@ func _fit_popup() -> void:
 	if popup_scroll == null or not is_instance_valid(popup_scroll) or popup_scroll.get_child_count() == 0:
 		return
 	var col: Control = popup_scroll.get_child(0)
-	popup_scroll.custom_minimum_size.x = col.get_combined_minimum_size().x
 	var room := get_viewport_rect().size.y - 150.0 - popup_footer.get_combined_minimum_size().y
 	popup_scroll.custom_minimum_size.y = minf(col.get_combined_minimum_size().y, maxf(120.0, room))
+	# (1.91) room for the scroll bar when it shows, so it never covers the last column
+	var bar_w := popup_scroll.get_v_scroll_bar().get_combined_minimum_size().x + 8.0 if col.get_combined_minimum_size().y > room else 0.0
+	popup_scroll.custom_minimum_size.x = minf(col.get_combined_minimum_size().x + bar_w, get_viewport_rect().size.x - 60.0)
 
 
 ## A dark see-through panel around a control, so the garage scene shows behind the menus.
@@ -4163,24 +4777,16 @@ func build_dealer() -> void:
 	var chips: Array = GameData.chip_stock if GameData.unlocked("moves") else []
 	if stock.is_empty():
 		section("Sold out! New stock arrives on Sunday (or pay to restock now).")
-	var kinds: Array = stock.map(func(id): return GameData.part_def(id)["kind"])
-	var entries := kind_entries(kinds, "All parts")
-	entries[0][2] = stock.size() + chips.size()
-	entries.append(["chip", "Chips", chips.size()])
-	shop_filter = category_dropdown(entries, shop_filter, _on_shop_filter)
-	maker_filter = category_dropdown(maker_entries(stock), maker_filter, _on_maker_filter, null, "Maker:")
-	var f := shop_filter
-	for id in stock:
-		var d := GameData.part_def(id)
-		if (f != "all" and d["kind"] != f) or not maker_ok(d):
-			continue
-		var row := make_tap_row(part_icon(d), d["name"], part_info(d), _on_detail.bind({"src": "shop", "id": id}), tr(str(d["kind"]).to_upper()), is_detail("shop", id))
-		var hb := GUI.SegBar.new()
-		if not GameData.UNDAMAGEABLE.has(d["kind"]):
-			hb.setup(float(d["hp"]), float(d["hp"]), GUI.GREEN)
-			hb.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-			hb.mouse_filter = Control.MOUSE_FILTER_IGNORE
-			row.add_child(hb)
+	var items: Array = []
+	for i in stock.size():
+		items.append({"d": GameData.part_def(stock[i]), "p": {}, "i": i})
+	part_filter_bar("dealer", items, [["chip", "Chips", chips.size()]])
+	var f := pf_get("dealer", "kind")
+	for it in pf_apply("dealer", items):
+		var d: Dictionary = it["d"]
+		var id := str(d["id"])
+		var row := part_entry(d, {}, str(d["name"]), tr(str(d["kind"]).to_upper()) + ("" if d["shop"] else "  ·  " + tr("RARE")),
+				_on_detail.bind({"src": "shop", "id": id}), is_detail("shop", id), part_chips(d, cards_on()))
 		var target := best_slot(str(d["kind"]))
 		if target != "":
 			row_button(row, tr("Buy & fit $%d · %s") % [d["cost"], GameData.hours_text(GameData.swap_hours(d))], _on_buy_fit.bind(id, target), GameData.money >= d["cost"], 180)
@@ -4258,11 +4864,11 @@ func build_scrapyard_tab() -> void:
 	var finds: Array = GameData.spares().filter(func(p): return p.get("dug", false))
 	if not finds.is_empty():
 		section("Fresh from the pile. Keep it in Storage or sell it (damaged parts sell cheaper).")
+		compare_tray()
 		for p in finds:
 			var d := GameData.part_def(p["id"])
-			var row := make_tap_row(part_icon(d, GameData.hp_ratio(p)), d["name"], part_info(d), _on_detail.bind({"src": "inv", "uid": p["uid"]}),
-					tr(str(d["kind"]).to_upper()), is_detail("inv", p["uid"]))
-			row.add_child(hp_widget(p))
+			var row := part_entry(d, p, str(d["name"]), tr(str(d["kind"]).to_upper()), _on_detail.bind({"src": "inv", "uid": p["uid"]}),
+					is_detail("inv", p["uid"]), part_chips(d, cards_on()))
 			row_button(row, "To Storage", _on_keep_find.bind(p["uid"]), true, 120)
 
 
@@ -6386,7 +6992,7 @@ func _on_slot(slot: String) -> void:
 
 func _on_go_shop(kind: String) -> void:
 	shop_kind = kind
-	shop_filter = kind
+	pf_store("dealer", "kind", kind)
 	go_to("Parts", "dealer")
 
 

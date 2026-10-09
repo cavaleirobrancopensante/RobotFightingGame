@@ -3,7 +3,7 @@ const PlayLog = preload("res://playlog.gd")   # (1.87) the playtest log
 
 # helper scripts, loaded by path so the game also runs without an editor scan
 ## The game's version, shown on the main menu. Bump it with every change (1.1, 1.2, ...).
-const VERSION := "1.90"
+const VERSION := "1.91"
 const Arena = preload("res://arena.gd")
 const I18n = preload("res://i18n.gd")
 const Catalog = preload("res://catalog.gd")
@@ -1554,6 +1554,57 @@ func part_stat_text(d: Dictionary, cur_hp: float = -1.0) -> String:
 			bits.append(tr("REACTORS 2"))
 	bits.append(tr("Power %d") % d["draw"])
 	return "  ".join(bits) + g + trait_line(d)
+
+
+## (1.91) A part's stats for the stat icons (StatIcons.chips): [[key, value, colour or null, note], ...].
+## `short` keeps only what tells parts apart at a glance (cards): no size, mounts or aim times.
+func part_stats(d: Dictionary, short := false) -> Array:
+	var out: Array = []
+	var k := str(d.get("kind", ""))
+	if k == "reactor":
+		out.append(["output", "%d" % int(d["output"])])
+	elif k == "back":
+		if int(d["output"]) > 0:
+			out.append(["output", "+%d" % int(d["output"])])
+		if int(d["draw"]) > 0:
+			out.append(["draw", "%d" % int(d["draw"])])
+	else:
+		if float(d.get("gm", 1.0)) > 1.001:
+			out.append(["gm", "x%.1f" % float(d["gm"])])
+		if int(d["armor"]) != 0:
+			out.append(["armor", "%d%%" % int(d["armor"])])
+		if int(d["damage"]) != 0:
+			out.append(["damage", "%+d%%" % int(d["damage"]), Color(1.0, 0.5, 0.42) if int(d["damage"]) < 0 else null])
+		if int(d["speed"]) != 0:
+			out.append(["speed", "%+d%%" % int(d["speed"]), Color(1.0, 0.5, 0.42) if int(d["speed"]) < 0 else null])
+		if int(d["aim"]) != 0:
+			out.append(["aim", "%+d%%" % int(d["aim"])])
+		if int(d["output"]) != 0:
+			out.append(["output", "+%d" % int(d["output"])])
+		if k == "head":
+			if not short:
+				var ht := head_times(d)
+				out.append(["aim_in", "%.1fs" % ht[0]])
+				out.append(["scan", "%.1fs" % ht[1]])
+			if int(d["chips"]) > 0:
+				out.append(["chips", "%d" % int(d["chips"])])
+		if k in ["arm", "leg"]:
+			out.append(["reach", "%d%%" % reach_pct(d)])
+		if not short:
+			if k in ["head", "torso", "arm", "leg"]:
+				out.append(["size", str(d.get("size_class", "M")), null, tr("Size") + ": " + tr(SIZE_NAMES.get(d.get("size_class", "M"), "Medium"))])
+			if k == "torso":
+				var mt: Array = d["mounts"]
+				out.append(["arms", "%d" % (4 if mt.has("arm_front2") else 2)])
+				out.append(["heads", "%d" % (2 if mt.has("head2") else 1)])
+				if mt.has("reactor2"):
+					out.append(["reactors", "2"])
+		out.append(["draw", "%d" % int(d["draw"])])
+	if str(d.get("trait", "")) != "":
+		out.append(["trait", "", null, Catalog.trait_text(d)])
+	if str(d.get("gimmick", "")) != "":
+		out.append(["gadget", "", null, tr(Specials.GADGETS[d["gimmick"]]["desc"])])
+	return out
 
 
 ## How far an arm or leg reaches, against a standard Rebar Arm / Strut Leg (100%): bigger parts reach further.
