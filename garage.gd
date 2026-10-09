@@ -1465,6 +1465,29 @@ func _on_detail(d: Dictionary) -> void:
 	refresh()
 
 
+## (1.111) Android Back: one level up. Pop-ups first, then the detail pane, then out of a City
+## place to the map, then the Menu.
+func on_back() -> void:
+	if GUI.close_confirm():
+		return
+	if catalogue != null and is_instance_valid(catalogue):
+		catalogue._close()
+		return
+	if overlay:
+		close_popup()
+		return
+	if gus_overlay != null and is_instance_valid(gus_overlay):
+		close_gus_card()
+		return
+	if detail_panel.visible and not detail.is_empty():
+		_on_detail_close()
+		return
+	if CITY_TABS.has(tab) and tab != "City":
+		_on_tab("City")
+		return
+	_on_menu()
+
+
 func _on_detail_close() -> void:
 	detail = {}
 	refresh()

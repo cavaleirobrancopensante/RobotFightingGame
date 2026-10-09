@@ -438,5 +438,10 @@ func _on_delete() -> void:
 	get_tree().change_scene_to_file("res://saves.tscn")
 
 
+## (1.111) Android Back = the Back button.
+func on_back() -> void:
+	_on_back()
+
+
 func _on_back() -> void:
 	get_tree().change_scene_to_file("res://main.tscn")

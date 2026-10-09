@@ -332,6 +332,11 @@ func _on_settings() -> void:
 	get_tree().change_scene_to_file("res://settings.tscn")
 
 
+## (1.111) Android Back on the main menu leaves the game, as phones expect.
+func on_back() -> void:
+	get_tree().quit()
+
+
 func _on_quit() -> void:
 	get_tree().quit()
 

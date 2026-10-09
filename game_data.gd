@@ -3,7 +3,7 @@ const PlayLog = preload("res://playlog.gd")   # (1.87) the playtest log
 
 # helper scripts, loaded by path so the game also runs without an editor scan
 ## The game's version, shown on the main menu. Bump it with every change (1.1, 1.2, ...).
-const VERSION := "1.110"
+const VERSION := "1.111"
 const Arena = preload("res://arena.gd")
 const I18n = preload("res://i18n.gd")
 const Catalog = preload("res://catalog.gd")
@@ -242,7 +242,7 @@ const TIER_BUDGET := [500, 1500, 4500, 13500, 40000]
 const CUP_PURSE := [400, 1200, 3600, 11000, 33000]
 const CUP_PRIZE := [1500, 4500, 13500, 40000, 120000]
 ## Running costs: Gus's rent in the gutter and Scrap, then a mechanic, a crew, travel... (x the Settings amount / $1,000)
-const RUNNING := {"open": 0.5, "scrap": 1.0, "rust": 2.8, "iron": 9.0, "steel": 28.0}
+const RUNNING := {"open": 0.5, "scrap": 1.0, "rust": 2.4, "iron": 7.5, "steel": 24.0}   # (1.111) was 2.8 / 9 / 28
 
 # ---- custom part workshop
 # Each grade gives stat points to spend. Every point costs more than in the shop: you pay for choice.
@@ -2234,7 +2234,7 @@ func do_scout() -> String:
 ## What a defeat pays: in the scrapyard you pay the winner, in the Regional and cups you get nothing,
 ## in the Championship (and exhibitions) you still get a small purse.
 ## What a pickup against the pilot at the bar pays, by their division (stars pay more, and hit harder).
-const PICKUP_PURSE := {"open": 150, "scrap": 250, "rust": 750, "iron": 2200, "steel": 6500}
+const PICKUP_PURSE := {"open": 240, "scrap": 400, "rust": 1200, "iron": 3500, "steel": 10000}   # (1.111) x1.6: a won pickup has to pay for its repairs
 
 
 ## The crowd at the Rusty Bolt gets bored of the same face (1.53): the first two pickups of a week pay
@@ -2256,13 +2256,16 @@ func pickup_purse(tier: String) -> int:
 	return int(float(PICKUP_PURSE.get(tier, 120)) * k / 10.0) * 10
 
 
-const SHOW_MONEY := {"scrap": 0.15, "rust": 0.2, "iron": 0.25, "steel": 0.3, "title": 0.3}
+const SHOW_MONEY := {"scrap": 0.25, "rust": 0.25, "iron": 0.3, "steel": 0.3, "title": 0.3}   # (1.111) Scrap 0.15 -> 0.25, Rust 0.2 -> 0.25, Iron 0.25 -> 0.3
+
+
+const PICKUP_LOSER := 0.25   # (1.111) the loser of a pickup pays this share of the purse (was half)
 
 
 func loss_pay(base: int) -> int:
 	match fight_mode():
 		"pickup":
-			return -int(base * 0.5)
+			return -int(base * PICKUP_LOSER)
 		"story":
 			# (1.82) league losers get show money (a loser paying out in a league kept broke pilots broke)
 			return int(base * float(SHOW_MONEY.get(str(event.get("stage", "")), 0.0)))
@@ -2939,6 +2942,7 @@ func next_day() -> void:
 		catch_up_leagues()
 	daily_hate_mail()
 	Social.daily()
+	gus_patch()   # (1.111) back (1.84 took it out): a broke robot isn't sent out in pieces on a league night
 
 
 # ---------------------------------------------------------------- (1.82) Gus's patch job
@@ -4198,6 +4202,34 @@ func _notification(what: int) -> void:
 	if what == NOTIFICATION_WM_CLOSE_REQUEST or what == NOTIFICATION_APPLICATION_PAUSED \
 			or what == NOTIFICATION_APPLICATION_FOCUS_OUT or what == NOTIFICATION_WM_GO_BACK_REQUEST:
 		flush_save()
+	if what == NOTIFICATION_WM_GO_BACK_REQUEST:
+		phone_back()
+
+
+## (1.111) Android's Back gesture (quit_on_go_back is off): the scene steps back one level (close the
+## top window, leave a place, open the menu). Scenes say how with on_back(); the others get Esc.
+## Only the main menu quits.
+var _back_at := 0
+
+
+func phone_back() -> void:
+	var now := Time.get_ticks_msec()
+	if now - _back_at < 250:
+		return   # one gesture can arrive twice
+	_back_at = now
+	PlayLog.add("ui", "Back gesture")
+	var sc := get_tree().current_scene
+	if sc != null and sc.has_method("on_back"):
+		sc.on_back()
+		return
+	var ev := InputEventKey.new()
+	ev.keycode = KEY_ESCAPE
+	ev.physical_keycode = KEY_ESCAPE
+	ev.pressed = true
+	Input.parse_input_event(ev)
+	var up := ev.duplicate()
+	up.pressed = false
+	Input.parse_input_event(up)
 
 
 ## Gus told you something in a fight: keep it for the pause screen's GUS'S TIPS (one per id).

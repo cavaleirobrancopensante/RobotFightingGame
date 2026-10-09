@@ -306,6 +306,11 @@ func _input(event: InputEvent) -> void:
 	advance()
 
 
+## (1.111) Android Back moves the story on, like a tap.
+func on_back() -> void:
+	advance()
+
+
 func advance() -> void:
 	if index >= lines.size():
 		return

@@ -804,6 +804,15 @@ class EventIcon extends Control:
 		GUI.draw_event_icon(self, kind, size * 0.5, minf(size.x, size.y) * 0.42, ring)
 
 
+## (1.111) Closes the "Post this?" layer if it's up (Android Back). true = it was open.
+static func close_confirm() -> bool:
+	if confirm_layer != null and is_instance_valid(confirm_layer) and not confirm_layer.is_queued_for_deletion():
+		confirm_layer.queue_free()
+		confirm_layer = null
+		return true
+	return false
+
+
 ## Your post waiting after a fight, as a card: a draft per tone (humble, hype, trash talk; five when
 ## you watched), with what each does and everyone's (+52) / (-61) next to their names, then Say
 ## nothing. Used on BotMedia's Home and on the results screen of a fight (1.63).

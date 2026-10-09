@@ -7917,6 +7917,29 @@ func open_clip(id: String) -> void:
 	Sfx.play("click")
 
 
+## (1.111) Android Back: closes what's on top, leaves the results, otherwise does what Esc does.
+func on_back() -> void:
+	if GUI.close_confirm():
+		return
+	if clip_view != null and is_instance_valid(clip_view):
+		close_clip()
+		return
+	if phase == "results":
+		tap_pending = true
+		return
+	if phase == "intro" and intro_step == "show":
+		skip_show()
+		return
+	if paused:
+		quit_ask = false
+		toggle_pause()
+	elif phase == "intro" or phase == "fight":
+		if mode == "watch":
+			quit_fight()
+		else:
+			toggle_pause()
+
+
 func close_clip() -> void:
 	if clip_view != null and is_instance_valid(clip_view):
 		clip_view.queue_free()

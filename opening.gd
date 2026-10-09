@@ -259,6 +259,11 @@ func _unhandled_input(event: InputEvent) -> void:
 				next()
 
 
+## (1.111) Android Back: on to the next shot, like a tap (Skip stays a button).
+func on_back() -> void:
+	next()
+
+
 ## A tap: finish the line that's typing, otherwise on to the next shot (the music follows).
 func next() -> void:
 	if line_i >= 0 and line_shot(line_i) and shown < line_text(line_i).length():

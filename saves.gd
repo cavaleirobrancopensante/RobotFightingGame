@@ -46,6 +46,7 @@ func title(text: String) -> void:
 
 
 func show_slots() -> void:
+	naming = false
 	clear()
 	title("NEW GAME: pick a save slot" if mode == "new" else "LOAD GAME")
 	# eight slots: they scroll
@@ -104,6 +105,7 @@ func show_slots() -> void:
 ## New game: name your pilot and robot, and build both. Names, faces and robots each have their
 ## own Random button - rolling one never changes the others.
 func show_names() -> void:
+	naming = true
 	clear()
 	GameData.new_game()   # a fresh draft: the default pilot and ECHO in its usual junk
 	title(tr("NEW GAME: slot %d") % chosen_slot)
@@ -140,6 +142,7 @@ func show_names() -> void:
 var diff_box: VBoxContainer
 var diff_button: Button
 var diff_cover: Control
+var naming := false   # (1.111) on the names / looks page (Back goes to the slots)
 const SETTINGS = preload("res://settings.gd")
 
 
@@ -555,6 +558,16 @@ func _on_start() -> void:
 	# the opening cutscene, then straight into Old Pike's course
 	GameData.opening_replay = false
 	Loading.go("res://opening.tscn")
+
+
+## (1.111) Android Back: the difficulty window, then the slots, then the main menu.
+func on_back() -> void:
+	if diff_cover:
+		_on_close_difficulty()
+	elif naming:
+		show_slots()
+	else:
+		_on_back()
 
 
 func _on_back() -> void:
