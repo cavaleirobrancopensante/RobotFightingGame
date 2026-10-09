@@ -11,7 +11,7 @@ extends RefCounted
 
 ## Makers whose parts come in one size only (no Light / Heavy copies). Scrapworks keeps loose sizes:
 ## odd, mismatched sizes are its character.
-const ONE_SIZE := ["oldiron", "brassworks", "hellfire", "volta", "nimbus", "kane", "tenryu"]
+const ONE_SIZE := ["oldiron", "brassworks", "hellfire", "volta", "nimbus", "kane", "tenryu", "menagerie"]
 
 const DEFS := [
 	# ---- Old Iron Foundry: cast iron, big hex bolts, most HP and armour, slow, heavy on power
@@ -195,6 +195,11 @@ const DEFS := [
 		"maker": "tenryu", "gimmick": "booster"},
 	{"id": "tenryu_combiner", "kind": "torso", "name": "Combiner Frame", "cost": 2300, "hp": 120, "armor": 12, "speed": 0, "draw": 5,
 		"shape": "combiner", "color": "#f2f2f5", "mounts": ["arm_front2", "arm_back2"], "maker": "tenryu"},
+	# ---- Menagerie Mechanica (1.104): machines that remind you of an animal. Sold at Parts-R-Us until the ship docks (2.0)
+	{"id": "men_gorilla_arm", "kind": "arm", "name": "Gorilla Arms", "cost": 1700, "hp": 84, "armor": 12, "damage": 44, "speed": -14, "draw": 5,
+		"shape": "gorilla", "color": "#6b5446", "size": 1.5, "maker": "menagerie", "trait": "knuckle", "trait_lv": 1},
+	{"id": "men_gorilla_chest", "kind": "torso", "name": "Gorilla Chest", "cost": 1800, "hp": 165, "armor": 14, "speed": -6, "draw": 5,
+		"shape": "gorillachest", "color": "#8e2c22", "maker": "menagerie", "trait": "pound", "trait_lv": 1},
 ]
 
 ## Old parts the new lines replace.
@@ -211,7 +216,7 @@ const RETIRED := ["torso_box", "torso_plate", "torso_tank", "arm_rod", "arm_bulk
 		"kane_leg_1", "head_laser", "head_mast", "arm_drill", "reactor_fusion"]   # (1.102) Kane
 
 ## The makers whose lines are in (their launch posts once on BotMedia).
-const LAUNCHED := ["oldiron", "scrapworks", "brassworks", "hellfire", "volta", "nimbus", "kane", "tenryu"]
+const LAUNCHED := ["oldiron", "scrapworks", "brassworks", "hellfire", "volta", "nimbus", "kane", "tenryu", "menagerie"]
 ## (1.98) Makers with their own shop in the city: Parts-R-Us stops stocking them.
 const OWN_SHOP := {"brassworks": "brassworks", "hellfire": "breakers", "volta": "showroom", "nimbus": "hangar", "kane": "kanestore", "tenryu": "dojo"}
 

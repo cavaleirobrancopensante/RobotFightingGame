@@ -73,6 +73,7 @@ const SHAPE := {
 	"torso:herochest": ["Hero chest, glowing vents", "It shouts the move before it lands"],
 	"torso:samurai": ["Lacquered plate, laced in gold", "The skirt plates turn a sweep"],
 	"torso:combiner": ["Combiner frame, four shoulders", "Docking ports, waiting for friends"],
+	"torso:gorillachest": ["Gorilla chest, made for pounding", "Circus gold across the belly"],
 	# arms
 	"arm:rod": ["Steel pipe, ball fist", "Elbow is a door hinge"],
 	"arm:piston": ["Hydraulic piston, 2 t push", "Piston stroke 30 cm"],
@@ -102,6 +103,7 @@ const SHAPE := {
 	"arm:executor": ["Executor drill, gold tipped", "Finds the gap and makes it bigger"],
 	"arm:lancet": ["Lancet, a spear on a servo", "Hits from further than they think"],
 	"arm:beamsword": ["Beam sword, never needs sharpening", "Hums when it's angry"],
+	"arm:gorilla": ["Gorilla arm, knuckles first", "Longest reach in the ring"],
 	# legs
 	"leg:rod": ["Pipe leg, rubber foot", "Knee is a bike hub"],
 	"leg:piston": ["Piston knee, soft landing", "Hydraulic shock absorber"],

@@ -87,6 +87,10 @@ const MOVES := {
 	"field_repair": {"name": "Field Repair", "seq": ["B", "D", "P"], "cost": 0, "cd": 14.0, "style": "mechanic",
 		"desc": "MECHANIC SIGNATURE: weld yourself back together. Repairs your torso and your most damaged part. Do it at a distance!",
 		"pose": "block", "startup": 0.1, "active": 0.5, "recovery": 0.2, "damage": 0.0, "nohit": true, "effect": "repair"},
+	# --- part signatures (1.104): come with a pair of parts, never sold as chips
+	"chest_pound": {"name": "Chest Pound", "seq": ["D", "U", "P"], "cost": 0, "cd": 12.0, "part_sig": true,
+		"desc": "GORILLA SIGNATURE: pound the chest and roar. Thick plating for a few seconds, anyone close is shoved back and loses their aim.",
+		"pose": "block", "startup": 0.12, "active": 0.75, "recovery": 0.25, "damage": 0.0, "nohit": true, "effect": "chest_pound"},
 	"overclock": {"name": "Overclock", "seq": ["F", "B", "K"], "cost": 0, "cd": 16.0, "style": "specialist",
 		"desc": "SPECIALIST SIGNATURE: instantly recharge every gadget and move 30% faster for 4s.",
 		"pose": "uppercut", "startup": 0.05, "active": 0.2, "recovery": 0.15, "damage": 0.0, "nohit": true, "effect": "overclock"},

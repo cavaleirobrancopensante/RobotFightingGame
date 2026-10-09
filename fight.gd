@@ -335,6 +335,14 @@ class Fighter:
 		var leg_factor: float = [0.35, 0.65, 1.0][clampi(n, 0, 2)]
 		if n == 0:
 			leg_factor = [0.22, 0.28, 0.35][clampi(arms(), 0, 2)]   # crawling on two arms, one, or rolling
+		if n < 2:
+			# (1.104) Gorilla Arms: the knuckles carry it
+			var kn := 0.0
+			for a in ["arm_front", "arm_back", "arm_front2", "arm_back2"]:
+				if alive(a) and str(parts[a].get("trait", "")) == "knuckle":
+					kn = maxf(kn, Catalog.trait_value(parts[a]) / 100.0)
+			if kn > 0.0:
+				leg_factor = maxf(leg_factor, kn if n == 1 else kn * 0.6)
 		var sprint := 1.33 if sprint_t > 0.5 and has_gadget("sprint") else 1.0   # (1.100) Neon Spoiler
 		return (1.0 + (s / maxf(1, n) + torso_speed()) / 100.0) * leg_factor * mod_speed() * (0.8 if hobble_t > 0.0 else 1.0) * (1.0 + ctrl.get("move", 0.0)) * sprint
 
@@ -836,6 +844,14 @@ func make_fighter(spec: Dictionary) -> Fighter:
 		var sig: String = Catalog.STYLES[f.style]["signature"]
 		if Specials.MOVES.has(sig) and not f.specials.has(sig):
 			f.specials.append(sig)
+	# (1.104) Gorilla Chest + Gorilla Arms = the Chest Pound
+	var gtp = f.parts.get("torso", {})
+	if gtp is Dictionary and str(gtp.get("trait", "")) == "pound" and not f.specials.has("chest_pound"):
+		for a in ["arm_front", "arm_back", "arm_front2", "arm_back2"]:
+			var ap = f.parts.get(a, {})
+			if ap is Dictionary and str(ap.get("trait", "")) == "knuckle":
+				f.specials.append("chest_pound")
+				break
 	for t in spec.get("traits", []):
 		var tid: String = t["trait"]
 		f.gtraits[tid] = f.gtraits.get(tid, 0.0) + Catalog.trait_value(t)
@@ -2565,6 +2581,21 @@ func start_special(f: Fighter, id: String) -> void:
 	match m.get("effect", ""):
 		"armor_up":
 			f.armor_t = 4.0
+		"chest_pound":
+			# (1.104) the Gorilla Chest + Arms signature: thick plating, a roar, everyone close shoved back and blinking
+			var tp = f.parts.get("torso", {})
+			f.armor_t = Catalog.trait_value(tp) if tp is Dictionary and str(tp.get("trait", "")) == "pound" else 3.0
+			shake = maxf(shake, 9.0)
+			cheer = 2.0
+			rings.append({"pos": f.pos + Vector2(0, -100.0 * f.scale), "t": 0.0, "color": Color(1.0, 0.75, 0.3), "r": 200.0})
+			popup(tr("CHEST POUND!"), f.pos + Vector2(0, -250.0 * f.scale), Color(1.0, 0.8, 0.3))
+			Sfx.play("strike_menagerie", 0.1, 0.0)
+			Sfx.play("crowd_cheer", 0.1, -6.0)
+			for e in enemies_of(f):
+				if absf(e.pos.x - f.pos.x) < 240.0 * f.scale and e.state != "ko":
+					e.vel.x = signf(e.pos.x - f.pos.x) * 520.0
+					e.target = ""
+					e.aim_cd = maxf(e.aim_cd, e.aim_time)
 		"repair":
 			var heal_t: float = f.parts["torso"]["max_hp"] * 0.22
 			f.parts["torso"]["hp"] = minf(f.parts["torso"]["max_hp"], f.parts["torso"]["hp"] + heal_t)
@@ -4474,6 +4505,7 @@ func draw_fighter(f: Fighter, off: Vector2) -> void:
 		"shield": f.shield_t > 0.0, "overcharge": f.over_t > 0.0, "stunned": f.stun_t > 0.0,
 		"jet": f.jet_t > 0.0 or (not f.on_ground and f.vel.y < -400.0 and f.has_gadget("double_jump")),
 		"boost": f.boost_t > 0.0, "sprint": f.sprint_t > 0.5, "sx": sx, "sy": sy,
+		"pound": fmod(f.timer * 5.0, 1.0) if f.state == "special" and f.special_id == "chest_pound" else -1.0,
 		"dazed": f.vis_pose.get("dazed", false), "tuck": f.vis_pose.get("tuck", false),
 		"bob_l": idle_bits(f)[0], "bob_r": idle_bits(f)[1], "head_dx": idle_bits(f)[2],
 		# a core under a quarter: its eye flickers like a bad bulb

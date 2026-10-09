@@ -42,7 +42,7 @@ const TORSOS := {"barrel": [60.0, 70.0], "box": [56.0, 76.0], "vee": [70.0, 78.0
 		"fueltank": [62.0, 78.0], "hull": [78.0, 80.0], "coupe": [58.0, 74.0], "dynamo": [62.0, 76.0], "twincoil": [80.0, 72.0],
 		"fuselage": [54.0, 80.0], "cryopod": [60.0, 76.0], "biplane": [78.0, 78.0],
 		"paragon": [66.0, 80.0], "monolith": [56.0, 88.0], "hydraprime": [92.0, 86.0],
-		"herochest": [72.0, 80.0], "samurai": [70.0, 82.0], "combiner": [80.0, 82.0]}
+		"herochest": [72.0, 80.0], "samurai": [70.0, 82.0], "combiner": [80.0, 82.0], "gorillachest": [88.0, 80.0]}
 const HEADS := {"bucket": [34.0, 32.0], "box": [38.0, 34.0], "dome": [42.0, 34.0], "cyclops": [40.0, 40.0],
 		"visor": [48.0, 28.0], "horned": [40.0, 34.0], "skull": [40.0, 42.0], "wedge": [44.0, 30.0],
 		"tall": [26.0, 52.0], "bulb": [44.0, 44.0], "tv": [46.0, 36.0], "dish": [40.0, 34.0], "laser": [38.0, 34.0],
@@ -60,7 +60,7 @@ const ARMS := {"rod": [12.0, 10.0], "piston": [15.0, 12.0], "claw": [14.0, 7.0],
 		"blade": [13.0, 7.0], "flame": [16.0, 7.0], "magnet": [15.0, 7.0],
 		"anvil": [18.0, 9.0], "crane": [13.0, 7.0], "wrench": [12.0, 7.0], "grabber": [11.0, 6.0],
 		"gauntlet": [15.0, 13.0], "riveter": [12.0, 7.0], "wrecker": [15.0, 13.0], "torch": [13.0, 7.0], "arcfist": [14.0, 13.0], "magclamp": [12.0, 7.0],
-		"wingblade": [12.0, 7.0], "turbine": [14.0, 13.0], "executor": [15.0, 7.0], "lancet": [12.0, 7.0], "beamsword": [14.0, 8.0]}
+		"wingblade": [12.0, 7.0], "turbine": [14.0, 13.0], "executor": [15.0, 7.0], "lancet": [12.0, 7.0], "beamsword": [14.0, 8.0], "gorilla": [17.0, 13.0]}
 
 
 ## (1.93) Normal hits by limb, techniques included, and the arm poses that reach as far as a punch
@@ -227,6 +227,16 @@ static func limb_poses(look: Dictionary, pose: Dictionary) -> Dictionary:
 				clawing.append(k)
 		for i in clawing.size():
 			arm_pose[clawing[i]] = "claw:%f" % fmod(crawl + float(i) / clawing.size(), 1.0)
+	# (1.104) Gorilla Arms stand on their knuckles, and pound the chest in turn for the signature
+	var pound: float = pose.get("pound", -1.0)
+	for k in ["arm_front", "arm_back", "arm_front2", "arm_back2"]:
+		if str(_part(look, k).get("shape", "")) != "gorilla":
+			continue
+		if pound >= 0.0:
+			var first: bool = k == "arm_front" or k == "arm_front2"
+			arm_pose[k] = "pound" if (pound < 0.5) == first else "pound_up"
+		elif arm_pose[k] == "guard" and crawl < 0.0:
+			arm_pose[k] = "knuckle"
 	return {"arms": arm_pose, "legs": leg_pose}
 
 
@@ -998,6 +1008,18 @@ static func arm_pose_points(s: Vector2, pose: String, back: bool, reach_x: float
 		"limp":
 			e = s + Vector2(4 if not back else -6, 26)
 			h = s + Vector2(10 if not back else 0, 50)
+		"knuckle":
+			# (1.104) a gorilla's arms: the knuckles down on the floor in front, the elbow bent out
+			h = Vector2(s.x + (34.0 if not back else 24.0), -10.0) + bob * 0.4
+			e = s + Vector2(18 if not back else 10, 36)
+		"pound":
+			# the fist beats the chest
+			h = Vector2(s.x * 0.2 + (6.0 if not back else -4.0), s.y + 24.0)
+			e = s + Vector2(34 if not back else 26, 18)
+		"pound_up":
+			# the other fist drawn back for the next beat
+			h = s + Vector2(28 if not back else 20, -14)
+			e = s + Vector2(30 if not back else 22, 16)
 		"open":
 			# front view on the gantry: hanging down and out to the side
 			e = s + Vector2(12, 28)
@@ -1112,6 +1134,7 @@ static func arm_tip_extra(look: Dictionary, slot: String, pose: String) -> Vecto
 		"executor": ext = 36.0 * sz
 		"lancet": ext = 58.0 * sz
 		"beamsword": ext = 56.0 * sz
+		"gorilla": ext = fr + 14.0 * sz   # (1.104) the long forearm and the big knuckles
 	if pose == "elbow" or pose == "shove":
 		ext = 6.0   # the elbow (or a flat palm) does the hitting, not the weapon
 	return Vector2(ext, maxf(fr, th * 0.5))
@@ -1417,6 +1440,17 @@ static func _draw_arm(ci: CanvasItem, look: Dictionary, slot: String, s: Vector2
 				zz.append(p2)
 				ci.draw_polyline(zz, Color(0.6, 0.95, 1.0), 2.0)
 				ci.draw_circle(p1.lerp(p2, 0.5), 5.0, Color(0.5, 0.9, 1.0, 0.25))
+		"gorilla":
+			# (1.104) Menagerie: a huge forearm wrapped in cable "fur", a big knuckled fist in circus red and gold
+			_limb(ci, e, h, c.lightened(0.05), th * 1.2)
+			for k in 4:
+				var q7 := e.lerp(h, 0.15 + k * 0.2)
+				ci.draw_line(q7 - perp * th * 0.55, q7 + perp * th * 0.5 + dir * 6.0, Color(0.16, 0.12, 0.1, 0.8), 2.0)   # cable fur
+			ci.draw_line(e.lerp(h, 0.55) - perp * th * 0.62, e.lerp(h, 0.55) + perp * th * 0.62, Color(0.85, 0.18, 0.15), 3.0)   # a red cuff
+			ci.draw_line(e.lerp(h, 0.6) - perp * th * 0.62, e.lerp(h, 0.6) + perp * th * 0.62, Color(0.95, 0.75, 0.25), 2.0)
+			_round(ci, h, fr, c.darkened(0.15) if not flash else Color.WHITE)
+			for k in 3:
+				ci.draw_circle(h + dir * fr * 0.55 + perp * (k - 1) * fr * 0.48, fr * 0.24, Color(0.25, 0.2, 0.18))   # knuckles
 		"beamsword":
 			# (1.103) Tenryu: a hilt in the fist and a glowing beam blade, a white core in a cyan glow
 			_round(ci, h, fr, tc)
@@ -2191,6 +2225,20 @@ static func _draw_torso(ci: CanvasItem, look: Dictionary, g: Dictionary, flash: 
 				_ln(ci, Vector2(bxk, y0 + 3), Vector2(bxk, y1 - 3), c, 3.5)
 			_plate(ci, _chamfer(Rect2(x0 - 3, y0 - 2, w + 6, 9), 2.0), trim)
 			_plate(ci, _chamfer(Rect2(x0 - 3, y1 - 8, w + 6, 9), 2.0), trim)
+		"gorillachest":
+			# (1.104) Menagerie: a broad barrel chest, cable fur at the shoulders, two pec plates, a circus band of red and gold
+			_plate(ci, _rounded(r, w * 0.3), c)
+			for k in 2:
+				var pcx := r.get_center().x + (k * 2 - 1) * w * 0.2 + (0.0 if front else w * 0.05)
+				_plate(ci, _rounded(Rect2(pcx - w * 0.17, y0 + r.size.y * 0.16, w * 0.34, r.size.y * 0.28), 8.0), c.lightened(0.12))
+			var bandy := y0 + r.size.y * 0.58
+			ci.draw_colored_polygon(PackedVector2Array([Vector2(x0 + 4, bandy), Vector2(x1 - 4, bandy), Vector2(x1 - 6, bandy + 9), Vector2(x0 + 6, bandy + 9)]), Color(0.95, 0.75, 0.25))
+			for k in 6:
+				var dx2 := x0 + 10 + k * (w - 20) / 5.0
+				ci.draw_colored_polygon(PackedVector2Array([Vector2(dx2, bandy + 1), Vector2(dx2 + 4, bandy + 4.5), Vector2(dx2, bandy + 8), Vector2(dx2 - 4, bandy + 4.5)]), Color(0.6, 0.12, 0.1))
+			for k in 7:
+				var fx := x0 + 6 + k * (w - 12) / 6.0
+				ci.draw_line(Vector2(fx, y0 + 2), Vector2(fx + 3, y0 + 12 + (k % 2) * 4), Color(0.16, 0.12, 0.1, 0.8), 2.0)   # shoulder fur
 		"herochest":
 			# (1.103) Tenryu: a hero's chest, blue shoulders, a red core band, two yellow vents that glow
 			var hcp := PackedVector2Array([Vector2(x0, y0), Vector2(x1, y0), Vector2(x1 - w * 0.06, y0 + r.size.y * 0.55), Vector2(x1 - w * 0.2, y1), Vector2(x0 + w * 0.2, y1), Vector2(x0 + w * 0.06, y0 + r.size.y * 0.55)])

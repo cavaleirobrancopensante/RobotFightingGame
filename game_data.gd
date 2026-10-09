@@ -3,7 +3,7 @@ const PlayLog = preload("res://playlog.gd")   # (1.87) the playtest log
 
 # helper scripts, loaded by path so the game also runs without an editor scan
 ## The game's version, shown on the main menu. Bump it with every change (1.1, 1.2, ...).
-const VERSION := "1.103"
+const VERSION := "1.104"
 const Arena = preload("res://arena.gd")
 const I18n = preload("res://i18n.gd")
 const Catalog = preload("res://catalog.gd")
@@ -1872,7 +1872,7 @@ func active_chips() -> Array:
 
 ## Every chip that can be bought (signature moves come with a fighting style instead).
 static func chip_ids() -> Array:
-	return Specials.MOVES.keys().filter(func(x): return not Specials.MOVES[x].has("style"))
+	return Specials.MOVES.keys().filter(func(x): return not Specials.MOVES[x].has("style") and not Specials.MOVES[x].has("part_sig"))
 
 
 func chip_price(id: String, ordered: bool = false) -> int:
@@ -5081,7 +5081,7 @@ func random_bot(rng: RandomNumberGenerator, budget: float, level: float, sizes: 
 	for slot in part_def(parts["torso"])["mounts"]:
 		parts[slot] = random_part_id(rng, SLOT_KIND[slot], budget, sizes)
 	var specials: Array = []
-	var ids: Array = Specials.MOVES.keys().filter(func(x): return not Specials.MOVES[x].has("style"))
+	var ids: Array = Specials.MOVES.keys().filter(func(x): return not Specials.MOVES[x].has("style") and not Specials.MOVES[x].has("part_sig"))
 	for k in clampi(int(level) + rng.randi_range(0, 1), 0, 5):
 		var id: String = ids[rng.randi() % ids.size()]
 		if not specials.has(id):

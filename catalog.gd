@@ -40,6 +40,9 @@ const TRAITS := {
 	"insight": {"name": "Insight", "desc": "Hits on the weak spot its scan found do %d%% more.", "values": [15, 25]},
 	# (1.103) Tenryu Mecha Works
 	"spirit": {"name": "Spirit", "desc": "Special moves cost %d%% less power. It calls each move by name, and a finisher that lands gives some power back.", "values": [15, 25]},
+	# (1.104) Menagerie Mechanica
+	"knuckle": {"name": "Knuckle Walk", "desc": "Its fists help it walk: with a leg gone it still moves at %d%% speed.", "values": [85, 95]},
+	"pound": {"name": "Chest Pound", "desc": "With Gorilla Arms it learns the Chest Pound (down, up, punch): %d s of thick plating and a roar that shoves them back.", "values": [3, 4]},
 	"tarp": {"name": "Tarp", "desc": "The tarp hides your weak spot: the enemy's first scans find nothing (%d of them).", "values": [1, 2]},
 }
 
