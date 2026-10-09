@@ -10,7 +10,7 @@ const Light = preload("res://light.gd")
 
 ## Where the robot stands in each scene: [x as fraction of width, height as fraction of panel]
 const ROBOT_SPOT := {
-	"build": [0.55, 0.64], "shop": [0.8, 0.5], "brass": [0.8, 0.5], "hell": [0.8, 0.5], "volta": [0.78, 0.5], "nimbus": [0.8, 0.5], "kane": [0.78, 0.5], "tenryu": [0.8, 0.5], "workshop": [0.74, 0.56], "scrap": [0.8, 0.5],
+	"build": [0.55, 0.64], "shop": [0.8, 0.5], "brass": [0.8, 0.5], "hell": [0.8, 0.5], "volta": [0.78, 0.5], "nimbus": [0.8, 0.5], "kane": [0.78, 0.5], "tenryu": [0.8, 0.5], "circus": [0.8, 0.5], "workshop": [0.74, 0.56], "scrap": [0.8, 0.5],
 	"paint": [0.5, 0.72], "moves": [0.62, 0.7], "team": [0.64, 0.66], "cups": [0.68, 0.62],
 	"storage": [0.72, 0.5],
 }
@@ -53,6 +53,7 @@ const SCENE_COLORS := {
 	"nimbus": [Color(0.55, 0.6, 0.66), Color(0.6, 0.65, 0.71), Color(0.4, 0.42, 0.45)],        # (1.101) Nimbus Aerial: a pale hangar
 	"kane": [Color(0.05, 0.05, 0.07), Color(0.07, 0.07, 0.09), Color(0.08, 0.08, 0.1)],        # (1.102) Kane Dynamics: black glass
 	"tenryu": [Color(0.3, 0.19, 0.12), Color(0.34, 0.22, 0.14), Color(0.42, 0.3, 0.18)],        # (1.103) Tenryu: a wooden dojo
+	"circus": [Color(0.06, 0.07, 0.16), Color(0.08, 0.09, 0.2), Color(0.36, 0.24, 0.15)],       # (1.109) the Menagerie: night harbour, a wooden deck
 	# (the scrapyard is outdoors: a sunset sky)
 }
 
@@ -92,6 +93,22 @@ static func _environment(ci: CanvasItem, screen: Vector2, floor_y: float, scene:
 		ci.draw_rect(Rect2(0, floor_y, screen.x, screen.y - floor_y), Color(0.24, 0.22, 0.22))   # concrete
 		for k in int(screen.x / 120.0) + 1:
 			ci.draw_line(Vector2(k * 120.0, floor_y), Vector2(k * 120.0 - 40.0, screen.y), Color(0.18, 0.17, 0.17), 2.0)
+	elif scene == "circus":
+		# (1.109) the circus ship at night: a deep blue sky with stars, the harbour lights in the water, a planked deck
+		for k in 10:
+			var c2 := Color(0.04, 0.05, 0.13).lerp(Color(0.16, 0.12, 0.26), k / 9.0)
+			ci.draw_rect(Rect2(0, k * floor_y * 0.08, screen.x, floor_y * 0.08 + 1), c2)
+		for k in 40:
+			var sp := Vector2(fmod(k * 197.0, screen.x), fmod(k * 61.0, floor_y * 0.5))
+			ci.draw_circle(sp, 1.0 + (k % 3) * 0.4, Color(1, 1, 1, 0.35 + 0.35 * sin(t * 2.0 + k)))
+		ci.draw_rect(Rect2(0, floor_y * 0.78, screen.x, floor_y * 0.22), Color(0.05, 0.07, 0.13))   # the water
+		for k in 14:
+			var lx := fmod(k * 113.0, screen.x)
+			ci.draw_line(Vector2(lx, floor_y * 0.8 + (k % 4) * 6.0), Vector2(lx + 18.0 + sin(t + k) * 6.0, floor_y * 0.8 + (k % 4) * 6.0), Color(1.0, 0.75, 0.35, 0.25), 2.0)
+		ci.draw_rect(Rect2(0, floor_y, screen.x, screen.y - floor_y), Color(0.36, 0.24, 0.15))   # the deck
+		for k in 6:
+			var py := floor_y + pow((k + 1) / 7.0, 1.4) * (screen.y - floor_y)
+			ci.draw_line(Vector2(0, py), Vector2(screen.x, py), Color(0.26, 0.17, 0.1), 2.0)
 	elif scene == "volta":
 		var vc: Array = SCENE_COLORS["volta"]
 		ci.draw_rect(Rect2(Vector2.ZERO, screen), vc[0])
@@ -197,6 +214,8 @@ static func _props_back(ci: CanvasItem, size: Vector2, scene: String, t: float, 
 			_kane_back(ci, size, floor_y, t)
 		"tenryu":
 			_tenryu_back(ci, size, floor_y, t)
+		"circus":
+			_circus_back(ci, size, floor_y, t)
 		"workshop":
 			_sign(ci, Vector2(size.x * 0.8, 30), I18n.t("CUSTOM ORDERS"), Color(0.6, 0.85, 1.0))
 			# shelves of parts
@@ -304,7 +323,7 @@ static func draw_front(ci: CanvasItem, stage: Rect2, scene: String, t: float, in
 ## The light the people in a scene stand in (1.60): Gus's building is the bay's work lamp, the places
 ## outside have their own.
 static func scene_light(scene: String) -> String:
-	return scene if scene in ["pub", "shop", "scrap", "phone", "brass", "hell", "volta", "nimbus", "kane", "tenryu"] else "bay"
+	return scene if scene in ["pub", "shop", "scrap", "phone", "brass", "hell", "volta", "nimbus", "kane", "tenryu", "circus"] else "bay"
 
 
 static func _front(ci: CanvasItem, size: Vector2, scene: String, t: float, info: Dictionary, robot_base: Vector2, robot_h: float) -> void:
@@ -366,6 +385,16 @@ static func _front(ci: CanvasItem, size: Vector2, scene: String, t: float, info:
 			ci.draw_line(gc, gc + Vector2(cos(na), sin(na)) * 5.5 * s, Color(0.6, 0.1, 0.08), 1.5)
 			PilotArt.draw_person(ci, Vector2(ct.end.x + 26 * s, floor_y), s, pilot, -1.0, "point", t + 0.5)
 			_head(info, "YOU", Vector2(ct.end.x + 26 * s, floor_y), s)
+		"circus":
+			# (1.109) Ringmaster Esme in her red tailcoat and top hat presents the show; you with your controller
+			var esme := {"skin": "#c98a5e", "hair": "#1a1a1a", "eyes": "#6b3a1e", "outfit": "#b8282e", "hat": "tophat", "beard": "none",
+					"glasses": "none", "long_hair": true, "female": true}
+			var ef := Vector2(size.x * 0.56, floor_y)
+			PilotArt.draw_person(ci, ef, s, esme, 1.0, "point", t)
+			_head(info, "ESME", ef, s)
+			_rc(ci, Rect2(ef.x - 12 * s, ef.y - 46 * s, 24 * s, 3 * s), Color(0.95, 0.75, 0.25))   # her gold sash
+			PilotArt.draw_person(ci, Vector2(size.x * 0.3, floor_y), s, pilot, 1.0, "hold", t + 0.5)
+			_head(info, "YOU", Vector2(size.x * 0.3, floor_y), s)
 		"tenryu":
 			# (1.103) Haru in a red jacket and headband, pointing like a hero; you with your controller
 			var haru := {"skin": "#e2b48c", "hair": "#222222", "eyes": "#5b3a1e", "outfit": "#b8282e", "hat": "headband", "beard": "none", "glasses": "none"}
@@ -1088,6 +1117,76 @@ static func _brass_back(ci: CanvasItem, size: Vector2, floor_y: float, t: float)
 
 ## (1.103) Tenryu's dojo: wooden walls, shoji screens with one slid open on a blossom tree and Midtown at night,
 ## red paper lanterns, the banner with the rising sun and the logo, a model kit box on the shelf, petals drifting in.
+## (1.109) The Menagerie's circus ship: the big top on deck in red and cream stripes, a mast with
+## pennants, bulb strings that chase, a cage wagon with a mechanical beast pacing inside, the gold rail.
+static func _circus_back(ci: CanvasItem, size: Vector2, floor_y: float, t: float) -> void:
+	var red := Color(0.72, 0.13, 0.12)
+	var cream := Color(0.93, 0.86, 0.72)
+	var gold := Color(0.95, 0.75, 0.25)
+	# the mast and its pennants
+	var mx := size.x * 0.9
+	_ln(ci, Vector2(mx, floor_y), Vector2(mx, 8), Color(0.32, 0.2, 0.12), 6.0)
+	_ln(ci, Vector2(mx - 40, 40), Vector2(mx + 30, 40), Color(0.32, 0.2, 0.12), 4.0)
+	for k in 7:
+		var u := float(k) / 6.0
+		var a := Vector2(mx, 12).lerp(Vector2(size.x * 0.08, 60), u)
+		var b := Vector2(mx, 12).lerp(Vector2(size.x * 0.08, 60), u + 1.0 / 7.0)
+		var mid := a.lerp(b, 0.5) + Vector2(0, 8 + sin(t * 2.0 + k) * 2.0)
+		ci.draw_colored_polygon(PackedVector2Array([a, b, mid]), red if k % 2 == 0 else gold)
+	ci.draw_line(Vector2(mx, 12), Vector2(size.x * 0.08, 60), Color(0.25, 0.18, 0.12), 1.5)
+	# the big top: a striped tent with a scalloped gold hem and a flag on its peak
+	var tl := Vector2(size.x * 0.06, floor_y - 30)
+	var tw := size.x * 0.46
+	var peak := Vector2(tl.x + tw * 0.5, floor_y - 200)
+	var hem_y := floor_y - 120
+	var stripes := 8
+	for k in stripes:
+		var x0 := tl.x + tw * float(k) / stripes
+		var x1 := tl.x + tw * float(k + 1) / stripes
+		_pg(ci, PackedVector2Array([peak, Vector2(x0, hem_y), Vector2(x1, hem_y)]), red if k % 2 == 0 else cream)
+	for k in stripes:
+		var x0 := tl.x + tw * float(k) / stripes
+		var x1 := tl.x + tw * float(k + 1) / stripes
+		_rc(ci, Rect2(x0, hem_y, x1 - x0, tl.y - hem_y), cream.darkened(0.08) if k % 2 == 0 else red.darkened(0.1))
+		ci.draw_arc(Vector2((x0 + x1) * 0.5, hem_y), (x1 - x0) * 0.5, 0.0, PI, 8, gold, 3.0)   # the scalloped hem
+	# the door flaps tied back, the ring glowing inside
+	var dr := Rect2(tl.x + tw * 0.38, hem_y + 6, tw * 0.24, tl.y - hem_y - 6)
+	ci.draw_rect(dr, Color(0.25, 0.1, 0.06))
+	ci.draw_circle(Vector2(dr.get_center().x, dr.end.y), dr.size.x * 0.4, Color(1.0, 0.7, 0.3, 0.3))
+	_ln(ci, Vector2(peak.x, peak.y), Vector2(peak.x, peak.y - 26), Color(0.3, 0.2, 0.12), 2.0)
+	var fl := sin(t * 3.0) * 3.0
+	ci.draw_colored_polygon(PackedVector2Array([Vector2(peak.x, peak.y - 26), Vector2(peak.x + 18, peak.y - 21 + fl), Vector2(peak.x, peak.y - 16)]), gold)
+	# the bulb string across the top, chasing
+	for k in 22:
+		var u2 := float(k) / 21.0
+		var bp := Vector2(lerpf(4.0, size.x - 4.0, u2), 22.0 + sin(u2 * PI) * 22.0)
+		var on := int(t * 6.0 + k) % 3 == 0
+		ci.draw_circle(bp, 3.0, Color(1.0, 0.85, 0.45) if on else Color(0.45, 0.35, 0.2))
+		if on:
+			ci.draw_circle(bp, 7.0, Color(1.0, 0.8, 0.4, 0.18))
+	# the plaque on the tent
+	_maker_plaque(ci, Rect2(tl.x + 6, floor_y - 116, tw - 12, 30), "menagerie", I18n.t("THE MENAGERIE"), I18n.t("MECHANICAL MARVELS · SEE THEM ALL"))
+	# a cage wagon with a mechanical beast pacing behind the bars
+	var cg := Rect2(size.x * 0.56, floor_y - 74, size.x * 0.22, 60)
+	_rc(ci, cg, red.darkened(0.25))
+	ci.draw_rect(cg.grow(-6), Color(0.08, 0.06, 0.08))
+	var bx := cg.position.x + 14 + (0.5 + 0.5 * sin(t * 0.6)) * (cg.size.x - 52)
+	_cr(ci, Vector2(bx + 12, cg.position.y + 30), 12, Color(0.42, 0.35, 0.3))   # its head
+	_rc(ci, Rect2(bx, cg.position.y + 34, 28, 14), Color(0.38, 0.3, 0.26))
+	ci.draw_circle(Vector2(bx + 17, cg.position.y + 27), 2.2, Color(1.0, 0.3, 0.2) if fmod(t, 3.0) > 0.2 else Color(0.2, 0.05, 0.05))
+	for k in 9:
+		var gx := cg.position.x + 6 + k * (cg.size.x - 12) / 8.0
+		ci.draw_line(Vector2(gx, cg.position.y + 6), Vector2(gx, cg.end.y - 6), gold, 2.0)
+	_rc(ci, Rect2(cg.position.x - 4, cg.position.y - 6, cg.size.x + 8, 8), gold)
+	for wx in [cg.position.x + 14, cg.end.x - 14]:
+		_cr(ci, Vector2(wx, cg.end.y + 4), 10, Color(0.85, 0.65, 0.2))
+		ci.draw_circle(Vector2(wx, cg.end.y + 4), 3.0, Color(0.3, 0.2, 0.1))
+	# the ship's gold rail along the deck's edge
+	_rc(ci, Rect2(0, floor_y - 26, size.x, 4), gold)
+	for k in int(size.x / 26.0) + 1:
+		ci.draw_line(Vector2(k * 26.0, floor_y - 22), Vector2(k * 26.0, floor_y), gold.darkened(0.25), 2.0)
+
+
 static func _tenryu_back(ci: CanvasItem, size: Vector2, floor_y: float, t: float) -> void:
 	var wood := Color(0.42, 0.28, 0.16)
 	# the beams
@@ -1703,6 +1802,7 @@ const ROOM := {
 	"nimbus": {"tint": Color(0.0, 0.02, 0.06), "dim": 0.14, "pool": 0.1},
 	"kane": {"tint": Color(0.0, 0.0, 0.02), "dim": 0.3, "pool": 0.2},
 	"tenryu": {"tint": Color(0.05, 0.01, 0.02), "dim": 0.2, "pool": 0.1},
+	"circus": {"tint": Color(0.02, 0.02, 0.06), "dim": 0.16, "pool": 0.12},
 	"scrap": {"tint": Color(0.06, 0.02, 0.08), "dim": 0.12, "pool": 0.07},
 	"phone": {"tint": Color(0.0, 0.0, 0.03), "dim": 0.0, "pool": 0.0},
 }

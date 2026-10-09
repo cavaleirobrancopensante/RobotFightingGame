@@ -58,7 +58,8 @@ const VOICE_OF := {
 	"DEX": ["voice_smooth", 1.2],   # (1.100) Dex the Volta salesman
 	"WREN": ["voice_high", 0.95],   # (1.101) Captain Wren, Nimbus's test pilot
 	"VALE": ["voice_smooth", 1.1],   # (1.102) Ms. Vale at Kane Dynamics
-	"HARU": ["voice_high", 1.2],   # (1.103) Haru at the Tenryu dojo
+	"HARU": ["voice_high", 1.2],
+	"ESME": ["voice_smooth", 1.35],   # (1.109) Ringmaster Esme of the Menagerie   # (1.103) Haru at the Tenryu dojo
 	"YOU": ["talk", 1.08],
 	"ECHO": ["talk_robot", 1.0],
 	"MARGO": ["voice_high", 1.18],

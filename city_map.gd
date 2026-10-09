@@ -298,6 +298,18 @@ func _satellite() -> void:
 		var cx := 270.0 + i * 60.0
 		draw_line(Vector2(cx, 405), Vector2(cx + 30, 470), Color(0.8, 0.6, 0.2), 2.0)
 		draw_rect(Rect2(cx - 4, 401, 8, 8), Color(0.75, 0.55, 0.2))
+	# (1.109) the Menagerie's circus ship moored off the end of the docks: a red hull, the striped big top on deck
+	if GameData.place_locked("ship") == "" or GameData.story_seen.has("ship_docked"):
+		var hull := PackedVector2Array()
+		for i in 16:
+			var a := i * TAU / 16.0
+			hull.append(Vector2(452, 546) + Vector2(cos(a) * 34.0, sin(a) * 11.0))
+		draw_colored_polygon(hull, Color(0.55, 0.12, 0.1))
+		draw_polyline(hull + PackedVector2Array([hull[0]]), Color(0.9, 0.7, 0.25), 1.0)
+		for i in 8:
+			var a2 := i * TAU / 8.0
+			draw_colored_polygon(PackedVector2Array([Vector2(452, 544), Vector2(452, 544) + Vector2(cos(a2), sin(a2) * 0.6) * 9.0,
+					Vector2(452, 544) + Vector2(cos(a2 + TAU / 8.0), sin(a2 + TAU / 8.0) * 0.6) * 9.0]), Color(0.85, 0.2, 0.15) if i % 2 == 0 else Color(0.92, 0.86, 0.72))
 	# the scrapyard: heaps of dead robots
 	var heaps := [[Vector2(120, 440), 26.0], [Vector2(165, 470), 20.0], [Vector2(140, 410), 16.0], [Vector2(190, 438), 14.0]]
 	for h in heaps:

@@ -3,7 +3,7 @@ const PlayLog = preload("res://playlog.gd")   # (1.87) the playtest log
 
 # helper scripts, loaded by path so the game also runs without an editor scan
 ## The game's version, shown on the main menu. Bump it with every change (1.1, 1.2, ...).
-const VERSION := "1.108"
+const VERSION := "1.109"
 const Arena = preload("res://arena.gd")
 const I18n = preload("res://i18n.gd")
 const Catalog = preload("res://catalog.gd")
@@ -2027,6 +2027,20 @@ func ids_of(eq: Dictionary) -> Dictionary:
 		if not p.is_empty():
 			out[slot] = p["id"]
 	return out
+
+
+# ---------------------------------------------------------------- the Menagerie ship (1.109)
+
+const SHIP_FOL := 1000   # followers that bring the ringmaster's invite
+
+
+## The circus ship docks for you: once, with the news on BotMedia.
+func ship_docks() -> void:
+	if story_seen.has("ship_docked"):
+		return
+	story_seen.append("ship_docked")
+	Social.post("botmedia", "The Menagerie Mechanica's circus ship docks at Port Ferrum. Animal parts, sold off the deck.", [], {"kind": "logo", "logo": "mk:menagerie"}, ["Menagerie"], false, "news")
+	Social.post("mk:menagerie", "Roll up, roll up! The Menagerie is in port. See the Gorilla Arms! See the Octopus Tentacle! #Menagerie", [], {}, ["Menagerie"], false, "maker_ad")
 
 
 # ---------------------------------------------------------------- prototypes (1.108)
@@ -6449,6 +6463,7 @@ const PLACES := {
 	"partsrus": {"name": "Parts-R-Us", "district": "oldtown", "pos": [410, 372], "road": 3, "kind": "shop", "feature": "shop"},
 	"brassworks": {"name": "Brassworks & Sons", "district": "oldtown", "pos": [232, 226], "road": 2, "kind": "maker", "maker": "brassworks"},
 	"breakers": {"name": "Hellfire Heavy", "district": "docks", "pos": [336, 446], "road": 1, "kind": "maker", "maker": "hellfire"},
+	"ship": {"name": "The Menagerie", "district": "docks", "pos": [452, 544], "road": 1, "kind": "maker", "maker": "menagerie"},
 	"dojo": {"name": "Tenryu Mecha Works", "district": "midtown", "pos": [572, 248], "road": 4, "kind": "maker", "maker": "tenryu"},
 	"kanestore": {"name": "Kane Dynamics", "district": "heights", "pos": [744, 168], "road": 5, "kind": "maker", "maker": "kane"},
 	"hangar": {"name": "Nimbus Aerial", "district": "midtown", "pos": [850, 420], "road": 5, "kind": "maker", "maker": "nimbus"},
@@ -6498,6 +6513,8 @@ func place_locked(place: String) -> String:
 		return "Opens to Rust League pilots. Or get enough followers to get noticed."   # (1.100)
 	if place == "hangar" and rank_index() < 3 and not story_seen.has("nimbus_invite"):
 		return "Opens to Iron League pilots. Or win four in a row and someone up there notices."   # (1.101)
+	if place == "ship" and rank_index() < 2 and not story_seen.has("ship_invite"):
+		return "Opens to Rust League pilots. Or draw a crowd on BotMedia and the ringmaster comes looking."   # (1.109)
 	if place == "dojo" and rank_index() < 2 and not story_seen.has("tenryu_invite"):
 		return "Opens to Rust League pilots. Or land a big special move and they'll come to you."   # (1.103)
 	return ""

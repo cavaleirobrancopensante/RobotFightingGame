@@ -280,6 +280,14 @@ const SCENES := {
 		["VALE", "The Steel League. Kane Dynamics has been expecting you."],
 		["VALE", "Everything here is built in your grade. Precision is not cheap. Neither are you, now."],
 	]},
+	"ship_invite": {"place": "GUS'S BAY", "lines": [
+		["GUS", "There's a circus ship in at the Docks. The Menagerie. Their ringmaster saw you on BotMedia."],
+		["GUS", "Animal parts, kid. Gorilla arms, tentacles. Go have a look, and count your fingers after."],
+	]},
+	"ship_first": {"place": "THE MENAGERIE", "lines": [
+		["ESME", "Welcome aboard! Mind the gangplank. Everything on this deck bites, rolls or hangs on."],
+		["ESME", "Every beast in the show, built in your grade. The crowd loves an animal. Pick one."],
+	]},
 	"tenryu_invite": {"place": "GUS'S BAY", "lines": [
 		["GUS", "Someone from Tenryu Mecha Works saw that special move. They want you at their dojo in Midtown."],
 		["GUS", "They came over to beat Kane. Loud, red and white, and they shout their moves. You'll like them."],

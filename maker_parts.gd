@@ -258,7 +258,7 @@ const RETIRED := ["torso_box", "torso_plate", "torso_tank", "arm_rod", "arm_bulk
 ## The makers whose lines are in (their launch posts once on BotMedia).
 const LAUNCHED := ["oldiron", "scrapworks", "brassworks", "hellfire", "volta", "nimbus", "kane", "tenryu", "menagerie"]
 ## (1.98) Makers with their own shop in the city: Parts-R-Us stops stocking them.
-const OWN_SHOP := {"brassworks": "brassworks", "hellfire": "breakers", "volta": "showroom", "nimbus": "hangar", "kane": "kanestore", "tenryu": "dojo"}
+const OWN_SHOP := {"brassworks": "brassworks", "hellfire": "breakers", "volta": "showroom", "nimbus": "hangar", "kane": "kanestore", "tenryu": "dojo", "menagerie": "ship"}
 
 
 ## The part list with the makers' lines in: same ids replaced whole, new ids added, old ones retired.
