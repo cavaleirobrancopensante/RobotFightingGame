@@ -3385,7 +3385,7 @@ func apply_hit(att: Fighter, d: Fighter, a: Dictionary, at: Vector2) -> void:
 			if att.style == "specialist":
 				dmg *= 1.25
 		if att.weak != "" and slot == att.weak:
-			dmg *= 1.0 + WEAK_BONUS   # only once your head's scan has found it
+			dmg *= 1.0 + WEAK_BONUS + limb_trait(att, "head", "insight") * 2.0 / 100.0   # only once your head's scan has found it (+ an Oracle Lens)
 		# (1.98) a full boiler vents through this hit
 		if att.pr_rate > 0.0 and att.pressure >= 100.0:
 			dmg *= PRESSURE_VENT
@@ -3414,7 +3414,7 @@ func apply_hit(att: Fighter, d: Fighter, a: Dictionary, at: Vector2) -> void:
 		var part_dmg := dmg * (HEAD_FACTOR if slot.begins_with("head") else 1.0)
 		damage_part(d, slot, part_dmg)
 		if slot != "torso" and d.alive("torso"):
-			damage_part(d, "torso", dmg * CORE_SHARE)
+			damage_part(d, "torso", dmg * CORE_SHARE * (1.0 - limb_trait(d, "torso", "isolate") * 2.0 / 100.0))   # (1.102) a Monolith's floating parts
 		# every part matters: hurt legs slow you down, hurt arms hit softer
 		if att.team == 0 and slot.begins_with("leg"):
 			coach("leg_hit", tr("Leg hit! Damaged legs make it slower."))

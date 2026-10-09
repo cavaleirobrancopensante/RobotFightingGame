@@ -30,7 +30,7 @@ const LEGS := {"rod": [60.0, 14.0], "piston": [62.0, 18.0], "spring": [66.0, 13.
 		"blade": [64.0, 12.0], "hover": [50.0, 18.0], "spider": [62.0, 13.0],
 		"stomper": [56.0, 22.0], "pipe": [62.0, 14.0], "bellows": [60.0, 17.0], "tripod": [64.0, 13.0],
 		"excavator": [50.0, 22.0], "hydraulic": [64.0, 17.0], "hotrod": [66.0, 13.0], "maglev": [58.0, 15.0],
-		"gear": [62.0, 13.0], "ductfan": [56.0, 14.0]}
+		"gear": [62.0, 13.0], "ductfan": [56.0, 14.0], "stride": [70.0, 15.0], "gravpad": [56.0, 15.0]}
 # [width, height]
 const TORSOS := {"barrel": [60.0, 70.0], "box": [56.0, 76.0], "vee": [70.0, 78.0],
 		"core": [60.0, 76.0], "tank": [84.0, 82.0], "slim": [42.0, 82.0],
@@ -39,14 +39,16 @@ const TORSOS := {"barrel": [60.0, 70.0], "box": [56.0, 76.0], "vee": [70.0, 78.0
 		"yoke": [82.0, 74.0], "quad": [74.0, 84.0], "monster": [92.0, 90.0],
 		"engine": [74.0, 74.0], "loco": [70.0, 80.0], "drum": [58.0, 72.0], "boiler": [62.0, 80.0], "clockwork": [62.0, 76.0],
 		"fueltank": [62.0, 78.0], "hull": [78.0, 80.0], "coupe": [58.0, 74.0], "dynamo": [62.0, 76.0], "twincoil": [80.0, 72.0],
-		"fuselage": [54.0, 80.0], "cryopod": [60.0, 76.0], "biplane": [78.0, 78.0]}
+		"fuselage": [54.0, 80.0], "cryopod": [60.0, 76.0], "biplane": [78.0, 78.0],
+		"paragon": [66.0, 80.0], "monolith": [56.0, 88.0], "hydraprime": [92.0, 86.0]}
 const HEADS := {"bucket": [34.0, 32.0], "box": [38.0, 34.0], "dome": [42.0, 34.0], "cyclops": [40.0, 40.0],
 		"visor": [48.0, 28.0], "horned": [40.0, 34.0], "skull": [40.0, 42.0], "wedge": [44.0, 30.0],
 		"tall": [26.0, 52.0], "bulb": [44.0, 44.0], "tv": [46.0, 36.0], "dish": [40.0, 34.0], "laser": [38.0, 34.0],
 		"knight": [40.0, 42.0], "orb": [38.0, 38.0], "speaker": [44.0, 38.0],
 		"rivet": [38.0, 36.0], "grille": [50.0, 38.0], "peeper": [34.0, 32.0], "busted": [46.0, 36.0],
 		"periscope": [36.0, 34.0], "divingbell": [44.0, 42.0], "welder": [40.0, 40.0], "beacon": [36.0, 30.0],
-		"tesla": [34.0, 30.0], "racer": [42.0, 36.0], "canopy": [42.0, 34.0], "radarnose": [44.0, 30.0]}
+		"tesla": [34.0, 30.0], "racer": [42.0, 36.0], "canopy": [42.0, 34.0], "radarnose": [44.0, 30.0],
+		"sentinel": [30.0, 48.0], "oracle": [40.0, 40.0]}
 const PUNCH_LEN := 84.0   # how far a punching hand reaches from the lead shoulder
 
 # [thickness, fist radius]
@@ -56,7 +58,7 @@ const ARMS := {"rod": [12.0, 10.0], "piston": [15.0, 12.0], "claw": [14.0, 7.0],
 		"blade": [13.0, 7.0], "flame": [16.0, 7.0], "magnet": [15.0, 7.0],
 		"anvil": [18.0, 9.0], "crane": [13.0, 7.0], "wrench": [12.0, 7.0], "grabber": [11.0, 6.0],
 		"gauntlet": [15.0, 13.0], "riveter": [12.0, 7.0], "wrecker": [15.0, 13.0], "torch": [13.0, 7.0], "arcfist": [14.0, 13.0], "magclamp": [12.0, 7.0],
-		"wingblade": [12.0, 7.0], "turbine": [14.0, 13.0]}
+		"wingblade": [12.0, 7.0], "turbine": [14.0, 13.0], "executor": [15.0, 7.0], "lancet": [12.0, 7.0]}
 
 
 ## (1.93) Normal hits by limb, techniques included, and the arm poses that reach as far as a punch
@@ -1105,6 +1107,8 @@ static func arm_tip_extra(look: Dictionary, slot: String, pose: String) -> Vecto
 		"magclamp": ext = 8.0 + 15.0 * sz
 		"wingblade": ext = 40.0 * sz
 		"turbine": ext = fr + 10.0 * sz
+		"executor": ext = 36.0 * sz
+		"lancet": ext = 58.0 * sz
 	if pose == "elbow" or pose == "shove":
 		ext = 6.0   # the elbow (or a flat palm) does the hitting, not the weapon
 	return Vector2(ext, maxf(fr, th * 0.5))
@@ -1410,6 +1414,27 @@ static func _draw_arm(ci: CanvasItem, look: Dictionary, slot: String, s: Vector2
 				zz.append(p2)
 				ci.draw_polyline(zz, Color(0.6, 0.95, 1.0), 2.0)
 				ci.draw_circle(p1.lerp(p2, 0.5), 5.0, Color(0.5, 0.9, 1.0, 0.25))
+		"executor":
+			# (1.102) Kane: a black drill with a gold tip, gold rifling turning, a light ring at its root
+			var root3 := h + dir * 2.0
+			_plate(ci, PackedVector2Array([root3 + perp * 10.0 * sz, root3 + dir * 36.0 * sz, root3 - perp * 10.0 * sz]), c.lightened(0.1) if not flash else Color.WHITE)
+			var spin3 := fmod(t * 4.0, 1.0)
+			for k in 4:
+				var f6 := (k + spin3) / 4.0
+				var q6 := root3 + dir * 36.0 * sz * f6
+				var w6 := 10.0 * sz * (1.0 - f6)
+				ci.draw_line(q6 + perp * w6, q6 - perp * w6 + dir * 3.0, Color(0.88, 0.72, 0.29, 0.8), 1.5)
+			_ln(ci, root3 + dir * 28.0 * sz, root3 + dir * 36.0 * sz, Color(0.95, 0.8, 0.35), 3.0)
+			ci.draw_arc(root3, 9.0 * sz, dir.angle() - 1.4, dir.angle() + 1.4, 10, Color(0.95, 0.8, 0.35, 0.5 + 0.4 * sin(t * 3.0)), 2.0)
+		"lancet":
+			# (1.102) Kane: a long black spear, a gold edge down its blade, a light line pulsing along the shaft
+			var tip4 := h + dir * 58.0 * sz
+			_ln(ci, h, h + dir * 38.0 * sz, c.lightened(0.15), 4.0)
+			_plate(ci, PackedVector2Array([h + dir * 36.0 * sz + perp * 5.0, tip4, h + dir * 36.0 * sz - perp * 5.0, h + dir * 32.0 * sz]), c.lightened(0.2) if not flash else Color.WHITE)
+			ci.draw_line(h + dir * 36.0 * sz + perp * 5.0, tip4, Color(0.95, 0.8, 0.35), 1.5)
+			var pl4 := fmod(t * 1.2, 1.0)
+			ci.draw_circle(h.lerp(h + dir * 36.0 * sz, pl4), 2.0, Color(1.0, 0.85, 0.4, 0.9))
+			_joint(ci, h, th * 0.55, c.darkened(0.2))
 		"wingblade":
 			# (1.101) Nimbus: the forearm ends in a swept wing, white with a blue leading edge, a red tip light
 			var wt := h + dir * 40.0 * sz
@@ -1560,6 +1585,19 @@ static func _draw_back(ci: CanvasItem, look: Dictionary, g: Dictionary, pose: Di
 			for k in 3:
 				var ph := fmod(t * 0.7 + k * 0.33, 1.0)
 				ci.draw_circle(Vector2(sk.get_center().x - ph * 14.0, sk.position.y - 8.0 - ph * 30.0), 4.0 + ph * 8.0, Color(0.92, 0.93, 0.95, 0.45 * (1.0 - ph)))
+		"shieldgen":
+			# (1.102) Kane: a black pylon on the back, a gold ring floating round its tip, a faint field shimmering
+			var th5: float = g["th"]
+			var py := Rect2(bx - 10.0, top - 18.0, 10.0, th5 * 0.6 + 18.0)
+			_plate(ci, _chamfer(py, 2.0), c)
+			ci.draw_line(Vector2(py.get_center().x, py.position.y + 6), Vector2(py.get_center().x, py.end.y - 4), Color(0.95, 0.8, 0.35, 0.5 + 0.4 * sin(t * 3.0)), 1.5)
+			var rc := Vector2(py.get_center().x, py.position.y - 4 + sin(t * 2.0) * 2.0)
+			var ring := PackedVector2Array()
+			for k in 17:
+				ring.append(rc + Vector2(cos(k * TAU / 16.0) * 12.0, sin(k * TAU / 16.0) * 4.0))
+			ci.draw_polyline(ring, OUTLINE, 4.0)
+			ci.draw_polyline(ring, Color(0.88, 0.72, 0.29), 2.5)
+			ci.draw_arc(rc + Vector2(0, 20), 26.0, PI * 0.9, PI * 1.6, 12, Color(0.6, 0.85, 1.0, 0.12 + 0.08 * sin(t * 5.0)), 3.0)
 		"jetwings":
 			# (1.101) Nimbus: swept white wings with a jet pod under each, blue tips, a flame on the double jump
 			var th4: float = g["th"]
@@ -1725,6 +1763,22 @@ static func _draw_leg(ci: CanvasItem, look: Dictionary, slot: String, hip: Vecto
 			_limb(ci, knee, foot + Vector2(0, -4), c.lightened(0.15), th * 0.7)
 			_ln(ci, knee.lerp(foot, 0.3) - perp * th * 0.5, knee.lerp(foot, 0.3) + perp * th * 0.5, c.darkened(0.35), 3.0)
 			_joint(ci, knee, th * 0.6, c.darkened(0.25))
+		"stride":
+			# (1.102) Kane: a sleek reverse-knee leg in black glass, gold joints, a light line down the shin
+			var ks2 := -1.0 if _front_legs else 1.0
+			var j1 := hip.lerp(foot, 0.38) - perp * 12.0 * ks2
+			var j2 := hip.lerp(foot, 0.78) + (perp * 10.0 if not _front_legs else -perp * 5.0)
+			_limb(ci, hip, j1, c, th * 1.15)
+			_limb(ci, j1, j2, c, th * 0.85)
+			_limb(ci, j2, foot, c, th * 0.6)
+			_joint(ci, j1, th * 0.5, Color(0.88, 0.72, 0.29))
+			_joint(ci, j2, th * 0.4, Color(0.88, 0.72, 0.29))
+			ci.draw_line(j1.lerp(j2, 0.15), j1.lerp(j2, 0.85), Color(0.95, 0.8, 0.35, 0.45 + 0.35 * sin(Time.get_ticks_msec() * 0.003)), 2.0)
+		"gravpad":
+			# (1.102) Kane: a tapered leg over a floating grav disc, nothing touching the floor
+			_limb(ci, hip, knee, c, th)
+			_limb(ci, knee, foot + Vector2(0, -18), c, th * 0.7)
+			_joint(ci, knee, th * 0.5, Color(0.88, 0.72, 0.29))
 		"gear":
 			# (1.101) Nimbus: a landing gear leg, a chrome oleo strut with a torque link at the knee
 			_limb(ci, hip, knee, c, th)
@@ -1816,6 +1870,14 @@ static func _draw_leg(ci: CanvasItem, look: Dictionary, slot: String, hip: Vecto
 		for dx in [-12.0, 2.0, 16.0]:
 			_ln(ci, foot + Vector2(2, -5), foot + Vector2(dx, 0), tc, 3.5)
 		_joint(ci, foot + Vector2(2, -5), 4.0, tc.darkened(0.2))
+	elif p["shape"] == "gravpad":
+		var gp2 := foot + Vector2(4, -10 + sin(Time.get_ticks_msec() * 0.004 + foot.x * 0.05) * 2.0)
+		var disc := PackedVector2Array()
+		for k in 16:
+			disc.append(gp2 + Vector2(cos(k * TAU / 16.0) * 16.0, sin(k * TAU / 16.0) * 4.5))
+		_plate(ci, disc, c if not flash else Color.WHITE)
+		ci.draw_polyline(disc, Color(0.95, 0.8, 0.35, 0.8), 1.5)
+		ci.draw_colored_polygon(PackedVector2Array([gp2 + Vector2(-12, 4), gp2 + Vector2(12, 4), gp2 + Vector2(8, 12), gp2 + Vector2(-8, 12)]), Color(1.0, 0.85, 0.4, 0.18))
 	elif p["shape"] == "gear":
 		# a pair of small tyres on the axle
 		var ax := foot + Vector2(0, -9)
@@ -2083,6 +2145,42 @@ static func _draw_torso(ci: CanvasItem, look: Dictionary, g: Dictionary, flash: 
 				_ln(ci, Vector2(bxk, y0 + 3), Vector2(bxk, y1 - 3), c, 3.5)
 			_plate(ci, _chamfer(Rect2(x0 - 3, y0 - 2, w + 6, 9), 2.0), trim)
 			_plate(ci, _chamfer(Rect2(x0 - 3, y1 - 8, w + 6, 9), 2.0), trim)
+		"paragon":
+			# (1.102) Kane: a black glass V torso, gold seams, a light line that pulses down the middle, no bolts
+			var pg := PackedVector2Array([Vector2(x0, y0), Vector2(x1, y0), Vector2(x1 - w * 0.16, y1), Vector2(x0 + w * 0.16, y1)])
+			_plate(ci, pg, c)
+			var gold := Color(0.88, 0.72, 0.29)
+			ci.draw_line(Vector2(x0 + 3, y0 + 3), Vector2(r.get_center().x, y0 + r.size.y * 0.42), gold, 1.5)
+			ci.draw_line(Vector2(x1 - 3, y0 + 3), Vector2(r.get_center().x, y0 + r.size.y * 0.42), gold, 1.5)
+			var pul := fmod(t * 0.8, 1.0)
+			ci.draw_line(Vector2(r.get_center().x, y0 + r.size.y * 0.42), Vector2(r.get_center().x, y1 - 4), Color(1.0, 0.85, 0.4, 0.5), 2.0)
+			ci.draw_circle(Vector2(r.get_center().x, lerpf(y0 + r.size.y * 0.42, y1 - 4, pul)), 2.5, Color(1.0, 0.9, 0.5))
+			_plate(ci, _chamfer(Rect2(x0 - 4, y0 - 3, w + 8, 9), 3.0), c.lightened(0.12))
+			ci.draw_line(Vector2(x0 - 2, y0 + 5), Vector2(x1 + 2, y0 + 5), gold, 1.5)
+			ci.draw_line(Vector2(x0 + w * 0.1, y0 + 12), Vector2(x0 + w * 0.32, y0 + 12), Color(1, 1, 1, 0.25), 2.0)   # glass glint
+		"monolith":
+			# (1.102) Kane: a tall black slab in three pieces floating apart, gold light in the gaps
+			var segs := [[0.0, 0.34], [0.38, 0.68], [0.72, 1.0]]
+			for k in 3:
+				var sg: Array = segs[k]
+				var bob2 := sin(t * 1.5 + k * 1.3) * 1.5
+				var sr := Rect2(x0 + (k % 2) * 2.0, y0 + r.size.y * float(sg[0]) + bob2, w - 2.0, r.size.y * (float(sg[1]) - float(sg[0])))
+				_plate(ci, _chamfer(sr, 4.0), c)
+				ci.draw_line(sr.position + Vector2(4, 4), sr.position + Vector2(sr.size.x * 0.4, 4), Color(1, 1, 1, 0.2), 2.0)
+			for k in 2:
+				var gy2 := y0 + r.size.y * (0.36 + k * 0.34)
+				ci.draw_line(Vector2(x0 + 3, gy2), Vector2(x1 - 3, gy2), Color(1.0, 0.82, 0.35, 0.55 + 0.35 * sin(t * 2.5 + k)), 3.0)
+		"hydraprime":
+			# (1.102) Kane: a wide black glass chassis, gold seams round two neck sockets and four shoulders
+			_plate(ci, _chamfer(r, 10.0), c)
+			var gold2 := Color(0.88, 0.72, 0.29)
+			for k in 2:
+				var nx := x0 + w * (0.3 + k * 0.4)
+				ci.draw_arc(Vector2(nx, y0 + 6), 8.0, 0, PI, 8, gold2, 2.0)
+			ci.draw_line(Vector2(x0 + 6, y0 + r.size.y * 0.5), Vector2(x1 - 6, y0 + r.size.y * 0.5), gold2, 1.5)
+			ci.draw_line(Vector2(r.get_center().x, y0 + 12), Vector2(r.get_center().x, y1 - 6), Color(1.0, 0.85, 0.4, 0.4 + 0.3 * sin(t * 2.0)), 2.0)
+			for sx5 in [x0 + 8, x1 - 8]:
+				ci.draw_circle(Vector2(sx5, y0 + r.size.y * 0.72), 5.0, gold2.darkened(0.3))
 		"fuselage":
 			# (1.101) Nimbus: a white fuselage section, rounded, a blue cheat line, portholes and a tail fin
 			_plate(ci, _rounded(r, w * 0.42), c)
@@ -2448,6 +2546,29 @@ static func _draw_head(ci: CanvasItem, look: Dictionary, g: Dictionary, flash: b
 				ci.draw_line(pc2 + Vector2(off2, -pr2), pc2 + Vector2(off2, pr2), Color(0.8, 0.64, 0.2), 2.0)
 			if not front:
 				_disc(ci, hc2 + Vector2(-w * 0.22, -h * 0.05), h * 0.1, Color(0.8, 0.64, 0.2))
+		"sentinel":
+			# (1.102) Kane: a tall narrow head of black glass, a gold-lit visor line that sweeps, a fin on top
+			var sp2 := PackedVector2Array([Vector2(x0 + w * 0.15, y0), Vector2(x0 + w * 0.85, y0), Vector2(x0 + w, y0 + h * 0.3), Vector2(x0 + w * 0.9, y0 + h), Vector2(x0 + w * 0.1, y0 + h), Vector2(x0, y0 + h * 0.3)])
+			_plate(ci, sp2, c)
+			var vy2 := y0 + h * 0.36
+			ci.draw_rect(Rect2(x0 + 3, vy2, w - 6, 5), Color(0.08, 0.06, 0.04))
+			var sw := fmod(t * 0.9, 1.0)
+			ci.draw_rect(Rect2(x0 + 3, vy2 + 1, w - 6, 3), Color(eye.r, eye.g, eye.b, 0.55))
+			ci.draw_rect(Rect2(x0 + 3 + (w - 12) * sw, vy2, 6, 5), Color(1.0, 0.9, 0.5))
+			_plate(ci, PackedVector2Array([Vector2(cen.x - 2, y0), Vector2(cen.x + 2, y0), Vector2(cen.x + 1, y0 - 10), Vector2(cen.x - 1, y0 - 10)]), c.lightened(0.15))
+			ci.draw_line(Vector2(x0 + w * 0.15, y0 + h * 0.62), Vector2(x0 + w * 0.85, y0 + h * 0.62), Color(0.88, 0.72, 0.29), 1.5)
+		"oracle":
+			# (1.102) Kane: a black glass sphere with a great gold-ringed lens, a scan ring turning round it
+			var oc := Vector2(cen.x, y0 + h * 0.5)
+			var orr := minf(w, h) * 0.5
+			_round(ci, oc, orr, c)
+			var lc := oc + Vector2(0.0 if front else orr * 0.3, 0.0)
+			_disc(ci, lc, orr * 0.55, Color(0.88, 0.72, 0.29))
+			ci.draw_circle(lc, orr * 0.42, Color(0.05, 0.05, 0.08))
+			ci.draw_circle(lc, orr * 0.22, eye)
+			ci.draw_circle(lc + Vector2(-orr * 0.12, -orr * 0.12), orr * 0.08, Color(1, 1, 1, 0.7))
+			var sa := t * 2.0
+			ci.draw_arc(oc, orr + 4.0, sa, sa + 1.6, 10, Color(1.0, 0.85, 0.4, 0.7), 2.0)
 		"canopy":
 			# (1.101) Nimbus: a white collar under a tinted glass bubble canopy, the eye glowing inside
 			_plate(ci, _chamfer(Rect2(x0, y0 + h * 0.62, w, h * 0.38), 4.0), c)

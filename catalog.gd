@@ -35,6 +35,9 @@ const TRAITS := {
 	"frostskin": {"name": "Frost Skin", "desc": "Hits on its body chill the attacker: 35%% slower for %0.1fs.", "values": [1.0, 1.6]},
 	"gust": {"name": "Gust", "desc": "Hits blow them back %d%% further.", "values": [60, 90]},
 	"glide": {"name": "Glide", "desc": "Falls %d%% slower after a jump: a short glide.", "values": [35, 50]},
+	# (1.102) Kane Dynamics
+	"isolate": {"name": "Isolated Parts", "desc": "Its parts float free of the core: limb hits pass %d%% less damage to it.", "values": [40, 60]},
+	"insight": {"name": "Insight", "desc": "Hits on the weak spot its scan found do %d%% more.", "values": [15, 25]},
 	"tarp": {"name": "Tarp", "desc": "The tarp hides your weak spot: the enemy's first scans find nothing (%d of them).", "values": [1, 2]},
 }
 

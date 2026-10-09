@@ -10,7 +10,7 @@ const Light = preload("res://light.gd")
 
 ## Where the robot stands in each scene: [x as fraction of width, height as fraction of panel]
 const ROBOT_SPOT := {
-	"build": [0.55, 0.64], "shop": [0.8, 0.5], "brass": [0.8, 0.5], "hell": [0.8, 0.5], "volta": [0.78, 0.5], "nimbus": [0.8, 0.5], "workshop": [0.74, 0.56], "scrap": [0.8, 0.5],
+	"build": [0.55, 0.64], "shop": [0.8, 0.5], "brass": [0.8, 0.5], "hell": [0.8, 0.5], "volta": [0.78, 0.5], "nimbus": [0.8, 0.5], "kane": [0.78, 0.5], "workshop": [0.74, 0.56], "scrap": [0.8, 0.5],
 	"paint": [0.5, 0.72], "moves": [0.62, 0.7], "team": [0.64, 0.66], "cups": [0.68, 0.62],
 	"storage": [0.72, 0.5],
 }
@@ -51,6 +51,7 @@ const SCENE_COLORS := {
 	"brass": [Color(0.2, 0.13, 0.08), Color(0.24, 0.16, 0.09), Color(0.17, 0.11, 0.07)],      # (1.98) Brassworks & Sons: dark wood panels
 	"volta": [Color(0.1, 0.06, 0.18), Color(0.13, 0.08, 0.22), Color(0.08, 0.06, 0.12)],      # (1.100) Volta Motor: night purple, neon
 	"nimbus": [Color(0.55, 0.6, 0.66), Color(0.6, 0.65, 0.71), Color(0.4, 0.42, 0.45)],        # (1.101) Nimbus Aerial: a pale hangar
+	"kane": [Color(0.05, 0.05, 0.07), Color(0.07, 0.07, 0.09), Color(0.08, 0.08, 0.1)],        # (1.102) Kane Dynamics: black glass
 	# (the scrapyard is outdoors: a sunset sky)
 }
 
@@ -191,6 +192,8 @@ static func _props_back(ci: CanvasItem, size: Vector2, scene: String, t: float, 
 			_volta_back(ci, size, floor_y, t)
 		"nimbus":
 			_nimbus_back(ci, size, floor_y, t)
+		"kane":
+			_kane_back(ci, size, floor_y, t)
 		"workshop":
 			_sign(ci, Vector2(size.x * 0.8, 30), I18n.t("CUSTOM ORDERS"), Color(0.6, 0.85, 1.0))
 			# shelves of parts
@@ -298,7 +301,7 @@ static func draw_front(ci: CanvasItem, stage: Rect2, scene: String, t: float, in
 ## The light the people in a scene stand in (1.60): Gus's building is the bay's work lamp, the places
 ## outside have their own.
 static func scene_light(scene: String) -> String:
-	return scene if scene in ["pub", "shop", "scrap", "phone", "brass", "hell", "volta", "nimbus"] else "bay"
+	return scene if scene in ["pub", "shop", "scrap", "phone", "brass", "hell", "volta", "nimbus", "kane"] else "bay"
 
 
 static func _front(ci: CanvasItem, size: Vector2, scene: String, t: float, info: Dictionary, robot_base: Vector2, robot_h: float) -> void:
@@ -360,6 +363,16 @@ static func _front(ci: CanvasItem, size: Vector2, scene: String, t: float, info:
 			ci.draw_line(gc, gc + Vector2(cos(na), sin(na)) * 5.5 * s, Color(0.6, 0.1, 0.08), 1.5)
 			PilotArt.draw_person(ci, Vector2(ct.end.x + 26 * s, floor_y), s, pilot, -1.0, "point", t + 0.5)
 			_head(info, "YOU", Vector2(ct.end.x + 26 * s, floor_y), s)
+		"kane":
+			# (1.102) Ms. Vale in a black suit with a gold earpiece; you, a little out of place
+			var vale := {"skin": "#f1d0b5", "hair": "#e8d36a", "eyes": "#8395a7", "outfit": "#222222", "hat": "bun", "beard": "none",
+					"glasses": "none", "female": true}
+			var vf := Vector2(size.x * 0.55, floor_y)
+			PilotArt.draw_person(ci, vf, s, vale, 1.0, "clipboard", t)
+			_head(info, "VALE", vf, s)
+			ci.draw_circle(vf + Vector2(-3 * s, -62 * s), 1.6 * s, Color(0.95, 0.8, 0.35))
+			PilotArt.draw_person(ci, Vector2(size.x * 0.3, floor_y), s, pilot, 1.0, "hold", t + 0.5)
+			_head(info, "YOU", Vector2(size.x * 0.3, floor_y), s)
 		"nimbus":
 			# (1.101) Captain Wren in her flight jacket, goggles up, a clipboard of test notes; you with your controller
 			var wren := {"skin": "#b07a52", "hair": "#2a1d14", "eyes": "#27ae60", "outfit": "#7a4b2a", "hat": "bun", "beard": "none",
@@ -1062,6 +1075,55 @@ static func _brass_back(ci: CanvasItem, size: Vector2, floor_y: float, t: float)
 	_maker_plaque(ci, Rect2(size.x * 0.66, 70, size.x * 0.3, 36), "brassworks", I18n.t("BRASSWORKS & SONS"), I18n.t("EST. 1898 · BUILT BY HAND"))
 
 
+## (1.102) Kane Dynamics' showroom: black glass walls, gold seams, a part in a lit glass case, the logo on a screen,
+## a spotlight on the plinth where your robot stands, Kane Heights through the window at night.
+static func _kane_back(ci: CanvasItem, size: Vector2, floor_y: float, t: float) -> void:
+	var gold := Color(0.88, 0.72, 0.29)
+	# glass panels with gold seams, a light running along them now and then
+	for k in 8:
+		var gx := size.x * (0.02 + k * 0.125)
+		ci.draw_line(Vector2(gx, 0), Vector2(gx, floor_y), Color(gold, 0.35), 1.5)
+		var run := fmod(t * 0.35 + k * 0.13, 1.0)
+		ci.draw_line(Vector2(gx, floor_y * run), Vector2(gx, floor_y * run + 24), Color(1.0, 0.85, 0.45, 0.6), 2.0)
+	ci.draw_line(Vector2(0, floor_y * 0.3), Vector2(size.x, floor_y * 0.3), Color(gold, 0.25), 1.0)
+	# the window on Kane Heights at night: towers and their lit windows
+	var win := Rect2(size.x * 0.05, 70, size.x * 0.34, floor_y - 170)
+	ci.draw_rect(win, Color(0.04, 0.05, 0.1))
+	for k in 7:
+		var bx := win.position.x + 4 + k * win.size.x / 7.0
+		var bh := win.size.y * (0.45 + 0.5 * fmod(k * 0.53, 1.0))
+		ci.draw_rect(Rect2(bx, win.end.y - bh, win.size.x / 7.0 - 5, bh), Color(0.08, 0.09, 0.14))
+		for j in 5:
+			if fmod(k * 3.0 + j * 7.0, 4.0) < 1.6:
+				ci.draw_rect(Rect2(bx + 3, win.end.y - bh + 5 + j * 9, 3, 3), Color(1.0, 0.85, 0.5, 0.6))
+	ci.draw_rect(win, gold, false, 2.0)
+	# the logo on its screen, KANE DYNAMICS under it
+	var sc := Rect2(size.x * 0.44, 74, size.x * 0.24, 64)
+	ci.draw_rect(sc, Color(0.02, 0.02, 0.03))
+	ci.draw_rect(sc, Color(gold, 0.6), false, 1.5)
+	load("res://logos.gd").draw_logo(ci, "kane", sc.get_center() + Vector2(0, -6), 18.0)
+	var f := ThemeDB.fallback_font
+	ci.draw_string(f, Vector2(sc.position.x, sc.end.y - 6), I18n.t("KANE DYNAMICS"), HORIZONTAL_ALIGNMENT_CENTER, sc.size.x, 11, gold)
+	# a glass case on a plinth with an arm in it, lit from below
+	var cs := Rect2(size.x * 0.42, floor_y - 120, 46, 120)
+	_rc(ci, Rect2(cs.position.x - 4, cs.end.y - 40, cs.size.x + 8, 40), Color(0.1, 0.1, 0.12))
+	ci.draw_line(Vector2(cs.position.x - 4, cs.end.y - 40), Vector2(cs.end.x + 4, cs.end.y - 40), gold, 2.0)
+	ci.draw_rect(Rect2(cs.position, Vector2(cs.size.x, cs.size.y - 40)), Color(0.6, 0.75, 0.9, 0.08))
+	ci.draw_rect(Rect2(cs.position, Vector2(cs.size.x, cs.size.y - 40)), Color(0.75, 0.85, 1.0, 0.3), false, 1.0)
+	var ac := Vector2(cs.get_center().x, cs.position.y + 40)
+	ci.draw_line(ac + Vector2(0, -24), ac + Vector2(0, 20), Color(0.1, 0.1, 0.14), 6.0)
+	ci.draw_colored_polygon(PackedVector2Array([ac + Vector2(-6, 20), ac + Vector2(6, 20), ac + Vector2(0, 36)]), gold)
+	ci.draw_colored_polygon(PackedVector2Array([cs.position + Vector2(4, cs.size.y - 40), cs.position + Vector2(cs.size.x - 4, cs.size.y - 40), cs.position + Vector2(cs.size.x * 0.5, 10)]), Color(1.0, 0.9, 0.6, 0.06))
+	# the spotlight on the plinth where your robot stands
+	var px := size.x * float(ROBOT_SPOT["kane"][0])
+	ci.draw_colored_polygon(PackedVector2Array([Vector2(px - 14, 0), Vector2(px + 14, 0), Vector2(px + 80, floor_y), Vector2(px - 80, floor_y)]), Color(1.0, 0.97, 0.88, 0.07))
+	var pl := PackedVector2Array()
+	for k in 24:
+		pl.append(Vector2(px + cos(k * TAU / 24.0) * 70.0, floor_y + 4 + sin(k * TAU / 24.0) * 12.0))
+	ci.draw_colored_polygon(pl, Color(0.12, 0.12, 0.15))
+	ci.draw_polyline(pl + PackedVector2Array([pl[0]]), gold, 2.0)
+
+
 ## (1.101) Nimbus Aerial's hangar: the door open on the airfield, a fan on its test stand, landing lights on the floor.
 static func _nimbus_back(ci: CanvasItem, size: Vector2, floor_y: float, t: float) -> void:
 	# the arch's ribs across the roof
@@ -1566,6 +1628,7 @@ const ROOM := {
 	"hell": {"tint": Color(0.06, 0.02, 0.04), "dim": 0.14, "pool": 0.09},
 	"volta": {"tint": Color(0.04, 0.0, 0.08), "dim": 0.2, "pool": 0.13},
 	"nimbus": {"tint": Color(0.0, 0.02, 0.06), "dim": 0.14, "pool": 0.1},
+	"kane": {"tint": Color(0.0, 0.0, 0.02), "dim": 0.3, "pool": 0.2},
 	"scrap": {"tint": Color(0.06, 0.02, 0.08), "dim": 0.12, "pool": 0.07},
 	"phone": {"tint": Color(0.0, 0.0, 0.03), "dim": 0.0, "pool": 0.0},
 }

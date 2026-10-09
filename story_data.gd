@@ -272,6 +272,14 @@ const SCENES := {
 		["WREN", "So you're the streak. I test every part in here myself, and I've crashed most of them."],
 		["WREN", "Light, quick, hard to hit. If they can't catch you, they can't hurt you. Have a look."],
 	]},
+	"kane_first": {"place": "KANE DYNAMICS", "lines": [
+		["VALE", "Welcome to Kane Dynamics. Kane sells to Steel League pilots and champions."],
+		["VALE", "You may look. Please don't touch the glass."],
+	]},
+	"kane_welcome": {"place": "KANE DYNAMICS", "lines": [
+		["VALE", "The Steel League. Kane Dynamics has been expecting you."],
+		["VALE", "Everything here is built in your grade. Precision is not cheap. Neither are you, now."],
+	]},
 	"unlock_season": {"place": "GUS'S BAY", "lines": [
 		["GUS", "The calendar. League nights every other Saturday, cups on Wednesdays, rent the last Sunday. The tables and the odds are in here too."],
 	]},

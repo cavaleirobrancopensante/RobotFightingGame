@@ -11,7 +11,7 @@ extends RefCounted
 
 ## Makers whose parts come in one size only (no Light / Heavy copies). Scrapworks keeps loose sizes:
 ## odd, mismatched sizes are its character.
-const ONE_SIZE := ["oldiron", "brassworks", "hellfire", "volta", "nimbus"]
+const ONE_SIZE := ["oldiron", "brassworks", "hellfire", "volta", "nimbus", "kane"]
 
 const DEFS := [
 	# ---- Old Iron Foundry: cast iron, big hex bolts, most HP and armour, slow, heavy on power
@@ -150,6 +150,28 @@ const DEFS := [
 		"maker": "nimbus", "gimmick": "double_jump"},
 	{"id": "nimbus_biplane", "kind": "torso", "name": "Biplane Frame", "cost": 2100, "hp": 108, "armor": 6, "speed": 2, "draw": 4,
 		"shape": "biplane", "color": "#ecf0f1", "mounts": ["arm_front2", "arm_back2"], "maker": "nimbus"},
+	# ---- Kane Dynamics (1.102): corporate future. Black glass, gold seams, pulsing light lines; strong everywhere, dear
+	{"id": "kane_head_1", "kind": "head", "name": "Sentinel", "cost": 2200, "hp": 64, "armor": 14, "aim": 18, "draw": 4, "chips": 3,
+		"shape": "sentinel", "color": "#1a1a2e", "maker": "kane", "trait": "crit", "trait_lv": 1, "gimmick": "laser"},
+	{"id": "kane_head_2", "kind": "head", "name": "Oracle Lens", "cost": 2000, "hp": 54, "armor": 10, "aim": 22, "draw": 4, "chips": 4,
+		"shape": "oracle", "color": "#1a1a2e", "maker": "kane", "trait": "insight", "trait_lv": 1},
+	{"id": "kane_torso_1", "kind": "torso", "name": "Paragon Frame", "cost": 2600, "hp": 155, "armor": 16, "speed": 6, "draw": 5,
+		"shape": "paragon", "color": "#1a1a2e", "maker": "kane"},
+	{"id": "kane_torso_2", "kind": "torso", "name": "Monolith", "cost": 2800, "hp": 165, "armor": 18, "speed": 0, "draw": 5,
+		"shape": "monolith", "color": "#111118", "maker": "kane", "trait": "isolate", "trait_lv": 1},
+	{"id": "kane_arm_1", "kind": "arm", "name": "Executor", "cost": 2400, "hp": 66, "armor": 12, "damage": 40, "speed": 6, "draw": 5,
+		"shape": "executor", "color": "#1a1a2e", "size": 1.1, "maker": "kane", "trait": "crit", "trait_lv": 2},
+	{"id": "kane_arm_2", "kind": "arm", "name": "Lancet", "cost": 2200, "hp": 56, "armor": 10, "damage": 30, "speed": 12, "draw": 4,
+		"shape": "lancet", "color": "#1a1a2e", "size": 0.95, "maker": "kane"},
+	{"id": "leg_raptor", "kind": "leg", "name": "Stride", "cost": 2200, "hp": 74, "armor": 12, "damage": 28, "speed": 22, "draw": 4,
+		"shape": "stride", "color": "#1a1a2e", "maker": "kane"},
+	{"id": "kane_leg_2", "kind": "leg", "name": "Grav Pad", "cost": 2400, "hp": 70, "armor": 12, "damage": 12, "speed": 26, "draw": 5,
+		"shape": "gravpad", "color": "#1a1a2e", "maker": "kane", "trait": "hover", "trait_lv": 2},
+	{"id": "kane_reactor", "kind": "reactor", "name": "Fusion X", "cost": 4200, "output": 56, "color": "#e0b84a", "maker": "kane"},
+	{"id": "back_shield", "kind": "back", "name": "Shield Generator", "cost": 2400, "draw": 3, "shape": "shieldgen", "color": "#1a1a2e",
+		"maker": "kane", "gimmick": "shield"},
+	{"id": "kane_hydra", "kind": "torso", "name": "Hydra Prime", "cost": 5200, "hp": 170, "armor": 16, "speed": -4, "draw": 7,
+		"shape": "hydraprime", "color": "#1a1a2e", "mounts": ["head2", "arm_front2", "arm_back2"], "maker": "kane"},
 ]
 
 ## Old parts the new lines replace.
@@ -162,12 +184,13 @@ const RETIRED := ["torso_box", "torso_plate", "torso_tank", "arm_rod", "arm_bulk
 		"volta_arm_2", "volta_leg_2", "magnetica_head_1", "magnetica_head_2", "magnetica_torso_1", "magnetica_torso_2",   # (1.100) Volta
 		"magnetica_arm_2", "magnetica_leg_1", "magnetica_leg_2", "head_visor", "head_bulb", "head_tv", "leg_pogo", "reactor_arc",
 		"frost_head_1", "frost_head_2", "frost_torso_2", "frost_arm_1", "frost_arm_2", "frost_leg_1", "frost_leg_2", "nimbus_torso_2",   # (1.101) Nimbus
-		"head_dome", "head_wedge", "head_dish", "torso_slim", "leg_wheel", "reactor_cell", "back_jet"]
+		"head_dome", "head_wedge", "head_dish", "torso_slim", "leg_wheel", "reactor_cell", "back_jet",
+		"kane_leg_1", "head_laser", "head_mast", "arm_drill", "reactor_fusion"]   # (1.102) Kane
 
 ## The makers whose lines are in (their launch posts once on BotMedia).
-const LAUNCHED := ["oldiron", "scrapworks", "brassworks", "hellfire", "volta", "nimbus"]
+const LAUNCHED := ["oldiron", "scrapworks", "brassworks", "hellfire", "volta", "nimbus", "kane"]
 ## (1.98) Makers with their own shop in the city: Parts-R-Us stops stocking them.
-const OWN_SHOP := {"brassworks": "brassworks", "hellfire": "breakers", "volta": "showroom", "nimbus": "hangar"}
+const OWN_SHOP := {"brassworks": "brassworks", "hellfire": "breakers", "volta": "showroom", "nimbus": "hangar", "kane": "kanestore"}
 
 
 ## The part list with the makers' lines in: same ids replaced whole, new ids added, old ones retired.

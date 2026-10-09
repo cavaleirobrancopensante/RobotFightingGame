@@ -37,10 +37,11 @@ var stats_box: VBoxContainer
 var stats_panel: PanelContainer
 ## The robot's stats panel only shows where the robot is being looked at, fixed or fitted - not
 ## at the pub, in the office, on the scrapyard pile or in the crew bay.
-const STATS_SCENES := ["build", "moves", "paint", "storage", "shop", "workshop", "brass", "hell", "volta", "nimbus"]
+const STATS_SCENES := ["build", "moves", "paint", "storage", "shop", "workshop", "brass", "hell", "volta", "nimbus", "kane"]
 ## (1.99) Makers' own shops: Parts seg -> [city place, maker, title]. The seg is also the scene's name.
 const MAKER_SHOPS := {"brass": ["brassworks", "brassworks", "BRASSWORKS & SONS"], "hell": ["breakers", "hellfire", "HELLFIRE HEAVY"],
-		"volta": ["showroom", "volta", "VOLTA MOTOR"], "nimbus": ["hangar", "nimbus", "NIMBUS AERIAL"]}
+		"volta": ["showroom", "volta", "VOLTA MOTOR"], "nimbus": ["hangar", "nimbus", "NIMBUS AERIAL"],
+		"kane": ["kanestore", "kane", "KANE DYNAMICS"]}
 var list_box: VBoxContainer
 var scroll: ScrollContainer
 var tabs_box: HBoxContainer
@@ -543,6 +544,7 @@ func segs_of(t: String) -> Array:
 			out.append(["hell", tr("Hellfire Heavy"), ""])   # (1.99) the breaker's yard
 			out.append(["volta", tr("Volta Motor"), ""])   # (1.100) the showroom
 			out.append(["nimbus", tr("Nimbus Aerial"), ""])   # (1.101) the hangar
+			out.append(["kane", tr("Kane Dynamics"), ""])   # (1.102) the showroom in Kane Heights
 		"Season":
 			out.append(["calendar", tr("Calendar"), ""])
 			out.append(["table", tr("Standings"), ""])
@@ -1125,9 +1127,9 @@ func refresh() -> void:
 		tab = "Bay"
 	if away_from_bay() and HOME_TABS.has(tab):
 		# (1.79) out in the city: you stay where you are (the bay opens when you're back)
-		tab = {"pub": "Pub", "partsrus": "Parts", "scrapyard": "Parts", "brassworks": "Parts", "breakers": "Parts", "showroom": "Parts", "hangar": "Parts"}.get(GameData.pilot_at, "City")
+		tab = {"pub": "Pub", "partsrus": "Parts", "scrapyard": "Parts", "brassworks": "Parts", "breakers": "Parts", "showroom": "Parts", "hangar": "Parts", "kanestore": "Parts"}.get(GameData.pilot_at, "City")
 		if tab == "Parts":
-			segs_on["Parts"] = {"partsrus": "dealer", "brassworks": "brass", "breakers": "hell", "showroom": "volta", "hangar": "nimbus"}.get(GameData.pilot_at, "scrap")
+			segs_on["Parts"] = {"partsrus": "dealer", "brassworks": "brass", "breakers": "hell", "showroom": "volta", "hangar": "nimbus", "kanestore": "kane"}.get(GameData.pilot_at, "scrap")
 	set_seg(seg())
 	# (1.77) the City: the map takes the left side (wider), the panel on the right says what's where
 	var in_city := tab == "City"
@@ -1174,7 +1176,7 @@ func refresh() -> void:
 			match seg():
 				"dealer":
 					build_dealer()
-				"brass", "hell", "volta", "nimbus":
+				"brass", "hell", "volta", "nimbus", "kane":
 					build_maker_shop(str(MAKER_SHOPS[seg()][1]))
 				"order":
 					build_order()
@@ -4863,7 +4865,7 @@ func set_scene_for_tab() -> void:
 		"Storage":
 			scene = "storage"
 		"Parts":
-			scene = {"dealer": "shop", "order": "workshop", "brass": "brass", "hell": "hell", "volta": "volta", "nimbus": "nimbus"}.get(seg(), "scrap")
+			scene = {"dealer": "shop", "order": "workshop", "brass": "brass", "hell": "hell", "volta": "volta", "nimbus": "nimbus", "kane": "kane"}.get(seg(), "scrap")
 		"Season":
 			scene = {"cups": "cups"}.get(seg(), "office")
 		"Pub":
@@ -4989,13 +4991,21 @@ func build_maker_shop(m: String) -> void:
 	for i in stock.size():
 		items.append({"d": GameData.part_def(stock[i]), "p": {}, "i": i})
 	section(tr("BUILT TO ORDER: every part of the line, in your grade. %s") % str(M.info(m).get("perk_name", "")) + "  ·  " + tr(str(M.info(m).get("perk", ""))))
+	var refuse := GameData.maker_refuses(m)
+	if refuse != "":
+		# (1.102) Kane: look through the glass, don't touch
+		var rl := GUI.text(tr(refuse), 15, GUI.RED, "headb")
+		rl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		list_box.add_child(rl)
 	part_filter_bar("dealer", items)
 	for it in pf_apply("dealer", items):
 		var d: Dictionary = it["d"]
 		var id := str(d["id"])
 		var row := part_entry(d, {}, str(d["name"]), tr(str(d["kind"]).to_upper()), _on_detail.bind({"src": "shop", "id": id}), is_detail("shop", id), part_chips(d, cards_on()))
 		var target := best_slot(str(d["kind"]))
-		if target != "":
+		if refuse != "":
+			row_button(row, tr("$%d · STEEL PILOTS ONLY") % GameData.price_of(id), func(): pass, false, 180)
+		elif target != "":
 			row_button(row, tr("Buy & fit $%d · %s") % [GameData.price_of(id), GameData.hours_text(GameData.swap_hours(d))], _on_buy_fit.bind(id, target), GameData.money >= GameData.price_of(id), 180)
 		else:
 			row_button(row, tr("Buy $%d") % GameData.price_of(id), _on_buy.bind(id), GameData.money >= GameData.price_of(id), 150)
@@ -8370,7 +8380,7 @@ func place_of(t: String, key: String = "") -> String:
 		return "pub"
 	if t == "Parts":
 		var k := key if key != "" else str(segs_on.get("Parts", "scrap"))
-		return {"dealer": "partsrus", "brass": "brassworks", "hell": "breakers", "volta": "showroom", "nimbus": "hangar"}.get(k, "scrapyard")
+		return {"dealer": "partsrus", "brass": "brassworks", "hell": "breakers", "volta": "showroom", "nimbus": "hangar", "kane": "kanestore"}.get(k, "scrapyard")
 	return ""
 
 
@@ -8445,6 +8455,7 @@ const PLACE_TEXT := {"home": "Gus's building: the bay, storage, the workshop and
 		"brassworks": "Brassworks & Sons. Old Silas's family workshop. Every Brassworks part, built by hand, in your grade.",
 		"breakers": "Hellfire Heavy's breaker's yard on the docks. Magda tears robots apart and sells you the heavy stuff, in your grade.",
 		"showroom": "Volta Motor's showroom in Midtown. Chrome, neon and Dex. The whole Volta line on the turntable, in your grade.",
+		"kanestore": "Kane Dynamics' showroom in Kane Heights. Black glass and gold. They sell to Steel League pilots and champions. Everyone else may look.",
 		"hangar": "Nimbus Aerial's hangar at the edge of the Midtown airfield. Captain Wren tests everything herself. The whole Nimbus line, in your grade.",
 		"scrapyard": "The Scrapyard. Mountains of dead robots. One dig a day, an hour of digging.",
 		"scrap_ring": "The scrap ring. Pickups and the Scrap League fight here.",
@@ -8562,6 +8573,13 @@ func enter_place(place: String) -> void:
 			segs_on["Parts"] = "nimbus"
 			if not GameData.story_seen.has("nimbus_first"):
 				get_tree().create_timer(0.4).timeout.connect(func(): play_story(["nimbus_first"]))
+		"kanestore":
+			tab = "Parts"
+			segs_on["Parts"] = "kane"
+			# (1.102) Ms. Vale lets you look; once you're in the Steel League she sells
+			var ks := "kane_first" if GameData.maker_refuses("kane") != "" else "kane_welcome"
+			if not GameData.story_seen.has(ks) and not (ks == "kane_first" and GameData.story_seen.has("kane_welcome")):
+				get_tree().create_timer(0.4).timeout.connect(func(): play_story([ks]))
 		"scrapyard":
 			tab = "Parts"
 			segs_on["Parts"] = "scrap"
