@@ -29,7 +29,8 @@ const LEGS := {"rod": [60.0, 14.0], "piston": [62.0, 18.0], "spring": [66.0, 13.
 		"pogo": [68.0, 13.0], "wheel": [58.0, 16.0], "tread": [52.0, 25.0],
 		"blade": [64.0, 12.0], "hover": [50.0, 18.0], "spider": [62.0, 13.0],
 		"stomper": [56.0, 22.0], "pipe": [62.0, 14.0], "bellows": [60.0, 17.0], "tripod": [64.0, 13.0],
-		"excavator": [50.0, 22.0], "hydraulic": [64.0, 17.0], "hotrod": [66.0, 13.0], "maglev": [58.0, 15.0]}
+		"excavator": [50.0, 22.0], "hydraulic": [64.0, 17.0], "hotrod": [66.0, 13.0], "maglev": [58.0, 15.0],
+		"gear": [62.0, 13.0], "ductfan": [56.0, 14.0]}
 # [width, height]
 const TORSOS := {"barrel": [60.0, 70.0], "box": [56.0, 76.0], "vee": [70.0, 78.0],
 		"core": [60.0, 76.0], "tank": [84.0, 82.0], "slim": [42.0, 82.0],
@@ -37,14 +38,15 @@ const TORSOS := {"barrel": [60.0, 70.0], "box": [56.0, 76.0], "vee": [70.0, 78.0
 		"crate": [62.0, 66.0], "furnace": [64.0, 78.0], "orb": [70.0, 70.0],
 		"yoke": [82.0, 74.0], "quad": [74.0, 84.0], "monster": [92.0, 90.0],
 		"engine": [74.0, 74.0], "loco": [70.0, 80.0], "drum": [58.0, 72.0], "boiler": [62.0, 80.0], "clockwork": [62.0, 76.0],
-		"fueltank": [62.0, 78.0], "hull": [78.0, 80.0], "coupe": [58.0, 74.0], "dynamo": [62.0, 76.0], "twincoil": [80.0, 72.0]}
+		"fueltank": [62.0, 78.0], "hull": [78.0, 80.0], "coupe": [58.0, 74.0], "dynamo": [62.0, 76.0], "twincoil": [80.0, 72.0],
+		"fuselage": [54.0, 80.0], "cryopod": [60.0, 76.0], "biplane": [78.0, 78.0]}
 const HEADS := {"bucket": [34.0, 32.0], "box": [38.0, 34.0], "dome": [42.0, 34.0], "cyclops": [40.0, 40.0],
 		"visor": [48.0, 28.0], "horned": [40.0, 34.0], "skull": [40.0, 42.0], "wedge": [44.0, 30.0],
 		"tall": [26.0, 52.0], "bulb": [44.0, 44.0], "tv": [46.0, 36.0], "dish": [40.0, 34.0], "laser": [38.0, 34.0],
 		"knight": [40.0, 42.0], "orb": [38.0, 38.0], "speaker": [44.0, 38.0],
 		"rivet": [38.0, 36.0], "grille": [50.0, 38.0], "peeper": [34.0, 32.0], "busted": [46.0, 36.0],
 		"periscope": [36.0, 34.0], "divingbell": [44.0, 42.0], "welder": [40.0, 40.0], "beacon": [36.0, 30.0],
-		"tesla": [34.0, 30.0], "racer": [42.0, 36.0]}
+		"tesla": [34.0, 30.0], "racer": [42.0, 36.0], "canopy": [42.0, 34.0], "radarnose": [44.0, 30.0]}
 const PUNCH_LEN := 84.0   # how far a punching hand reaches from the lead shoulder
 
 # [thickness, fist radius]
@@ -53,7 +55,8 @@ const ARMS := {"rod": [12.0, 10.0], "piston": [15.0, 12.0], "claw": [14.0, 7.0],
 		"rocket": [16.0, 14.0], "grapple": [14.0, 7.0], "saw": [14.0, 7.0],
 		"blade": [13.0, 7.0], "flame": [16.0, 7.0], "magnet": [15.0, 7.0],
 		"anvil": [18.0, 9.0], "crane": [13.0, 7.0], "wrench": [12.0, 7.0], "grabber": [11.0, 6.0],
-		"gauntlet": [15.0, 13.0], "riveter": [12.0, 7.0], "wrecker": [15.0, 13.0], "torch": [13.0, 7.0], "arcfist": [14.0, 13.0], "magclamp": [12.0, 7.0]}
+		"gauntlet": [15.0, 13.0], "riveter": [12.0, 7.0], "wrecker": [15.0, 13.0], "torch": [13.0, 7.0], "arcfist": [14.0, 13.0], "magclamp": [12.0, 7.0],
+		"wingblade": [12.0, 7.0], "turbine": [14.0, 13.0]}
 
 
 ## (1.93) Normal hits by limb, techniques included, and the arm poses that reach as far as a punch
@@ -1100,6 +1103,8 @@ static func arm_tip_extra(look: Dictionary, slot: String, pose: String) -> Vecto
 		"torch": ext = 60.0 if pose == "punch" or pose == "low_punch" else 22.0 * sz
 		"arcfist": ext = fr + 8.0 * sz
 		"magclamp": ext = 8.0 + 15.0 * sz
+		"wingblade": ext = 40.0 * sz
+		"turbine": ext = fr + 10.0 * sz
 	if pose == "elbow" or pose == "shove":
 		ext = 6.0   # the elbow (or a flat palm) does the hitting, not the weapon
 	return Vector2(ext, maxf(fr, th * 0.5))
@@ -1405,6 +1410,26 @@ static func _draw_arm(ci: CanvasItem, look: Dictionary, slot: String, s: Vector2
 				zz.append(p2)
 				ci.draw_polyline(zz, Color(0.6, 0.95, 1.0), 2.0)
 				ci.draw_circle(p1.lerp(p2, 0.5), 5.0, Color(0.5, 0.9, 1.0, 0.25))
+		"wingblade":
+			# (1.101) Nimbus: the forearm ends in a swept wing, white with a blue leading edge, a red tip light
+			var wt := h + dir * 40.0 * sz
+			var wing2 := PackedVector2Array([h - perp * 5.0, h + perp * 9.0 * sz + dir * 6.0, wt + perp * 2.0, wt - perp * 3.0, h - perp * 7.0 + dir * 10.0])
+			_plate(ci, wing2, tc if flash else c)
+			ci.draw_line(h + perp * 9.0 * sz + dir * 6.0, wt + perp * 2.0, Color(0.3, 0.6, 1.0), 2.5)
+			ci.draw_line(h + dir * 12.0 * sz, h + dir * 30.0 * sz, c.darkened(0.25), 1.5)
+			ci.draw_circle(wt, 2.2, Color(1.0, 0.25, 0.2) if fmod(t * 1.5, 1.0) < 0.5 else Color(0.5, 0.15, 0.12))
+			_joint(ci, h, th * 0.55, c.darkened(0.25))
+		"turbine":
+			# (1.101) Nimbus: a little jet engine for a hand, the fan face spinning at the front
+			var nb := h - dir * 4.0
+			_plate(ci, PackedVector2Array([nb - perp * fr * 0.8, nb + dir * fr * 1.6 - perp * fr, nb + dir * fr * 1.6 + perp * fr, nb + perp * fr * 0.8]), c)
+			var face := nb + dir * fr * 1.6
+			_disc(ci, face, fr * 0.95, Color(0.2, 0.22, 0.26))
+			for k in 6:
+				var a4 := t * 30.0 + k * TAU / 6.0
+				ci.draw_line(face, face + perp * cos(a4) * fr * 0.85 + dir * sin(a4) * fr * 0.2, Color(0.75, 0.78, 0.82), 2.0)
+			ci.draw_circle(face, fr * 0.22, Color(0.85, 0.87, 0.9))
+			ci.draw_line(nb + dir * fr * 0.4 - perp * fr * 0.85, nb + dir * fr * 0.4 + perp * fr * 0.85, Color(0.3, 0.6, 1.0), 2.0)
 		"magclamp":
 			# (1.100) Volta: an electromagnet clamp, a horseshoe in hot pink with its poles glowing
 			var mc2 := h + dir * 7.0 * sz
@@ -1535,6 +1560,21 @@ static func _draw_back(ci: CanvasItem, look: Dictionary, g: Dictionary, pose: Di
 			for k in 3:
 				var ph := fmod(t * 0.7 + k * 0.33, 1.0)
 				ci.draw_circle(Vector2(sk.get_center().x - ph * 14.0, sk.position.y - 8.0 - ph * 30.0), 4.0 + ph * 8.0, Color(0.92, 0.93, 0.95, 0.45 * (1.0 - ph)))
+		"jetwings":
+			# (1.101) Nimbus: swept white wings with a jet pod under each, blue tips, a flame on the double jump
+			var th4: float = g["th"]
+			var root2 := Vector2(bx + 4, top + th4 * 0.3)
+			for k in 2:
+				var off2 := k * 8.0
+				var wing3 := PackedVector2Array([root2 + Vector2(0, off2), root2 + Vector2(-52, -26 + off2), root2 + Vector2(-60, -20 + off2), root2 + Vector2(-20, 10 + off2)])
+				_plate(ci, wing3, c if k == 0 else c.darkened(0.15))
+				ci.draw_line(root2 + Vector2(-52, -26 + off2), root2 + Vector2(-60, -20 + off2), Color(0.3, 0.6, 1.0), 3.0)
+			var pod := root2 + Vector2(-22, 10)
+			_plate(ci, _rounded(Rect2(pod.x - 10, pod.y - 5, 20, 10), 4.0), Color(0.75, 0.78, 0.82))
+			if pose.get("jet", false):
+				var ff2 := 0.7 + 0.3 * sin(t * 40.0)
+				ci.draw_colored_polygon(PackedVector2Array([Vector2(pod.x - 3, pod.y + 4), Vector2(pod.x, pod.y + 4 + 30.0 * ff2), Vector2(pod.x + 3, pod.y + 4)]), Color(0.4, 0.7, 1.0, 0.85))
+			ci.draw_circle(root2 + Vector2(-58, -21), 2.0, Color(1.0, 0.25, 0.2) if fmod(t, 1.0) < 0.5 else Color(0.4, 0.1, 0.1))
 		"spoiler":
 			# (1.100) Volta: a racing spoiler on two struts, its edge a neon tube that blazes on a sprint
 			var th3: float = g["th"]
@@ -1685,6 +1725,20 @@ static func _draw_leg(ci: CanvasItem, look: Dictionary, slot: String, hip: Vecto
 			_limb(ci, knee, foot + Vector2(0, -4), c.lightened(0.15), th * 0.7)
 			_ln(ci, knee.lerp(foot, 0.3) - perp * th * 0.5, knee.lerp(foot, 0.3) + perp * th * 0.5, c.darkened(0.35), 3.0)
 			_joint(ci, knee, th * 0.6, c.darkened(0.25))
+		"gear":
+			# (1.101) Nimbus: a landing gear leg, a chrome oleo strut with a torque link at the knee
+			_limb(ci, hip, knee, c, th)
+			var axle := foot + Vector2(0, -9)
+			_limb(ci, knee, knee.lerp(axle, 0.55), c.darkened(0.1), th * 1.05)
+			_limb(ci, knee.lerp(axle, 0.5), axle, Color(0.85, 0.87, 0.9), th * 0.5)
+			_pl(ci, PackedVector2Array([knee + perp * th * 0.5, knee.lerp(axle, 0.32) + perp * th * 1.1, knee.lerp(axle, 0.6) + perp * th * 0.4]), Color(0.45, 0.47, 0.5), 2.5)
+			_joint(ci, knee, th * 0.55, c.darkened(0.25))
+			ci.draw_circle(hip.lerp(knee, 0.5) - perp * th * 0.5, 2.0, Color(0.2, 1.0, 0.4) if fmod(Time.get_ticks_msec() * 0.0012, 1.0) < 0.5 else Color(0.1, 0.4, 0.15))   # nav light
+		"ductfan":
+			# (1.101) Nimbus: a slim leg on a ducted fan that holds it a little off the floor
+			_limb(ci, hip, knee, c, th)
+			_limb(ci, knee, foot + Vector2(0, -16), c.darkened(0.05), th * 0.75)
+			_joint(ci, knee, th * 0.55, c.darkened(0.25))
 		"hotrod":
 			# (1.100) Volta: a chrome coilover, a hot red spring round the shock
 			_limb(ci, hip, knee, c, th)
@@ -1762,6 +1816,24 @@ static func _draw_leg(ci: CanvasItem, look: Dictionary, slot: String, hip: Vecto
 		for dx in [-12.0, 2.0, 16.0]:
 			_ln(ci, foot + Vector2(2, -5), foot + Vector2(dx, 0), tc, 3.5)
 		_joint(ci, foot + Vector2(2, -5), 4.0, tc.darkened(0.2))
+	elif p["shape"] == "gear":
+		# a pair of small tyres on the axle
+		var ax := foot + Vector2(0, -9)
+		for wx in [-7.0, 7.0]:
+			ci.draw_circle(ax + Vector2(wx, 0), 9.5, OUTLINE)
+			ci.draw_circle(ax + Vector2(wx, 0), 8.5, Color(0.12, 0.12, 0.14))
+			ci.draw_circle(ax + Vector2(wx, 0), 3.5, Color(0.8, 0.82, 0.86))
+	elif p["shape"] == "ductfan":
+		# the shroud seen edge on, the blades a blur inside, a downdraft under it
+		var dc2 := foot + Vector2(4, -12)
+		_plate(ci, _rounded(Rect2(dc2.x - 18, dc2.y - 6, 36, 12), 5.0), c if not flash else Color.WHITE)
+		ci.draw_rect(Rect2(dc2.x - 14, dc2.y - 2, 28, 4), Color(0.15, 0.17, 0.2))
+		var bl2 := fmod(Time.get_ticks_msec() * 0.025, 1.0)
+		ci.draw_line(Vector2(dc2.x - 13 + bl2 * 26, dc2.y - 2), Vector2(dc2.x - 13 + bl2 * 26, dc2.y + 2), Color(0.8, 0.85, 0.9), 2.0)
+		ci.draw_line(Vector2(dc2.x - 16, dc2.y - 6), Vector2(dc2.x + 16, dc2.y - 6), Color(0.3, 0.6, 1.0), 1.5)
+		for k in 3:
+			var ph3 := fmod(Time.get_ticks_msec() * 0.002 + k * 0.33, 1.0)
+			ci.draw_line(Vector2(dc2.x - 10 + k * 10, dc2.y + 6 + ph3 * 6), Vector2(dc2.x - 10 + k * 10, dc2.y + 9 + ph3 * 6), Color(0.85, 0.92, 1.0, 0.5 * (1.0 - ph3)), 2.0)
 	elif p["shape"] == "maglev":
 		# the skid hovers a hand over the floor, magnet light under it
 		var lift := 6.0 + 2.0 * sin(Time.get_ticks_msec() * 0.006 + foot.x * 0.1)
@@ -2011,6 +2083,42 @@ static func _draw_torso(ci: CanvasItem, look: Dictionary, g: Dictionary, flash: 
 				_ln(ci, Vector2(bxk, y0 + 3), Vector2(bxk, y1 - 3), c, 3.5)
 			_plate(ci, _chamfer(Rect2(x0 - 3, y0 - 2, w + 6, 9), 2.0), trim)
 			_plate(ci, _chamfer(Rect2(x0 - 3, y1 - 8, w + 6, 9), 2.0), trim)
+		"fuselage":
+			# (1.101) Nimbus: a white fuselage section, rounded, a blue cheat line, portholes and a tail fin
+			_plate(ci, _rounded(r, w * 0.42), c)
+			var cl := y0 + r.size.y * 0.58
+			ci.draw_colored_polygon(PackedVector2Array([Vector2(x0 + 2, cl), Vector2(x1 - 2, cl), Vector2(x1 - 3, cl + 6), Vector2(x0 + 3, cl + 6)]), Color(0.2, 0.45, 0.9))
+			for k in 3:
+				var pw := Vector2(x0 + w * (0.25 + k * 0.25) + (0.0 if front else w * 0.04), y0 + r.size.y * 0.38)
+				ci.draw_circle(pw, 4.2, OUTLINE)
+				ci.draw_circle(pw, 3.4, Color(0.55, 0.75, 0.95))
+			for k in 2:
+				ci.draw_line(Vector2(x0 + 4, y0 + r.size.y * (0.2 + k * 0.6)), Vector2(x1 - 4, y0 + r.size.y * (0.2 + k * 0.6)), c.darkened(0.18), 1.5)
+			if not front:
+				_plate(ci, PackedVector2Array([Vector2(x0 + 6, y0 + 10), Vector2(x0 + 16, y0 + 4), Vector2(x0 - 6, y0 - 16), Vector2(x0 - 10, y0 - 14)]), c.darkened(0.08))
+		"cryopod":
+			# (1.101) Nimbus: a cryo pod, a frosted window with the blue cold inside, vents breathing frost
+			_plate(ci, _rounded(r, w * 0.3), c.lightened(0.55))
+			var wn := Rect2(x0 + w * 0.2, y0 + r.size.y * 0.18, w * 0.6, r.size.y * 0.5)
+			_plate(ci, _rounded(wn, wn.size.x * 0.3), Color(0.2, 0.45, 0.75))
+			ci.draw_rect(wn.grow(-wn.size.x * 0.22), Color(0.6, 0.85, 1.0, 0.35 + 0.15 * sin(t * 2.0)))
+			for k in 4:
+				ci.draw_line(wn.position + Vector2(5 + k * 6, 4), wn.position + Vector2(2 + k * 6, 14), Color(1, 1, 1, 0.35), 1.5)   # frost streaks
+			for k in 3:
+				var vy := y0 + r.size.y * (0.76 + k * 0.06)
+				ci.draw_line(Vector2(x0 + w * 0.25, vy), Vector2(x1 - w * 0.25, vy), c.darkened(0.3), 2.0)
+			var vph := fmod(t * 0.8, 1.0)
+			ci.draw_circle(Vector2(x0 - 4 - vph * 10.0, y1 - 10 - vph * 8.0), 3.0 + vph * 6.0, Color(0.9, 0.96, 1.0, 0.4 * (1.0 - vph)))
+		"biplane":
+			# (1.101) Nimbus: a biplane's centre section, an upper and a lower wing stub with struts between
+			_plate(ci, _rounded(r, w * 0.2), c)
+			for k in 2:
+				var wy2 := y0 + r.size.y * (0.12 + k * 0.62)
+				_plate(ci, _chamfer(Rect2(x0 - 8, wy2, w + 16, 9), 3.0), c.darkened(0.1))
+				ci.draw_line(Vector2(x0 - 8, wy2 + 1), Vector2(x1 + 8, wy2 + 1), Color(0.2, 0.45, 0.9), 2.0)
+			for sx4 in [x0 + 3, x1 - 3]:
+				_ln(ci, Vector2(sx4, y0 + r.size.y * 0.2), Vector2(sx4, y0 + r.size.y * 0.74), Color(0.55, 0.42, 0.28), 3.0)
+			ci.draw_circle(Vector2(r.get_center().x, y0 + r.size.y * 0.45), 6.0, Color(0.2, 0.45, 0.9))
 		"coupe":
 			# (1.100) Volta: a chrome body shaped like a sports car's nose: a raked front, fins, a racing stripe, neon edge
 			var cp2 := PackedVector2Array([Vector2(x0 + w * 0.08, y0), Vector2(x1 - w * 0.25, y0), Vector2(x1, y0 + r.size.y * 0.35),
@@ -2097,7 +2205,7 @@ static func _draw_torso(ci: CanvasItem, look: Dictionary, g: Dictionary, flash: 
 			_bolts(ci, r)
 			_plate(ci, _chamfer(Rect2(x0 - 4, y0 - 2, w + 8, 12), 3.0), trim)
 			_plate(ci, _chamfer(Rect2(x0, y1 - 14, w, 10), 3.0), trim)
-	if not p["shape"] in ["core", "loco", "boiler", "fueltank"]:
+	if not p["shape"] in ["core", "loco", "boiler", "fueltank", "cryopod"]:
 		ci.draw_circle(chest, 9.0, eye.darkened(0.45))
 		_glow(ci, chest, 6.0, eye)
 		ci.draw_circle(chest, 6.0, eye)
@@ -2340,6 +2448,34 @@ static func _draw_head(ci: CanvasItem, look: Dictionary, g: Dictionary, flash: b
 				ci.draw_line(pc2 + Vector2(off2, -pr2), pc2 + Vector2(off2, pr2), Color(0.8, 0.64, 0.2), 2.0)
 			if not front:
 				_disc(ci, hc2 + Vector2(-w * 0.22, -h * 0.05), h * 0.1, Color(0.8, 0.64, 0.2))
+		"canopy":
+			# (1.101) Nimbus: a white collar under a tinted glass bubble canopy, the eye glowing inside
+			_plate(ci, _chamfer(Rect2(x0, y0 + h * 0.62, w, h * 0.38), 4.0), c)
+			var cc := Vector2(cen.x + (0.0 if front else w * 0.06), y0 + h * 0.62)
+			var bub := PackedVector2Array()
+			for k in 17:
+				var a5 := PI + k * PI / 16.0
+				bub.append(cc + Vector2(cos(a5) * w * 0.44, sin(a5) * h * 0.62))
+			ci.draw_colored_polygon(bub, Color(0.25, 0.4, 0.55, 0.85))
+			ci.draw_polyline(bub, OUTLINE, 2.0)
+			ci.draw_arc(cc, w * 0.3, PI * 1.15, PI * 1.45, 6, Color(1, 1, 1, 0.5), 2.0)
+			ci.draw_line(cc + Vector2(0, -h * 0.62), cc, Color(0.85, 0.87, 0.9), 2.0)
+			ci.draw_circle(cc + Vector2((0.0 if front else w * 0.12), -h * 0.24), 4.0, eye)
+			ci.draw_circle(Vector2(x0 + 3, y0 + h * 0.8), 2.0, Color(1.0, 0.25, 0.2))
+			ci.draw_circle(Vector2(x0 + w - 3, y0 + h * 0.8), 2.0, Color(0.2, 1.0, 0.4))
+		"radarnose":
+			# (1.101) Nimbus: an aircraft nose, the black radome to the front, a pitot tube, an eye slit
+			if front:
+				_round(ci, cen, minf(w, h) * 0.5, c)
+				_disc(ci, cen, minf(w, h) * 0.3, Color(0.12, 0.13, 0.16))
+				ci.draw_rect(Rect2(cen.x - w * 0.3, y0 + h * 0.18, w * 0.6, 4), eye)
+			else:
+				var nose := PackedVector2Array([Vector2(x0, y0), Vector2(x0 + w * 0.55, y0), Vector2(x0 + w, y0 + h * 0.55), Vector2(x0 + w * 0.6, y0 + h), Vector2(x0, y0 + h)])
+				_plate(ci, nose, c)
+				ci.draw_colored_polygon(PackedVector2Array([Vector2(x0 + w * 0.78, y0 + h * 0.3), Vector2(x0 + w, y0 + h * 0.55), Vector2(x0 + w * 0.72, y0 + h * 0.88)]), Color(0.12, 0.13, 0.16))
+				_ln(ci, Vector2(x0 + w * 0.9, y0 + h * 0.62), Vector2(x0 + w + 12, y0 + h * 0.62), Color(0.8, 0.82, 0.86), 2.0)
+				ci.draw_rect(Rect2(x0 + w * 0.3, y0 + h * 0.3, w * 0.34, 4), eye)
+				ci.draw_line(Vector2(x0 + 2, y0 + h * 0.75), Vector2(x0 + w * 0.6, y0 + h * 0.75), Color(0.2, 0.45, 0.9), 2.5)
 		"tesla":
 			# (1.100) Volta: a small chrome head with a tesla coil on top, a ball that crackles
 			_plate(ci, _rounded(Rect2(x0, y0 + h * 0.25, w, h * 0.75), 6.0), c)

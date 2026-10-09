@@ -264,6 +264,14 @@ const SCENES := {
 		["DEX", "Welcome to the future, my friend. Feel that? That's static. That's Volta."],
 		["DEX", "Everything on the turntable, built in your grade. Fast, light, and it shocks people. Take a spin."],
 	]},
+	"nimbus_invite": {"place": "GUS'S BAY", "lines": [
+		["GUS", "Captain Wren from Nimbus Aerial called. Four in a row and she wants a look at you."],
+		["GUS", "Their hangar's at the Midtown airfield. Light parts, hard to hit. Don't let her talk you into wings."],
+	]},
+	"nimbus_first": {"place": "NIMBUS AERIAL", "lines": [
+		["WREN", "So you're the streak. I test every part in here myself, and I've crashed most of them."],
+		["WREN", "Light, quick, hard to hit. If they can't catch you, they can't hurt you. Have a look."],
+	]},
 	"unlock_season": {"place": "GUS'S BAY", "lines": [
 		["GUS", "The calendar. League nights every other Saturday, cups on Wednesdays, rent the last Sunday. The tables and the odds are in here too."],
 	]},

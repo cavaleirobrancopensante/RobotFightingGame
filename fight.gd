@@ -2996,7 +2996,12 @@ func update_fighter(f: Fighter, o: Fighter, i: Dictionary, delta: float) -> void
 				f.vel.x = move_toward(f.vel.x, adir * WALK_SPEED * f.move_speed(), 2200.0 * (1.0 + f.ctrl.get("jump", 0.0) * 3.0) * delta)
 
 	# physics
-	f.vel.y += GRAVITY * delta * (0.55 if f.vel.y > 0.0 and f.sets.has("nimbus") else 1.0)   # (1.90) Nimbus set: a short glide
+	var fall_k := 1.0
+	if f.vel.y > 0.0:
+		# (1.90) Nimbus set: a short glide; (1.101) Ducted Fans glide on their own
+		var gl := maxf(limb_trait(f, "leg_front", "glide"), limb_trait(f, "leg_back", "glide"))
+		fall_k = minf(0.55 if f.sets.has("nimbus") else 1.0, 1.0 - gl / 100.0)
+	f.vel.y += GRAVITY * delta * fall_k
 	f.pos += f.vel * delta
 	if f.pos.y >= floor_y:
 		f.pos.y = floor_y
@@ -3434,6 +3439,11 @@ func apply_hit(att: Fighter, d: Fighter, a: Dictionary, at: Vector2) -> void:
 			# (1.97) a Crane Hook clamps on and keeps crushing
 			d.burns.append({"slot": slot, "dps": crush / 2.0 * att.gpow, "t": 2.0, "crush": true})
 			popup(tr("CLAMPED"), hit_at + Vector2(0, -50), Color(1.0, 0.85, 0.35))
+		var frost := limb_trait(d, "torso", "frostskin") * 2.0
+		if frost > 0.0 and slot == "torso" and absf(att.pos.x - d.pos.x) < 220.0:
+			# (1.101) a Cryo Pod: hit its body and the cold bites back
+			att.slow_t = maxf(att.slow_t, frost)
+			add_spark(hit_at, Color(0.6, 0.85, 1.0), 30.0)
 		var vent := off_trait(att, src, "vent")
 		if vent > 0.0 and d.target != "" and randf() * 100.0 < vent:
 			# (1.98) a Piston Gauntlet puffs steam in their face: the crosshair comes off
@@ -3474,7 +3484,7 @@ func apply_hit(att: Fighter, d: Fighter, a: Dictionary, at: Vector2) -> void:
 			d.blocking = false
 			d.special_id = ""
 			d.boost_t = 0.0
-			d.vel.x = att.facing * float(a.get("knock", 320.0)) * KNOCK_K * knock_k(att, d)
+			d.vel.x = att.facing * float(a.get("knock", 320.0)) * KNOCK_K * knock_k(att, d) * (1.0 + off_trait(att, src, "gust") / 100.0)   # (1.101) a Turbine Arm blows them back
 			if off_trait(att, src, "magnet") > 0.0:
 				d.vel.x = -att.facing * 260.0   # magnets yank the enemy in
 			if a.has("launch"):

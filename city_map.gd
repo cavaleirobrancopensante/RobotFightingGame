@@ -303,6 +303,14 @@ func _satellite() -> void:
 	for h in heaps:
 		draw_circle(h[0], h[1], Color(0.26, 0.19, 0.13))
 		draw_circle(h[0] + Vector2(-4, -4), float(h[1]) * 0.6, Color(0.33, 0.24, 0.15))
+	# (1.101) the airfield at the edge of Midtown: grass, a runway with its centre line, the hangar's roof
+	draw_rect(Rect2(780, 440, 210, 90), Color(0.13, 0.17, 0.12))
+	draw_colored_polygon(PackedVector2Array([Vector2(800, 500), Vector2(990, 470), Vector2(994, 482), Vector2(804, 512)]), Color(0.24, 0.24, 0.26))
+	for i in 8:
+		var u := 0.08 + i * 0.12
+		draw_line(Vector2(800, 506).lerp(Vector2(992, 476), u), Vector2(800, 506).lerp(Vector2(992, 476), u + 0.05), Color(0.9, 0.9, 0.9, 0.7), 1.0)
+	draw_rect(Rect2(830, 448, 40, 22), Color(0.55, 0.58, 0.62))
+	draw_line(Vector2(830, 459), Vector2(870, 459), Color(0.42, 0.45, 0.5), 1.0)
 	# district ground tints
 	draw_rect(Rect2(240, 190, 270, 230), Color(0.16, 0.14, 0.12, 0.6))
 	draw_rect(Rect2(510, 240, 250, 180), Color(0.14, 0.15, 0.17, 0.6))

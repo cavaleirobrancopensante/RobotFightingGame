@@ -11,7 +11,7 @@ extends RefCounted
 
 ## Makers whose parts come in one size only (no Light / Heavy copies). Scrapworks keeps loose sizes:
 ## odd, mismatched sizes are its character.
-const ONE_SIZE := ["oldiron", "brassworks", "hellfire", "volta"]
+const ONE_SIZE := ["oldiron", "brassworks", "hellfire", "volta", "nimbus"]
 
 const DEFS := [
 	# ---- Old Iron Foundry: cast iron, big hex bolts, most HP and armour, slow, heavy on power
@@ -127,6 +127,29 @@ const DEFS := [
 		"maker": "volta", "gimmick": "sprint"},
 	{"id": "volta_twin", "kind": "torso", "name": "Twin Coil", "cost": 2000, "hp": 110, "armor": 6, "speed": 6, "draw": 4,
 		"shape": "twincoil", "color": "#d6dbe2", "mounts": ["head2"], "maker": "volta"},
+	# ---- Nimbus Aerial (1.101): aerospace. White ceramic, fins, fans, frost; the lightest and the hardest to hit
+	{"id": "nimbus_head_1", "kind": "head", "name": "Cockpit Canopy", "cost": 1100, "hp": 42, "armor": 6, "aim": 12, "draw": 3, "chips": 3,
+		"shape": "canopy", "color": "#ecf0f1", "maker": "nimbus"},
+	{"id": "nimbus_head_2", "kind": "head", "name": "Radar Nose", "cost": 1300, "hp": 40, "armor": 5, "aim": 20, "draw": 3, "chips": 2,
+		"shape": "radarnose", "color": "#dfe6e9", "size": 0.95, "maker": "nimbus"},
+	{"id": "nimbus_torso_1", "kind": "torso", "name": "Fuselage", "cost": 1400, "hp": 98, "armor": 6, "speed": 14, "draw": 3,
+		"shape": "fuselage", "color": "#ecf0f1", "maker": "nimbus", "trait": "dodge", "trait_lv": 2},
+	{"id": "frost_torso_1", "kind": "torso", "name": "Cryo Pod", "cost": 1500, "hp": 112, "armor": 8, "speed": 4, "draw": 3,
+		"shape": "cryopod", "color": "#74b9ff", "maker": "nimbus", "trait": "frostskin", "trait_lv": 1},
+	{"id": "nimbus_arm_1", "kind": "arm", "name": "Wing Blade", "cost": 1200, "hp": 42, "armor": 4, "damage": 18, "speed": 30, "draw": 3,
+		"shape": "wingblade", "color": "#ecf0f1", "size": 1.1, "maker": "nimbus"},
+	{"id": "nimbus_arm_2", "kind": "arm", "name": "Turbine Arm", "cost": 1400, "hp": 50, "armor": 6, "damage": 16, "speed": 10, "draw": 4,
+		"shape": "turbine", "color": "#b2bec3", "size": 0.95, "maker": "nimbus", "trait": "gust", "trait_lv": 1},
+	{"id": "nimbus_leg_1", "kind": "leg", "name": "Landing Gear", "cost": 1200, "hp": 52, "armor": 6, "damage": 10, "speed": 22, "draw": 3,
+		"shape": "gear", "color": "#dfe6e9", "maker": "nimbus", "gimmick": "high_jump"},
+	{"id": "nimbus_leg_2", "kind": "leg", "name": "Ducted Fan", "cost": 1400, "hp": 46, "armor": 4, "damage": 6, "speed": 26, "draw": 4,
+		"shape": "ductfan", "color": "#ecf0f1", "maker": "nimbus", "trait": "glide", "trait_lv": 1},
+	{"id": "frost_reactor", "kind": "reactor", "name": "Cryo Cell", "cost": 1400, "output": 30, "color": "#74b9ff", "maker": "nimbus",
+		"trait": "chill", "trait_lv": 1},
+	{"id": "nimbus_back", "kind": "back", "name": "Jet Wings", "cost": 1500, "draw": 3, "shape": "jetwings", "color": "#ecf0f1",
+		"maker": "nimbus", "gimmick": "double_jump"},
+	{"id": "nimbus_biplane", "kind": "torso", "name": "Biplane Frame", "cost": 2100, "hp": 108, "armor": 6, "speed": 2, "draw": 4,
+		"shape": "biplane", "color": "#ecf0f1", "mounts": ["arm_front2", "arm_back2"], "maker": "nimbus"},
 ]
 
 ## Old parts the new lines replace.
@@ -137,12 +160,14 @@ const RETIRED := ["torso_box", "torso_plate", "torso_tank", "arm_rod", "arm_bulk
 		"torso_hex", "torso_cannon", "arm_spike", "arm_hammer", "arm_saw", "leg_thick", "reactor_over", "back_spikes",   # (1.99) Hellfire
 		"pyro_head_2", "pyro_torso_2", "pyro_arm_2", "pyro_leg_2", "boom_head_2", "boom_torso_2", "boom_arm_2", "boom_leg_2", "pyro_reactor",
 		"volta_arm_2", "volta_leg_2", "magnetica_head_1", "magnetica_head_2", "magnetica_torso_1", "magnetica_torso_2",   # (1.100) Volta
-		"magnetica_arm_2", "magnetica_leg_1", "magnetica_leg_2", "head_visor", "head_bulb", "head_tv", "leg_pogo", "reactor_arc"]
+		"magnetica_arm_2", "magnetica_leg_1", "magnetica_leg_2", "head_visor", "head_bulb", "head_tv", "leg_pogo", "reactor_arc",
+		"frost_head_1", "frost_head_2", "frost_torso_2", "frost_arm_1", "frost_arm_2", "frost_leg_1", "frost_leg_2", "nimbus_torso_2",   # (1.101) Nimbus
+		"head_dome", "head_wedge", "head_dish", "torso_slim", "leg_wheel", "reactor_cell", "back_jet"]
 
 ## The makers whose lines are in (their launch posts once on BotMedia).
-const LAUNCHED := ["oldiron", "scrapworks", "brassworks", "hellfire", "volta"]
+const LAUNCHED := ["oldiron", "scrapworks", "brassworks", "hellfire", "volta", "nimbus"]
 ## (1.98) Makers with their own shop in the city: Parts-R-Us stops stocking them.
-const OWN_SHOP := {"brassworks": "brassworks", "hellfire": "breakers", "volta": "showroom"}
+const OWN_SHOP := {"brassworks": "brassworks", "hellfire": "breakers", "volta": "showroom", "nimbus": "hangar"}
 
 
 ## The part list with the makers' lines in: same ids replaced whole, new ids added, old ones retired.

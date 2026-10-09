@@ -31,6 +31,10 @@ const TRAITS := {
 	"stomp": {"name": "Stomp", "desc": "Landing from a jump next to them hits their legs for %d and staggers them.", "values": [8, 13]},
 	# (1.100) Volta Motor
 	"hover": {"name": "Mag-Lev", "desc": "Floats just over the floor: low hits do %d%% less.", "values": [35, 55]},
+	# (1.101) Nimbus Aerial
+	"frostskin": {"name": "Frost Skin", "desc": "Hits on its body chill the attacker: 35%% slower for %0.1fs.", "values": [1.0, 1.6]},
+	"gust": {"name": "Gust", "desc": "Hits blow them back %d%% further.", "values": [60, 90]},
+	"glide": {"name": "Glide", "desc": "Falls %d%% slower after a jump: a short glide.", "values": [35, 50]},
 	"tarp": {"name": "Tarp", "desc": "The tarp hides your weak spot: the enemy's first scans find nothing (%d of them).", "values": [1, 2]},
 }
 

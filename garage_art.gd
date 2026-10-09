@@ -10,7 +10,7 @@ const Light = preload("res://light.gd")
 
 ## Where the robot stands in each scene: [x as fraction of width, height as fraction of panel]
 const ROBOT_SPOT := {
-	"build": [0.55, 0.64], "shop": [0.8, 0.5], "brass": [0.8, 0.5], "hell": [0.8, 0.5], "volta": [0.78, 0.5], "workshop": [0.74, 0.56], "scrap": [0.8, 0.5],
+	"build": [0.55, 0.64], "shop": [0.8, 0.5], "brass": [0.8, 0.5], "hell": [0.8, 0.5], "volta": [0.78, 0.5], "nimbus": [0.8, 0.5], "workshop": [0.74, 0.56], "scrap": [0.8, 0.5],
 	"paint": [0.5, 0.72], "moves": [0.62, 0.7], "team": [0.64, 0.66], "cups": [0.68, 0.62],
 	"storage": [0.72, 0.5],
 }
@@ -50,6 +50,7 @@ const SCENE_COLORS := {
 	"pub": [Color(0.25, 0.06, 0.09), Color(0.29, 0.08, 0.11), Color(0.16, 0.08, 0.07)],        # The Rusty Bolt: wine red
 	"brass": [Color(0.2, 0.13, 0.08), Color(0.24, 0.16, 0.09), Color(0.17, 0.11, 0.07)],      # (1.98) Brassworks & Sons: dark wood panels
 	"volta": [Color(0.1, 0.06, 0.18), Color(0.13, 0.08, 0.22), Color(0.08, 0.06, 0.12)],      # (1.100) Volta Motor: night purple, neon
+	"nimbus": [Color(0.55, 0.6, 0.66), Color(0.6, 0.65, 0.71), Color(0.4, 0.42, 0.45)],        # (1.101) Nimbus Aerial: a pale hangar
 	# (the scrapyard is outdoors: a sunset sky)
 }
 
@@ -188,6 +189,8 @@ static func _props_back(ci: CanvasItem, size: Vector2, scene: String, t: float, 
 			_hell_back(ci, size, floor_y, t)
 		"volta":
 			_volta_back(ci, size, floor_y, t)
+		"nimbus":
+			_nimbus_back(ci, size, floor_y, t)
 		"workshop":
 			_sign(ci, Vector2(size.x * 0.8, 30), I18n.t("CUSTOM ORDERS"), Color(0.6, 0.85, 1.0))
 			# shelves of parts
@@ -295,7 +298,7 @@ static func draw_front(ci: CanvasItem, stage: Rect2, scene: String, t: float, in
 ## The light the people in a scene stand in (1.60): Gus's building is the bay's work lamp, the places
 ## outside have their own.
 static func scene_light(scene: String) -> String:
-	return scene if scene in ["pub", "shop", "scrap", "phone", "brass", "hell", "volta"] else "bay"
+	return scene if scene in ["pub", "shop", "scrap", "phone", "brass", "hell", "volta", "nimbus"] else "bay"
 
 
 static func _front(ci: CanvasItem, size: Vector2, scene: String, t: float, info: Dictionary, robot_base: Vector2, robot_h: float) -> void:
@@ -357,6 +360,15 @@ static func _front(ci: CanvasItem, size: Vector2, scene: String, t: float, info:
 			ci.draw_line(gc, gc + Vector2(cos(na), sin(na)) * 5.5 * s, Color(0.6, 0.1, 0.08), 1.5)
 			PilotArt.draw_person(ci, Vector2(ct.end.x + 26 * s, floor_y), s, pilot, -1.0, "point", t + 0.5)
 			_head(info, "YOU", Vector2(ct.end.x + 26 * s, floor_y), s)
+		"nimbus":
+			# (1.101) Captain Wren in her flight jacket, goggles up, a clipboard of test notes; you with your controller
+			var wren := {"skin": "#b07a52", "hair": "#2a1d14", "eyes": "#27ae60", "outfit": "#7a4b2a", "hat": "bun", "beard": "none",
+					"glasses": "goggles", "female": true, "scar": false}
+			var wf := Vector2(size.x * 0.56, floor_y)
+			PilotArt.draw_person(ci, wf, s, wren, 1.0, "clipboard", t)
+			_head(info, "WREN", wf, s)
+			PilotArt.draw_person(ci, Vector2(size.x * 0.32, floor_y), s, pilot, 1.0, "hold", t + 0.5)
+			_head(info, "YOU", Vector2(size.x * 0.32, floor_y), s)
 		"volta":
 			# (1.100) Dex in his pastel jacket and shades sells you the future; you hold your controller and try to look calm
 			var dex := {"skin": "#e2b48c", "hair": "#c49a3c", "eyes": "#2e86de", "outfit": "#4ecdc4", "hat": "", "beard": "stubble",
@@ -1050,6 +1062,67 @@ static func _brass_back(ci: CanvasItem, size: Vector2, floor_y: float, t: float)
 	_maker_plaque(ci, Rect2(size.x * 0.66, 70, size.x * 0.3, 36), "brassworks", I18n.t("BRASSWORKS & SONS"), I18n.t("EST. 1898 · BUILT BY HAND"))
 
 
+## (1.101) Nimbus Aerial's hangar: the door open on the airfield, a fan on its test stand, landing lights on the floor.
+static func _nimbus_back(ci: CanvasItem, size: Vector2, floor_y: float, t: float) -> void:
+	# the arch's ribs across the roof
+	for k in 5:
+		var rx := size.x * (0.1 + k * 0.22)
+		ci.draw_line(Vector2(rx, 0), Vector2(rx, floor_y - 8), Color(0.48, 0.52, 0.58), 4.0)
+	# the hangar door, open on the airfield: sky, clouds, the runway, a windsock
+	var dr := Rect2(size.x * 0.03, 70, size.x * 0.46, floor_y - 70)
+	for k in 8:
+		ci.draw_rect(Rect2(dr.position.x, dr.position.y + k * dr.size.y * 0.09, dr.size.x, dr.size.y * 0.09 + 1), Color(0.45, 0.68, 0.95).lerp(Color(0.85, 0.92, 0.98), k / 7.0))
+	for k in 3:
+		var cx := dr.position.x + fmod(k * 113.0 + t * 6.0, dr.size.x + 60.0) - 30.0
+		var cy := dr.position.y + 22.0 + k * 22.0
+		for j in 3:
+			var cp := Vector2(cx + j * 12.0, cy - (6.0 if j == 1 else 0.0))
+			if cp.x > dr.position.x + 8 and cp.x < dr.end.x - 8:
+				ci.draw_circle(cp, 9.0, Color(1, 1, 1, 0.85))
+	var gy := dr.position.y + dr.size.y * 0.72
+	ci.draw_rect(Rect2(dr.position.x, gy, dr.size.x, dr.end.y - gy), Color(0.45, 0.6, 0.38))
+	ci.draw_colored_polygon(PackedVector2Array([Vector2(dr.get_center().x - 14, gy), Vector2(dr.get_center().x + 14, gy), Vector2(dr.end.x, dr.end.y), Vector2(dr.position.x, dr.end.y)]), Color(0.32, 0.33, 0.36))
+	for k in 4:
+		var f0 := k / 4.0
+		var f1 := f0 + 0.12
+		var y0 := lerpf(gy, dr.end.y, f0)
+		var y1 := lerpf(gy, dr.end.y, f1)
+		ci.draw_line(Vector2(dr.get_center().x, y0), Vector2(dr.get_center().x, y1), Color(0.95, 0.95, 0.95), 1.0 + f0 * 4.0)
+	var ws := Vector2(dr.end.x - 40, gy)
+	ci.draw_line(ws, ws + Vector2(0, -40), Color(0.85, 0.85, 0.88), 2.0)
+	var flap := sin(t * 3.0) * 4.0
+	ci.draw_colored_polygon(PackedVector2Array([ws + Vector2(0, -40), ws + Vector2(22, -36 + flap), ws + Vector2(22, -30 + flap), ws + Vector2(0, -32)]), Color(1.0, 0.5, 0.15))
+	ci.draw_line(ws + Vector2(8, -39 + flap * 0.4), ws + Vector2(8, -31 + flap * 0.4), Color(1, 1, 1), 2.0)
+	# the sliding door leaves, pushed open to each side
+	for side in 2:
+		var lx := dr.position.x - 10.0 if side == 0 else dr.end.x - 6.0
+		_rc(ci, Rect2(lx, 66, 16, floor_y - 66), Color(0.82, 0.85, 0.88))
+		ci.draw_line(Vector2(lx + 2, floor_y * 0.55), Vector2(lx + 14, floor_y * 0.55), Color(0.2, 0.45, 0.9), 3.0)
+	# the sign over it all
+	_maker_plaque(ci, Rect2(size.x * 0.06, 24, size.x * 0.4, 36), "nimbus", I18n.t("NIMBUS AERIAL"), I18n.t("HANGAR 3 · TEST AND FIT"))
+	# a ducted fan on its test stand, spinning, streamers blowing off it
+	var fc := Vector2(size.x * 0.18, floor_y - 74)
+	_ln(ci, Vector2(fc.x - 10, floor_y), Vector2(fc.x, fc.y), Color(0.35, 0.38, 0.42), 4.0)
+	_ln(ci, Vector2(fc.x + 10, floor_y), Vector2(fc.x, fc.y), Color(0.35, 0.38, 0.42), 4.0)
+	_cr(ci, fc, 24, Color(0.85, 0.88, 0.92))
+	ci.draw_circle(fc, 18.0, Color(0.16, 0.18, 0.22))
+	for k in 5:
+		var a := t * 14.0 + k * TAU / 5.0
+		ci.draw_line(fc, fc + Vector2(cos(a), sin(a)) * 16.0, Color(0.7, 0.74, 0.8), 3.0)
+	ci.draw_circle(fc, 4.0, Color(0.9, 0.92, 0.95))
+	for k in 3:
+		var st := fc + Vector2(24, -10 + k * 10)
+		ci.draw_line(st, st + Vector2(18, sin(t * 12.0 + k) * 3.0), Color(1.0, 0.3, 0.25), 2.0)
+	# the taxi line and landing lights on the floor
+	ci.draw_line(Vector2(size.x * 0.02, floor_y + 6), Vector2(size.x, floor_y + 6), Color(0.95, 0.8, 0.15, 0.8), 3.0)
+	for k in 8:
+		var lp := Vector2(size.x * (0.06 + k * 0.12), floor_y + 12)
+		var on := int(t * 4.0) % 8 == k
+		ci.draw_circle(lp, 3.0, Color(0.4, 0.7, 1.0) if on else Color(0.2, 0.35, 0.6))
+		if on:
+			ci.draw_circle(lp, 8.0, Color(0.4, 0.7, 1.0, 0.25))
+
+
 ## (1.100) Volta Motor's showroom: a big window on Midtown at night, a neon sign, a grid floor, a palm, the turntable.
 static func _volta_back(ci: CanvasItem, size: Vector2, floor_y: float, t: float) -> void:
 	# the window: a sunset over the Midtown towers, striped sun and all
@@ -1199,7 +1272,8 @@ static func _maker_plaque(ci: CanvasItem, r: Rect2, m: String, title: String, su
 	_rc(ci, r, Color(0.93, 0.89, 0.8))
 	_rc(ci, r.grow(-3), col, false, 2.0)
 	load("res://logos.gd").draw_logo(ci, load("res://makers.gd").logo(m), r.position + Vector2(r.size.y * 0.5, r.size.y * 0.5), r.size.y * 0.32)
-	ci.draw_string(f, Vector2(r.position.x + r.size.y, r.position.y + r.size.y * 0.48), title, HORIZONTAL_ALIGNMENT_LEFT, r.size.x - r.size.y - 4, tsz, col.darkened(0.2))
+	var tcol := col.darkened(0.2) if col.get_luminance() < 0.6 else col.darkened(0.6)   # (1.101) pale makers read dark on the enamel
+	ci.draw_string(f, Vector2(r.position.x + r.size.y, r.position.y + r.size.y * 0.48), title, HORIZONTAL_ALIGNMENT_LEFT, r.size.x - r.size.y - 4, tsz, tcol)
 	ci.draw_string(f, Vector2(r.position.x + r.size.y, r.position.y + r.size.y * 0.82), sub, HORIZONTAL_ALIGNMENT_LEFT, r.size.x - r.size.y - 4, ssz, Color(0.2, 0.18, 0.16))
 
 
@@ -1491,6 +1565,7 @@ const ROOM := {
 	"brass": {"tint": Color(0.05, 0.02, 0.0), "dim": 0.26, "pool": 0.1},
 	"hell": {"tint": Color(0.06, 0.02, 0.04), "dim": 0.14, "pool": 0.09},
 	"volta": {"tint": Color(0.04, 0.0, 0.08), "dim": 0.2, "pool": 0.13},
+	"nimbus": {"tint": Color(0.0, 0.02, 0.06), "dim": 0.14, "pool": 0.1},
 	"scrap": {"tint": Color(0.06, 0.02, 0.08), "dim": 0.12, "pool": 0.07},
 	"phone": {"tint": Color(0.0, 0.0, 0.03), "dim": 0.0, "pool": 0.0},
 }

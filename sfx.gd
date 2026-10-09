@@ -56,6 +56,7 @@ const VOICE_OF := {
 	"SILAS": ["voice_smooth", 0.82],   # (1.98) old Silas of Brassworks & Sons
 	"MAGDA": ["voice_gravel", 1.35],   # (1.99) Magda of Hellfire Heavy, a foreman's rasp
 	"DEX": ["voice_smooth", 1.2],   # (1.100) Dex the Volta salesman
+	"WREN": ["voice_high", 0.95],   # (1.101) Captain Wren, Nimbus's test pilot
 	"YOU": ["talk", 1.08],
 	"ECHO": ["talk_robot", 1.0],
 	"MARGO": ["voice_high", 1.18],
