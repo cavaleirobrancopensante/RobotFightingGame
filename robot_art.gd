@@ -28,19 +28,20 @@ const LEGS := {"rod": [60.0, 14.0], "piston": [62.0, 18.0], "spring": [66.0, 13.
 		"reverse": [70.0, 16.0], "pillar": [48.0, 27.0], "thick": [56.0, 23.0],
 		"pogo": [68.0, 13.0], "wheel": [58.0, 16.0], "tread": [52.0, 25.0],
 		"blade": [64.0, 12.0], "hover": [50.0, 18.0], "spider": [62.0, 13.0],
-		"stomper": [56.0, 22.0], "pipe": [62.0, 14.0]}
+		"stomper": [56.0, 22.0], "pipe": [62.0, 14.0], "bellows": [60.0, 17.0], "tripod": [64.0, 13.0]}
 # [width, height]
 const TORSOS := {"barrel": [60.0, 70.0], "box": [56.0, 76.0], "vee": [70.0, 78.0],
 		"core": [60.0, 76.0], "tank": [84.0, 82.0], "slim": [42.0, 82.0],
 		"ribcage": [54.0, 74.0], "hex": [70.0, 80.0], "cannon": [66.0, 78.0],
 		"crate": [62.0, 66.0], "furnace": [64.0, 78.0], "orb": [70.0, 70.0],
 		"yoke": [82.0, 74.0], "quad": [74.0, 84.0], "monster": [92.0, 90.0],
-		"engine": [74.0, 74.0], "loco": [70.0, 80.0], "drum": [58.0, 72.0]}
+		"engine": [74.0, 74.0], "loco": [70.0, 80.0], "drum": [58.0, 72.0], "boiler": [62.0, 80.0], "clockwork": [62.0, 76.0]}
 const HEADS := {"bucket": [34.0, 32.0], "box": [38.0, 34.0], "dome": [42.0, 34.0], "cyclops": [40.0, 40.0],
 		"visor": [48.0, 28.0], "horned": [40.0, 34.0], "skull": [40.0, 42.0], "wedge": [44.0, 30.0],
 		"tall": [26.0, 52.0], "bulb": [44.0, 44.0], "tv": [46.0, 36.0], "dish": [40.0, 34.0], "laser": [38.0, 34.0],
 		"knight": [40.0, 42.0], "orb": [38.0, 38.0], "speaker": [44.0, 38.0],
-		"rivet": [38.0, 36.0], "grille": [50.0, 38.0], "peeper": [34.0, 32.0], "busted": [46.0, 36.0]}
+		"rivet": [38.0, 36.0], "grille": [50.0, 38.0], "peeper": [34.0, 32.0], "busted": [46.0, 36.0],
+		"periscope": [36.0, 34.0], "divingbell": [44.0, 42.0]}
 const PUNCH_LEN := 84.0   # how far a punching hand reaches from the lead shoulder
 
 # [thickness, fist radius]
@@ -48,7 +49,8 @@ const ARMS := {"rod": [12.0, 10.0], "piston": [15.0, 12.0], "claw": [14.0, 7.0],
 		"bulky": [20.0, 16.0], "hammer": [16.0, 7.0], "drill": [15.0, 7.0],
 		"rocket": [16.0, 14.0], "grapple": [14.0, 7.0], "saw": [14.0, 7.0],
 		"blade": [13.0, 7.0], "flame": [16.0, 7.0], "magnet": [15.0, 7.0],
-		"anvil": [18.0, 9.0], "crane": [13.0, 7.0], "wrench": [12.0, 7.0], "grabber": [11.0, 6.0]}
+		"anvil": [18.0, 9.0], "crane": [13.0, 7.0], "wrench": [12.0, 7.0], "grabber": [11.0, 6.0],
+		"gauntlet": [15.0, 13.0], "riveter": [12.0, 7.0]}
 
 
 ## (1.93) Normal hits by limb, techniques included, and the arm poses that reach as far as a punch
@@ -1089,6 +1091,8 @@ static func arm_tip_extra(look: Dictionary, slot: String, pose: String) -> Vecto
 		"crane": ext = 22.0 * sz
 		"wrench": ext = 21.0 * sz
 		"grabber": ext = 22.0 * sz
+		"gauntlet": ext = fr + 3.0
+		"riveter": ext = 24.0 * sz
 	if pose == "elbow" or pose == "shove":
 		ext = 6.0   # the elbow (or a flat palm) does the hitting, not the weapon
 	return Vector2(ext, maxf(fr, th * 0.5))
@@ -1343,6 +1347,24 @@ static func _draw_arm(ci: CanvasItem, look: Dictionary, slot: String, s: Vector2
 			_pl(ci, PackedVector2Array([h + dir * 10.0 * sz, h + dir * 17.0 * sz + perp * 6.0 * sz, h + dir * 22.0 * sz + perp * 3.0 * sz]), tc, 3.0)
 			_pl(ci, PackedVector2Array([h + dir * 10.0 * sz, h + dir * 17.0 * sz - perp * 6.0 * sz, h + dir * 22.0 * sz - perp * 3.0 * sz]), tc, 3.0)
 			_joint(ci, h, th * 0.5, c.darkened(0.3))
+		"gauntlet":
+			# (1.98) Brassworks: a piston rod along the forearm, a steam valve and a big brass gauntlet
+			_limb(ci, e + dir * 3.0, e.lerp(h, 0.75), c.darkened(0.25), th * 1.25)
+			_ln(ci, e.lerp(h, 0.2) + perp * th * 0.55, h + perp * fr * 0.6, Color(0.82, 0.82, 0.86), 3.0)
+			_disc(ci, e.lerp(h, 0.45) - perp * th * 0.7, 3.5, Color(0.75, 0.2, 0.15))   # the valve wheel
+			_round(ci, h, fr, tc)
+			for k in 3:
+				var kp := h + dir * fr * 0.55 + perp * (k - 1) * fr * 0.5
+				ci.draw_circle(kp, fr * 0.22, tc.darkened(0.25))
+		"riveter":
+			# (1.98) Brassworks: a pneumatic riveter, a hose looping back to the elbow
+			var body0 := h - dir * 2.0
+			_plate(ci, PackedVector2Array([body0 - perp * 7.0 * sz, body0 + dir * 16.0 * sz - perp * 6.0 * sz, body0 + dir * 16.0 * sz + perp * 6.0 * sz, body0 + perp * 7.0 * sz]), tc)
+			_ln(ci, body0 + dir * 16.0 * sz, body0 + dir * 24.0 * sz, Color(0.75, 0.75, 0.78), 3.5)
+			for k in 3:
+				var rq := body0 + dir * (3.0 + k * 4.0) * sz
+				ci.draw_line(rq - perp * 6.0 * sz, rq + perp * 6.0 * sz, tc.darkened(0.3), 1.5)
+			_pl(ci, PackedVector2Array([body0 + perp * 6.0, body0 + perp * 14.0 - dir * 6.0, e + perp * 10.0, e + perp * 3.0]), Color(0.18, 0.16, 0.14), 3.0)
 		_:
 			_round(ci, h, fr, tc)
 	_finish_limb(ci, s, e, p, th, t)
@@ -1437,6 +1459,17 @@ static func _draw_back(ci: CanvasItem, look: Dictionary, g: Dictionary, pose: Di
 			for gp in [Vector2(bx - 2, top + 4), Vector2(bx - 12 + fl * 0.3, top + th2 * 0.3)]:
 				ci.draw_circle(gp, 2.5, Color(0.8, 0.8, 0.75))
 			_ln(ci, Vector2(bx + 6, top + 4), Vector2(bx + 14, top + 9), Color(0.62, 0.5, 0.3), 2.0)
+		"smokestack":
+			# (1.98) Brassworks: a chimney on the back, brass bands, puffing
+			var sk := Rect2(bx - 14.0, top - 30.0, 14.0, float(g["th"]) * 0.7 + 30.0)
+			_plate(ci, _chamfer(sk, 2.0), c)
+			_plate(ci, _chamfer(Rect2(sk.position.x - 3.0, sk.position.y - 6.0, sk.size.x + 6.0, 8.0), 2.0), c.darkened(0.2))
+			for k in 3:
+				var by2 := sk.position.y + 10.0 + k * sk.size.y * 0.28
+				ci.draw_line(Vector2(sk.position.x, by2), Vector2(sk.end.x, by2), Color(0.8, 0.64, 0.2), 3.0)
+			for k in 3:
+				var ph := fmod(t * 0.7 + k * 0.33, 1.0)
+				ci.draw_circle(Vector2(sk.get_center().x - ph * 14.0, sk.position.y - 8.0 - ph * 30.0), 4.0 + ph * 8.0, Color(0.92, 0.93, 0.95, 0.45 * (1.0 - ph)))
 		"shield":
 			_ln(ci, Vector2(bx - 6, top + 40), Vector2(bx - 14, top - 18), c.darkened(0.3), 4.0)
 			_arc(ci, Vector2(bx - 14, top - 18), 14.0, PI * 0.6, PI * 1.6, 12, c, 5.0)
@@ -1542,6 +1575,24 @@ static func _draw_leg(ci: CanvasItem, look: Dictionary, slot: String, hip: Vecto
 			_ln(ci, knee + perp * th * 0.6, foot + Vector2(0, -12) + perp * th * 0.6, c.darkened(0.35), 4.0)
 			_joint(ci, knee, th * 0.62, c.darkened(0.2))
 			_hexbolt(ci, knee, 3.0)
+		"bellows":
+			# (1.98) Brassworks: a brass thigh and an accordion bellows shin
+			_limb(ci, hip, knee, c, th)
+			var bp := PackedVector2Array()
+			for k in 9:
+				var f3 := k / 8.0
+				bp.append(knee.lerp(foot + Vector2(0, -6), f3) + perp * th * (0.75 if k % 2 == 0 else 0.35) )
+			for k in 9:
+				var f4 := 1.0 - k / 8.0
+				bp.append(knee.lerp(foot + Vector2(0, -6), f4) - perp * th * (0.75 if (8 - k) % 2 == 0 else 0.35))
+			_plate(ci, bp, Color(0.36, 0.26, 0.18))
+			_joint(ci, knee, th * 0.6, c.darkened(0.2))
+		"tripod":
+			# (1.98) Brassworks: a telescoping brass strut
+			_limb(ci, hip, knee, c, th * 1.2)
+			_limb(ci, knee, foot + Vector2(0, -4), c.lightened(0.15), th * 0.7)
+			_ln(ci, knee.lerp(foot, 0.3) - perp * th * 0.5, knee.lerp(foot, 0.3) + perp * th * 0.5, c.darkened(0.35), 3.0)
+			_joint(ci, knee, th * 0.6, c.darkened(0.25))
 		"pipe":
 			# (1.97) Scrapworks: plumbing, with an elbow fitting for a knee
 			_limb(ci, hip, knee, c, th)
@@ -1577,6 +1628,11 @@ static func _draw_leg(ci: CanvasItem, look: Dictionary, slot: String, hip: Vecto
 		_joint(ci, Vector2(tr.end.x - 8, tr.get_center().y), 5.0, tc)
 	elif p["shape"] == "pogo":
 		_box(ci, Rect2(foot.x - 14.0, foot.y - 6.0, 28.0, 6.0), Color(0.15, 0.15, 0.17))
+	elif p["shape"] == "tripod":
+		# three toes spread on the floor
+		for dx in [-12.0, 2.0, 16.0]:
+			_ln(ci, foot + Vector2(2, -5), foot + Vector2(dx, 0), tc, 3.5)
+		_joint(ci, foot + Vector2(2, -5), 4.0, tc.darkened(0.2))
 	elif p["shape"] == "stomper":
 		# a huge cast boot that kicks and stamps flat
 		var bt := Rect2(foot.x - 16.0, foot.y - 14.0, 40.0, 14.0)
@@ -1758,6 +1814,46 @@ static func _draw_torso(ci: CanvasItem, look: Dictionary, g: Dictionary, flash: 
 			for k in 5:
 				var bx2 := cx - cw * 0.4 + k * cw * 0.2
 				ci.draw_line(Vector2(bx2, y1 - 12), Vector2(bx2 + (0.0 if front else 4.0), y1), Color(0.5, 0.5, 0.52), 2.0)
+		"boiler":
+			# (1.98) Brassworks: an upright copper boiler, riveted bands, the firebox glowing, a gauge
+			_plate(ci, _rounded(r, w * 0.28), c)
+			for k in 3:
+				var ry2 := y0 + r.size.y * (0.12 + k * 0.38)
+				ci.draw_line(Vector2(x0 + 3, ry2), Vector2(x1 - 3, ry2), Color(0.8, 0.64, 0.2), 4.0)
+				for q in 5:
+					ci.draw_circle(Vector2(x0 + 8 + q * (w - 16) / 4.0, ry2), 1.6, Color(0.45, 0.32, 0.12))
+			var fb := Rect2(r.get_center().x - w * (0.2 if front else 0.05), y0 + r.size.y * 0.6, w * 0.4, r.size.y * 0.22)
+			_plate(ci, _chamfer(fb, 3.0), Color(0.2, 0.17, 0.15))
+			var fire := 0.6 + 0.4 * sin(t * 9.0)
+			ci.draw_rect(fb.grow(-4.0), Color(1.0, 0.42 * fire + 0.2, 0.08, 0.9))
+			for k in 3:
+				ci.draw_line(Vector2(fb.position.x + 6 + k * (fb.size.x - 12) / 2.0, fb.position.y + 3), Vector2(fb.position.x + 6 + k * (fb.size.x - 12) / 2.0, fb.end.y - 3), Color(0.15, 0.12, 0.1), 2.0)
+			var gp := Vector2(r.get_center().x + (0.0 if front else w * 0.12), y0 + r.size.y * 0.32)
+			_disc(ci, gp, w * 0.15, Color(0.8, 0.64, 0.2))
+			ci.draw_circle(gp, w * 0.11, Color(0.95, 0.92, 0.82))
+			var na := -2.2 + 2.6 * (0.5 + 0.5 * sin(t * 0.6))
+			ci.draw_line(gp, gp + Vector2(cos(na), sin(na)) * w * 0.1, Color(0.6, 0.1, 0.08), 2.0)
+			if not front:
+				_limb(ci, Vector2(x0 + 6, y0 + 6), Vector2(x0 - 4, y0 - 12), Color(0.3, 0.24, 0.18), 6.0)   # a steam pipe
+		"clockwork":
+			# (1.98) Brassworks: a cage of brass bars with the gears turning inside
+			_plate(ci, plate, c.darkened(0.45))
+			var gears := [[Vector2(0.38, 0.38), 0.22, 1.0], [Vector2(0.66, 0.56), 0.17, -1.4], [Vector2(0.4, 0.74), 0.14, 1.8]]
+			for gq in gears:
+				var gc2 := Vector2(x0 + w * float((gq[0] as Vector2).x), y0 + r.size.y * float((gq[0] as Vector2).y))
+				var gr2 := w * float(gq[1])
+				var spin2 := t * float(gq[2])
+				var teeth := PackedVector2Array()
+				for k in 24:
+					var a2 := spin2 + k * TAU / 24.0
+					teeth.append(gc2 + Vector2(cos(a2), sin(a2)) * gr2 * (1.0 if k % 2 == 0 else 0.82))
+				_poly(ci, teeth, Color(0.85, 0.68, 0.22))
+				ci.draw_circle(gc2, gr2 * 0.35, c.darkened(0.5))
+			for k in 5:
+				var bxk := x0 + 4 + k * (w - 8) / 4.0
+				_ln(ci, Vector2(bxk, y0 + 3), Vector2(bxk, y1 - 3), c, 3.5)
+			_plate(ci, _chamfer(Rect2(x0 - 3, y0 - 2, w + 6, 9), 2.0), trim)
+			_plate(ci, _chamfer(Rect2(x0 - 3, y1 - 8, w + 6, 9), 2.0), trim)
 		"drum":
 			# (1.97) Scrapworks: an oil drum, ribbed and dented, a bung on top
 			_plate(ci, _rounded(r, w * 0.12), c)
@@ -1774,7 +1870,7 @@ static func _draw_torso(ci: CanvasItem, look: Dictionary, g: Dictionary, flash: 
 			_bolts(ci, r)
 			_plate(ci, _chamfer(Rect2(x0 - 4, y0 - 2, w + 8, 12), 3.0), trim)
 			_plate(ci, _chamfer(Rect2(x0, y1 - 14, w, 10), 3.0), trim)
-	if not p["shape"] in ["core", "loco"]:
+	if not p["shape"] in ["core", "loco", "boiler"]:
 		ci.draw_circle(chest, 9.0, eye.darkened(0.45))
 		_glow(ci, chest, 6.0, eye)
 		ci.draw_circle(chest, 6.0, eye)
@@ -1987,6 +2083,36 @@ static func _draw_head(ci: CanvasItem, look: Dictionary, g: Dictionary, flash: b
 				_ln(ci, Vector2(px, y0 - 14), Vector2(px + 10, y0 - 14), trim, 5.0)
 				_disc(ci, Vector2(px + 12, y0 - 14), 4.5, trim)
 				ci.draw_circle(Vector2(px + 13, y0 - 14), 3.0, eye)
+		"periscope":
+			# (1.98) Brassworks: a brass helm with a tall periscope and its lens box
+			_plate(ci, _rounded(Rect2(x0, y0 + h * 0.15, w, h * 0.85), w * 0.22), c)
+			ci.draw_line(Vector2(x0 + 2, y0 + h * 0.52), Vector2(x0 + w - 2, y0 + h * 0.52), c.darkened(0.3), 3.0)
+			var ex2 := Vector2(cen.x if front else x0 + w * 0.7, y0 + h * 0.36)
+			_disc(ci, ex2, 5.5, Color(0.8, 0.64, 0.2))
+			ci.draw_circle(ex2, 3.5, eye)
+			var tx2 := cen.x - (0.0 if front else w * 0.18)
+			_ln(ci, Vector2(tx2, y0 + h * 0.2), Vector2(tx2, y0 - 22), c.darkened(0.15), 6.0)
+			ci.draw_line(Vector2(tx2 - 4, y0 - 4), Vector2(tx2 + 4, y0 - 4), Color(0.8, 0.64, 0.2), 2.5)
+			var lb := Rect2(tx2 - (6.0 if front else 4.0), y0 - 30, 12.0 if front else 16.0, 10)
+			_plate(ci, _chamfer(lb, 2.0), c)
+			ci.draw_circle(Vector2(lb.get_center().x if front else lb.end.x - 2, lb.get_center().y), 3.0, eye)
+		"divingbell":
+			# (1.98) Brassworks: a copper diving helmet, a caged front porthole, bolts round the collar
+			var hc2 := Vector2(cen.x, y0 + h * 0.46)
+			_round(ci, hc2, minf(w, h) * 0.48, c)
+			_plate(ci, _chamfer(Rect2(x0 - 2, y0 + h * 0.82, w + 4, h * 0.18), 2.0), c.darkened(0.2))
+			for k in 6:
+				ci.draw_circle(Vector2(x0 + 3 + k * (w - 6) / 5.0, y0 + h * 0.91), 1.8, Color(0.85, 0.7, 0.3))
+			var pc2 := hc2 + Vector2(0.0 if front else w * 0.16, 0.0)
+			var pr2 := h * (0.24 if front else 0.18)
+			_disc(ci, pc2, pr2 + 2.5, Color(0.8, 0.64, 0.2))
+			ci.draw_circle(pc2, pr2, Color(0.1, 0.16, 0.18))
+			ci.draw_circle(pc2 + Vector2(pr2 * 0.3, -pr2 * 0.2), pr2 * 0.4, Color(eye, 0.85))
+			for k in 2:
+				var off2 := (k - 0.5) * pr2 * 0.8
+				ci.draw_line(pc2 + Vector2(off2, -pr2), pc2 + Vector2(off2, pr2), Color(0.8, 0.64, 0.2), 2.0)
+			if not front:
+				_disc(ci, hc2 + Vector2(-w * 0.22, -h * 0.05), h * 0.1, Color(0.8, 0.64, 0.2))
 		"busted":
 			# (1.97) Scrapworks: an old TV, screen cracked, one eye on the blink, an antenna bent and taped
 			_plate(ci, plate, c)

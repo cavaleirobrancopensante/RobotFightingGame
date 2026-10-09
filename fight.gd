@@ -206,6 +206,9 @@ class Fighter:
 	var burns: Array = []    # [{slot, dps, t}] (crush: true = a Crane Hook's clamp, no fire)
 	var fly := 0.0           # (1.97) Flywheel Back: spare power stored once the tank is full
 	var tarp_left := 0       # (1.97) Tarp Cape: enemy scans it still fools
+	var pressure := 0.0      # (1.98) Brassworks: the gauge, 0..100; full = the next hit vents
+	var pr_rate := 0.0       # how fast it fills (per second; 0 = no boiler)
+	var steam_t := 0.0       # (1.98) hidden in a cloud of steam
 	# teams (multibot fights)
 	var team := 0            # 0 = player's side, 1 = CPU's side
 	var foe = null           # the enemy this fighter is fighting right now
@@ -830,6 +833,18 @@ func make_fighter(spec: Dictionary) -> Fighter:
 		var tid: String = t["trait"]
 		f.gtraits[tid] = f.gtraits.get(tid, 0.0) + Catalog.trait_value(t)
 	f.tarp_left = int(f.gtraits.get("tarp", 0.0))
+	# (1.98) Pressure: a boiler (the Boiler Chest, a Coal Firebox) fills the gauge; every other
+	# Brassworks part on the robot helps a little, and the set doubles it
+	var src: float = f.gtraits.get("pressure", 0.0)
+	var tpd = f.parts.get("torso", {})
+	if tpd is Dictionary and str(tpd.get("trait", "")) == "pressure":
+		src += Catalog.trait_value(tpd)
+	if src > 0.0:
+		var brass := 0
+		for id in ids:
+			if str(GameData.part_def(str(id)).get("maker", "")) == "brassworks":
+				brass += 1
+		f.pr_rate = PRESSURE_FILL * src / 100.0 * (1.0 + 0.15 * maxi(0, brass - 1)) * (2.0 if f.sets.has("brassworks") else 1.0)
 	return f
 
 
@@ -1714,6 +1729,10 @@ func ai_use_gadgets(dist: float, threatened: bool, toward: String) -> Dictionary
 	if not g.is_empty() and threatened and dist < 200.0 * cpu.scale and randf() < 0.4 + ai_smart * 0.4:
 		use_gadget(cpu, g)
 		return {"hold": [toward]}   # walk through their attack behind the bubble
+	g = ai_gadget("steam_burst")
+	if not g.is_empty() and (threatened or player.target != "") and randf() < 0.25 + ai_smart * 0.3:
+		use_gadget(cpu, g)   # (1.98) hide in the steam when you're lining it up
+		return {}
 	g = ai_gadget("emp")
 	if not g.is_empty() and dist < 200.0 and (player.blocking or threatened or randf() < 0.35):
 		use_gadget(cpu, g)
@@ -2258,7 +2277,7 @@ func update_power(f: Fighter, delta: float) -> void:
 		Sfx.play("ko", 0.1, -6.0)   # the BURNOUT sign is drawn over its head (draw_burnout)
 		return
 	if not busy and f.idle_t > REFILL_DELAY and f.state != "ko":
-		var rate := REFILL * (1.35 if f.style == "mechanic" else 1.0) * (0.4 if f.blocking else 1.0) * (1.25 if f.sets.has("brassworks") else 1.0)
+		var rate := REFILL * (1.35 if f.style == "mechanic" else 1.0) * (0.4 if f.blocking else 1.0)
 		var room := f.power_max - f.power
 		var add := f.power_max * rate * delta
 		f.power = minf(f.power_max, f.power + add)
@@ -2361,7 +2380,7 @@ func update_aim(f: Fighter, delta: float) -> void:
 	if f.weak != "" and f.weak != wp:
 		f.weak = ""
 		f.scan_t = 0.0
-	if f.weak == "" and wp != "":
+	if f.weak == "" and wp != "" and o.steam_t <= 0.0:
 		f.scan_t += delta
 		if f.scan_t >= f.scan_time and o.tarp_left > 0:
 			# (1.97) a Tarp Cape: the scan comes back empty and starts again
@@ -2603,6 +2622,11 @@ func use_gadget(f: Fighter, g: Dictionary) -> void:
 			popup(tr("OVERCHARGE!"), f.pos + Vector2(0, -230.0 * f.scale), Color(1.0, 0.3, 0.5))
 			Sfx.play("uppercut")
 			Sfx.play("crowd_ooh", 0.1)
+		"steam_burst":
+			# (1.98) the Smokestack: a cloud of steam, their aim and scan start over
+			steam_cloud(f, 2.0, true)
+			popup(tr("STEAM!"), f.pos + Vector2(0, -230.0 * f.scale), Color(0.9, 0.95, 1.0))
+			Sfx.play("step_brassworks", 0.1, 0.0, 0.7)
 		"emp":
 			rings.append({"pos": f.pos + Vector2(0, -80.0 * f.scale), "t": 0.0, "color": Color(0.7, 0.55, 1.0), "r": 220.0})
 			Sfx.play("spark")
@@ -2730,6 +2754,14 @@ func update_fighter(f: Fighter, o: Fighter, i: Dictionary, delta: float) -> void
 	f.numb_t = maxf(0.0, f.numb_t - delta)
 	f.armor_t = maxf(0.0, f.armor_t - delta)
 	f.haste_t = maxf(0.0, f.haste_t - delta)
+	if f.steam_t > 0.0:
+		f.steam_t -= delta
+		if randf() < delta * 26.0:
+			smoke.append({"pos": f.pos + Vector2(randf_range(-55, 55), randf_range(-160, -20)) * f.scale, "t": 0.0, "dark": false, "steam": true, "k": randf_range(1.8, 2.8)})
+	if phase == "fight" and f.state != "ko" and f.pr_rate > 0.0 and f.pressure < 100.0:
+		f.pressure = minf(100.0, f.pressure + f.pr_rate * delta)
+		if f.pressure >= 100.0:
+			Sfx.play("step_brassworks", 0.1, -2.0, 1.4)   # the valve whistles: ready to vent
 	if phase == "fight" and f.state != "ko":
 		# (mechanics repair by landing hits - see mechanic_heal - not by just standing there: the old
 		# repair-over-time patched a whole robot back to full over a long fight)
@@ -3211,6 +3243,11 @@ func apply_hit(att: Fighter, d: Fighter, a: Dictionary, at: Vector2) -> void:
 		shake = maxf(shake, 14.0)
 	# evasion: a clean miss
 	var dodge: float = minf(25.0, part_trait_sum(d, "dodge") * 0.6 + d.gtraits.get("dodge", 0.0))
+	if not blocked and not a.get("unblockable", false) and d.steam_t > 0.0 and randf() * 100.0 < STEAM_MISS:
+		# (1.98) swinging blind into the steam
+		popup(tr("LOST IN THE STEAM"), d.pos + Vector2(0, -200.0 * d.scale), Color(0.9, 0.95, 1.0))
+		Sfx.play("swing", 0.2)
+		return
 	if not blocked and not a.get("unblockable", false) and randf() * 100.0 < dodge:
 		popup(tr("DODGE"), d.pos + Vector2(0, -200.0 * d.scale), Color(0.7, 1.0, 1.0))
 		Sfx.play("swing", 0.2)
@@ -3281,6 +3318,16 @@ func apply_hit(att: Fighter, d: Fighter, a: Dictionary, at: Vector2) -> void:
 				dmg *= 1.25
 		if att.weak != "" and slot == att.weak:
 			dmg *= 1.0 + WEAK_BONUS   # only once your head's scan has found it
+		# (1.98) a full boiler vents through this hit
+		if att.pr_rate > 0.0 and att.pressure >= 100.0:
+			dmg *= PRESSURE_VENT
+			att.pressure = 0.0
+			steam_cloud(att, 1.0, true)
+			popup(tr("VENT!"), hit_at + Vector2(0, -40), Color(1.0, 0.95, 0.85))
+			rec_mark("special", 30.0, "%s vents a full boiler into %s", [rec_name(att), rec_name(d)])
+		# a hard hit makes a boiler leak
+		if d.pr_rate > 0.0 and dmg >= 10.0:
+			d.pressure = maxf(0.0, d.pressure - dmg * 1.5)
 		# precision: critical hits
 		var crit: float = off_trait(att, src, "crit") + (5.0 if att.style == "striker" else 0.0)
 		if randf() * 100.0 < crit:
@@ -3317,6 +3364,14 @@ func apply_hit(att: Fighter, d: Fighter, a: Dictionary, at: Vector2) -> void:
 			# (1.97) a Crane Hook clamps on and keeps crushing
 			d.burns.append({"slot": slot, "dps": crush / 2.0 * att.gpow, "t": 2.0, "crush": true})
 			popup(tr("CLAMPED"), hit_at + Vector2(0, -50), Color(1.0, 0.85, 0.35))
+		var vent := off_trait(att, src, "vent")
+		if vent > 0.0 and d.target != "" and randf() * 100.0 < vent:
+			# (1.98) a Piston Gauntlet puffs steam in their face: the crosshair comes off
+			d.target = ""
+			d.aim_cd = maxf(d.aim_cd, d.aim_time)
+			for k in 4:
+				smoke.append({"pos": hit_at + Vector2(randf_range(-20, 20), randf_range(-20, 10)), "t": 0.0, "dark": false, "steam": true, "k": 1.4})
+			popup(tr("STEAMED"), hit_at + Vector2(0, -60), Color(0.9, 0.95, 1.0))
 		var chill := off_trait(att, src, "chill")
 		if chill > 0.0:
 			d.slow_t = maxf(d.slow_t, chill)
@@ -3389,6 +3444,27 @@ func check_ko(att: Fighter, d: Fighter) -> void:
 		knockout(att, d, "HEAD KNOCKED OFF" if d.parts["head2"].is_empty() else "BOTH HEADS KNOCKED OFF")
 	if att.state != "ko" and (not att.alive("torso") or att.heads() == 0):   # thorns or explosions can finish an attacker
 		knockout(d, att, "BLOWN APART")
+
+
+## (1.98) Pressure: % per second at a boiler's 100% (full in about 12 s), the vent's damage, the cloud.
+const PRESSURE_FILL := 8.0
+const PRESSURE_VENT := 1.6
+const STEAM_MISS := 35.0
+
+
+## (1.98) A cloud of steam round a robot for `t` seconds: anyone aiming at it loses the crosshair.
+func steam_cloud(f: Fighter, t: float, lose_aim: bool) -> void:
+	f.steam_t = maxf(f.steam_t, t)
+	for k in 10:
+		smoke.append({"pos": f.pos + Vector2(randf_range(-60, 60), randf_range(-170, -20)) * f.scale, "t": randf_range(0.0, 0.3), "dark": false, "steam": true, "k": randf_range(2.0, 3.2)})
+	if lose_aim:
+		for e in enemies_of(f):
+			if e.foe == f:
+				if e.target != "":
+					e.target = ""
+					e.aim_cd = e.aim_time
+				e.scan_t = 0.0
+				e.weak = ""
 
 
 ## (1.97) How far a hit pushes: a Locomotive Front shoves harder, Caterpillar Tracks barely move.
@@ -4557,6 +4633,18 @@ func draw_team_bars(team: Array, x: float, y: float, w: float, bh: float, right:
 			# (1.97) the flywheel's spare power: an amber strip under the tank
 			var fwid := pr.size.x * clampf(f.fly / maxf(1.0, f.power_max), 0.0, 1.0)
 			ci.draw_rect(Rect2(pr.position.x + (pr.size.x - fwid if right else 0.0), pr.end.y + 1.0, fwid, 3.0), Color(1.0, 0.7, 0.2))
+		if f.pr_rate > 0.0:
+			# (1.98) the Pressure gauge: a brass dial at the bar's inner end, the needle climbs to the red
+			var gr := maxf(9.0, h * 0.42)
+			var gc := Vector2((x - gr - 6.0) if right else (x + w + gr + 6.0), by + h * 0.5)
+			var full := f.pressure >= 100.0
+			ci.draw_circle(gc, gr + 2.0, Color(0.05, 0.04, 0.03, 0.9))
+			ci.draw_circle(gc, gr, Color(0.79, 0.64, 0.15))
+			ci.draw_circle(gc, gr * 0.82, Color(0.95, 0.92, 0.82) if not (full and fmod(clock, 0.4) < 0.2) else Color(1.0, 0.55, 0.45))
+			ci.draw_arc(gc, gr * 0.7, deg_to_rad(10.0), deg_to_rad(50.0), 6, Color(0.85, 0.15, 0.1), 2.5)
+			var na := deg_to_rad(-220.0 + 270.0 * clampf(f.pressure / 100.0, 0.0, 1.0))
+			ci.draw_line(gc, gc + Vector2(cos(na), sin(na)) * gr * 0.72, Color(0.12, 0.08, 0.05), 2.0)
+			ci.draw_circle(gc, 2.0, Color(0.12, 0.08, 0.05))
 		if n > 1:
 			var t := (tr("%s  ") % f.tag if f.tag != "" else "") + f.label + (tr("  · DOWN") if f.state == "ko" else "")
 			ci.draw_string(font, Vector2(x + 6, by + h - 1), t, HORIZONTAL_ALIGNMENT_RIGHT if right else HORIZONTAL_ALIGNMENT_LEFT, w - 12, int(h * 0.95), Color(0.08, 0.08, 0.1))

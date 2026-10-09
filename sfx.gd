@@ -53,6 +53,7 @@ const MENU_SOUNDS := ["click", "buy", "equip", "error", "sell", "repair", "talk"
 ## announcers boom. Unknown speakers get the plain "talk" blip.
 const VOICE_OF := {
 	"GUS": ["voice_gravel", 1.0],
+	"SILAS": ["voice_smooth", 0.82],   # (1.98) old Silas of Brassworks & Sons
 	"YOU": ["talk", 1.08],
 	"ECHO": ["talk_robot", 1.0],
 	"MARGO": ["voice_high", 1.18],

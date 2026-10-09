@@ -240,6 +240,14 @@ const SCENES := {
 	"unlock_shop": {"place": "GUS'S BAY", "lines": [
 		["GUS", "Two wins. Enough to walk into the dealer's without getting laughed out. He restocks every Sunday, under Get Parts."],
 	]},
+	"brass_invite": {"place": "GUS'S BAY", "lines": [
+		["GUS", "Silas at Brassworks & Sons asked about you. He built half the gauges on your dad's robot."],
+		["GUS", "He'll open his door for you now. Old Town, past the Rusty Bolt. Mind the steam."],
+	]},
+	"brass_first": {"place": "BRASSWORKS & SONS", "lines": [
+		["SILAS", "So you're the kid. Your father bought his first gauge at this counter. Paid in coins, every one polished."],
+		["SILAS", "Everything here is built by hand. Brass, steam and patience. Look all you like."],
+	]},
 	"unlock_season": {"place": "GUS'S BAY", "lines": [
 		["GUS", "The calendar. League nights every other Saturday, cups on Wednesdays, rent the last Sunday. The tables and the odds are in here too."],
 	]},

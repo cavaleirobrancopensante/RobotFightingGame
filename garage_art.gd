@@ -10,7 +10,7 @@ const Light = preload("res://light.gd")
 
 ## Where the robot stands in each scene: [x as fraction of width, height as fraction of panel]
 const ROBOT_SPOT := {
-	"build": [0.55, 0.64], "shop": [0.8, 0.5], "workshop": [0.74, 0.56], "scrap": [0.8, 0.5],
+	"build": [0.55, 0.64], "shop": [0.8, 0.5], "brass": [0.8, 0.5], "workshop": [0.74, 0.56], "scrap": [0.8, 0.5],
 	"paint": [0.5, 0.72], "moves": [0.62, 0.7], "team": [0.64, 0.66], "cups": [0.68, 0.62],
 	"storage": [0.72, 0.5],
 }
@@ -48,6 +48,7 @@ const SCENE_COLORS := {
 	"paint": BAY_COLORS, "team": BAY_COLORS, "office": BAY_COLORS, "cups": BAY_COLORS,
 	"shop": [Color(0.07, 0.12, 0.27), Color(0.09, 0.15, 0.32), Color(0.17, 0.19, 0.26)],       # the dealer's: shop-window blue
 	"pub": [Color(0.25, 0.06, 0.09), Color(0.29, 0.08, 0.11), Color(0.16, 0.08, 0.07)],        # The Rusty Bolt: wine red
+	"brass": [Color(0.2, 0.13, 0.08), Color(0.24, 0.16, 0.09), Color(0.17, 0.11, 0.07)],      # (1.98) Brassworks & Sons: dark wood panels
 	# (the scrapyard is outdoors: a sunset sky)
 }
 
@@ -144,6 +145,8 @@ static func _props_back(ci: CanvasItem, size: Vector2, scene: String, t: float, 
 			_rc(ci, w, Color(0.35, 0.35, 0.4), false, 3.0)
 			# (1.97) Parts-R-Us is Old Iron's dealer: the foundry's enamel sign on the wall
 			_maker_plaque(ci, Rect2(size.x * 0.06, 26, size.x * 0.4, 40), "oldiron", I18n.t("OLD IRON FOUNDRY"), I18n.t("AUTHORISED DEALER"))
+		"brass":
+			_brass_back(ci, size, floor_y, t)
 		"workshop":
 			_sign(ci, Vector2(size.x * 0.8, 30), I18n.t("CUSTOM ORDERS"), Color(0.6, 0.85, 1.0))
 			# shelves of parts
@@ -251,7 +254,7 @@ static func draw_front(ci: CanvasItem, stage: Rect2, scene: String, t: float, in
 ## The light the people in a scene stand in (1.60): Gus's building is the bay's work lamp, the places
 ## outside have their own.
 static func scene_light(scene: String) -> String:
-	return scene if scene in ["pub", "shop", "scrap", "phone"] else "bay"
+	return scene if scene in ["pub", "shop", "scrap", "phone", "brass"] else "bay"
 
 
 static func _front(ci: CanvasItem, size: Vector2, scene: String, t: float, info: Dictionary, robot_base: Vector2, robot_h: float) -> void:
@@ -294,6 +297,25 @@ static func _front(ci: CanvasItem, size: Vector2, scene: String, t: float, info:
 			_head(info, "YOU", Vector2(mon.position.x + 8 * s, floor_y), s, true)
 			PilotArt.draw_person(ci, Vector2(mon.end.x + 22 * s, floor_y), s, gus, -1.0, "point", t + 0.7)
 			_head(info, "GUS", Vector2(mon.end.x + 22 * s, floor_y), s)
+		"brass":
+			# (1.98) old Silas behind the counter, polishing a gauge; you at the counter
+			var ct := Rect2(10, floor_y - 46 * s, size.x * 0.5, 46 * s)
+			var silas := {"skin": "#d8b08c", "hair": "#e8e4dc", "eyes": "#3a2a1a", "outfit": "#5a3a22", "hat": "bald", "beard": "handlebar", "glasses": "round"}
+			var sf := Vector2(ct.position.x + ct.size.x * 0.36, floor_y - 22 * s)   # he stands on a step behind the counter
+			PilotArt.draw_person(ci, sf, s, silas, 1.0, "wipe", t)
+			_head(info, "SILAS", sf, s)
+			_rc(ci, ct, Color(0.36, 0.22, 0.12))
+			_rc(ci, Rect2(ct.position.x - 4, ct.position.y - 5 * s, ct.size.x + 8, 6 * s), Color(0.78, 0.6, 0.22))   # the brass rail
+			for k in 4:
+				_rc(ci, Rect2(ct.position.x + 10 + k * ct.size.x / 4.0, ct.position.y + 10 * s, ct.size.x / 4.0 - 20, ct.size.y - 18 * s), Color(0.3, 0.18, 0.1), false, 2.0)
+			# a gauge on the counter, its needle wobbling
+			var gc := Vector2(ct.position.x + ct.size.x * 0.75, ct.position.y - 12 * s)
+			_cr(ci, gc, 9 * s, Color(0.78, 0.6, 0.22))
+			ci.draw_circle(gc, 6.5 * s, Color(0.95, 0.92, 0.82))
+			var na := -2.0 + 1.6 * (0.5 + 0.5 * sin(t * 1.3))
+			ci.draw_line(gc, gc + Vector2(cos(na), sin(na)) * 5.5 * s, Color(0.6, 0.1, 0.08), 1.5)
+			PilotArt.draw_person(ci, Vector2(ct.end.x + 26 * s, floor_y), s, pilot, -1.0, "point", t + 0.5)
+			_head(info, "YOU", Vector2(ct.end.x + 26 * s, floor_y), s)
 		"workshop":
 			# workbench with a vise and a spinning grinder; both of them hard at work
 			var bench := Rect2(10, floor_y - 40 * s, size.x * 0.62, 8 * s)
@@ -918,6 +940,52 @@ static func _wall(ci: CanvasItem, size: Vector2, floor_y: float, c1: Color, c2: 
 	ci.draw_rect(Rect2(0, floor_y, size.x, size.y - floor_y), floor_c)
 
 
+## (1.98) Brassworks & Sons: dark wood panels, glass cabinets of brass parts, gas lamps and copper
+## pipes along the ceiling with a valve that lets off steam now and then.
+static func _brass_back(ci: CanvasItem, size: Vector2, floor_y: float, t: float) -> void:
+	# copper pipes under the ceiling, a valve that puffs
+	_ln(ci, Vector2(0, 14), Vector2(size.x, 14), Color(0.72, 0.45, 0.24), 6.0)
+	_ln(ci, Vector2(size.x * 0.66, 14), Vector2(size.x * 0.66, 60), Color(0.72, 0.45, 0.24), 5.0)
+	_cr(ci, Vector2(size.x * 0.66, 34), 6, Color(0.75, 0.2, 0.15))
+	var ph := fmod(t * 0.4, 1.0)
+	if ph < 0.35:
+		for k in 4:
+			var u := ph / 0.35
+			ci.draw_circle(Vector2(size.x * 0.66 + 8 + k * 7 * u, 60 + k * 4 - u * 20), 4.0 + u * 9.0, Color(0.95, 0.95, 0.97, 0.35 * (1.0 - u)))
+	# two glass cabinets with brass parts on their shelves
+	for cb in 2:
+		var r := Rect2(size.x * (0.06 + cb * 0.27), 48, size.x * 0.22, floor_y - 120)
+		_rc(ci, r, Color(0.3, 0.19, 0.1))
+		var glass := r.grow(-5)
+		ci.draw_rect(glass, Color(0.55, 0.7, 0.75, 0.12))
+		for sh in 3:
+			var sy := glass.position.y + (sh + 1) * glass.size.y / 3.0 - 4
+			_rc(ci, Rect2(glass.position.x, sy, glass.size.x, 3), Color(0.3, 0.19, 0.1))
+			for it in 3:
+				var ip := Vector2(glass.position.x + 10 + it * glass.size.x / 3.0, sy - 8)
+				match (sh + it + cb) % 3:
+					0:
+						_cr(ci, ip, 6, Color(0.8, 0.64, 0.2))
+						ci.draw_circle(ip, 4.0, Color(0.95, 0.92, 0.82))
+					1:
+						for k in 6:
+							var a := t * 0.6 * (1 if it % 2 == 0 else -1) + k * TAU / 6.0
+							ci.draw_line(ip, ip + Vector2(cos(a), sin(a)) * 7.0, Color(0.8, 0.64, 0.2), 2.0)
+						ci.draw_circle(ip, 3.0, Color(0.6, 0.45, 0.15))
+					_:
+						_rc(ci, Rect2(ip.x - 4, ip.y - 8, 8, 14), Color(0.72, 0.45, 0.24))
+		ci.draw_line(glass.position + Vector2(6, 6), glass.position + Vector2(20, 40), Color(1, 1, 1, 0.15), 2.0)
+	# gas lamps on the wall, real light
+	for lx in [size.x * 0.04, size.x * 0.6]:
+		var lp := Vector2(lx + 10, 74)
+		_ln(ci, lp + Vector2(-8, 0), lp, Color(0.78, 0.6, 0.22), 3.0)
+		var fl := 0.85 + 0.15 * sin(t * 7.0 + lx)
+		ci.draw_circle(lp + Vector2(0, -4), 22, Color(1.0, 0.8, 0.45, 0.07 * fl))
+		ci.draw_circle(lp + Vector2(0, -4), 5, Color(1.0, 0.88, 0.6, 0.9 * fl))
+		_rc(ci, Rect2(lp.x - 6, lp.y - 12, 12, 14), Color(0.78, 0.6, 0.22), false, 1.5)
+	_maker_plaque(ci, Rect2(size.x * 0.66, 70, size.x * 0.3, 36), "brassworks", I18n.t("BRASSWORKS & SONS"), I18n.t("EST. 1898 · BUILT BY HAND"))
+
+
 ## (1.97) A maker's sign in its shop: enamel for Old Iron, a painted plank for Scrapworks.
 static func _maker_plaque(ci: CanvasItem, r: Rect2, m: String, title: String, sub: String) -> void:
 	var f := ThemeDB.fallback_font
@@ -1224,6 +1292,7 @@ const ROOM := {
 	"bay": {"tint": Color(0.02, 0.02, 0.04), "dim": 0.3, "pool": 0.1},
 	"pub": {"tint": Color(0.05, 0.0, 0.02), "dim": 0.32, "pool": 0.09},
 	"shop": {"tint": Color(0.0, 0.02, 0.06), "dim": 0.22, "pool": 0.08},
+	"brass": {"tint": Color(0.05, 0.02, 0.0), "dim": 0.26, "pool": 0.1},
 	"scrap": {"tint": Color(0.06, 0.02, 0.08), "dim": 0.12, "pool": 0.07},
 	"phone": {"tint": Color(0.0, 0.0, 0.03), "dim": 0.0, "pool": 0.0},
 }

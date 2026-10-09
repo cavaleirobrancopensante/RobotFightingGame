@@ -23,6 +23,9 @@ const TRAITS := {
 	"crush": {"name": "Crush", "desc": "Hits clamp on: %d damage to that part over 2s.", "values": [8, 13]},
 	"anchored": {"name": "Anchored", "desc": "Knockback on this robot cut by %d%%.", "values": [50, 80]},
 	"flywheel": {"name": "Flywheel", "desc": "Once the tank is full, stores up to %d%% more as spare power.", "values": [25, 40]},
+	# (1.98) Brassworks
+	"pressure": {"name": "Pressure", "desc": "Builds Pressure as it fights (%d%% speed). Full, the next hit vents: big damage and a cloud of steam.", "values": [70, 100]},
+	"vent": {"name": "Vent", "desc": "Hits puff steam in their face: %d%% chance to knock their crosshair off.", "values": [25, 40]},
 	"tarp": {"name": "Tarp", "desc": "The tarp hides your weak spot: the enemy's first scans find nothing (%d of them).", "values": [1, 2]},
 }
 

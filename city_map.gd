@@ -13,7 +13,7 @@ const VW := 1000.0
 const VH := 560.0
 ## The avenue that runs from the Docks up to Kane Heights; every place joins it at PLACES "road".
 const AVENUE := [Vector2(110, 476), Vector2(230, 420), Vector2(320, 352), Vector2(470, 304), Vector2(600, 292), Vector2(720, 222), Vector2(870, 160)]
-const PIN := {"home": Color(0.95, 0.76, 0.19), "pub": Color(1.0, 0.45, 0.3), "shop": Color(0.4, 0.75, 1.0), "scrap": Color(0.85, 0.55, 0.25), "venue": Color(0.62, 0.62, 0.7)}
+const PIN := {"home": Color(0.95, 0.76, 0.19), "pub": Color(1.0, 0.45, 0.3), "shop": Color(0.4, 0.75, 1.0), "scrap": Color(0.85, 0.55, 0.25), "venue": Color(0.62, 0.62, 0.7), "maker": Color(0.85, 0.68, 0.22)}
 
 var selected := ""
 var walk_t := -1.0          # 0..1 while the figure walks
@@ -257,6 +257,13 @@ func _glyph(kind: String, c: Vector2, locked: bool) -> void:
 		"scrap":
 			draw_arc(c, 4.0, 0, TAU, 8, g, 2.0)
 			draw_circle(c, 1.5, g)
+		"maker":
+			# a cog
+			for k in 8:
+				var a := k * TAU / 8.0
+				draw_line(c + Vector2(cos(a), sin(a)) * 3.0, c + Vector2(cos(a), sin(a)) * 5.5, g, 2.0)
+			draw_circle(c, 3.2, g)
+			draw_circle(c, 1.2, Color(0.85, 0.68, 0.22))
 		"venue":
 			draw_arc(c, 4.0, 0, TAU, 12, g, 1.6)
 			draw_line(c + Vector2(-4, 0), c + Vector2(4, 0), g, 1.2)

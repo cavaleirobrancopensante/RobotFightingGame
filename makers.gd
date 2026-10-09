@@ -15,7 +15,7 @@ const MAKERS := {
 		"perk": "Launchers can't knock the robot down.", "perk_name": "IRON FEET"},
 	"brassworks": {"label": "Brassworks", "name": "Brassworks & Sons", "short": "BRASSWORKS", "logo": "mk_brassworks", "color": "#c9a227", "ink": "#3a2a10",
 		"pitch": "Hand built in Old Town. Brass, steam and patience.",
-		"perk": "Power refills a quarter faster.", "perk_name": "FULL STEAM"},
+		"perk": "Pressure builds twice as fast.", "perk_name": "FULL STEAM"},
 	"hellfire": {"label": "Hellfire", "name": "Hellfire Heavy", "short": "HELLFIRE", "logo": "mk_hellfire", "color": "#e67e22", "ink": "#1f1f1f",
 		"pitch": "Demolition gear. If it isn't on fire, it isn't trying.",
 		"perk": "Burns last twice as long, and exploding parts blast half again harder.", "perk_name": "FIREPROOF"},

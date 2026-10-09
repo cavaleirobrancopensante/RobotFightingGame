@@ -11,7 +11,7 @@ extends RefCounted
 
 ## Makers whose parts come in one size only (no Light / Heavy copies). Scrapworks keeps loose sizes:
 ## odd, mismatched sizes are its character.
-const ONE_SIZE := ["oldiron"]
+const ONE_SIZE := ["oldiron", "brassworks"]
 
 const DEFS := [
 	# ---- Old Iron Foundry: cast iron, big hex bolts, most HP and armour, slow, heavy on power
@@ -58,15 +58,41 @@ const DEFS := [
 		"maker": "scrapworks", "trait": "tarp", "trait_lv": 1},
 	{"id": "scrap_quad", "kind": "torso", "name": "Octo-Rig", "cost": 1100, "hp": 90, "armor": 2, "speed": -5, "draw": 3,
 		"shape": "quad", "color": "#a1887f", "mounts": ["arm_front2", "arm_back2"], "maker": "scrapworks"},
+	# ---- Brassworks & Sons (1.98): brass and copper, steam and patience; Pressure builds as it fights
+	{"id": "medix_head_1", "kind": "head", "name": "Periscope Helm", "cost": 900, "hp": 46, "armor": 8, "aim": 12, "draw": 3, "chips": 3,
+		"shape": "periscope", "color": "#c9a227", "size": 0.95, "maker": "brassworks"},
+	{"id": "medix_head_2", "kind": "head", "name": "Diving Bell", "cost": 1200, "hp": 68, "armor": 20, "aim": 6, "draw": 3, "chips": 2,
+		"shape": "divingbell", "color": "#b87333", "size": 1.05, "maker": "brassworks"},
+	{"id": "medix_torso_1", "kind": "torso", "name": "Boiler Chest", "cost": 1500, "hp": 130, "armor": 12, "speed": 0, "draw": 4,
+		"shape": "boiler", "color": "#b87333", "maker": "brassworks", "trait": "pressure", "trait_lv": 2},
+	{"id": "medix_torso_2", "kind": "torso", "name": "Clockwork Cage", "cost": 1400, "hp": 120, "armor": 10, "speed": 4, "draw": 3,
+		"shape": "clockwork", "color": "#c9a227", "maker": "brassworks", "trait": "leech", "trait_lv": 1},
+	{"id": "medix_arm_1", "kind": "arm", "name": "Piston Gauntlet", "cost": 1200, "hp": 60, "armor": 10, "damage": 28, "speed": 0, "draw": 4,
+		"shape": "gauntlet", "color": "#c9a227", "size": 1.1, "maker": "brassworks", "trait": "vent", "trait_lv": 1},
+	{"id": "medix_arm_2", "kind": "arm", "name": "Riveter", "cost": 1000, "hp": 48, "armor": 6, "damage": 10, "speed": 30, "draw": 3,
+		"shape": "riveter", "color": "#b87333", "size": 0.9, "maker": "brassworks"},
+	{"id": "medix_leg_1", "kind": "leg", "name": "Bellows Leg", "cost": 1000, "hp": 62, "armor": 8, "damage": 14, "speed": 14, "draw": 3,
+		"shape": "bellows", "color": "#b87333", "maker": "brassworks"},
+	{"id": "medix_leg_2", "kind": "leg", "name": "Tripod Strut", "cost": 1200, "hp": 70, "armor": 14, "damage": 10, "speed": -2, "draw": 3,
+		"shape": "tripod", "color": "#c9a227", "maker": "brassworks", "trait": "anchored", "trait_lv": 1},
+	{"id": "medix_reactor", "kind": "reactor", "name": "Coal Firebox", "cost": 1600, "output": 30, "color": "#ff7a2a", "maker": "brassworks",
+		"trait": "pressure", "trait_lv": 1},
+	{"id": "brass_stack", "kind": "back", "name": "Smokestack", "cost": 900, "draw": 2, "shape": "smokestack", "color": "#6b4a2b",
+		"maker": "brassworks", "gimmick": "steam_burst"},
+	{"id": "torso_hydra", "kind": "torso", "name": "Hydra Yoke", "cost": 1800, "hp": 130, "armor": 10, "speed": 0, "draw": 4,
+		"shape": "yoke", "color": "#b87333", "mounts": ["head2"], "maker": "brassworks"},
 ]
 
 ## Old Old Iron and Scrapworks parts the new lines replace.
 const RETIRED := ["torso_box", "torso_plate", "torso_tank", "arm_rod", "arm_bulky", "leg_steel", "leg_pillar", "back_battery",
 		"ironclad_head_2", "ironclad_arm_1", "ironclad_leg_2", "fork_head", "fork_torso", "fork_arm", "fork_leg",
-		"scrap_hydra", "torso_rib"]
+		"scrap_hydra", "torso_rib",
+		"head_cyclops", "torso_core", "arm_piston", "arm_grapple", "leg_piston", "reactor_cap", "reactor_regen"]   # (1.98) Brassworks
 
 ## The makers whose lines are in (their launch posts once on BotMedia).
-const LAUNCHED := ["oldiron", "scrapworks"]
+const LAUNCHED := ["oldiron", "scrapworks", "brassworks"]
+## (1.98) Makers with their own shop in the city: Parts-R-Us stops stocking them.
+const OWN_SHOP := {"brassworks": "brassworks"}
 
 
 ## The part list with the makers' lines in: same ids replaced whole, new ids added, old ones retired.

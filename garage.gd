@@ -37,7 +37,7 @@ var stats_box: VBoxContainer
 var stats_panel: PanelContainer
 ## The robot's stats panel only shows where the robot is being looked at, fixed or fitted - not
 ## at the pub, in the office, on the scrapyard pile or in the crew bay.
-const STATS_SCENES := ["build", "moves", "paint", "storage", "shop", "workshop"]
+const STATS_SCENES := ["build", "moves", "paint", "storage", "shop", "workshop", "brass"]
 var list_box: VBoxContainer
 var scroll: ScrollContainer
 var tabs_box: HBoxContainer
@@ -536,6 +536,7 @@ func segs_of(t: String) -> Array:
 			out.append(["scrap", tr("Scrapyard"), "scrapyard"])
 			if GameData.unlocked("shop"):
 				out.append(["dealer", tr("Parts-R-Us"), "shop"])
+			out.append(["brass", tr("Brassworks & Sons"), ""])   # (1.98) a maker's own shop (walk there in the City)
 		"Season":
 			out.append(["calendar", tr("Calendar"), ""])
 			out.append(["table", tr("Standings"), ""])
@@ -661,7 +662,7 @@ func build_seg_bar() -> void:
 		# (1.77) a place in the city: back to the map, and the place's own name / views
 		tabs_box.add_child(UI.button(tr("‹ City"), func(): Sfx.play("click"); _on_tab("City"), 13, Vector2(96, 34)))
 		if tab == "Parts":
-			var pt := GUI.text(tr("PARTS-R-US") if seg() == "dealer" else tr("THE SCRAPYARD"), 18, GUI.TEXT, "headb")
+			var pt := GUI.text({"dealer": tr("PARTS-R-US"), "brass": tr("BRASSWORKS & SONS")}.get(seg(), tr("THE SCRAPYARD")), 18, GUI.TEXT, "headb")
 			pt.custom_minimum_size = Vector2(0, 40)
 			pt.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 			pt.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -1118,9 +1119,9 @@ func refresh() -> void:
 		tab = "Bay"
 	if away_from_bay() and HOME_TABS.has(tab):
 		# (1.79) out in the city: you stay where you are (the bay opens when you're back)
-		tab = {"pub": "Pub", "partsrus": "Parts", "scrapyard": "Parts"}.get(GameData.pilot_at, "City")
+		tab = {"pub": "Pub", "partsrus": "Parts", "scrapyard": "Parts", "brassworks": "Parts"}.get(GameData.pilot_at, "City")
 		if tab == "Parts":
-			segs_on["Parts"] = "dealer" if GameData.pilot_at == "partsrus" else "scrap"
+			segs_on["Parts"] = {"partsrus": "dealer", "brassworks": "brass"}.get(GameData.pilot_at, "scrap")
 	set_seg(seg())
 	# (1.77) the City: the map takes the left side (wider), the panel on the right says what's where
 	var in_city := tab == "City"
@@ -1167,6 +1168,8 @@ func refresh() -> void:
 			match seg():
 				"dealer":
 					build_dealer()
+				"brass":
+					build_maker_shop("brassworks")
 				"order":
 					build_order()
 				_:
@@ -1514,7 +1517,7 @@ func build_detail() -> void:
 		p = GameData.inst(int(detail["uid"]))
 		if not p.is_empty():
 			d = GameData.part_def(p["id"])
-	elif detail.get("src", "") == "shop" and GameData.shop_stock.has(detail["id"]):
+	elif detail.get("src", "") == "shop" and (GameData.shop_stock.has(detail["id"]) or (seg() == "brass" and GameData.maker_stock("brassworks").has(detail["id"]))):
 		d = GameData.part_def(detail["id"])
 	if d.is_empty():
 		detail = {}
@@ -4854,7 +4857,7 @@ func set_scene_for_tab() -> void:
 		"Storage":
 			scene = "storage"
 		"Parts":
-			scene = {"dealer": "shop", "order": "workshop"}.get(seg(), "scrap")
+			scene = {"dealer": "shop", "order": "workshop", "brass": "brass"}.get(seg(), "scrap")
 		"Season":
 			scene = {"cups": "cups"}.get(seg(), "office")
 		"Pub":
@@ -4863,6 +4866,13 @@ func set_scene_for_tab() -> void:
 			scene = "phone"
 		"Crew":
 			scene = "team"
+	# (1.98) a maker's shop plays its music; leaving it brings the garage's back
+	var shop_song := str((Sfx.MAKER_SONGS.get("brassworks", [""]) as Array)[0])
+	if scene == "brass":
+		if Sfx.current_track != shop_song and Sfx.current_track != "jukebox":
+			Sfx.music(shop_song)
+	elif Sfx.current_track == shop_song:
+		Sfx.music("garage")
 	stats_panel.visible = STATS_SCENES.has(scene)
 	preview.spot = GarageArt.robot_spot(scene)
 	preview.facing = 1 if scene == "paint" else -1
@@ -4950,6 +4960,36 @@ func build_dealer() -> void:
 		section(tr("TECHNIQUE CHIPS: each one changes an arm's or a leg's everyday hit."))
 		for id in GameData.TECH_ORDER:
 			tech_row(id)
+
+
+## (1.98) A maker's own shop: its catalogue on the counter, then every design of its line in your
+## grade (built to order: always in stock).
+func build_maker_shop(m: String) -> void:
+	var M = GameData.Makers
+	var bar := action_bar()
+	var info := GUI.text(tr(str(M.info(m).get("pitch", ""))), 13, GUI.MUTED)
+	info.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	info.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	bar.add_child(info)
+	var th := Catalogue.Thumb.new(m, GameData.issue_now(), 64.0 * UI.SCALE)
+	th.pressed.connect(open_catalogue.bind(m, ""))
+	bar.add_child(th)
+	GUI.mark_new(th, not GameData.has_issue(m))
+	var items: Array = []
+	var stock: Array = GameData.maker_stock(m)
+	for i in stock.size():
+		items.append({"d": GameData.part_def(stock[i]), "p": {}, "i": i})
+	section(tr("BUILT TO ORDER: every part of the line, in your grade. %s") % str(M.info(m).get("perk_name", "")) + "  ·  " + tr(str(M.info(m).get("perk", ""))))
+	part_filter_bar("dealer", items)
+	for it in pf_apply("dealer", items):
+		var d: Dictionary = it["d"]
+		var id := str(d["id"])
+		var row := part_entry(d, {}, str(d["name"]), tr(str(d["kind"]).to_upper()), _on_detail.bind({"src": "shop", "id": id}), is_detail("shop", id), part_chips(d, cards_on()))
+		var target := best_slot(str(d["kind"]))
+		if target != "":
+			row_button(row, tr("Buy & fit $%d · %s") % [GameData.price_of(id), GameData.hours_text(GameData.swap_hours(d))], _on_buy_fit.bind(id, target), GameData.money >= GameData.price_of(id), 180)
+		else:
+			row_button(row, tr("Buy $%d") % GameData.price_of(id), _on_buy.bind(id), GameData.money >= GameData.price_of(id), 150)
 
 
 ## (1.96) The catalogue rack at Parts-R-Us: this season's issue from every maker, free. Taking one
@@ -8321,7 +8361,7 @@ func place_of(t: String, key: String = "") -> String:
 		return "pub"
 	if t == "Parts":
 		var k := key if key != "" else str(segs_on.get("Parts", "scrap"))
-		return "partsrus" if k == "dealer" else "scrapyard"
+		return {"dealer": "partsrus", "brass": "brassworks"}.get(k, "scrapyard")
 	return ""
 
 
@@ -8393,6 +8433,7 @@ func _on_city_pick(place: String) -> void:
 const PLACE_TEXT := {"home": "Gus's building: the bay, storage, the workshop and the office. You have to be here to work on your robot.",
 		"pub": "The Rusty Bolt. Scrap and Rust pilots drinking. Pick a fight, place bets, play the jukebox.",
 		"partsrus": "Parts-R-Us. New parts at your grade, a couple one grade up. New stock on Sundays.",
+		"brassworks": "Brassworks & Sons. Old Silas's family workshop. Every Brassworks part, built by hand, in your grade.",
 		"scrapyard": "The Scrapyard. Mountains of dead robots. One dig a day, an hour of digging.",
 		"scrap_ring": "The scrap ring. Pickups and the Scrap League fight here.",
 		"sports_hall": "Ferrum Sports Hall. The Rust League's fight nights.",
@@ -8489,6 +8530,11 @@ func enter_place(place: String) -> void:
 			tab = "Parts"
 			segs_on["Parts"] = "dealer"
 			gus_explains("shop")
+		"brassworks":
+			tab = "Parts"
+			segs_on["Parts"] = "brass"
+			if not GameData.story_seen.has("brass_first"):
+				get_tree().create_timer(0.4).timeout.connect(func(): play_story(["brass_first"]))   # once his head is in the scene: a bubble
 		"scrapyard":
 			tab = "Parts"
 			segs_on["Parts"] = "scrap"
@@ -8819,6 +8865,10 @@ func check_gus_cards() -> void:
 		return
 	if overlay != null or talk_story:
 		return   # one thing at a time: a window or a story scene first
+	# (1.98) Gus puts in a word with old Silas once you've a few wins (before the Scrap League opens his door)
+	if not GameData.story_seen.has("brass_invite") and GameData.wins >= 3 and GameData.tour < 0 and GameData.story_seen.has("first_garage"):
+		play_story(["brass_invite"])
+		return
 	if not GameData.gus_alerts.is_empty():
 		var al: Dictionary = GameData.gus_alerts.pop_front()
 		var btns: Array = [[tr("Got it"), Callable(), true]]

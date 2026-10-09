@@ -159,8 +159,9 @@ func _build_bar() -> void:
 	var pg: Dictionary = pages[at]
 	if pg["t"] == "part":
 		var base := str(pg["id"])
-		var here: bool = GameData.pilot_at == "partsrus"
-		var sid := stock_id(base)
+		var shop_place := str(GameData.MakerParts.OWN_SHOP.get(maker, "partsrus"))   # (1.98) a maker with its own shop sells there
+		var here: bool = GameData.pilot_at == shop_place
+		var sid := stock_id(base) if shop_place == "partsrus" else GameData.graded_id(base, GameData.my_grade())
 		if sid != "":
 			var cost: int = GameData.price_of(sid)
 			var gname := tr(GameData.GRADES[GameData.grade_of(sid)])
@@ -169,6 +170,8 @@ func _build_bar() -> void:
 				bb.disabled = GameData.money < cost
 				bb.add_theme_color_override("font_color", GUI.YELLOW)
 				mid.add_child(bb)
+			elif shop_place != "partsrus":
+				mid.add_child(GUI.text(tr("Built to order at %s, %s") % [tr(str(GameData.PLACES[shop_place]["name"])), tr(GameData.DISTRICTS[GameData.PLACES[shop_place]["district"]]).capitalize()], 13, GUI.GREEN))
 			else:
 				mid.add_child(GUI.text(tr("On the shelf at Parts-R-Us this week (%s)") % gname, 13, GUI.GREEN))
 		elif here:
@@ -949,7 +952,7 @@ class Painter extends RefCounted:
 		for ns in notes_st:
 			var ncol: Color = ink if st["mono"] else StatIcons.color_of(str(ns[0]))
 			StatIcons.draw_icon(ci, str(ns[0]), Rect2(Vector2(x, y), Vector2(ih, ih)), ncol)
-			y += maxf(ih, para(ci, "body", Vector2(x + ih * 1.25, y), str(ns[3]), w - ih * 1.3, maxi(5, int(fs * 0.85)), ink, 2)) + fs * 0.35
+			y += maxf(ih, para(ci, "body", Vector2(x + ih * 1.25, y), str(ns[3]), w - ih * 1.3, maxi(5, int(fs * 0.85)), ink, 3)) + fs * 0.35
 		# the grades it comes in
 		var stock: Array = GameData.stock_grades(base)
 		var gx := x

@@ -3,7 +3,7 @@ const PlayLog = preload("res://playlog.gd")   # (1.87) the playtest log
 
 # helper scripts, loaded by path so the game also runs without an editor scan
 ## The game's version, shown on the main menu. Bump it with every change (1.1, 1.2, ...).
-const VERSION := "1.97"
+const VERSION := "1.98"
 const Arena = preload("res://arena.gd")
 const I18n = preload("res://i18n.gd")
 const Catalog = preload("res://catalog.gd")
@@ -833,6 +833,8 @@ func roll_stock() -> void:
 		var d: Dictionary = PARTS[id]
 		if not d["shop"] or d["cost"] <= 0:
 			continue
+		if MakerParts.OWN_SHOP.has(str(d.get("maker", ""))):
+			continue   # (1.98) a maker with its own shop in the city sells there, not at Parts-R-Us
 		if int(d.get("grade", 0)) == g:
 			here.append(id)
 		elif int(d.get("grade", 0)) == g + 1:
@@ -1582,7 +1584,7 @@ static func fight_tank(output: float, used: float) -> float:
 const HEAD_KIND := {"bucket": "plain", "box": "plain", "skull": "plain", "tall": "allround", "dome": "allround",
 		"horned": "allround", "knight": "allround", "orb": "allround", "cyclops": "sniper", "visor": "sniper",
 		"wedge": "sniper", "laser": "sniper", "dish": "scanner", "tv": "scanner", "bulb": "scanner", "speaker": "scanner",
-		"rivet": "plain", "grille": "plain", "peeper": "scanner", "busted": "plain"}
+		"rivet": "plain", "grille": "plain", "peeper": "scanner", "busted": "plain", "periscope": "scanner", "divingbell": "plain"}
 const HEAD_TIMES := {"junk": [5.0, 8.0], "plain": [2.5, 4.0], "sniper": [0.6, 5.0], "scanner": [3.0, 1.0], "allround": [1.5, 2.0]}
 
 
@@ -6399,6 +6401,7 @@ const PLACES := {
 	"home": {"name": "Gus's building", "district": "oldtown", "pos": [318, 300], "road": 2, "kind": "home"},
 	"pub": {"name": "The Rusty Bolt", "district": "oldtown", "pos": [430, 236], "road": 3, "kind": "pub"},
 	"partsrus": {"name": "Parts-R-Us", "district": "oldtown", "pos": [410, 372], "road": 3, "kind": "shop", "feature": "shop"},
+	"brassworks": {"name": "Brassworks & Sons", "district": "oldtown", "pos": [232, 226], "road": 2, "kind": "maker", "maker": "brassworks"},
 	"scrapyard": {"name": "The Scrapyard", "district": "docks", "pos": [150, 452], "road": 1, "kind": "scrap"},
 	"scrap_ring": {"name": "The scrap ring", "district": "docks", "pos": [246, 484], "road": 1, "kind": "venue", "venue": "scrap"},
 	"sports_hall": {"name": "Ferrum Sports Hall", "district": "midtown", "pos": [596, 360], "road": 4, "kind": "venue", "venue": "rust"},
@@ -6436,7 +6439,15 @@ func place_locked(place: String) -> String:
 	var f := str(pl.get("feature", ""))
 	if f != "" and not unlocked(f):
 		return "Opens after your second fight."
+	if place == "brassworks" and rank_index() < 1 and not story_seen.has("brass_invite"):
+		return "Opens to Scrap League pilots. Or if someone puts in a word for you."   # (1.98)
 	return ""
+
+
+## (1.98) What a maker's own shop has on its shelves: every design of its line, in your grade.
+func maker_stock(m: String) -> Array:
+	var g := my_grade()
+	return catalogue_parts(m).map(func(id): return graded_id(str(id), g))
 
 
 ## The pilot spends hours (a trip, a dig). Running out ends this part of the day (the bay works
