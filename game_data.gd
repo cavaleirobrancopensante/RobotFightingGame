@@ -3,7 +3,7 @@ const PlayLog = preload("res://playlog.gd")   # (1.87) the playtest log
 
 # helper scripts, loaded by path so the game also runs without an editor scan
 ## The game's version, shown on the main menu. Bump it with every change (1.1, 1.2, ...).
-const VERSION := "1.89"
+const VERSION := "1.90"
 const Arena = preload("res://arena.gd")
 const I18n = preload("res://i18n.gd")
 const Catalog = preload("res://catalog.gd")
@@ -30,6 +30,7 @@ const DEFAULT_ROBOT := "ECHO"
 const Career = preload("res://career.gd")
 const World = preload("res://world.gd")
 const Social = preload("res://social.gd")
+const Makers = preload("res://makers.gd")
 const Contracts = preload("res://contracts.gd")
 const Clips = preload("res://clips.gd")
 const PILOT_NAMES := ["Rook", "Marisol", "Dex", "Kit", "Juno", "Tavi", "Bram", "Nia", "Otto", "Zara", "Lio", "Mags",
@@ -576,6 +577,10 @@ func _ready() -> void:
 		if not d.has("size_class"):
 			d["size_class"] = "M"
 		d["hp"] = int(round(float(d["hp"]) * hp_mult(str(d["kind"]))))   # 1.40 numbers -> the tougher 1.41 parts
+		# (1.90) every part has a maker (or none: junk); brand parts carry their maker's name
+		d["maker"] = Makers.of_def(d)
+		if d.has("brand_name") and d["maker"] != "":
+			d["brand_name"] = Makers.label(str(d["maker"]))
 		d["cost_v5"] = int(d["cost"])   # the price before grades (old saves get their grade from it)
 		d["cost"] = grade_one_price(int(d["cost"]))
 		PARTS[d["id"]] = d
@@ -995,6 +1000,8 @@ func repair_cost(p: Dictionary) -> int:
 	if missing <= 0.0 or not repair_job(int(p["uid"])).is_empty():
 		return 0
 	var discount := 0.6 if style == "mechanic" else 1.0   # mechanics fix things cheaper
+	if Makers.sets(equipped_ids().values()).has("scrapworks"):
+		discount *= 2.0 / 3.0   # (1.90) Scrapworks set: cheap to mend
 	if is_wreck(p):
 		return maxi(20, int(d["cost"] * WRECK_SHARE * discount))   # rebuilding a wreck
 	return maxi(1, ceili(missing * maxf(30.0, d["cost"] * REPAIR_SHARE) * discount))
@@ -4401,7 +4408,8 @@ static func look_from_spec(spec: Dictionary) -> Dictionary:
 		else:
 			parts[slot] = {"alive": p["hp"] > 0.0 or slot == "torso", "shape": p["shape"], "size": p["size"],
 					"color": p["color"], "health": clampf(p["hp"] / p["max_hp"], 0.0, 1.0),
-					"grade": GameData.grade_of(str(p["id"])) if p.has("id") else 3, "swap": str(p.get("swap", ""))}
+					"grade": GameData.grade_of(str(p["id"])) if p.has("id") else 3, "swap": str(p.get("swap", "")),
+					"maker": str(GameData.part_def(str(p["id"])).get("maker", "")) if p.has("id") else ""}
 	for slot in spec.get("pods", {}):
 		parts[slot] = {"alive": false, "shape": "pod", "pod": spec["pods"][slot]}
 	return {"parts": parts, "trim": spec["trim"], "eye": spec["eye"], "scale": spec["scale"],

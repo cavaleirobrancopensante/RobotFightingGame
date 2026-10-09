@@ -390,6 +390,8 @@ static func my_fight(o: Dictionary, won: bool, destroyed: int, intact: int, own_
 	var s := st()
 	var before := int(s["followers"])
 	s["followers"] = fol_change(before, won, destroyed, intact, own_lost, stage if stage != "" else GameData.rank)
+	if int(s["followers"]) > before and GameData.Makers.sets(GameData.equipped_ids().values()).has("menagerie"):
+		s["followers"] = before + int((int(s["followers"]) - before) * 1.25)   # (1.90) Menagerie set: the crowd loves a show
 	var opp_name := str(o.get("pilot", o.get("name", "?")))
 	if opp_name == "":
 		opp_name = str(o.get("name", "?"))

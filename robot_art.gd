@@ -364,11 +364,13 @@ static func draw_front(ci: CanvasItem, base: Vector2, look: Dictionary, pose: Di
 	_draw_back(ci, look, g, pose, false, trim, t)   # back gear peeks out from behind
 	ci.draw_set_transform_matrix(left)
 	_from = -lf
+	_front_legs = true
 	_draw_leg(ci, look, "leg_front", g["hip"], g["L"], "stand", 0.0, false, false, trim)
 	_sticker(ci, look, "leg_front", g["hip"] + Vector2(0, 16), 8.0)
 	ci.draw_set_transform_matrix(right)
 	_from = lf
 	_draw_leg(ci, look, "leg_back", g["hip"], g["L"], "stand", 0.0, false, false, trim)
+	_front_legs = false
 	_sticker(ci, look, "leg_back", g["hip"] + Vector2(0, 16), 8.0)
 	_draw_torso(ci, look, g, false, trim, eye, t, true)
 	_sticker(ci, look, "torso", (g["torso"] as Rect2).get_center() + Vector2(0, g["th"] * 0.14), minf(g["tw"], g["th"]) * 0.2)
@@ -433,6 +435,134 @@ static func _col(p: Dictionary, flash: bool, back: bool) -> Color:
 
 ## (1.66) Damage on an arm or leg: a dent, then a jagged crack across the limb with a lit lip,
 ## then a split that glows from the wiring inside.
+# ---- (1.90) maker finishes: each maker's surface details on top of the paint (study: Parts & Makers)
+
+## On a torso (torso = true) or a head: bolts, trim, gauges, stripes, seams, by the part's maker.
+static func _finish_plate(ci: CanvasItem, r: Rect2, p: Dictionary, t: float, torso: bool) -> void:
+	var m := str(p.get("maker", ""))
+	if m == "" or classic or r.size.x < 12.0:
+		return
+	var w := r.size.x
+	var h := r.size.y
+	var o := r.position
+	match m:
+		"scrapworks":
+			# a strip of tape across it and one odd bolt
+			var y := o.y + h * (0.62 if torso else 0.3)
+			ci.draw_colored_polygon(PackedVector2Array([Vector2(o.x + w * 0.08, y - 3), Vector2(o.x + w * 0.62, y - 6), Vector2(o.x + w * 0.64, y + 1), Vector2(o.x + w * 0.1, y + 4)]), Color(0.82, 0.74, 0.5, 0.85))
+			ci.draw_circle(o + Vector2(w * 0.82, h * 0.2), 2.4, Color(0.55, 0.5, 0.42))
+		"oldiron":
+			# big hex bolts at the corners
+			for cpt in [o + Vector2(5, 5), o + Vector2(w - 5, 5), o + Vector2(5, h - 5), o + Vector2(w - 5, h - 5)]:
+				_hexbolt(ci, cpt, 3.2 if torso else 2.4)
+			if torso:
+				ci.draw_rect(Rect2(o.x + w * 0.12, o.y + h * 0.78, w * 0.3, 3.0), Color(0.95, 0.92, 0.82, 0.55))   # a painted stripe
+		"brassworks":
+			var brass := Color(0.86, 0.68, 0.25)
+			ci.draw_rect(Rect2(o.x + 2, o.y + 2, w - 4, 3.0), brass)
+			if torso:
+				# a pressure gauge with a needle that wanders
+				var gc := o + Vector2(w * 0.74, h * 0.66)
+				var gr := minf(w, h) * 0.11
+				ci.draw_circle(gc, gr + 1.5, brass.darkened(0.3))
+				ci.draw_circle(gc, gr, Color(0.95, 0.9, 0.78))
+				var na := -2.4 + 1.6 * (0.5 + 0.5 * sin(t * 1.3))
+				ci.draw_line(gc, gc + Vector2(cos(na), sin(na)) * gr * 0.85, Color(0.6, 0.12, 0.08), 1.4)
+				ci.draw_line(Vector2(o.x + w * 0.1, o.y + h * 0.9), Vector2(o.x + w * 0.5, o.y + h * 0.9), brass.darkened(0.15), 3.0)   # a pipe run
+			else:
+				ci.draw_arc(o + Vector2(w * 0.5, h * 0.5), minf(w, h) * 0.46, PI * 0.15, PI * 0.85, 10, brass, 2.0)
+		"hellfire":
+			# a band of hazard stripes along the bottom
+			var bh := 6.0 if torso else 4.0
+			var y0 := o.y + h - bh - 3.0
+			ci.draw_rect(Rect2(o.x + 3, y0, w - 6, bh), Color(0.95, 0.78, 0.1))
+			var x := o.x + 3.0
+			while x < o.x + w - 6.0:
+				ci.draw_colored_polygon(PackedVector2Array([Vector2(x, y0 + bh), Vector2(x + 3.0, y0 + bh), Vector2(minf(x + 3.0 + bh, o.x + w - 3), y0), Vector2(minf(x + bh, o.x + w - 3), y0)]), Color(0.1, 0.1, 0.1))
+				x += 7.0
+		"volta":
+			# neon tube edges, flickering a little
+			var na := 0.75 + 0.25 * sin(t * 17.0 + w)
+			ci.draw_line(o + Vector2(3, h * 0.25), o + Vector2(3, h - 4), Color(0.0, 0.8, 1.0, na), 2.0)
+			ci.draw_line(o + Vector2(3, h - 4), o + Vector2(w * 0.55, h - 4), Color(1.0, 0.3, 0.75, na), 2.0)
+			if torso:
+				ci.draw_rect(Rect2(o.x + w * 0.42, o.y + 3, 4.0, h - 8), Color(0.92, 0.95, 1.0, 0.45))   # a racing stripe
+		"nimbus":
+			# panel lines and a blinking landing light
+			ci.draw_line(o + Vector2(w * 0.33, 3), o + Vector2(w * 0.33, h - 3), Color(0, 0, 0, 0.22), 1.0)
+			ci.draw_line(o + Vector2(3, h * 0.55), o + Vector2(w - 3, h * 0.55), Color(0, 0, 0, 0.22), 1.0)
+			if fmod(t, 1.4) < 0.25:
+				ci.draw_circle(o + Vector2(w - 5, 5), 2.2, Color(0.4, 1.0, 0.6))
+		"kane":
+			# gold seams, a light line pulsing along one
+			var gold := Color(0.88, 0.72, 0.29)
+			ci.draw_line(o + Vector2(w * 0.5, 3), o + Vector2(w * 0.5, h - 3), gold, 1.2)
+			ci.draw_line(o + Vector2(3, h * 0.3), o + Vector2(w - 3, h * 0.3), gold, 1.2)
+			var k := fmod(t * 0.7, 1.0)
+			ci.draw_circle(o + Vector2(w * 0.5, 3 + (h - 6) * k), 2.0, Color(1.0, 0.9, 0.5, 0.9))
+		"tenryu":
+			# a yellow V on the chest, a V-fin on the head
+			var yel := Color(0.95, 0.77, 0.06)
+			if torso:
+				var cx := o.x + w * 0.5
+				ci.draw_colored_polygon(PackedVector2Array([Vector2(cx - w * 0.36, o.y + 4), Vector2(cx - w * 0.24, o.y + 4), Vector2(cx, o.y + h * 0.34),
+						Vector2(cx + w * 0.24, o.y + 4), Vector2(cx + w * 0.36, o.y + 4), Vector2(cx, o.y + h * 0.46)]), yel)
+				ci.draw_rect(Rect2(o.x + w * 0.2, o.y + h * 0.7, w * 0.6, 3.0), Color(0.9, 0.22, 0.27))
+			else:
+				var cx2 := o.x + w * 0.5
+				ci.draw_colored_polygon(PackedVector2Array([Vector2(cx2, o.y + 2), Vector2(cx2 - w * 0.45, o.y - h * 0.32), Vector2(cx2 - w * 0.12, o.y + 2)]), yel)
+				ci.draw_colored_polygon(PackedVector2Array([Vector2(cx2, o.y + 2), Vector2(cx2 + w * 0.45, o.y - h * 0.32), Vector2(cx2 + w * 0.12, o.y + 2)]), yel)
+		"menagerie":
+			var red := Color(0.84, 0.19, 0.19)
+			for k2 in 3:
+				var dc := o + Vector2(w * (0.3 + 0.2 * k2), h * 0.82)
+				ci.draw_colored_polygon(PackedVector2Array([dc + Vector2(0, -3), dc + Vector2(3, 0), dc + Vector2(0, 3), dc + Vector2(-3, 0)]), Color(0.88, 0.72, 0.29) if k2 % 2 else red)
+
+
+## On an arm or a leg: a band round the upper segment in the maker's way.
+static func _finish_limb(ci: CanvasItem, a: Vector2, b: Vector2, p: Dictionary, th: float, t: float) -> void:
+	var m := str(p.get("maker", ""))
+	if m == "" or classic or (b - a).length() < 8.0:
+		return
+	var dir := (b - a).normalized()
+	var perp := dir.orthogonal() * (th * 0.55 + 1.0)
+	var c := a.lerp(b, 0.5)
+	var band := func(col: Color, wd: float) -> void:
+		ci.draw_line(c - perp, c + perp, col, wd)
+	match m:
+		"scrapworks":
+			band.call(Color(0.82, 0.74, 0.5, 0.85), 5.0)
+		"oldiron":
+			_hexbolt(ci, c, 2.4)
+		"brassworks":
+			band.call(Color(0.86, 0.68, 0.25), 3.5)
+		"hellfire":
+			band.call(Color(0.95, 0.78, 0.1), 4.0)
+			ci.draw_line(c - perp * 0.4 - dir * 1.5, c + perp * 0.4 + dir * 1.5, Color(0.1, 0.1, 0.1), 1.5)
+		"volta":
+			band.call(Color(0.0, 0.8, 1.0, 0.75 + 0.25 * sin(t * 17.0)), 2.0)
+		"nimbus":
+			band.call(Color(0, 0, 0, 0.25), 1.0)
+		"kane":
+			band.call(Color(0.88, 0.72, 0.29), 1.6)
+		"tenryu":
+			band.call(Color(0.9, 0.22, 0.27), 3.5)
+		"menagerie":
+			band.call(Color(0.84, 0.19, 0.19), 3.0)
+
+
+static var _front_legs := false   # (1.90) legs drawn by draw_front (the bay's gantry)
+
+
+static func _hexbolt(ci: CanvasItem, c: Vector2, r: float) -> void:
+	var pts := PackedVector2Array()
+	for i in 6:
+		var a := TAU * i / 6.0
+		pts.append(c + Vector2(cos(a), sin(a)) * r)
+	ci.draw_colored_polygon(pts, Color(0.22, 0.22, 0.24))
+	ci.draw_circle(c, r * 0.4, Color(0.55, 0.55, 0.58))
+
+
 static func _damage_marks(ci: CanvasItem, a: Vector2, b: Vector2, health: float, t: float) -> void:
 	if health >= 0.75 or (b - a).length() < 4.0:
 		return
@@ -1108,6 +1238,7 @@ static func _draw_arm(ci: CanvasItem, look: Dictionary, slot: String, s: Vector2
 			ci.draw_circle(cen, rr * 0.3, c.darkened(0.4))
 		_:
 			_round(ci, h, fr, tc)
+	_finish_limb(ci, s, e, p, th, t)
 	_damage_marks(ci, s, h, p.get("health", 1.0), t)
 
 
@@ -1224,8 +1355,10 @@ static func _draw_leg(ci: CanvasItem, look: Dictionary, slot: String, hip: Vecto
 				pts.append(hip.lerp(foot, f) + off)
 			_pl(ci, pts, c, 4.0)
 		"reverse":
-			var k1 := hip.lerp(foot, 0.35) - perp * 14.0
-			var k2 := hip.lerp(foot, 0.75) + perp * 14.0
+			# (1.90) seen from the front the first bend goes outward, away from the other leg
+			var ks := -1.0 if _front_legs else 1.0
+			var k1 := hip.lerp(foot, 0.35) - perp * 14.0 * ks
+			var k2 := hip.lerp(foot, 0.75) + (perp * 14.0 if not _front_legs else -perp * 6.0)   # front: both bends bow outward
 			_limb(ci, hip, k1, c, th * 1.2)
 			_limb(ci, k1, k2, c, th * 0.9)
 			_limb(ci, k2, foot, c, th * 0.7)
@@ -1311,6 +1444,7 @@ static func _draw_leg(ci: CanvasItem, look: Dictionary, slot: String, hip: Vecto
 		_plate(ci, PackedVector2Array([foot + Vector2(-8, 0), foot + Vector2(22, 0), foot + Vector2(-2, -10)]), tc)
 	else:
 		_plate(ci, _chamfer(Rect2(foot.x - fw * 0.3, foot.y - 8.0, fw, 8.0), 3.0), tc)
+	_finish_limb(ci, hip, knee, p, th, 0.0)
 	_damage_marks(ci, hip, foot, p.get("health", 1.0), 0.0)
 
 
@@ -1443,6 +1577,7 @@ static func _draw_torso(ci: CanvasItem, look: Dictionary, g: Dictionary, flash: 
 		_glow(ci, chest, 6.0, eye)
 		ci.draw_circle(chest, 6.0, eye)
 	_rust(ci, r, hash(str(p.get("shape", ""))))
+	_finish_plate(ci, r, p, t, true)
 	# damage
 	var hp: float = p.get("health", 1.0)
 	_wear(ci, r, hp, hash(str(p.get("shape", ""))) + 11, t)
@@ -1615,6 +1750,7 @@ static func _draw_head(ci: CanvasItem, look: Dictionary, g: Dictionary, flash: b
 			ci.draw_circle(Vector2(x0 + 4, y0 - 15), 3.0, eye)
 	_rust(ci, r, hash(str(p.get("shape", ""))) + 5)
 	var hp: float = p.get("health", 1.0)
+	_finish_plate(ci, Rect2(x0, y0, w, h), p, t, false)
 	_wear(ci, Rect2(x0, y0, w, h), hp, hash(str(p.get("shape", ""))) + 29, t)
 	if hp < 0.3 and fmod(t * 5.0, 1.0) < 0.5:
 		ci.draw_circle(Vector2(x0 + w * 0.3, y0 + h * 0.2), 3.0, Color(1.0, 0.8, 0.3))

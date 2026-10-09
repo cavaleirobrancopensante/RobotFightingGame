@@ -184,6 +184,7 @@ class Fighter:
 	# fighting style, traits and status effects
 	var style := "striker"
 	var gtraits := {}        # robot-wide traits from reactor / back gear: trait -> value
+	var sets: Array = []     # (1.90) makers with 3+ parts on this robot: their set perks are on
 	var slow_t := 0.0        # frost
 	var hobble_t := 0.0      # leg got hit: slower walking
 	var numb_t := 0.0        # arm got hit: weaker hits
@@ -781,6 +782,16 @@ func make_fighter(spec: Dictionary) -> Fighter:
 			var ht := GameData.head_times(GameData.part_def(str(f.parts[hs]["id"])))
 			f.aim_time = minf(f.aim_time, float(ht[0]))
 			f.scan_time = minf(f.scan_time, float(ht[1]))
+	# (1.90) maker sets: 3+ parts from one maker wake its perk
+	var ids: Array = []
+	for sl in spec["parts"]:
+		var pp = spec["parts"][sl]
+		if pp is Dictionary and pp.has("id"):
+			ids.append(str(pp["id"]))
+	f.sets = GameData.Makers.sets(ids)
+	if f.sets.has("kane"):
+		f.aim_time *= 0.75
+		f.scan_time *= 0.75
 	f.aim_cd = f.aim_time
 	if Catalog.STYLES.has(f.style):
 		var sig: String = Catalog.STYLES[f.style]["signature"]
@@ -2178,7 +2189,7 @@ func attack_cost(f: Fighter, attack: String, limb: String) -> float:
 
 
 func special_cost(f: Fighter) -> float:
-	return f.power_max * 0.28 * (0.7 if f.style == "specialist" else 1.0)
+	return f.power_max * 0.28 * (0.7 if f.style == "specialist" else 1.0) * (0.75 if f.sets.has("tenryu") else 1.0)
 
 
 func spend(f: Fighter, cost: float) -> void:
@@ -2211,7 +2222,7 @@ func update_power(f: Fighter, delta: float) -> void:
 		Sfx.play("ko", 0.1, -6.0)   # the BURNOUT sign is drawn over its head (draw_burnout)
 		return
 	if not busy and f.idle_t > REFILL_DELAY and f.state != "ko":
-		var rate := REFILL * (1.35 if f.style == "mechanic" else 1.0) * (0.4 if f.blocking else 1.0)
+		var rate := REFILL * (1.35 if f.style == "mechanic" else 1.0) * (0.4 if f.blocking else 1.0) * (1.25 if f.sets.has("brassworks") else 1.0)
 		f.power = minf(f.power_max, f.power + f.power_max * rate * delta)
 
 
@@ -2832,7 +2843,7 @@ func update_fighter(f: Fighter, o: Fighter, i: Dictionary, delta: float) -> void
 				f.vel.x = move_toward(f.vel.x, adir * WALK_SPEED * f.move_speed(), 2200.0 * (1.0 + f.ctrl.get("jump", 0.0) * 3.0) * delta)
 
 	# physics
-	f.vel.y += GRAVITY * delta
+	f.vel.y += GRAVITY * delta * (0.55 if f.vel.y > 0.0 and f.sets.has("nimbus") else 1.0)   # (1.90) Nimbus set: a short glide
 	f.pos += f.vel * delta
 	if f.pos.y >= floor_y:
 		f.pos.y = floor_y
@@ -3189,7 +3200,7 @@ func apply_hit(att: Fighter, d: Fighter, a: Dictionary, at: Vector2) -> void:
 		# offensive traits
 		var burn := off_trait(att, src, "burn")
 		if burn > 0.0 and d.alive(slot):
-			d.burns.append({"slot": slot, "dps": burn / 3.0 * att.gpow, "t": 3.0})
+			d.burns.append({"slot": slot, "dps": burn / 3.0 * att.gpow, "t": 6.0 if att.sets.has("hellfire") else 3.0})
 		var chill := off_trait(att, src, "chill")
 		if chill > 0.0:
 			d.slow_t = maxf(d.slow_t, chill)
@@ -3228,8 +3239,8 @@ func apply_hit(att: Fighter, d: Fighter, a: Dictionary, at: Vector2) -> void:
 			if a.has("launch"):
 				d.vel.y = a["launch"]
 				d.on_ground = false
-				d.knocked = true   # it lands on its back
-			if randf() * 100.0 < off_trait(att, src, "stun"):
+				d.knocked = not d.sets.has("oldiron")   # it lands on its back (Old Iron's set stays on its feet)
+			if randf() * 100.0 < off_trait(att, src, "stun") + (6.0 if att.sets.has("volta") else 0.0):
 				d.timer = maxf(d.timer, 0.8)
 				d.stun_t = maxf(d.stun_t, 0.8)
 				popup(tr("SHOCKED!"), hit_at + Vector2(0, -30), Color(1.0, 1.0, 0.4))
@@ -3352,7 +3363,7 @@ func rip_off(f: Fighter, slot: String, overkill: float = 0.0) -> void:
 	for e in enemies_of(f):
 		if e.target == slot and e.foe == f:
 			aimed = true
-	var boom: float = (limb_trait(f, slot, "explosive") + f.gtraits.get("explosive", 0.0)) * float(p.get("gm", f.gpow))
+	var boom: float = (limb_trait(f, slot, "explosive") + f.gtraits.get("explosive", 0.0)) * float(p.get("gm", f.gpow)) * (1.5 if f.sets.has("hellfire") else 1.0)
 	var keep := 0.75 if aimed else 0.5
 	if overkill > 0.6:
 		keep *= 0.4
@@ -6086,7 +6097,7 @@ func draw_robot_card(ci: CanvasItem, f: Fighter, left: bool, w: float, h: float,
 		if not specials_shown.has(pid) and specials_shown.size() < 3:
 			specials_shown.append(pid)
 	var head_h := fs(28) + fs(14) + fs(12) + 26.0
-	var card_h := head_h + parts_n * (l1 + l2) + specials_shown.size() * l1 + fs(12) + 10.0 + (fs(13) + 4.0) * 2.0 + 16.0
+	var card_h := head_h + parts_n * (l1 + l2) + specials_shown.size() * l1 + fs(12) + 10.0 + (fs(13) + 4.0) * 2.0 + 16.0 + (l1 if not f.sets.is_empty() else 0.0)
 	var top := clampf(h * 0.1, 8.0, maxf(8.0, h - card_h - 70.0)) if top_at < 0.0 else top_at
 	var card := Rect2(w * 0.03 if left else w * 0.55, top, w * 0.42, card_h)
 	var a := clampf(card_t * 3.0, 0.0, 1.0)
@@ -6122,8 +6133,15 @@ func draw_robot_card(ci: CanvasItem, f: Fighter, left: bool, w: float, h: float,
 		y += l1
 		var special := str(d.get("trait", "")) != "" or str(d.get("gimmick", "")) != ""
 		var slot_txt := tr(GameData.SLOT_NAMES[slot]).to_upper()
-		var sw := font.get_string_size(slot_txt, HORIZONTAL_ALIGNMENT_LEFT, -1, fs(11)).x
-		ci.draw_string(font, Vector2(x, y), slot_txt, HORIZONTAL_ALIGNMENT_LEFT, -1, fs(11), Color(0.62, 0.62, 0.7, a))
+		# (1.90) the maker's logo first
+		var lx := x
+		var mk := str(d.get("maker", ""))
+		if mk != "" and a > 0.5:
+			var lr := float(fs(11)) * 0.55
+			load("res://logos.gd").draw_logo(ci, GameData.Makers.logo(mk), Vector2(x + lr, y - float(fs(11)) * 0.38), lr)
+			lx = x + lr * 2.0 + 6.0
+		var sw := font.get_string_size(slot_txt, HORIZONTAL_ALIGNMENT_LEFT, -1, fs(11)).x + (lx - x)
+		ci.draw_string(font, Vector2(lx, y), slot_txt, HORIZONTAL_ALIGNMENT_LEFT, -1, fs(11), Color(0.62, 0.62, 0.7, a))
 		ci.draw_string(font, Vector2(x + sw + 8, y), ("★ " if special else "") + tr(str(d["name"])), HORIZONTAL_ALIGNMENT_LEFT, cw - sw - 8,
 				fs(14), gold if special else Color(1, 1, 1, a))
 		# line 2: health blocks (1 block = 25 HP, dents show as empty blocks), HP numbers, then armor / damage / speed
@@ -6160,6 +6178,13 @@ func draw_robot_card(ci: CanvasItem, f: Fighter, left: bool, w: float, h: float,
 				bits.append(tr("aim in %.1fs · scan %.1fs") % [f.aim_time, f.scan_time])
 			stat = " · ".join(bits)
 		ci.draw_string(font, Vector2(bx, y), stat, HORIZONTAL_ALIGNMENT_RIGHT, maxf(0.0, x + cw - bx), fs(12), Color(0.75, 0.75, 0.82, a))
+	# (1.90) the maker sets that are on
+	if not f.sets.is_empty():
+		y += l1
+		var sn: Array = []
+		for m in f.sets:
+			sn.append(tr(str(GameData.Makers.info(m)["perk_name"])) + " (" + GameData.Makers.label(m) + ")")
+		ci.draw_string(font, Vector2(x, y), tr("SET ON: %s") % ", ".join(sn), HORIZONTAL_ALIGNMENT_LEFT, cw, fs(13), Color(0.5, 1.0, 0.6, a))
 	# what the starred parts do
 	for pid in specials_shown:
 		var d := GameData.part_def(pid)

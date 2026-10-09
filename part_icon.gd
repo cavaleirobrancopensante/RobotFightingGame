@@ -12,6 +12,7 @@ var trim := Color(0.85, 0.85, 0.9)
 func _draw() -> void:
 	draw_part(self, Rect2(Vector2.ZERO, size), part, health, trim)
 	draw_grade(self, Rect2(Vector2.ZERO, size), part)
+	draw_maker(self, Rect2(Vector2.ZERO, size), part)
 
 
 const GRADE_TAGS := ["", "S", "R", "I", "St", "Ti"]
@@ -29,6 +30,15 @@ static func draw_grade(ci: CanvasItem, box: Rect2, part: Dictionary) -> void:
 	ci.draw_rect(r, col)
 	ci.draw_rect(r, col.darkened(0.5), false, 1.0)
 	ci.draw_string(ThemeDB.fallback_font, Vector2(r.position.x, r.end.y - fs * 0.22), GRADE_TAGS[g], HORIZONTAL_ALIGNMENT_CENTER, w, fs, Color(0.08, 0.08, 0.1))
+
+
+## (1.90) The maker's logo in the icon's top-left corner (opposite the grade chip).
+static func draw_maker(ci: CanvasItem, box: Rect2, part: Dictionary) -> void:
+	var m := str(part.get("maker", ""))
+	if m == "" or box.size.y < 26.0:
+		return
+	var r := clampf(box.size.y * 0.15, 6.0, 14.0)
+	load("res://logos.gd").draw_logo(ci, load("res://makers.gd").logo(m), box.position + Vector2(r + 3.0, r + 3.0), r)
 
 
 ## Draw a part picture into any rect of any canvas (the results screen uses this too).
@@ -64,7 +74,7 @@ static func draw_part(ci: CanvasItem, box: Rect2, part: Dictionary, health: floa
 	for s in ["head", "torso", "arm_front", "arm_back", "leg_front", "leg_back"]:
 		parts[s] = {"alive": false}
 	parts[slot] = {"alive": true, "shape": part["shape"], "size": part["size"],
-			"color": Color(part["color"]), "health": health, "grade": int(part.get("grade", 3))}
+			"color": Color(part["color"]), "health": health, "grade": int(part.get("grade", 3)), "maker": str(part.get("maker", ""))}
 	var look := {"parts": parts, "trim": trim, "eye": Color(1.0, 0.35, 0.2), "scale": 1.0, "icon": true}
 	var rect := _bounds(look, slot)
 	var sc := minf((size.x - 8.0) / rect.size.x, (size.y - 8.0) / rect.size.y)
@@ -83,7 +93,7 @@ static func draw_part_at(ci: CanvasItem, center: Vector2, span: float, part: Dic
 	var parts := {}
 	for s in ["head", "torso", "arm_front", "arm_back", "leg_front", "leg_back"]:
 		parts[s] = {"alive": false}
-	parts[slot] = {"alive": true, "shape": part["shape"], "size": part["size"], "color": Color(part["color"]), "health": health, "grade": int(part.get("grade", 3))}
+	parts[slot] = {"alive": true, "shape": part["shape"], "size": part["size"], "color": Color(part["color"]), "health": health, "grade": int(part.get("grade", 3)), "maker": str(part.get("maker", ""))}
 	var look := {"parts": parts, "trim": trim, "eye": Color(0.25, 0.1, 0.08), "scale": 1.0, "icon": true}
 	var rect := _bounds(look, slot)
 	var sc := span / maxf(rect.size.x, rect.size.y)

@@ -27,6 +27,7 @@ var segs_on := {"Bay": "robot", "Parts": "scrap", "Crew": "backups"}   # each se
 var shop_kind := "arm"
 var shop_filter := "all"      # Shop/Storage category dropdowns: "all", a part kind, "chip" or "pilot"
 var storage_filter := "all"
+var maker_filter := "all"     # (1.90) Maker ▾ on Storage and the shops
 var ws := {}                # workshop design in progress
 var title_label: Label
 var money_label: Label
@@ -1252,6 +1253,8 @@ func row_text(title: String, subtitle: String, tag: String, wrap: bool) -> VBoxC
 		rl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		rl.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		rl.add_theme_font_override("normal_font", GUI.body())
+		rl.add_theme_font_override("bold_font", GUI.headb())
+		rl.add_theme_font_size_override("bold_font_size", UI.px(11))
 		rl.add_theme_font_size_override("normal_font_size", UI.px(11))
 		rl.add_theme_color_override("default_color", Color(0.68, 0.68, 0.75))
 		rl.text = subtitle
@@ -1450,9 +1453,32 @@ func build_detail() -> void:
 		names.add_child(hp_widget(p))
 	elif not inv:
 		names.add_child(GUI.readout("$%d" % int(d["cost"]), 22, GUI.AMBER))
+	# (1.90) what it's compared against: the fitted part's picture beside this one
+	var cmp_slots := slots_for(kind)
+	var shown_cmp := 0
+	for sl in cmp_slots:
+		var cur := GameData.equipped_inst(sl)
+		if shown_cmp >= 2 or (inv and cur.get("uid", -2) == p.get("uid", -1)):
+			continue
+		var cv := VBoxContainer.new()
+		cv.add_theme_constant_override("separation", 0)
+		cv.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
+		head.add_child(cv)
+		cv.add_child(GUI.text(tr("vs %s") % tr(SHORT_SLOT.get(sl, "fitted")), 10, GUI.MUTED, "headb"))
+		if cur.is_empty():
+			var em := GUI.text(tr("empty"), 11, GUI.MUTED)
+			em.custom_minimum_size = Vector2(56, 56)
+			cv.add_child(em)
+		else:
+			var ci2 := part_icon(GameData.part_def(cur["id"]), GameData.hp_ratio(cur))
+			ci2.custom_minimum_size = Vector2(56, 56)
+			cv.add_child(ci2)
+		shown_cmp += 1
 	var x := UI.button("×", _on_detail_close, 16, Vector2(40, 40))
 	x.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
 	head.add_child(x)
+	# (1.90) who made it, and how close the robot is to that maker's set
+	maker_strip(d, inv, detail_box)
 	# notes and extras (traits, gadgets)
 	for n in PartNotes.notes(d, kind, health, str(p.get("uid", d["id"]))):
 		var warn := str(n).begins_with("!")
@@ -1477,6 +1503,13 @@ func build_detail() -> void:
 			var cur := GameData.equipped_inst(sl)
 			var mark: bool = inv and cur.get("uid", -2) == p["uid"]
 			grid.add_child(GUI.text((tr("vs %s") % tr(SHORT_SLOT.get(sl, "fitted"))) + (" ●" if mark else ""), 11, GUI.MUTED, "headb"))
+		# (1.90) the maker of this part and of each fitted one
+		grid.add_child(GUI.text(tr("Maker"), 12, GUI.MUTED))
+		grid.add_child(GUI.text(GameData.Makers.short(str(d.get("maker", ""))), 12, GameData.Makers.color(str(d.get("maker", ""))).lightened(0.25), "headb"))
+		for sl in slots:
+			var cur := GameData.equipped_inst(sl)
+			var cm := "" if cur.is_empty() else str(GameData.part_def(cur["id"]).get("maker", ""))
+			grid.add_child(GUI.text("-" if cur.is_empty() else GameData.Makers.short(cm), 12, GameData.Makers.color(cm).lightened(0.25), "headb"))
 		if not GameData.UNDAMAGEABLE.has(kind):
 			# the health they have right now (a battered spare against a fresh one, and the other way round)
 			grid.add_child(GUI.text(tr("HP now"), 12, GUI.MUTED))
@@ -1545,6 +1578,62 @@ func build_detail() -> void:
 		# try before you buy: bolt it on for a practice round against Toaster Tim
 		if not slots.is_empty() and kind in ["head", "torso", "arm", "leg", "back", "reactor"]:
 			add_btn.call(tr("Test drive"), _on_test_drive.bind("toaster", str(d["id"]), best_slot(kind), "dealer"), GameData.can_fight(), GUI.CYAN)
+
+
+## (1.90) "MAKERS: Old Iron 3 · Volta 2 · SET ON: IRON FEET" for a robot's part ids.
+func makers_line(ids: Array) -> String:
+	var M = GameData.Makers
+	var c: Dictionary = M.counts(ids)
+	var bits: Array = []
+	for m in M.ORDER:
+		if int(c.get(m, 0)) > 0:
+			bits.append("%s %d" % [M.label(m), int(c[m])])
+	if bits.is_empty():
+		return ""
+	var t := tr("MAKERS: %s") % " · ".join(bits)
+	var on: Array = M.sets(ids).map(func(m): return tr(str(M.info(m)["perk_name"])))
+	if not on.is_empty():
+		t += "   " + tr("SET ON: %s") % ", ".join(on)
+	return t
+
+
+## (1.90) The maker's band in the detail pane: logo, name, pitch, and the robot's progress to its set.
+func maker_strip(d: Dictionary, inv: bool, parent: Control) -> void:
+	var M = GameData.Makers
+	var m := str(d.get("maker", ""))
+	var band := PanelContainer.new()
+	var sb := GUI.box(M.color(m).darkened(0.72), 8, 8)
+	sb.border_color = M.color(m)
+	sb.border_width_left = 4
+	band.add_theme_stylebox_override("panel", sb)
+	parent.add_child(band)
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 10)
+	band.add_child(row)
+	if m == "":
+		row.add_child(GUI.text(tr("JUNK: nobody's name is on it."), 12, GUI.MUTED, "headb"))
+		return
+	var lg = Logos.LogoIcon.new(M.logo(m), 44)
+	lg.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	row.add_child(lg)
+	var col := VBoxContainer.new()
+	col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	col.add_theme_constant_override("separation", 1)
+	row.add_child(col)
+	col.add_child(GUI.text(str(M.info(m)["name"]).to_upper(), 13, M.color(m).lightened(0.3), "headb"))
+	var pl := GUI.text(tr(str(M.info(m)["pitch"])), 11, GUI.MUTED)
+	pl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	col.add_child(pl)
+	var n := int(M.counts(GameData.equipped_ids().values()).get(m, 0))
+	var perk := tr(str(M.info(m)["perk_name"]))
+	var line := ""
+	if n >= M.SET_AT:
+		line = tr("SET ON: %s. %s") % [perk, tr(str(M.info(m)["perk"]))]
+	else:
+		line = tr("On your robot: %d of %d for %s (%s)") % [n, M.SET_AT, perk, tr(str(M.info(m)["perk"]))]
+	var ll := GUI.text(line, 11, GUI.GREEN if n >= M.SET_AT else GUI.CYAN, "headb")
+	ll.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	col.add_child(ll)
 
 
 ## Above the calendar: tonight in one line (who, purse, odds) and the button to act on it.
@@ -1643,7 +1732,15 @@ func part_info(d: Dictionary) -> String:
 	var hp := tr("HP %d") % d["hp"]
 	if t.begins_with(hp):
 		t = t.substr(hp.length()).strip_edges()
-	return t.replace("  ", " · ")
+	return maker_tag(d) + t.replace("  ", " · ")
+
+
+## (1.90) "OLD IRON · " in the maker's colour, before a part's stats (rows show BBCode).
+func maker_tag(d: Dictionary) -> String:
+	var m := str(d.get("maker", ""))
+	if m == "":
+		return "[color=#8a8f98]%s[/color] · " % tr("JUNK")
+	return "[color=#%s][b]%s[/b][/color] · " % [GameData.Makers.color(m).lightened(0.25).to_html(false), GameData.Makers.short(m)]
 
 
 func part_icon(def: Dictionary, health: float = 1.0) -> PartIcon:
@@ -1685,17 +1782,17 @@ func action_bar(parent: Control = null) -> HBoxContainer:
 
 ## A "Show: All parts (10) v" dropdown. entries: [[key, label, count], ...] - empty categories are left out.
 ## Returns the key actually in use (falls back to "all" when the chosen category ran empty).
-func category_dropdown(entries: Array, current: String, cb: Callable, bar: HBoxContainer = null) -> String:
+func category_dropdown(entries: Array, current: String, cb: Callable, bar: HBoxContainer = null, label: String = "Show:") -> String:
 	var shown: Array = entries.filter(func(e): return e[0] == "all" or int(e[2]) > 0)
 	if not shown.any(func(e): return e[0] == current):
 		current = "all"
 	if bar == null:
 		bar = action_bar()
-	var l := UI.label(tr("Show:"), 16, Color(0.8, 0.8, 0.85))
+	var l := UI.label(tr(label), 16, Color(0.8, 0.8, 0.85))
 	l.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	bar.add_child(l)
 	var ob := OptionButton.new()
-	ob.custom_minimum_size = Vector2(260, 48)
+	ob.custom_minimum_size = Vector2(260 if label == "Show:" else 200, 48)
 	ob.add_theme_font_size_override("font_size", UI.px(17))
 	ob.get_popup().add_theme_font_size_override("font_size", UI.px(22))
 	ob.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
@@ -1706,6 +1803,29 @@ func category_dropdown(entries: Array, current: String, cb: Callable, bar: HBoxC
 	ob.item_selected.connect(func(i): cb.call(shown[i][0]))
 	bar.add_child(ob)
 	return current
+
+
+## (1.90) Maker ▾: every maker with a count, for the part ids given.
+func maker_entries(ids: Array) -> Array:
+	var c: Dictionary = GameData.Makers.counts(ids)
+	var junk := ids.filter(func(i): return str(GameData.part_def(str(i)).get("maker", "")) == "").size()
+	var out := [["all", "All makers", ids.size()]]
+	for m in GameData.Makers.ORDER:
+		out.append([m, str(GameData.Makers.info(m)["name"]), int(c.get(m, 0))])
+	out.append(["junk", "Junk", junk])
+	return out
+
+
+func maker_ok(d: Dictionary) -> bool:
+	if maker_filter == "all":
+		return true
+	var m := str(d.get("maker", ""))
+	return (m == "" and maker_filter == "junk") or m == maker_filter
+
+
+func _on_maker_filter(key: String) -> void:
+	maker_filter = key
+	refresh()
 
 
 func kind_entries(kinds: Array, all_label: String) -> Array:
@@ -1873,6 +1993,12 @@ func build_overview() -> void:
 	var pad := Control.new()
 	pad.custom_minimum_size = Vector2(100, 0)
 	key.add_child(pad)
+	# (1.90) the robot's makers and the sets that are on
+	var mkl := makers_line(GameData.equipped_ids().values())
+	if mkl != "":
+		var ml := GUI.text(mkl, 12, GUI.CYAN, "headb")
+		ml.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		list_box.add_child(ml)
 	for slot in GameData.SLOTS:
 		if not GameData.slot_available(slot):
 			continue   # extra heads/arms need a torso with mounts for them
@@ -3554,7 +3680,7 @@ func build_storage() -> void:
 		var shown: Array = []
 		var wrecks: Array = []
 		for p in list:
-			if storage_filter == "all" or GameData.part_def(p["id"])["kind"] == storage_filter:
+			if (storage_filter == "all" or GameData.part_def(p["id"])["kind"] == storage_filter) and maker_ok(GameData.part_def(p["id"])):
 				shown.append(p["uid"])
 				if GameData.is_wreck(p):
 					wrecks.append(p["uid"])
@@ -3565,9 +3691,10 @@ func build_storage() -> void:
 			row_button(qb, tr("Tick the wrecks (%d)") % wrecks.size(), _on_pick_many.bind(wrecks, true), true, 190)
 	else:
 		row_button(top_bar, tr("Sell several"), _on_select_mode, true, 140)
+	maker_filter = category_dropdown(maker_entries(list.map(func(p): return p["id"])), maker_filter, _on_maker_filter, null, "Maker:")
 	for p in list:
 		var d := GameData.part_def(p["id"])
-		if storage_filter != "all" and d["kind"] != storage_filter:
+		if (storage_filter != "all" and d["kind"] != storage_filter) or not maker_ok(d):
 			continue
 		var wreck := GameData.is_wreck(p)
 		var tag := tr("  (WRECKED)") if wreck else ("" if d["shop"] else tr("  (rare)"))
@@ -4041,10 +4168,11 @@ func build_dealer() -> void:
 	entries[0][2] = stock.size() + chips.size()
 	entries.append(["chip", "Chips", chips.size()])
 	shop_filter = category_dropdown(entries, shop_filter, _on_shop_filter)
+	maker_filter = category_dropdown(maker_entries(stock), maker_filter, _on_maker_filter, null, "Maker:")
 	var f := shop_filter
 	for id in stock:
 		var d := GameData.part_def(id)
-		if f != "all" and d["kind"] != f:
+		if (f != "all" and d["kind"] != f) or not maker_ok(d):
 			continue
 		var row := make_tap_row(part_icon(d), d["name"], part_info(d), _on_detail.bind({"src": "shop", "id": id}), tr(str(d["kind"]).to_upper()), is_detail("shop", id))
 		var hb := GUI.SegBar.new()
@@ -6899,6 +7027,12 @@ func open_fight_popup() -> void:
 	var issues := damage_report()
 	for line in issues:
 		col.add_child(GUI.text("• " + str(line), 15, GUI.RED))
+	# (1.90) who built the robot, and the sets that are on
+	var mk_line := makers_line(GameData.equipped_ids().values())
+	if mk_line != "":
+		var ml := GUI.text(mk_line, 14, GUI.CYAN)
+		ml.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		col.add_child(ml)
 	if GameData.phase < 2:
 		var left_h: int = [8, 4, 0][GameData.phase]
 		var cl := GUI.text(tr("The bell rings this evening: the bay gets %d more hours on the job board before it.") % left_h, 14, GUI.CYAN)

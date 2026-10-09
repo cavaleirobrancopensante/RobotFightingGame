@@ -86,15 +86,27 @@ const KIND := {
 
 const BRAND := {
 	"scrap": "Scrapworks: cheap, honest junk",
-	"ironclad": "Ironclad: built like a bunker",
+	"ironclad": "Old Iron: built like a bunker",
 	"volta": "Volta: crackles when it moves",
-	"pyro": "Pyro Labs: runs hot",
-	"frost": "Frostbyte: frost on the joints",
-	"magnetica": "Magnetica: tools stick to it",
+	"pyro": "Hellfire: runs hot",
+	"frost": "Nimbus: frost on the joints",
+	"magnetica": "Volta: tools stick to it",
 	"kane": "Kane Dynamics: serial filed off",
 	"nimbus": "Nimbus: light as a kite",
-	"medix": "Medix: smells of disinfectant",
-	"boom": "Boomstick: don't drop it",
+	"medix": "Brassworks: smells of hot oil",
+	"boom": "Hellfire: don't drop it",
+}
+
+## (1.90) Parts with no old brand get a line from their maker.
+const MAKER := {
+	"scrapworks": "Scrapworks: cheap, honest junk",
+	"oldiron": "Old Iron: Gus swears by it",
+	"brassworks": "Brassworks: hand built, still warm",
+	"hellfire": "Hellfire: smells of scorched paint",
+	"volta": "Volta: hums when it's idle",
+	"nimbus": "Nimbus: lighter than it looks",
+	"kane": "Kane Dynamics: serial filed off",
+	"menagerie": "Menagerie: came off a circus ship",
 }
 
 # [a bit beaten up (under 60%), badly beaten up (under 30%)] per kind
@@ -120,6 +132,8 @@ static func notes(d: Dictionary, kind: String, health: float, seed_text: String)
 	var brand: String = d.get("brand", "")
 	if BRAND.has(brand):
 		out.append(BRAND[brand])
+	elif MAKER.has(str(d.get("maker", ""))):
+		out.append(MAKER[str(d["maker"])])
 	elif KIND.has(kind) and out.size() == 1 and SHAPE.has(shape_key):
 		out.append(KIND[kind][1 - pick])
 	if DAMAGE.has(kind) and health < 0.6:
