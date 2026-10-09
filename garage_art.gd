@@ -10,7 +10,7 @@ const Light = preload("res://light.gd")
 
 ## Where the robot stands in each scene: [x as fraction of width, height as fraction of panel]
 const ROBOT_SPOT := {
-	"build": [0.55, 0.64], "shop": [0.8, 0.5], "brass": [0.8, 0.5], "hell": [0.8, 0.5], "volta": [0.78, 0.5], "nimbus": [0.8, 0.5], "kane": [0.78, 0.5], "workshop": [0.74, 0.56], "scrap": [0.8, 0.5],
+	"build": [0.55, 0.64], "shop": [0.8, 0.5], "brass": [0.8, 0.5], "hell": [0.8, 0.5], "volta": [0.78, 0.5], "nimbus": [0.8, 0.5], "kane": [0.78, 0.5], "tenryu": [0.8, 0.5], "workshop": [0.74, 0.56], "scrap": [0.8, 0.5],
 	"paint": [0.5, 0.72], "moves": [0.62, 0.7], "team": [0.64, 0.66], "cups": [0.68, 0.62],
 	"storage": [0.72, 0.5],
 }
@@ -52,6 +52,7 @@ const SCENE_COLORS := {
 	"volta": [Color(0.1, 0.06, 0.18), Color(0.13, 0.08, 0.22), Color(0.08, 0.06, 0.12)],      # (1.100) Volta Motor: night purple, neon
 	"nimbus": [Color(0.55, 0.6, 0.66), Color(0.6, 0.65, 0.71), Color(0.4, 0.42, 0.45)],        # (1.101) Nimbus Aerial: a pale hangar
 	"kane": [Color(0.05, 0.05, 0.07), Color(0.07, 0.07, 0.09), Color(0.08, 0.08, 0.1)],        # (1.102) Kane Dynamics: black glass
+	"tenryu": [Color(0.3, 0.19, 0.12), Color(0.34, 0.22, 0.14), Color(0.42, 0.3, 0.18)],        # (1.103) Tenryu: a wooden dojo
 	# (the scrapyard is outdoors: a sunset sky)
 }
 
@@ -194,6 +195,8 @@ static func _props_back(ci: CanvasItem, size: Vector2, scene: String, t: float, 
 			_nimbus_back(ci, size, floor_y, t)
 		"kane":
 			_kane_back(ci, size, floor_y, t)
+		"tenryu":
+			_tenryu_back(ci, size, floor_y, t)
 		"workshop":
 			_sign(ci, Vector2(size.x * 0.8, 30), I18n.t("CUSTOM ORDERS"), Color(0.6, 0.85, 1.0))
 			# shelves of parts
@@ -301,7 +304,7 @@ static func draw_front(ci: CanvasItem, stage: Rect2, scene: String, t: float, in
 ## The light the people in a scene stand in (1.60): Gus's building is the bay's work lamp, the places
 ## outside have their own.
 static func scene_light(scene: String) -> String:
-	return scene if scene in ["pub", "shop", "scrap", "phone", "brass", "hell", "volta", "nimbus", "kane"] else "bay"
+	return scene if scene in ["pub", "shop", "scrap", "phone", "brass", "hell", "volta", "nimbus", "kane", "tenryu"] else "bay"
 
 
 static func _front(ci: CanvasItem, size: Vector2, scene: String, t: float, info: Dictionary, robot_base: Vector2, robot_h: float) -> void:
@@ -363,6 +366,14 @@ static func _front(ci: CanvasItem, size: Vector2, scene: String, t: float, info:
 			ci.draw_line(gc, gc + Vector2(cos(na), sin(na)) * 5.5 * s, Color(0.6, 0.1, 0.08), 1.5)
 			PilotArt.draw_person(ci, Vector2(ct.end.x + 26 * s, floor_y), s, pilot, -1.0, "point", t + 0.5)
 			_head(info, "YOU", Vector2(ct.end.x + 26 * s, floor_y), s)
+		"tenryu":
+			# (1.103) Haru in a red jacket and headband, pointing like a hero; you with your controller
+			var haru := {"skin": "#e2b48c", "hair": "#222222", "eyes": "#5b3a1e", "outfit": "#b8282e", "hat": "headband", "beard": "none", "glasses": "none"}
+			var hf2 := Vector2(size.x * 0.55, floor_y)
+			PilotArt.draw_person(ci, hf2, s, haru, 1.0, "point", t)
+			_head(info, "HARU", hf2, s)
+			PilotArt.draw_person(ci, Vector2(size.x * 0.3, floor_y), s, pilot, 1.0, "hold", t + 0.5)
+			_head(info, "YOU", Vector2(size.x * 0.3, floor_y), s)
 		"kane":
 			# (1.102) Ms. Vale in a black suit with a gold earpiece; you, a little out of place
 			var vale := {"skin": "#f1d0b5", "hair": "#e8d36a", "eyes": "#8395a7", "outfit": "#222222", "hat": "bun", "beard": "none",
@@ -1075,6 +1086,68 @@ static func _brass_back(ci: CanvasItem, size: Vector2, floor_y: float, t: float)
 	_maker_plaque(ci, Rect2(size.x * 0.66, 70, size.x * 0.3, 36), "brassworks", I18n.t("BRASSWORKS & SONS"), I18n.t("EST. 1898 · BUILT BY HAND"))
 
 
+## (1.103) Tenryu's dojo: wooden walls, shoji screens with one slid open on a blossom tree and Midtown at night,
+## red paper lanterns, the banner with the rising sun and the logo, a model kit box on the shelf, petals drifting in.
+static func _tenryu_back(ci: CanvasItem, size: Vector2, floor_y: float, t: float) -> void:
+	var wood := Color(0.42, 0.28, 0.16)
+	# the beams
+	_rc(ci, Rect2(0, 54, size.x, 10), wood.darkened(0.25))
+	for k in 5:
+		_rc(ci, Rect2(size.x * (0.02 + k * 0.24), 54, 10, floor_y - 54), wood.darkened(0.2))
+	# shoji screens, the middle one slid open: a blossom tree and the city at night
+	var sh := Rect2(size.x * 0.04, 70, size.x * 0.44, floor_y - 74)
+	var open := Rect2(sh.position.x + sh.size.x * 0.34, sh.position.y, sh.size.x * 0.33, sh.size.y)
+	ci.draw_rect(open, Color(0.09, 0.07, 0.16))
+	for k in 5:
+		var bx := open.position.x + k * open.size.x / 5.0
+		var bh := open.size.y * (0.3 + 0.35 * fmod(k * 0.47, 1.0))
+		ci.draw_rect(Rect2(bx, open.end.y - bh, open.size.x / 5.0 - 3, bh), Color(0.14, 0.11, 0.22))
+		if k % 2 == 0:
+			ci.draw_rect(Rect2(bx + 3, open.end.y - bh + 6, 3, 3), Color(1.0, 0.7, 0.85, 0.7))
+	var tr0 := Vector2(open.position.x + open.size.x * 0.35, open.end.y)
+	ci.draw_line(tr0, tr0 + Vector2(6, -70), Color(0.25, 0.15, 0.12), 5.0)
+	ci.draw_line(tr0 + Vector2(4, -50), tr0 + Vector2(30, -80), Color(0.25, 0.15, 0.12), 3.0)
+	for k in 9:
+		ci.draw_circle(tr0 + Vector2(-14 + (k * 37) % 50, -96 + (k * 23) % 40), 12.0, Color(1.0, 0.7, 0.82, 0.85))
+	for side in 2:
+		var pr := Rect2(sh.position.x if side == 0 else open.end.x, sh.position.y, open.position.x - sh.position.x if side == 0 else sh.end.x - open.end.x, sh.size.y)
+		ci.draw_rect(pr, Color(0.93, 0.89, 0.8))
+		for gx in 4:
+			ci.draw_line(Vector2(pr.position.x + (gx + 1) * pr.size.x / 4.0, pr.position.y), Vector2(pr.position.x + (gx + 1) * pr.size.x / 4.0, pr.end.y), wood, 2.0)
+		for gy in 6:
+			ci.draw_line(Vector2(pr.position.x, pr.position.y + (gy + 1) * pr.size.y / 6.0), Vector2(pr.end.x, pr.position.y + (gy + 1) * pr.size.y / 6.0), wood, 2.0)
+		ci.draw_rect(pr, wood.darkened(0.2), false, 4.0)
+	# petals drifting in through the open screen
+	for k in 6:
+		var ph := fmod(t * 0.15 + k * 0.17, 1.0)
+		var pp := Vector2(open.get_center().x + ph * size.x * 0.4 + sin(t * 2.0 + k) * 12.0, open.position.y + 30 + ph * (floor_y - open.position.y - 30))
+		ci.draw_circle(pp, 2.5, Color(1.0, 0.72, 0.84, 0.9 * (1.0 - ph)))
+	# the banner: a red sun and the logo
+	var bn := Rect2(size.x * 0.54, 74, size.x * 0.17, 120)
+	_rc(ci, bn, Color(0.95, 0.93, 0.88))
+	ci.draw_circle(bn.get_center() + Vector2(0, -12), bn.size.x * 0.3, Color(0.8, 0.15, 0.18))
+	load("res://logos.gd").draw_logo(ci, load("res://makers.gd").logo("tenryu"), bn.get_center() + Vector2(0, 38), 12.0)
+	ci.draw_line(Vector2(bn.position.x - 6, bn.position.y), Vector2(bn.end.x + 6, bn.position.y), wood.darkened(0.3), 4.0)
+	# paper lanterns, glowing
+	for lx in [size.x * 0.5, size.x * 0.76]:
+		var lp := Vector2(lx, 100.0 + sin(t * 1.3 + lx) * 2.0)
+		ci.draw_line(Vector2(lx, 64), lp + Vector2(0, -16), Color(0.15, 0.1, 0.08), 1.5)
+		ci.draw_circle(lp, 30.0, Color(1.0, 0.5, 0.35, 0.08))
+		_cr(ci, lp, 14, Color(0.85, 0.2, 0.18))
+		for j in 3:
+			ci.draw_line(lp + Vector2(-13, -8 + j * 8), lp + Vector2(13, -8 + j * 8), Color(0.6, 0.12, 0.1), 1.0)
+		ci.draw_circle(lp, 8.0, Color(1.0, 0.75, 0.4, 0.5))
+	# a model kit box: box art of a hero robot
+	var bx2 := Rect2(size.x * 0.07, floor_y - 40, 60, 40)   # on the floor by the screens
+	_rc(ci, bx2, Color(0.95, 0.95, 0.97))
+	ci.draw_rect(Rect2(bx2.position.x, bx2.position.y, bx2.size.x, 9), Color(0.8, 0.15, 0.18))
+	ci.draw_colored_polygon(PackedVector2Array([bx2.position + Vector2(30, 13), bx2.position + Vector2(40, 22), bx2.position + Vector2(36, 38), bx2.position + Vector2(24, 38), bx2.position + Vector2(20, 22)]), Color(0.17, 0.31, 0.66))
+	ci.draw_colored_polygon(PackedVector2Array([bx2.position + Vector2(30, 18), bx2.position + Vector2(22, 10), bx2.position + Vector2(38, 10)]), Color(1.0, 0.82, 0.15))
+	# floor planks
+	for k in 6:
+		ci.draw_line(Vector2(0, floor_y + 4 + k * 4), Vector2(size.x, floor_y + 4 + k * 4), Color(0.3, 0.2, 0.12, 0.5), 1.0)
+
+
 ## (1.102) Kane Dynamics' showroom: black glass walls, gold seams, a part in a lit glass case, the logo on a screen,
 ## a spotlight on the plinth where your robot stands, Kane Heights through the window at night.
 static func _kane_back(ci: CanvasItem, size: Vector2, floor_y: float, t: float) -> void:
@@ -1629,6 +1702,7 @@ const ROOM := {
 	"volta": {"tint": Color(0.04, 0.0, 0.08), "dim": 0.2, "pool": 0.13},
 	"nimbus": {"tint": Color(0.0, 0.02, 0.06), "dim": 0.14, "pool": 0.1},
 	"kane": {"tint": Color(0.0, 0.0, 0.02), "dim": 0.3, "pool": 0.2},
+	"tenryu": {"tint": Color(0.05, 0.01, 0.02), "dim": 0.2, "pool": 0.1},
 	"scrap": {"tint": Color(0.06, 0.02, 0.08), "dim": 0.12, "pool": 0.07},
 	"phone": {"tint": Color(0.0, 0.0, 0.03), "dim": 0.0, "pool": 0.0},
 }

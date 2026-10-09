@@ -280,6 +280,14 @@ const SCENES := {
 		["VALE", "The Steel League. Kane Dynamics has been expecting you."],
 		["VALE", "Everything here is built in your grade. Precision is not cheap. Neither are you, now."],
 	]},
+	"tenryu_invite": {"place": "GUS'S BAY", "lines": [
+		["GUS", "Someone from Tenryu Mecha Works saw that special move. They want you at their dojo in Midtown."],
+		["GUS", "They came over to beat Kane. Loud, red and white, and they shout their moves. You'll like them."],
+	]},
+	"tenryu_first": {"place": "TENRYU MECHA WORKS", "lines": [
+		["HARU", "You! The one with the big finisher! Welcome to the dojo!"],
+		["HARU", "Every Tenryu robot calls its moves and fights with Spirit. Specials cost less, and finishers pay you back. Let's beat Kane together!"],
+	]},
 	"unlock_season": {"place": "GUS'S BAY", "lines": [
 		["GUS", "The calendar. League nights every other Saturday, cups on Wednesdays, rent the last Sunday. The tables and the odds are in here too."],
 	]},

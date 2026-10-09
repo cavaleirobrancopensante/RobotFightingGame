@@ -38,6 +38,8 @@ const TRAITS := {
 	# (1.102) Kane Dynamics
 	"isolate": {"name": "Isolated Parts", "desc": "Its parts float free of the core: limb hits pass %d%% less damage to it.", "values": [40, 60]},
 	"insight": {"name": "Insight", "desc": "Hits on the weak spot its scan found do %d%% more.", "values": [15, 25]},
+	# (1.103) Tenryu Mecha Works
+	"spirit": {"name": "Spirit", "desc": "Special moves cost %d%% less power. It calls each move by name, and a finisher that lands gives some power back.", "values": [15, 25]},
 	"tarp": {"name": "Tarp", "desc": "The tarp hides your weak spot: the enemy's first scans find nothing (%d of them).", "values": [1, 2]},
 }
 

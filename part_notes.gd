@@ -36,6 +36,8 @@ const SHAPE := {
 	"head:radarnose": ["Radar nose, picks you out", "Pitot tube, do not bend"],
 	"head:sentinel": ["Sentinel optics, serial filed off", "The visor never blinks"],
 	"head:oracle": ["Oracle lens, sees the cracks", "It found your weak spot already"],
+	"head:vfin": ["V-fin crest, hero issue", "Looks good on the box art"],
+	"head:faceplate": ["Faceplate mask, takes a punch", "It never shows how it feels"],
 	# torsos
 	"torso:barrel": ["Oil drum, two hoops", "Still smells of diesel"],
 	"torso:box": ["Boxed steel frame", "Hatch for the battery"],
@@ -68,6 +70,9 @@ const SHAPE := {
 	"torso:paragon": ["Paragon frame, no bolts showing", "Gold seams, black glass, cold"],
 	"torso:monolith": ["Three slabs, held apart by fields", "Hit an arm, the core barely feels it"],
 	"torso:hydraprime": ["Hydra Prime, two necks, four shoulders", "Built to be the last thing they see"],
+	"torso:herochest": ["Hero chest, glowing vents", "It shouts the move before it lands"],
+	"torso:samurai": ["Lacquered plate, laced in gold", "The skirt plates turn a sweep"],
+	"torso:combiner": ["Combiner frame, four shoulders", "Docking ports, waiting for friends"],
 	# arms
 	"arm:rod": ["Steel pipe, ball fist", "Elbow is a door hinge"],
 	"arm:piston": ["Hydraulic piston, 2 t push", "Piston stroke 30 cm"],
@@ -96,6 +101,7 @@ const SHAPE := {
 	"arm:turbine": ["Turbofan for a fist", "Blows them halfway across the ring"],
 	"arm:executor": ["Executor drill, gold tipped", "Finds the gap and makes it bigger"],
 	"arm:lancet": ["Lancet, a spear on a servo", "Hits from further than they think"],
+	"arm:beamsword": ["Beam sword, never needs sharpening", "Hums when it's angry"],
 	# legs
 	"leg:rod": ["Pipe leg, rubber foot", "Knee is a bike hub"],
 	"leg:piston": ["Piston knee, soft landing", "Hydraulic shock absorber"],
@@ -121,6 +127,8 @@ const SHAPE := {
 	"leg:ductfan": ["Ducted fan, keeps it airborne", "Falls like a feather"],
 	"leg:stride": ["Stride leg, reverse knee", "Walks like it owns the ring"],
 	"leg:gravpad": ["Grav pad, never touches down", "Sweeps pass under it"],
+	"leg:greaves": ["Thruster greaves, built to dash", "The calf jets light up when it runs"],
+	"leg:hakama": ["Armoured hakama, wide stance", "Hard to push off its spot"],
 	# back gear
 	"back:battery": ["Spare battery pack", "Hot-swappable cells"],
 	"back:spikes": ["Back spikes, no hugs", "Spikes face the grabber"],
@@ -136,6 +144,7 @@ const SHAPE := {
 	"back:spoiler": ["Racing spoiler, neon edge", "Keep going and it pushes you faster"],
 	"back:jetwings": ["Jet wings, one more jump", "Clear for take off"],
 	"back:shieldgen": ["Shield generator, gold ring", "Nothing gets through for a moment"],
+	"back:thrusters": ["Twin thrusters, hero blue flame", "Dashes in, even in the air"],
 }
 
 const KIND := {

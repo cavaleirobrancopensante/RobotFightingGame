@@ -3,7 +3,7 @@ const PlayLog = preload("res://playlog.gd")   # (1.87) the playtest log
 
 # helper scripts, loaded by path so the game also runs without an editor scan
 ## The game's version, shown on the main menu. Bump it with every change (1.1, 1.2, ...).
-const VERSION := "1.102"
+const VERSION := "1.103"
 const Arena = preload("res://arena.gd")
 const I18n = preload("res://i18n.gd")
 const Catalog = preload("res://catalog.gd")
@@ -1588,7 +1588,7 @@ const HEAD_KIND := {"bucket": "plain", "box": "plain", "skull": "plain", "tall":
 		"horned": "allround", "knight": "allround", "orb": "allround", "cyclops": "sniper", "visor": "sniper",
 		"wedge": "sniper", "laser": "sniper", "dish": "scanner", "tv": "scanner", "bulb": "scanner", "speaker": "scanner",
 		"rivet": "plain", "grille": "plain", "peeper": "scanner", "busted": "plain", "periscope": "scanner", "divingbell": "plain",
-		"welder": "plain", "beacon": "allround", "tesla": "scanner", "racer": "sniper", "canopy": "allround", "radarnose": "sniper", "sentinel": "sniper", "oracle": "scanner"}
+		"welder": "plain", "beacon": "allround", "tesla": "scanner", "racer": "sniper", "canopy": "allround", "radarnose": "sniper", "sentinel": "sniper", "oracle": "scanner", "vfin": "sniper", "faceplate": "plain"}
 const HEAD_TIMES := {"junk": [5.0, 8.0], "plain": [2.5, 4.0], "sniper": [0.6, 5.0], "scanner": [3.0, 1.0], "allround": [1.5, 2.0]}
 
 
@@ -1779,12 +1779,12 @@ const TECH_ORDER := ["hook", "overhand", "shove", "elbow", "push_kick", "roundho
 const TECH_DEFAULT := {"arm": "Jab", "leg": "Kick"}
 ## Part shapes a technique can't be thrown with (a hammer can't hook, a tread can't throw a knee).
 const TECH_NOT := {
-	"hook": ["hammer", "drill", "saw", "flame", "blade", "anvil", "crane", "wrecker", "torch", "magclamp", "wingblade", "executor", "lancet"],
+	"hook": ["hammer", "drill", "saw", "flame", "blade", "anvil", "crane", "wrecker", "torch", "magclamp", "wingblade", "executor", "lancet", "beamsword"],
 	"overhand": ["flame", "grapple", "grabber", "torch"],
 	"elbow": ["hammer", "anvil", "wrecker"],
 	"roundhouse": ["pillar", "tread", "wheel", "pogo", "thick", "hover", "stomper", "excavator"],
 	"axe_kick": ["tread", "wheel", "pillar", "hover", "excavator"],
-	"knee": ["tread", "wheel", "pogo", "spring", "pillar", "hover", "excavator", "maglev", "ductfan", "gravpad"],
+	"knee": ["tread", "wheel", "pogo", "spring", "pillar", "hover", "excavator", "maglev", "ductfan", "gravpad", "hakama"],
 }
 const TECH_LIMB_SLOTS := ["arm_front", "arm_back", "leg_front", "leg_back"]
 
@@ -6407,6 +6407,7 @@ const PLACES := {
 	"partsrus": {"name": "Parts-R-Us", "district": "oldtown", "pos": [410, 372], "road": 3, "kind": "shop", "feature": "shop"},
 	"brassworks": {"name": "Brassworks & Sons", "district": "oldtown", "pos": [232, 226], "road": 2, "kind": "maker", "maker": "brassworks"},
 	"breakers": {"name": "Hellfire Heavy", "district": "docks", "pos": [336, 446], "road": 1, "kind": "maker", "maker": "hellfire"},
+	"dojo": {"name": "Tenryu Mecha Works", "district": "midtown", "pos": [572, 248], "road": 4, "kind": "maker", "maker": "tenryu"},
 	"kanestore": {"name": "Kane Dynamics", "district": "heights", "pos": [744, 168], "road": 5, "kind": "maker", "maker": "kane"},
 	"hangar": {"name": "Nimbus Aerial", "district": "midtown", "pos": [850, 420], "road": 5, "kind": "maker", "maker": "nimbus"},
 	"showroom": {"name": "Volta Motor", "district": "midtown", "pos": [640, 430], "road": 4, "kind": "maker", "maker": "volta"},
@@ -6455,6 +6456,8 @@ func place_locked(place: String) -> String:
 		return "Opens to Rust League pilots. Or get enough followers to get noticed."   # (1.100)
 	if place == "hangar" and rank_index() < 3 and not story_seen.has("nimbus_invite"):
 		return "Opens to Iron League pilots. Or win four in a row and someone up there notices."   # (1.101)
+	if place == "dojo" and rank_index() < 2 and not story_seen.has("tenryu_invite"):
+		return "Opens to Rust League pilots. Or land a big special move and they'll come to you."   # (1.103)
 	return ""
 
 

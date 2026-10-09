@@ -191,6 +191,7 @@ class Fighter:
 	var sprint_t := 0.0      # (1.100) Neon Spoiler: how long it has walked the same way
 	var sprint_dir := 0
 	var sting_cd := 0.0      # (1.100) Volta set: a spark on the floor stung it a moment ago
+	var spirit_back := 0.0   # (1.103) power a Spirit finisher gives back when it lands
 	var jet_t := 0.0
 	var air_jumps := 0
 	var squash := 0.0        # landing squash timer (animation)
@@ -2270,7 +2271,12 @@ func attack_cost(f: Fighter, attack: String, limb: String) -> float:
 
 
 func special_cost(f: Fighter) -> float:
-	return f.power_max * 0.28 * (0.7 if f.style == "specialist" else 1.0) * (0.75 if f.sets.has("tenryu") else 1.0)
+	return f.power_max * 0.28 * (0.7 if f.style == "specialist" else 1.0) * (0.75 if f.sets.has("tenryu") else 1.0) * (1.0 - spirit_of(f) / 100.0)
+
+
+## (1.103) Spirit: a Hero Chest (or a Spirit Core) makes specials cheaper, calls them by name and refunds finishers.
+func spirit_of(f: Fighter) -> float:
+	return minf(45.0, limb_trait(f, "torso", "spirit") * 2.0 + f.gtraits.get("spirit", 0.0))
 
 
 func spend(f: Fighter, cost: float) -> void:
@@ -2544,6 +2550,14 @@ func start_special(f: Fighter, id: String) -> void:
 	f.cooldowns[id] = m["cd"]
 	f.buffer.clear()
 	spend(f, special_cost(f))
+	f.spirit_back = 0.0
+	if spirit_of(f) > 0.0 or f.sets.has("tenryu"):
+		# (1.103) a hero calls its move: the name flashes over the robot with a ring of light
+		popup((tr(m["name"]) as String).to_upper() + "!", f.pos + Vector2(0, -260.0 * f.scale), Color(1.0, 0.85, 0.2))
+		rings.append({"pos": f.pos + Vector2(0, -110.0 * f.scale), "t": 0.0, "color": Color(1.0, 0.85, 0.3), "r": 120.0})
+		Sfx.play("strike_tenryu", 0.1, -2.0)
+		if spirit_of(f) > 0.0 and (m["seq"] as Array).size() >= 4:
+			f.spirit_back = special_cost(f) * 0.35
 	if m.has("counter"):
 		f.counter_t = m["counter"]
 	if m.has("invuln"):
@@ -3266,12 +3280,19 @@ func apply_hit(att: Fighter, d: Fighter, a: Dictionary, at: Vector2) -> void:
 	if att.state == "special" and not att.special_moment and Specials.MOVES.has(att.special_id) and Specials.MOVES[att.special_id]["seq"].size() >= 5:
 		att.special_moment = true   # a finisher that lands: a short cinematic with its name
 		big_moment("finisher", d, 1.5, tr(Specials.MOVES[att.special_id]["name"]).to_upper())
+	if att.state == "special" and att.spirit_back > 0.0:
+		# (1.103) Spirit: a big move that lands gives some of its power back
+		att.power = minf(att.power_max, att.power + att.spirit_back)
+		att.spirit_back = 0.0
+		popup(tr("SPIRIT!"), att.pos + Vector2(0, -230.0 * att.scale), Color(1.0, 0.9, 0.4))
 	if att.state == "special" and Specials.MOVES.has(att.special_id):
 		var ai_k := all_fighters().find(att)
 		if clock - float(rec_sp_last.get(ai_k, -10.0)) > 1.5:
 			rec_sp_last[ai_k] = clock
 			var seq: int = Specials.MOVES[att.special_id]["seq"].size()
 			rec_mark("special", 22.0 + 8.0 * seq, "%s lands %s on %s", [rec_name(att), tr(Specials.MOVES[att.special_id]["name"]).to_upper(), rec_name(d)])
+			if att == player and seq >= 4 and mode != "watch" and mode != "replay" and sim.is_empty() and not GameData.story_seen.has("big_special"):
+				GameData.story_seen.append("big_special")   # (1.103) Tenryu notices
 	var touched: Array = a.get("touched", [])
 	var slot := choose_part(att, d, a.get("zone", "punch"), a.get("sure_aim", false), touched)
 	var hit_at := to_world_point(d, RobotArt.part_center(d.get_look(), slot))

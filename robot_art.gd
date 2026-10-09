@@ -30,7 +30,8 @@ const LEGS := {"rod": [60.0, 14.0], "piston": [62.0, 18.0], "spring": [66.0, 13.
 		"blade": [64.0, 12.0], "hover": [50.0, 18.0], "spider": [62.0, 13.0],
 		"stomper": [56.0, 22.0], "pipe": [62.0, 14.0], "bellows": [60.0, 17.0], "tripod": [64.0, 13.0],
 		"excavator": [50.0, 22.0], "hydraulic": [64.0, 17.0], "hotrod": [66.0, 13.0], "maglev": [58.0, 15.0],
-		"gear": [62.0, 13.0], "ductfan": [56.0, 14.0], "stride": [70.0, 15.0], "gravpad": [56.0, 15.0]}
+		"gear": [62.0, 13.0], "ductfan": [56.0, 14.0], "stride": [70.0, 15.0], "gravpad": [56.0, 15.0],
+		"greaves": [64.0, 16.0], "hakama": [58.0, 24.0]}
 # [width, height]
 const TORSOS := {"barrel": [60.0, 70.0], "box": [56.0, 76.0], "vee": [70.0, 78.0],
 		"core": [60.0, 76.0], "tank": [84.0, 82.0], "slim": [42.0, 82.0],
@@ -40,7 +41,8 @@ const TORSOS := {"barrel": [60.0, 70.0], "box": [56.0, 76.0], "vee": [70.0, 78.0
 		"engine": [74.0, 74.0], "loco": [70.0, 80.0], "drum": [58.0, 72.0], "boiler": [62.0, 80.0], "clockwork": [62.0, 76.0],
 		"fueltank": [62.0, 78.0], "hull": [78.0, 80.0], "coupe": [58.0, 74.0], "dynamo": [62.0, 76.0], "twincoil": [80.0, 72.0],
 		"fuselage": [54.0, 80.0], "cryopod": [60.0, 76.0], "biplane": [78.0, 78.0],
-		"paragon": [66.0, 80.0], "monolith": [56.0, 88.0], "hydraprime": [92.0, 86.0]}
+		"paragon": [66.0, 80.0], "monolith": [56.0, 88.0], "hydraprime": [92.0, 86.0],
+		"herochest": [72.0, 80.0], "samurai": [70.0, 82.0], "combiner": [80.0, 82.0]}
 const HEADS := {"bucket": [34.0, 32.0], "box": [38.0, 34.0], "dome": [42.0, 34.0], "cyclops": [40.0, 40.0],
 		"visor": [48.0, 28.0], "horned": [40.0, 34.0], "skull": [40.0, 42.0], "wedge": [44.0, 30.0],
 		"tall": [26.0, 52.0], "bulb": [44.0, 44.0], "tv": [46.0, 36.0], "dish": [40.0, 34.0], "laser": [38.0, 34.0],
@@ -48,7 +50,7 @@ const HEADS := {"bucket": [34.0, 32.0], "box": [38.0, 34.0], "dome": [42.0, 34.0
 		"rivet": [38.0, 36.0], "grille": [50.0, 38.0], "peeper": [34.0, 32.0], "busted": [46.0, 36.0],
 		"periscope": [36.0, 34.0], "divingbell": [44.0, 42.0], "welder": [40.0, 40.0], "beacon": [36.0, 30.0],
 		"tesla": [34.0, 30.0], "racer": [42.0, 36.0], "canopy": [42.0, 34.0], "radarnose": [44.0, 30.0],
-		"sentinel": [30.0, 48.0], "oracle": [40.0, 40.0]}
+		"sentinel": [30.0, 48.0], "oracle": [40.0, 40.0], "vfin": [40.0, 36.0], "faceplate": [42.0, 40.0]}
 const PUNCH_LEN := 84.0   # how far a punching hand reaches from the lead shoulder
 
 # [thickness, fist radius]
@@ -58,7 +60,7 @@ const ARMS := {"rod": [12.0, 10.0], "piston": [15.0, 12.0], "claw": [14.0, 7.0],
 		"blade": [13.0, 7.0], "flame": [16.0, 7.0], "magnet": [15.0, 7.0],
 		"anvil": [18.0, 9.0], "crane": [13.0, 7.0], "wrench": [12.0, 7.0], "grabber": [11.0, 6.0],
 		"gauntlet": [15.0, 13.0], "riveter": [12.0, 7.0], "wrecker": [15.0, 13.0], "torch": [13.0, 7.0], "arcfist": [14.0, 13.0], "magclamp": [12.0, 7.0],
-		"wingblade": [12.0, 7.0], "turbine": [14.0, 13.0], "executor": [15.0, 7.0], "lancet": [12.0, 7.0]}
+		"wingblade": [12.0, 7.0], "turbine": [14.0, 13.0], "executor": [15.0, 7.0], "lancet": [12.0, 7.0], "beamsword": [14.0, 8.0]}
 
 
 ## (1.93) Normal hits by limb, techniques included, and the arm poses that reach as far as a punch
@@ -1109,6 +1111,7 @@ static func arm_tip_extra(look: Dictionary, slot: String, pose: String) -> Vecto
 		"turbine": ext = fr + 10.0 * sz
 		"executor": ext = 36.0 * sz
 		"lancet": ext = 58.0 * sz
+		"beamsword": ext = 56.0 * sz
 	if pose == "elbow" or pose == "shove":
 		ext = 6.0   # the elbow (or a flat palm) does the hitting, not the weapon
 	return Vector2(ext, maxf(fr, th * 0.5))
@@ -1414,6 +1417,18 @@ static func _draw_arm(ci: CanvasItem, look: Dictionary, slot: String, s: Vector2
 				zz.append(p2)
 				ci.draw_polyline(zz, Color(0.6, 0.95, 1.0), 2.0)
 				ci.draw_circle(p1.lerp(p2, 0.5), 5.0, Color(0.5, 0.9, 1.0, 0.25))
+		"beamsword":
+			# (1.103) Tenryu: a hilt in the fist and a glowing beam blade, a white core in a cyan glow
+			_round(ci, h, fr, tc)
+			var bt := h + dir * 56.0 * sz
+			var hum := 0.85 + 0.15 * sin(t * 30.0)
+			ci.draw_line(h + dir * 6.0, bt, Color(0.3, 0.9, 1.0, 0.35 * hum), 9.0 * sz)
+			ci.draw_line(h + dir * 6.0, bt, Color(0.5, 0.95, 1.0, 0.8), 4.5 * sz)
+			ci.draw_line(h + dir * 6.0, bt - dir * 2.0, Color(1, 1, 1, 0.95), 2.0)
+			_plate(ci, PackedVector2Array([h - dir * 3.0 + perp * 4.0, h + dir * 7.0 + perp * 4.0, h + dir * 7.0 - perp * 4.0, h - dir * 3.0 - perp * 4.0]), Color(0.3, 0.3, 0.34))
+			ci.draw_line(h + dir * 7.0 + perp * 7.0, h + dir * 7.0 - perp * 7.0, Color(1.0, 0.82, 0.15), 3.0)   # the guard
+			if REACH_POSES.has(pose):
+				ci.draw_arc(h, 50.0 * sz, dir.angle() - 0.9, dir.angle() + 0.2, 10, Color(0.5, 0.95, 1.0, 0.35), 6.0)   # the slash
 		"executor":
 			# (1.102) Kane: a black drill with a gold tip, gold rifling turning, a light ring at its root
 			var root3 := h + dir * 2.0
@@ -1585,6 +1600,19 @@ static func _draw_back(ci: CanvasItem, look: Dictionary, g: Dictionary, pose: Di
 			for k in 3:
 				var ph := fmod(t * 0.7 + k * 0.33, 1.0)
 				ci.draw_circle(Vector2(sk.get_center().x - ph * 14.0, sk.position.y - 8.0 - ph * 30.0), 4.0 + ph * 8.0, Color(0.92, 0.93, 0.95, 0.45 * (1.0 - ph)))
+		"thrusters":
+			# (1.103) Tenryu: two white thruster pods with red tips; a long blue flame on a dash
+			var th6: float = g["th"]
+			for k in 2:
+				var pc3 := Vector2(bx - 8.0 - k * 9.0, top + 10.0 + k * 6.0)
+				_plate(ci, _chamfer(Rect2(pc3.x - 6, pc3.y, 12, th6 * 0.55), 3.0), c)
+				_plate(ci, PackedVector2Array([Vector2(pc3.x - 6, pc3.y), Vector2(pc3.x + 6, pc3.y), Vector2(pc3.x, pc3.y - 10)]), Color(0.75, 0.16, 0.18))
+				var nz2 := Vector2(pc3.x, pc3.y + th6 * 0.55)
+				_box(ci, Rect2(nz2.x - 4, nz2.y, 8, 5), Color(0.3, 0.3, 0.34))
+				if pose.get("boost", false) or pose.get("jet", false):
+					var ff3 := 0.7 + 0.3 * sin(t * 40.0 + k)
+					ci.draw_colored_polygon(PackedVector2Array([nz2 + Vector2(-4, 5), nz2 + Vector2(-30.0 * ff3, 16.0 * ff3), nz2 + Vector2(4, 5)]), Color(0.4, 0.75, 1.0, 0.9))
+					ci.draw_colored_polygon(PackedVector2Array([nz2 + Vector2(-2, 5), nz2 + Vector2(-14.0 * ff3, 9.0 * ff3), nz2 + Vector2(2, 5)]), Color(1, 1, 1, 0.9))
 		"shieldgen":
 			# (1.102) Kane: a black pylon on the back, a gold ring floating round its tip, a faint field shimmering
 			var th5: float = g["th"]
@@ -1763,6 +1791,24 @@ static func _draw_leg(ci: CanvasItem, look: Dictionary, slot: String, hip: Vecto
 			_limb(ci, knee, foot + Vector2(0, -4), c.lightened(0.15), th * 0.7)
 			_ln(ci, knee.lerp(foot, 0.3) - perp * th * 0.5, knee.lerp(foot, 0.3) + perp * th * 0.5, c.darkened(0.35), 3.0)
 			_joint(ci, knee, th * 0.6, c.darkened(0.25))
+		"greaves":
+			# (1.103) Tenryu: an armoured shin with a yellow knee guard and a thruster on the calf
+			_limb(ci, hip, knee, c.lightened(0.6), th * 0.95)
+			_limb(ci, knee, foot + Vector2(0, -8), c, th * 1.1)
+			_plate(ci, PackedVector2Array([knee - perp * th * 0.7 - dir * 6.0, knee + perp * th * 0.7 - dir * 6.0, knee + dir * 10.0]), Color(1.0, 0.82, 0.15))
+			var noz := knee.lerp(foot, 0.55) - perp * th * 0.8
+			_plate(ci, _chamfer(Rect2(noz.x - 5, noz.y - 6, 9, 12), 2.0), Color(0.75, 0.16, 0.18))
+			var fl2 := 0.6 + 0.4 * sin(Time.get_ticks_msec() * 0.04)
+			ci.draw_colored_polygon(PackedVector2Array([noz + Vector2(-5, 3), noz + Vector2(-5 - 10.0 * fl2, 6), noz + Vector2(-5, 8)]), Color(0.4, 0.75, 1.0, 0.7))
+		"hakama":
+			# (1.103) Tenryu: armoured hakama, a wide pleated skirt that flares to the floor, plates over the thigh
+			var hk := PackedVector2Array([hip - perp * th * 0.5, hip + perp * th * 0.5, foot + Vector2(0, -6) + perp * th * 0.85, foot + Vector2(0, -6) - perp * th * 0.85])
+			_plate(ci, hk, c)
+			for k in 3:
+				var u2 := 0.3 + k * 0.22
+				ci.draw_line(hip.lerp(foot, 0.15) + perp * th * (0.15 * (k - 1)), foot + Vector2(0, -8) + perp * th * (0.55 * (k - 1)), c.darkened(0.3), 1.5)
+			_plate(ci, _chamfer(Rect2(hip.x - th * 0.6, hip.y + 2, th * 1.2, th * 0.9), 2.0), Color(0.75, 0.16, 0.18))
+			ci.draw_line(hip + Vector2(-th * 0.6, th * 0.9 + 2), hip + Vector2(th * 0.6, th * 0.9 + 2), Color(1.0, 0.82, 0.15), 1.5)
 		"stride":
 			# (1.102) Kane: a sleek reverse-knee leg in black glass, gold joints, a light line down the shin
 			var ks2 := -1.0 if _front_legs else 1.0
@@ -2145,6 +2191,41 @@ static func _draw_torso(ci: CanvasItem, look: Dictionary, g: Dictionary, flash: 
 				_ln(ci, Vector2(bxk, y0 + 3), Vector2(bxk, y1 - 3), c, 3.5)
 			_plate(ci, _chamfer(Rect2(x0 - 3, y0 - 2, w + 6, 9), 2.0), trim)
 			_plate(ci, _chamfer(Rect2(x0 - 3, y1 - 8, w + 6, 9), 2.0), trim)
+		"herochest":
+			# (1.103) Tenryu: a hero's chest, blue shoulders, a red core band, two yellow vents that glow
+			var hcp := PackedVector2Array([Vector2(x0, y0), Vector2(x1, y0), Vector2(x1 - w * 0.06, y0 + r.size.y * 0.55), Vector2(x1 - w * 0.2, y1), Vector2(x0 + w * 0.2, y1), Vector2(x0 + w * 0.06, y0 + r.size.y * 0.55)])
+			_plate(ci, hcp, c)
+			_plate(ci, PackedVector2Array([Vector2(x0 - 3, y0 - 2), Vector2(x1 + 3, y0 - 2), Vector2(x1 - w * 0.08, y0 + r.size.y * 0.32), Vector2(x0 + w * 0.08, y0 + r.size.y * 0.32)]), Color(0.17, 0.31, 0.66))
+			for k in 2:
+				var vx := r.get_center().x + (k * 2 - 1) * w * 0.2 + (0.0 if front else w * 0.04)
+				var vr := Rect2(vx - w * 0.12, y0 + r.size.y * 0.08, w * 0.24, r.size.y * 0.2)
+				_plate(ci, _chamfer(vr, 2.0), Color(1.0, 0.82, 0.15))
+				for j in 3:
+					ci.draw_line(Vector2(vr.position.x + 3, vr.position.y + 4 + j * vr.size.y * 0.28), Vector2(vr.end.x - 3, vr.position.y + 4 + j * vr.size.y * 0.28), Color(0.45, 0.3, 0.05), 1.5)
+				ci.draw_rect(vr.grow(-3), Color(1.0, 0.9, 0.4, 0.15 + 0.12 * sin(t * 4.0)))
+			ci.draw_colored_polygon(PackedVector2Array([Vector2(x0 + w * 0.2, y0 + r.size.y * 0.6), Vector2(x1 - w * 0.2, y0 + r.size.y * 0.6), Vector2(x1 - w * 0.24, y0 + r.size.y * 0.72), Vector2(x0 + w * 0.24, y0 + r.size.y * 0.72)]), Color(0.75, 0.16, 0.18))
+		"samurai":
+			# (1.103) Tenryu: red lacquered plate in lames laced with gold, an armour skirt of plates hanging below
+			_plate(ci, _chamfer(Rect2(x0, y0, w, r.size.y * 0.72), 5.0), c)
+			for k in 4:
+				var ly := y0 + r.size.y * (0.12 + k * 0.15)
+				ci.draw_line(Vector2(x0 + 3, ly), Vector2(x1 - 3, ly), c.darkened(0.35), 2.0)
+				ci.draw_line(Vector2(x0 + w * 0.3, ly + 1), Vector2(x0 + w * 0.36, ly + 1), Color(1.0, 0.82, 0.15), 2.0)
+				ci.draw_line(Vector2(x1 - w * 0.36, ly + 1), Vector2(x1 - w * 0.3, ly + 1), Color(1.0, 0.82, 0.15), 2.0)
+			for k in 4:
+				var sx6 := x0 + 2 + k * (w - 4) / 4.0
+				_plate(ci, _chamfer(Rect2(sx6, y0 + r.size.y * 0.72, (w - 4) / 4.0 - 2, r.size.y * 0.3), 2.0), c.darkened(0.15))
+		"combiner":
+			# (1.103) Tenryu: a combining robot's chest, docking ports on the shoulders, a yellow emblem in the middle
+			_plate(ci, _chamfer(r, 8.0), c)
+			_plate(ci, PackedVector2Array([Vector2(x0 + w * 0.25, y0), Vector2(x1 - w * 0.25, y0), Vector2(r.get_center().x, y0 + r.size.y * 0.4)]), Color(0.17, 0.31, 0.66))
+			var em := Vector2(r.get_center().x, y0 + r.size.y * 0.55)
+			_plate(ci, PackedVector2Array([em + Vector2(0, -12), em + Vector2(12, 0), em + Vector2(0, 12), em + Vector2(-12, 0)]), Color(1.0, 0.82, 0.15))
+			ci.draw_circle(em, 4.0, Color(0.75, 0.16, 0.18))
+			for sx7 in [x0 + 7, x1 - 7]:
+				for j in 2:
+					_disc(ci, Vector2(sx7, y0 + r.size.y * (0.25 + j * 0.45)), 4.5, Color(0.3, 0.3, 0.34))
+			ci.draw_line(Vector2(x0 + 4, y1 - 8), Vector2(x1 - 4, y1 - 8), Color(0.75, 0.16, 0.18), 3.0)
 		"paragon":
 			# (1.102) Kane: a black glass V torso, gold seams, a light line that pulses down the middle, no bolts
 			var pg := PackedVector2Array([Vector2(x0, y0), Vector2(x1, y0), Vector2(x1 - w * 0.16, y1), Vector2(x0 + w * 0.16, y1)])
@@ -2303,7 +2384,7 @@ static func _draw_torso(ci: CanvasItem, look: Dictionary, g: Dictionary, flash: 
 			_bolts(ci, r)
 			_plate(ci, _chamfer(Rect2(x0 - 4, y0 - 2, w + 8, 12), 3.0), trim)
 			_plate(ci, _chamfer(Rect2(x0, y1 - 14, w, 10), 3.0), trim)
-	if not p["shape"] in ["core", "loco", "boiler", "fueltank", "cryopod"]:
+	if not p["shape"] in ["core", "loco", "boiler", "fueltank", "cryopod", "herochest", "combiner"]:
 		ci.draw_circle(chest, 9.0, eye.darkened(0.45))
 		_glow(ci, chest, 6.0, eye)
 		ci.draw_circle(chest, 6.0, eye)
@@ -2546,6 +2627,32 @@ static func _draw_head(ci: CanvasItem, look: Dictionary, g: Dictionary, flash: b
 				ci.draw_line(pc2 + Vector2(off2, -pr2), pc2 + Vector2(off2, pr2), Color(0.8, 0.64, 0.2), 2.0)
 			if not front:
 				_disc(ci, hc2 + Vector2(-w * 0.22, -h * 0.05), h * 0.1, Color(0.8, 0.64, 0.2))
+		"vfin":
+			# (1.103) Tenryu: a white helmet, blue cheeks, a red chin and the big yellow V-fin on the brow
+			_plate(ci, _chamfer(Rect2(x0, y0 + h * 0.15, w, h * 0.85), 6.0), c)
+			_plate(ci, _chamfer(Rect2(x0 - 2, y0 + h * 0.45, w * 0.22, h * 0.45), 2.0), Color(0.17, 0.31, 0.66))
+			if front:
+				_plate(ci, _chamfer(Rect2(x0 + w * 0.8, y0 + h * 0.45, w * 0.22, h * 0.45), 2.0), Color(0.17, 0.31, 0.66))
+			_plate(ci, PackedVector2Array([Vector2(cen.x - w * 0.14, y0 + h * 0.82), Vector2(cen.x + w * 0.14, y0 + h * 0.82), Vector2(cen.x, y0 + h + 4)]), Color(0.75, 0.16, 0.18))
+			var vc := Vector2(cen.x + (0.0 if front else w * 0.08), y0 + h * 0.2)
+			_plate(ci, PackedVector2Array([vc, vc + Vector2(-w * (0.55 if front else 0.3), -h * 0.55), vc + Vector2(-w * (0.45 if front else 0.22), -h * 0.6), vc + Vector2(0, -4)]), Color(1.0, 0.82, 0.15))
+			_plate(ci, PackedVector2Array([vc, vc + Vector2(w * (0.55 if front else 0.42), -h * 0.55), vc + Vector2(w * (0.45 if front else 0.36), -h * 0.6), vc + Vector2(0, -4)]), Color(1.0, 0.82, 0.15))
+			ci.draw_circle(vc, 3.0, Color(0.75, 0.16, 0.18))
+			if front:
+				for sgn2 in [-1.0, 1.0]:
+					ci.draw_colored_polygon(PackedVector2Array([Vector2(cen.x + sgn2 * w * 0.06, y0 + h * 0.42), Vector2(cen.x + sgn2 * w * 0.3, y0 + h * 0.4), Vector2(cen.x + sgn2 * w * 0.28, y0 + h * 0.5), Vector2(cen.x + sgn2 * w * 0.06, y0 + h * 0.5)]), eye)
+			else:
+				ci.draw_colored_polygon(PackedVector2Array([Vector2(x0 + w * 0.5, y0 + h * 0.42), Vector2(x0 + w * 0.92, y0 + h * 0.4), Vector2(x0 + w * 0.9, y0 + h * 0.5), Vector2(x0 + w * 0.5, y0 + h * 0.5)]), eye)
+		"faceplate":
+			# (1.103) Tenryu: a blue helmet with a white faceplate, narrow eye slits and a grille for a mouth
+			_plate(ci, _chamfer(Rect2(x0, y0, w, h), 7.0), c)
+			var fp := Rect2(cen.x - w * 0.32, y0 + h * 0.3, w * 0.64, h * 0.62) if front else Rect2(x0 + w * 0.38, y0 + h * 0.3, w * 0.6, h * 0.62)
+			_plate(ci, _chamfer(fp, 4.0), Color(0.93, 0.93, 0.95))
+			ci.draw_rect(Rect2(fp.position.x + 3, fp.position.y + fp.size.y * 0.15, fp.size.x - 6, 4), eye)
+			for k in 4:
+				var gx2 := fp.position.x + fp.size.x * (0.25 + k * 0.17)
+				ci.draw_line(Vector2(gx2, fp.position.y + fp.size.y * 0.55), Vector2(gx2, fp.end.y - 4), Color(0.25, 0.27, 0.32), 2.0)
+			_plate(ci, PackedVector2Array([Vector2(cen.x - 4, y0 + 2), Vector2(cen.x + 4, y0 + 2), Vector2(cen.x, y0 - 10)]), Color(1.0, 0.82, 0.15))
 		"sentinel":
 			# (1.102) Kane: a tall narrow head of black glass, a gold-lit visor line that sweeps, a fin on top
 			var sp2 := PackedVector2Array([Vector2(x0 + w * 0.15, y0), Vector2(x0 + w * 0.85, y0), Vector2(x0 + w, y0 + h * 0.3), Vector2(x0 + w * 0.9, y0 + h), Vector2(x0 + w * 0.1, y0 + h), Vector2(x0, y0 + h * 0.3)])

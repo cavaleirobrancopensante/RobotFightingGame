@@ -37,11 +37,11 @@ var stats_box: VBoxContainer
 var stats_panel: PanelContainer
 ## The robot's stats panel only shows where the robot is being looked at, fixed or fitted - not
 ## at the pub, in the office, on the scrapyard pile or in the crew bay.
-const STATS_SCENES := ["build", "moves", "paint", "storage", "shop", "workshop", "brass", "hell", "volta", "nimbus", "kane"]
+const STATS_SCENES := ["build", "moves", "paint", "storage", "shop", "workshop", "brass", "hell", "volta", "nimbus", "kane", "tenryu"]
 ## (1.99) Makers' own shops: Parts seg -> [city place, maker, title]. The seg is also the scene's name.
 const MAKER_SHOPS := {"brass": ["brassworks", "brassworks", "BRASSWORKS & SONS"], "hell": ["breakers", "hellfire", "HELLFIRE HEAVY"],
 		"volta": ["showroom", "volta", "VOLTA MOTOR"], "nimbus": ["hangar", "nimbus", "NIMBUS AERIAL"],
-		"kane": ["kanestore", "kane", "KANE DYNAMICS"]}
+		"kane": ["kanestore", "kane", "KANE DYNAMICS"], "tenryu": ["dojo", "tenryu", "TENRYU MECHA WORKS"]}
 var list_box: VBoxContainer
 var scroll: ScrollContainer
 var tabs_box: HBoxContainer
@@ -545,6 +545,7 @@ func segs_of(t: String) -> Array:
 			out.append(["volta", tr("Volta Motor"), ""])   # (1.100) the showroom
 			out.append(["nimbus", tr("Nimbus Aerial"), ""])   # (1.101) the hangar
 			out.append(["kane", tr("Kane Dynamics"), ""])   # (1.102) the showroom in Kane Heights
+			out.append(["tenryu", tr("Tenryu Mecha Works"), ""])   # (1.103) the dojo
 		"Season":
 			out.append(["calendar", tr("Calendar"), ""])
 			out.append(["table", tr("Standings"), ""])
@@ -1127,9 +1128,9 @@ func refresh() -> void:
 		tab = "Bay"
 	if away_from_bay() and HOME_TABS.has(tab):
 		# (1.79) out in the city: you stay where you are (the bay opens when you're back)
-		tab = {"pub": "Pub", "partsrus": "Parts", "scrapyard": "Parts", "brassworks": "Parts", "breakers": "Parts", "showroom": "Parts", "hangar": "Parts", "kanestore": "Parts"}.get(GameData.pilot_at, "City")
+		tab = {"pub": "Pub", "partsrus": "Parts", "scrapyard": "Parts", "brassworks": "Parts", "breakers": "Parts", "showroom": "Parts", "hangar": "Parts", "kanestore": "Parts", "dojo": "Parts"}.get(GameData.pilot_at, "City")
 		if tab == "Parts":
-			segs_on["Parts"] = {"partsrus": "dealer", "brassworks": "brass", "breakers": "hell", "showroom": "volta", "hangar": "nimbus", "kanestore": "kane"}.get(GameData.pilot_at, "scrap")
+			segs_on["Parts"] = {"partsrus": "dealer", "brassworks": "brass", "breakers": "hell", "showroom": "volta", "hangar": "nimbus", "kanestore": "kane", "dojo": "tenryu"}.get(GameData.pilot_at, "scrap")
 	set_seg(seg())
 	# (1.77) the City: the map takes the left side (wider), the panel on the right says what's where
 	var in_city := tab == "City"
@@ -1176,7 +1177,7 @@ func refresh() -> void:
 			match seg():
 				"dealer":
 					build_dealer()
-				"brass", "hell", "volta", "nimbus", "kane":
+				"brass", "hell", "volta", "nimbus", "kane", "tenryu":
 					build_maker_shop(str(MAKER_SHOPS[seg()][1]))
 				"order":
 					build_order()
@@ -4865,7 +4866,7 @@ func set_scene_for_tab() -> void:
 		"Storage":
 			scene = "storage"
 		"Parts":
-			scene = {"dealer": "shop", "order": "workshop", "brass": "brass", "hell": "hell", "volta": "volta", "nimbus": "nimbus", "kane": "kane"}.get(seg(), "scrap")
+			scene = {"dealer": "shop", "order": "workshop", "brass": "brass", "hell": "hell", "volta": "volta", "nimbus": "nimbus", "kane": "kane", "tenryu": "tenryu"}.get(seg(), "scrap")
 		"Season":
 			scene = {"cups": "cups"}.get(seg(), "office")
 		"Pub":
@@ -8380,7 +8381,7 @@ func place_of(t: String, key: String = "") -> String:
 		return "pub"
 	if t == "Parts":
 		var k := key if key != "" else str(segs_on.get("Parts", "scrap"))
-		return {"dealer": "partsrus", "brass": "brassworks", "hell": "breakers", "volta": "showroom", "nimbus": "hangar", "kane": "kanestore"}.get(k, "scrapyard")
+		return {"dealer": "partsrus", "brass": "brassworks", "hell": "breakers", "volta": "showroom", "nimbus": "hangar", "kane": "kanestore", "tenryu": "dojo"}.get(k, "scrapyard")
 	return ""
 
 
@@ -8456,6 +8457,7 @@ const PLACE_TEXT := {"home": "Gus's building: the bay, storage, the workshop and
 		"breakers": "Hellfire Heavy's breaker's yard on the docks. Magda tears robots apart and sells you the heavy stuff, in your grade.",
 		"showroom": "Volta Motor's showroom in Midtown. Chrome, neon and Dex. The whole Volta line on the turntable, in your grade.",
 		"kanestore": "Kane Dynamics' showroom in Kane Heights. Black glass and gold. They sell to Steel League pilots and champions. Everyone else may look.",
+		"dojo": "Tenryu Mecha Works' dojo in Midtown. Hero robots from across the sea, built to fight Kane. Haru calls every move by name.",
 		"hangar": "Nimbus Aerial's hangar at the edge of the Midtown airfield. Captain Wren tests everything herself. The whole Nimbus line, in your grade.",
 		"scrapyard": "The Scrapyard. Mountains of dead robots. One dig a day, an hour of digging.",
 		"scrap_ring": "The scrap ring. Pickups and the Scrap League fight here.",
@@ -8573,6 +8575,11 @@ func enter_place(place: String) -> void:
 			segs_on["Parts"] = "nimbus"
 			if not GameData.story_seen.has("nimbus_first"):
 				get_tree().create_timer(0.4).timeout.connect(func(): play_story(["nimbus_first"]))
+		"dojo":
+			tab = "Parts"
+			segs_on["Parts"] = "tenryu"
+			if not GameData.story_seen.has("tenryu_first"):
+				get_tree().create_timer(0.4).timeout.connect(func(): play_story(["tenryu_first"]))
 		"kanestore":
 			tab = "Parts"
 			segs_on["Parts"] = "kane"
@@ -8928,6 +8935,11 @@ func check_gus_cards() -> void:
 	if not GameData.story_seen.has("nimbus_invite") and GameData.streak >= 4 and GameData.tour < 0 \
 			and GameData.story_seen.has("first_garage") and GameData.rank_index() < 3:
 		play_story(["nimbus_invite"])
+		return
+	# (1.103) Tenryu saw you land a big special move (before the Rust League opens the dojo)
+	if not GameData.story_seen.has("tenryu_invite") and GameData.story_seen.has("big_special") and GameData.tour < 0 \
+			and GameData.story_seen.has("first_garage") and GameData.rank_index() < 2:
+		play_story(["tenryu_invite"])
 		return
 	if not GameData.gus_alerts.is_empty():
 		var al: Dictionary = GameData.gus_alerts.pop_front()

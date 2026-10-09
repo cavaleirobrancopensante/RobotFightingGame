@@ -11,7 +11,7 @@ extends RefCounted
 
 ## Makers whose parts come in one size only (no Light / Heavy copies). Scrapworks keeps loose sizes:
 ## odd, mismatched sizes are its character.
-const ONE_SIZE := ["oldiron", "brassworks", "hellfire", "volta", "nimbus", "kane"]
+const ONE_SIZE := ["oldiron", "brassworks", "hellfire", "volta", "nimbus", "kane", "tenryu"]
 
 const DEFS := [
 	# ---- Old Iron Foundry: cast iron, big hex bolts, most HP and armour, slow, heavy on power
@@ -172,6 +172,29 @@ const DEFS := [
 		"maker": "kane", "gimmick": "shield"},
 	{"id": "kane_hydra", "kind": "torso", "name": "Hydra Prime", "cost": 5200, "hp": 170, "armor": 16, "speed": -4, "draw": 7,
 		"shape": "hydraprime", "color": "#1a1a2e", "mounts": ["head2", "arm_front2", "arm_back2"], "maker": "kane"},
+	# ---- Tenryu Mecha Works (1.103): hero mecha. Red, white, blue and yellow, V-fins, chest vents; Spirit makes specials cheap
+	{"id": "head_horned", "kind": "head", "name": "V-Fin Helm", "cost": 1500, "hp": 52, "armor": 10, "aim": 16, "draw": 3, "chips": 3,
+		"shape": "vfin", "color": "#f2f2f5", "maker": "tenryu"},
+	{"id": "tenryu_head_2", "kind": "head", "name": "Faceplate Mask", "cost": 1400, "hp": 70, "armor": 22, "aim": 6, "draw": 3, "chips": 2,
+		"shape": "faceplate", "color": "#2b4fa8", "size": 1.05, "maker": "tenryu"},
+	{"id": "torso_vee", "kind": "torso", "name": "Hero Chest", "cost": 1600, "hp": 125, "armor": 12, "speed": 6, "draw": 4,
+		"shape": "herochest", "color": "#f2f2f5", "maker": "tenryu", "trait": "spirit", "trait_lv": 2},
+	{"id": "tenryu_torso_2", "kind": "torso", "name": "Samurai Plate", "cost": 1700, "hp": 140, "armor": 20, "speed": -2, "draw": 4,
+		"shape": "samurai", "color": "#b8282e", "maker": "tenryu"},
+	{"id": "arm_rocket", "kind": "arm", "name": "Rocket Punch", "cost": 1500, "hp": 54, "armor": 8, "damage": 24, "speed": 4, "draw": 4,
+		"shape": "rocket", "color": "#b8282e", "size": 1.05, "maker": "tenryu", "gimmick": "rocket_fist"},
+	{"id": "tenryu_arm_2", "kind": "arm", "name": "Beam Sword Arm", "cost": 1700, "hp": 50, "armor": 8, "damage": 30, "speed": 10, "draw": 5,
+		"shape": "beamsword", "color": "#f2f2f5", "maker": "tenryu"},
+	{"id": "tenryu_leg_1", "kind": "leg", "name": "Thruster Greaves", "cost": 1500, "hp": 58, "armor": 8, "damage": 16, "speed": 34, "draw": 4,
+		"shape": "greaves", "color": "#2b4fa8", "maker": "tenryu"},
+	{"id": "tenryu_leg_2", "kind": "leg", "name": "Armoured Hakama", "cost": 1500, "hp": 74, "armor": 16, "damage": 14, "speed": 4, "draw": 4,
+		"shape": "hakama", "color": "#1e2a4a", "maker": "tenryu", "trait": "anchored", "trait_lv": 2},
+	{"id": "tenryu_reactor", "kind": "reactor", "name": "Spirit Core", "cost": 1600, "output": 32, "color": "#ffd23f", "maker": "tenryu",
+		"trait": "spirit", "trait_lv": 1},
+	{"id": "back_booster", "kind": "back", "name": "Twin Thruster Pack", "cost": 1400, "draw": 3, "shape": "thrusters", "color": "#f2f2f5",
+		"maker": "tenryu", "gimmick": "booster"},
+	{"id": "tenryu_combiner", "kind": "torso", "name": "Combiner Frame", "cost": 2300, "hp": 120, "armor": 12, "speed": 0, "draw": 5,
+		"shape": "combiner", "color": "#f2f2f5", "mounts": ["arm_front2", "arm_back2"], "maker": "tenryu"},
 ]
 
 ## Old parts the new lines replace.
@@ -188,9 +211,9 @@ const RETIRED := ["torso_box", "torso_plate", "torso_tank", "arm_rod", "arm_bulk
 		"kane_leg_1", "head_laser", "head_mast", "arm_drill", "reactor_fusion"]   # (1.102) Kane
 
 ## The makers whose lines are in (their launch posts once on BotMedia).
-const LAUNCHED := ["oldiron", "scrapworks", "brassworks", "hellfire", "volta", "nimbus", "kane"]
+const LAUNCHED := ["oldiron", "scrapworks", "brassworks", "hellfire", "volta", "nimbus", "kane", "tenryu"]
 ## (1.98) Makers with their own shop in the city: Parts-R-Us stops stocking them.
-const OWN_SHOP := {"brassworks": "brassworks", "hellfire": "breakers", "volta": "showroom", "nimbus": "hangar", "kane": "kanestore"}
+const OWN_SHOP := {"brassworks": "brassworks", "hellfire": "breakers", "volta": "showroom", "nimbus": "hangar", "kane": "kanestore", "tenryu": "dojo"}
 
 
 ## The part list with the makers' lines in: same ids replaced whole, new ids added, old ones retired.
