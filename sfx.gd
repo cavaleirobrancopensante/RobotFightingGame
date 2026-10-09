@@ -7,7 +7,10 @@ const NAMES := ["click", "buy", "equip", "error", "swing", "uppercut", "hit", "h
 		"block", "jump", "land", "step", "ko", "round", "fight", "victory", "defeat",
 		"crowd_cheer", "crowd_ooh", "break", "repair", "sell", "target", "untarget",
 		"talk", "talk_robot", "time", "spark",
-		"voice_gravel", "voice_high", "voice_smooth", "voice_nasal", "voice_boom"]
+		"voice_gravel", "voice_high", "voice_smooth", "voice_nasal", "voice_boom",
+		# (1.92) each maker's footstep and hit (tools/make_maker_sounds.py)
+		"step_scrapworks", "step_oldiron", "step_brassworks", "step_hellfire", "step_volta", "step_nimbus", "step_kane", "step_tenryu", "step_menagerie",
+		"strike_scrapworks", "strike_oldiron", "strike_brassworks", "strike_hellfire", "strike_volta", "strike_nimbus", "strike_kane", "strike_tenryu", "strike_menagerie"]
 const VOICES := 12
 const MUSIC_DB := -9.0
 const FIGHT_MUSIC_DB := -13.5   # fight songs are mixed hot: play them quieter so they don't blast

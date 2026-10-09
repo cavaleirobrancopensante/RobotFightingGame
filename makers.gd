@@ -63,6 +63,48 @@ const PART_MAKER := {
 }
 
 
+## (1.92) How each maker's robots move (the robot moves like the maker with the most parts on it).
+## bob = walk bounce, cad = step rhythm (looks only, not speed), lean = walking lean, flinch = how far
+## a hit knocks it back, squash = landing squash, idle / twitch = guard bob and shoulder twitches,
+## fx = its own touch: rattle, stomp (the floor shakes), steam (a chuff each step), lurch (leans into
+## everything), bounce (springy, sparks), float (soft landings, a slight hover), glide (no bob at all),
+## hero (hero landings, thruster flare on jumps), sway (an animal sway).
+const MOTION := {
+	"scrapworks": {"bob": 1.1, "cad": 1.0, "lean": 1.0, "flinch": 1.25, "squash": 1.1, "idle": 1.3, "twitch": 2.6, "fx": "rattle"},
+	"oldiron": {"bob": 1.7, "cad": 0.78, "lean": 0.6, "flinch": 0.45, "squash": 1.5, "idle": 0.5, "twitch": 0.2, "fx": "stomp"},
+	"brassworks": {"bob": 0.9, "cad": 0.95, "lean": 0.7, "flinch": 0.8, "squash": 1.0, "idle": 0.8, "twitch": 0.3, "fx": "steam"},
+	"hellfire": {"bob": 1.2, "cad": 0.9, "lean": 2.4, "flinch": 1.0, "squash": 1.2, "idle": 1.0, "twitch": 0.8, "fx": "lurch"},
+	"volta": {"bob": 2.0, "cad": 1.25, "lean": 1.0, "flinch": 1.2, "squash": 1.3, "idle": 1.7, "twitch": 1.5, "fx": "bounce"},
+	"nimbus": {"bob": 0.5, "cad": 1.05, "lean": 0.8, "flinch": 1.1, "squash": 0.35, "idle": 0.9, "twitch": 0.3, "fx": "float"},
+	"kane": {"bob": 0.0, "cad": 1.0, "lean": 0.4, "flinch": 0.6, "squash": 0.5, "idle": 0.3, "twitch": 0.0, "fx": "glide"},
+	"tenryu": {"bob": 0.8, "cad": 1.1, "lean": 1.2, "flinch": 0.9, "squash": 1.0, "idle": 1.1, "twitch": 0.4, "fx": "hero"},
+	"menagerie": {"bob": 1.0, "cad": 0.95, "lean": 1.0, "flinch": 1.0, "squash": 1.0, "idle": 1.2, "twitch": 0.6, "fx": "sway"},
+}
+const MOTION_PLAIN := {"bob": 1.0, "cad": 1.0, "lean": 1.0, "flinch": 1.0, "squash": 1.0, "idle": 1.0, "twitch": 1.0, "fx": ""}
+
+
+## Whose motion and sounds a robot takes: the maker with the most parts (2 or more), a tie going to
+## the torso's maker, else the first in ORDER. "" = a mixed robot or junk: the plain motion.
+static func motion_maker(ids: Array, torso_id: String = "") -> String:
+	var c := counts(ids)
+	var best := 0
+	for m in c:
+		best = maxi(best, int(c[m]))
+	if best < 2:
+		return ""
+	var tm := str(GameData.part_def(torso_id).get("maker", "")) if torso_id != "" else ""
+	if tm != "" and int(c.get(tm, 0)) == best:
+		return tm
+	for m in ORDER:
+		if int(c.get(m, 0)) == best:
+			return m
+	return ""
+
+
+static func motion(m: String) -> Dictionary:
+	return MOTION.get(m, MOTION_PLAIN)
+
+
 ## Which maker built a part definition ("" = nameless junk).
 static func of_def(d: Dictionary) -> String:
 	if d.has("maker"):

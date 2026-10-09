@@ -185,6 +185,9 @@ class Fighter:
 	var style := "striker"
 	var gtraits := {}        # robot-wide traits from reactor / back gear: trait -> value
 	var sets: Array = []     # (1.90) makers with 3+ parts on this robot: their set perks are on
+	var mk := ""             # (1.92) the maker it moves and sounds like ("" = plain)
+	var mo: Dictionary = {}  # that maker's motion dials (Makers.MOTION)
+	var hero_t := 0.0        # (1.92) Tenryu: holding a hero landing
 	var slow_t := 0.0        # frost
 	var hobble_t := 0.0      # leg got hit: slower walking
 	var numb_t := 0.0        # arm got hit: weaker hits
@@ -789,6 +792,9 @@ func make_fighter(spec: Dictionary) -> Fighter:
 		if pp is Dictionary and pp.has("id"):
 			ids.append(str(pp["id"]))
 	f.sets = GameData.Makers.sets(ids)
+	var tp = spec["parts"].get("torso", {})
+	f.mk = GameData.Makers.motion_maker(ids, str(tp.get("id", "")) if tp is Dictionary else "")
+	f.mo = GameData.Makers.motion(f.mk)
 	if f.sets.has("kane"):
 		f.aim_time *= 0.75
 		f.scan_time *= 0.75
@@ -2357,6 +2363,8 @@ func launch_jump(f: Fighter) -> void:
 	Sfx.play("jump", 0.1)
 	for k in 2:
 		add_spark(Vector2(f.pos.x + (k * 2 - 1) * 26.0 * f.scale, floor_y - 6.0), Color(0.6, 0.6, 0.6, 0.6), 14.0 * f.scale)   # a puff of dust
+	if f.mk == "tenryu":
+		f.jet_t = 0.25   # (1.92) thrusters flare on the way up
 
 
 func update_charge(f: Fighter, i: Dictionary, delta: float) -> bool:
@@ -2818,11 +2826,12 @@ func update_fighter(f: Fighter, o: Fighter, i: Dictionary, delta: float) -> void
 			elif absf(f.roll_a) > 0.001:
 				f.roll_a = lerp_angle(f.roll_a, round(f.roll_a / TAU) * TAU, minf(1.0, delta * 8.0))   # rocks back upright
 			if dir != 0:
-				f.walk_phase += delta * (8.0 if f.legs() < 2 else 12.0) * spd
+				var cad := float(f.mo.get("cad", 1.0))
+				f.walk_phase += delta * (8.0 if f.legs() < 2 else 12.0) * spd * cad
 				f.step_timer -= delta
 				if f.step_timer <= 0.0:
-					f.step_timer = 0.28 / maxf(0.4, spd)
-					Sfx.play("step", 0.2, -10.0)
+					f.step_timer = 0.28 / maxf(0.4, spd) / cad
+					maker_step(f)
 			if i["jump"] and not f.blocking and f.legs() > 0:
 				# the knees bend first (the warning the other side can read), then it launches
 				f.state = "prejump"
@@ -2849,8 +2858,13 @@ func update_fighter(f: Fighter, o: Fighter, i: Dictionary, delta: float) -> void
 		f.pos.y = floor_y
 		f.vel.y = 0.0
 		if not f.on_ground:
-			Sfx.play("land", 0.15, -6.0)
+			Sfx.play("land", 0.15, -14.0 if f.mk == "nimbus" else -6.0)   # (1.92) Nimbus lands softly
 			f.squash = 0.18
+			if f.mk == "tenryu" and f.state == "jump":
+				f.hero_t = 0.4   # one knee down, a fist on the floor
+				add_spark(Vector2(f.pos.x + f.facing * 26.0 * f.scale, floor_y - 4.0), Color(1.0, 0.75, 0.3), 26.0 * f.scale)
+			elif f.mk == "oldiron":
+				shake = maxf(shake, 4.0)
 			for k in 2:
 				add_spark(Vector2(f.pos.x + (k * 2 - 1) * 30.0 * f.scale, floor_y - 6.0), Color(0.6, 0.6, 0.6, 0.6), 16.0 * f.scale)
 			if f.state == "jump":
@@ -2875,6 +2889,32 @@ func update_fighter(f: Fighter, o: Fighter, i: Dictionary, delta: float) -> void
 		f.on_ground = false
 	f.pos.x = clampf(f.pos.x, wall_l + body_half(f) + 8.0 * f.scale, wall_r - body_half(f) - 8.0 * f.scale)
 	f.squash = maxf(0.0, f.squash - delta)
+	f.hero_t = maxf(0.0, f.hero_t - delta) if f.state == "idle" else 0.0
+
+
+## (1.92) A footstep in the robot's maker's voice, with its touch: Old Iron shakes the floor, Brassworks
+## chuffs steam, Volta sparks, Hellfire coughs exhaust.
+func maker_step(f: Fighter) -> void:
+	if f.mk == "":
+		Sfx.play("step", 0.2, -10.0)
+		return
+	Sfx.play("step_" + f.mk, 0.12, -9.0)
+	var foot := Vector2(f.pos.x + f.facing * 10.0 * f.scale, floor_y - 4.0)
+	match str(f.mo.get("fx", "")):
+		"stomp":
+			shake = maxf(shake, 2.2)
+			add_spark(foot, Color(0.55, 0.52, 0.48, 0.6), 14.0 * f.scale)
+		"steam":
+			var g := RobotArt.geom(f.get_look())
+			var back := to_world_point(f, Vector2(-float(g["tw"]) * 0.45, (g["torso"] as Rect2).position.y + 6.0))
+			for j in 2:
+				smoke.append({"pos": back + Vector2(-f.facing * 8.0 * j, -10.0 * j) * f.scale, "t": 0.0, "dark": false, "steam": true, "k": 1.1 + 0.3 * j})
+		"bounce":
+			add_spark(foot, Color(0.4, 0.85, 1.0), 10.0 * f.scale)
+		"lurch":
+			if randf() < 0.35:
+				var g2 := RobotArt.geom(f.get_look())
+				smoke.append({"pos": to_world_point(f, Vector2(-float(g2["tw"]) * 0.5, (g2["torso"] as Rect2).position.y + 10.0)), "t": 0.0, "dark": true, "k": 0.5})
 
 
 ## Which part a hit lands on. touched = the parts the striking limb actually reached (melee); then
@@ -3255,6 +3295,8 @@ func apply_hit(att: Fighter, d: Fighter, a: Dictionary, at: Vector2) -> void:
 		# a punch cracks, a kick thuds lower
 		var fam_k := str(a.get("family", ""))
 		Sfx.play("hit_big" if dmg >= 12.0 else "hit", 0.08, 0.0, 0.78 if fam_k == "kick" else (1.12 if fam_k == "punch" else 1.0))
+		if att.mk != "":
+			Sfx.play("strike_" + att.mk, 0.08, -7.0)   # (1.92) the maker's own ring on top
 
 	check_ko(att, d)
 
@@ -3554,6 +3596,8 @@ func _draw() -> void:
 	for s in smoke:
 		var t: float = s["t"] / 1.2
 		var c := Color(0.08, 0.08, 0.08, 0.65 * (1.0 - t)) if s["dark"] else Color(0.35, 0.35, 0.37, 0.45 * (1.0 - t))
+		if s.get("steam", false):
+			c = Color(0.95, 0.96, 0.98, 0.62 * (1.0 - t))   # (1.92) Brassworks steam
 		ci.draw_circle(s["pos"] + off, (6.0 + t * 14.0) * float(s.get("k", 1.0)), c)
 	for s in sparks:
 		var t: float = s["t"] / 0.25
@@ -3983,7 +4027,7 @@ func body_pose(f: Fighter) -> Dictionary:
 		sy = 0.9
 		state = "hit"
 	elif f.state == "hit":
-		var k := clampf(f.timer / 0.45, 0.0, 1.0)
+		var k := clampf(f.timer / 0.45, 0.0, 1.0) * float(f.mo.get("flinch", 1.0))   # (1.92) Old Iron barely flinches
 		lean = -f.facing * 0.38 * k
 		dx = -f.facing * 12.0 * k * f.scale
 		sx = 1.0 - 0.08 * k
@@ -4002,12 +4046,41 @@ func body_pose(f: Fighter) -> Dictionary:
 			lean += 0.06 * pull * f.facing   # one arm: it lurches to that side with every pull
 		dx = pull * 3.0 * f.scale * signf(f.vel.x)
 	elif f.state == "walk":
-		lean = signf(f.vel.x) * 0.08
-		base.y -= absf(sin(f.walk_phase)) * 4.0 * f.scale
+		# (1.92) each maker walks its own way: the bounce, the lean, its own touch
+		lean = signf(f.vel.x) * 0.08 * float(f.mo.get("lean", 1.0))
+		var bob := absf(sin(f.walk_phase))
+		base.y -= bob * 4.0 * float(f.mo.get("bob", 1.0)) * f.scale
+		match str(f.mo.get("fx", "")):
+			"lurch":
+				lean = f.facing * 0.12 + signf(f.vel.x) * 0.06   # leans into everything, even backing off
+				dx = f.facing * sin(f.walk_phase * 2.0) * 3.0 * f.scale
+			"bounce":
+				sy = 1.0 - 0.06 * pow(1.0 - bob, 4.0)   # springs off every step
+				sx = 1.0 + 0.04 * pow(1.0 - bob, 4.0)
+			"sway":
+				lean += sin(f.walk_phase) * 0.07
+			"rattle":
+				lean += sin(f.walk_phase * 3.3) * 0.025
+			"stomp":
+				sy = 1.0 - 0.04 * pow(1.0 - bob, 8.0)   # a thud as each foot lands
 	elif f.blocking:
 		lean = -f.facing * 0.07
+	elif f.hero_t > 0.0:
+		# Tenryu's hero landing: down on one knee, then up
+		var hk := clampf(f.hero_t / 0.4, 0.0, 1.0)
+		sy = 1.0 - 0.18 * hk
+		sx = 1.0 + 0.08 * hk
+		lean = f.facing * 0.18 * hk
 	elif f.on_ground and f.state != "ko":
-		pass   # robots don't breathe: the idle is in the guard and the head (idle_bits)
+		# robots don't breathe: the idle is in the guard and the head (idle_bits), plus the maker's touch
+		match str(f.mo.get("fx", "")):
+			"float":
+				base.y -= (1.0 + sin(clock * 2.2 + f.team)) * 2.0 * f.scale   # barely touching the floor
+			"bounce":
+				base.y -= absf(sin(clock * 5.5 + f.team)) * 2.5 * f.scale   # never still
+			"rattle":
+				if fmod(clock * 1.3 + f.team * 0.4, 1.0) < 0.06:
+					rot = sin(clock * 90.0) * 0.02   # something loose shakes
 	# (1.89) one leg shorter than the other: a limp. Walking, the body drops onto the short leg and
 	# tilts toward it, then heaves back up onto the long one while the short foot swings through
 	# the air; standing, it sags toward the short side with the long knee bent.
@@ -4033,7 +4106,7 @@ func body_pose(f: Fighter) -> Dictionary:
 		else:
 			sy *= 1.04
 	if f.squash > 0.0:
-		var q := f.squash / 0.18
+		var q := f.squash / 0.18 * float(f.mo.get("squash", 1.0))
 		sy *= 1.0 - 0.22 * q
 		sx *= 1.0 + 0.16 * q
 	if rot == 0.0:
@@ -4155,11 +4228,11 @@ func idle_bits(f: Fighter) -> Array:
 	var st: Array = IDLE_STYLE.get(f.style, IDLE_STYLE["striker"])
 	var ph := float(f.team) * 1.7 + float(f.wingman + 1) * 0.9
 	var t := clock * float(st[0]) + ph
-	var amp: float = st[1]
+	var amp: float = float(st[1]) * float(f.mo.get("idle", 1.0))   # (1.92) Volta jitters, Kane stays still
 	var l := Vector2(0, sin(t) * amp)
 	var r := Vector2(0, sin(t * 0.83 + 2.1) * amp)
 	# twitches: short jerks of a shoulder, more often for twitchy mechanics
-	var tw := fmod(clock * float(st[3]) + ph * 0.37, 1.0)
+	var tw := fmod(clock * float(st[3]) * float(f.mo.get("twitch", 1.0)) + ph * 0.37, 1.0) if float(f.mo.get("twitch", 1.0)) > 0.0 else 0.25
 	if tw < 0.05:
 		l += Vector2(3.0, -4.0)
 	elif tw > 0.5 and tw < 0.53:
@@ -6604,7 +6677,7 @@ func rec_scan() -> void:
 	for s in smoke:
 		if not s.has("_r"):
 			s["_r"] = 1
-			rec_ev.append(["k", _r1(s["pos"].x), _r1(s["pos"].y), 1 if s.get("dark", false) else 0, _r1(float(s.get("k", 1.0)))])
+			rec_ev.append(["k", _r1(s["pos"].x), _r1(s["pos"].y), 2 if s.get("steam", false) else (1 if s.get("dark", false) else 0), _r1(float(s.get("k", 1.0)))])
 	for d in debris:
 		if not d.has("_r"):
 			d["_r"] = 1
@@ -6947,7 +7020,7 @@ func rp_events(fr: Array) -> void:
 			"p":
 				popups.append({"text": str(ev[1]), "pos": Vector2(ev[2], ev[3]), "t": 0.0, "color": Color(str(ev[4]))})
 			"k":
-				smoke.append({"pos": Vector2(ev[1], ev[2]), "t": 0.0, "dark": int(ev[3]) == 1, "k": float(ev[4])})
+				smoke.append({"pos": Vector2(ev[1], ev[2]), "t": 0.0, "dark": int(ev[3]) == 1, "steam": int(ev[3]) == 2, "k": float(ev[4])})
 			"d":
 				var dd := {"pos": Vector2(ev[1], ev[2]), "vel": Vector2(ev[3], ev[4]), "rot": float(ev[5]), "rv": float(ev[6]),
 						"size": Vector2(ev[7], ev[8]), "color": Color(str(ev[9]))}
