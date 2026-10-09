@@ -871,6 +871,17 @@ static func arm_len_of(look: Dictionary, slot: String) -> float:
 	return 58.0 * float(_part(look, slot).get("size", 1.0))
 
 
+## (1.89) Legs of different lengths: [how much shorter the short one is (local), its slot], or [0, ""].
+static func limp_of(look: Dictionary) -> Array:
+	if not (_alive(look, "leg_front") and _alive(look, "leg_back")):
+		return [0.0, ""]
+	var lf := leg_len_of(look, "leg_front")
+	var lb := leg_len_of(look, "leg_back")
+	if absf(lf - lb) < 4.0:
+		return [0.0, ""]
+	return [absf(lf - lb), "leg_front" if lf < lb else "leg_back"]
+
+
 ## How long a leg is, hip to foot (local).
 static func leg_len_of(look: Dictionary, slot: String) -> float:
 	var p := _part(look, slot)
@@ -939,7 +950,11 @@ static func leg_pose_foot(hip: Vector2, pose: String, swing: float = 0.0, aim: f
 			goal = hip + gd.normalized() * leg_len * 0.985
 		return goal
 	if leg_len > 0.0:
-		return Vector2(hip.x + swing, -drop)
+		# (1.89) a leg shorter than the other can't reach the floor: it hangs at its own length
+		var ft := Vector2(hip.x + swing, -drop)
+		if (ft - hip).length() > leg_len:
+			ft = hip + (ft - hip).normalized() * leg_len
+		return ft
 	match pose:
 		# the rear leg (hip behind the middle) swings through to land about as far as the lead one
 		"kick":

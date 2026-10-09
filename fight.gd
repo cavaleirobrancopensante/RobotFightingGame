@@ -3997,6 +3997,24 @@ func body_pose(f: Fighter) -> Dictionary:
 		lean = -f.facing * 0.07
 	elif f.on_ground and f.state != "ko":
 		pass   # robots don't breathe: the idle is in the guard and the head (idle_bits)
+	# (1.89) one leg shorter than the other: a limp. Walking, the body drops onto the short leg and
+	# tilts toward it, then heaves back up onto the long one while the short foot swings through
+	# the air; standing, it sags toward the short side with the long knee bent.
+	if f.on_ground and f.legs() == 2 and not f.state in ["ko", "down", "getup", "switch", "prejump"]:
+		var lk: Array = RobotArt.limp_of(f.get_look())
+		var diff: float = lk[0]
+		if diff > 0.0:
+			var gl := RobotArt.geom(f.get_look())
+			var kk := clampf(diff / maxf(1.0, float(gl["L"])), 0.0, 0.5)
+			var side := -1.0 if RobotArt.is_rear(f.get_look(), str(lk[1])) else 1.0   # +1: the short leg leads
+			var w := 0.85   # standing: most of the way down onto the short leg
+			if f.state == "walk":
+				# the short leg carries the weight while it passes under the hip (cos > 0 for the lead leg)
+				var c := cos(f.walk_phase) * side
+				w = smoothstep(-0.2, 0.6, c)
+				sy *= 1.0 - 0.05 * pow(w, 8.0) * (1.0 if c > 0.0 else 0.0)   # a thud as it lands
+			drop = maxf(drop, diff * w)
+			lean += f.facing * side * (0.1 + 0.6 * kk) * w * (0.6 if f.state != "walk" else 1.0)
 	if not f.on_ground and f.state != "ko":
 		if f.vel.y < 0.0:
 			sy *= 1.12
