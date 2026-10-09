@@ -85,7 +85,7 @@ static func draw_part(ci: CanvasItem, box: Rect2, part: Dictionary, health: floa
 
 ## A part on its own in the world (a ripped-off part lying in the ring): centred on `center`,
 ## about `span` px across, turned by `rot`. No background box.
-static func draw_part_at(ci: CanvasItem, center: Vector2, span: float, part: Dictionary, health: float, rot: float, trim: Color = Color(0.85, 0.85, 0.9)) -> void:
+static func draw_part_at(ci: CanvasItem, center: Vector2, span: float, part: Dictionary, health: float, rot: float, trim: Color = Color(0.85, 0.85, 0.9), light: String = "") -> void:
 	var kind: String = part.get("kind", "")
 	if not kind in ["head", "torso", "arm", "leg"]:
 		return
@@ -98,7 +98,10 @@ static func draw_part_at(ci: CanvasItem, center: Vector2, span: float, part: Dic
 	var rect := _bounds(look, slot)
 	var sc := span / maxf(rect.size.x, rect.size.y)
 	var base := center - (rect.get_center() * sc).rotated(rot)
-	RobotArt.draw(ci, base, look, {"scale": sc, "rot": rot, "state": "limp"})
+	var pose := {"scale": sc, "rot": rot, "state": "limp"}
+	if light != "":
+		pose["light"] = light
+	RobotArt.draw(ci, base, look, pose)
 	ci.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
 

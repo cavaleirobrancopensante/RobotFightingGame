@@ -171,6 +171,44 @@ func jingle(maker: String) -> void:
 		music_player.stop()
 
 
+## (1.96) While a maker's catalogue is open its music plays softly (its first menu song); closing it
+## puts back whatever was playing, where it was.
+var _cat_prev := {}
+
+func catalogue_music(maker: String) -> void:
+	var l: Array = MAKER_SONGS.get(maker, [])
+	if l.is_empty() or not GameData.settings.get("music", true):
+		return
+	var path := "res://music/%s.ogg" % str(l[0])
+	var s = load(path) if ResourceLoader.exists(path) else (AudioStreamOggVorbis.load_from_file(path) if FileAccess.file_exists(path) else null)
+	if s == null:
+		return
+	_jingle_n += 1   # a jingle still playing stops here
+	if _cat_prev.is_empty():
+		_cat_prev = {"stream": music_player.stream, "at": music_player.get_playback_position() if music_player.playing else 0.0, "playing": music_player.playing}
+	if s is AudioStreamOggVorbis:
+		s.loop = true
+	music_player.stream = s
+	music_player.volume_db = -40.0
+	music_player.play()
+	create_tween().tween_property(music_player, "volume_db", MUSIC_DB - 7.0, 0.8)
+
+
+func catalogue_music_end() -> void:
+	if _cat_prev.is_empty():
+		return
+	var prev := _cat_prev
+	_cat_prev = {}
+	_jingle_n += 1
+	music_player.stream = prev["stream"]
+	if prev["playing"] and prev["stream"] != null and GameData.settings.get("music", true):
+		music_player.volume_db = -40.0
+		music_player.play(float(prev["at"]))
+		create_tween().tween_property(music_player, "volume_db", MUSIC_DB, 0.8)
+	else:
+		music_player.stop()
+
+
 ## A maker's fight song ("" when it has none).
 func maker_fight(maker: String) -> String:
 	var l: Array = MAKER_SONGS.get(maker, [])

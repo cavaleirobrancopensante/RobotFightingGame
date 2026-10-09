@@ -5,6 +5,7 @@ const PlayLog = preload("res://playlog.gd")   # (1.87) the playtest log
 const Catalog = preload("res://catalog.gd")
 const PartIcon = preload("res://part_icon.gd")
 const PilotArt = preload("res://pilot_art.gd")
+const Catalogue = preload("res://catalogue.gd")
 const Logos = preload("res://logos.gd")
 const RobotPreview = preload("res://robot_preview.gd")
 const Specials = preload("res://specials.gd")
@@ -556,6 +557,7 @@ func segs_of(t: String) -> Array:
 			if GameData.unlocked("pilot"):
 				out.append(["gear", tr("Gear"), "pilot", true])
 			out.append(["contracts", tr("Contracts"), "", true])
+			out.append(["catalogues", tr("Catalogues"), "", true])
 		"Pub":
 			# The Rusty Bolt: the scene stays the same pub while you switch between these
 			out.append(["bar", tr("Bar"), ""])
@@ -675,7 +677,7 @@ func build_seg_bar() -> void:
 	for sg in list:
 		if sg.size() > 3 and sg[3]:
 			continue   # opens from somewhere else (BotMedia's profile)
-		var on: bool = sg[0] == seg() or (tab == "Feed" and sg[0] == "profile" and seg() in ["looks", "clips", "gear", "contracts"])
+		var on: bool = sg[0] == seg() or (tab == "Feed" and sg[0] == "profile" and seg() in ["looks", "clips", "gear", "contracts", "catalogues"])
 		var b := UI.button(str(sg[1]), _on_seg.bind(sg[0]), 13, Vector2(0, 34))
 		GUI.mark_new(b, seg_new(sg[0], sg[2]) or (tab == "Feed" and sg[0] == "home" and not GameData.Social.drafts().is_empty())
 				or (tab == "Feed" and sg[0] == "profile" and (seg_new("gear", "pilot") and GameData.unlocked("pilot") or contracts_new())))
@@ -1200,6 +1202,9 @@ func refresh() -> void:
 				"contracts":
 					profile_bar()
 					build_contracts()
+				"catalogues":
+					profile_bar()
+					build_catalogue_shelf()
 				_:
 					build_feed()
 		"Pub":
@@ -1659,6 +1664,9 @@ func build_detail() -> void:
 	# (1.91) the compare tray: pin it, then see up to three side by side
 	var pinned := is_pinned(detail)
 	add_btn.call(tr("Unpin from compare") if pinned else tr("Pin to compare (%d/%d)") % [cmp_pins.size(), PIN_MAX], _on_pin.bind(detail), true, GUI.YELLOW if pinned else GUI.TEXT)
+	# (1.96) its page in the maker's catalogue
+	if str(d.get("maker", "")) != "" and not GameData.catalogue_parts(str(d["maker"])).is_empty():
+		add_btn.call(tr("%s catalogue ›") % GameData.Makers.label(str(d["maker"])), open_catalogue.bind(str(d["maker"]), str(d["id"])), true)
 	if inv:
 		var wreck := GameData.is_wreck(p)
 		if fitted_slot != "":
@@ -3305,7 +3313,7 @@ func post_card(card: Dictionary, parent: Control) -> void:
 		pp.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		if str(card.get("kind", "")) == "mkad":
 			# (1.95) a maker's advert: as wide as its 16:9 picture, like a clip (room beside it to swipe);
-			# a tap plays its jingle (a swipe only scrolls)
+			# (1.96) a tap opens that page of the maker's catalogue (a swipe only scrolls)
 			pp.size_flags_horizontal = Control.SIZE_FILL
 			pp.custom_minimum_size.x = roundf(pp.custom_minimum_size.y * 16.0 / 9.0)
 			panel.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
@@ -3319,7 +3327,7 @@ func post_card(card: Dictionary, parent: Control) -> void:
 						down0[0] = e.position
 					elif down0[0] != Vector2.INF:
 						if (e.position as Vector2).distance_to(down0[0]) < 14.0:
-							Sfx.jingle(mk)
+							open_catalogue(mk, str(card.get("id", "")))   # (1.96) the ad's page in the catalogue
 						down0[0] = Vector2.INF)
 		if str(card.get("kind", "")) == "clip":
 			# (1.87) a clip is only as wide as its picture (16:9), so there's room beside it to swipe
@@ -3923,6 +3931,7 @@ func profile_bar() -> void:
 		subs.append(["gear", tr("Gear")])
 	var nc: int = GameData.Contracts.st()["offers"].size()
 	subs.append(["contracts", tr("Contracts %d") % nc if nc > 0 else tr("Contracts")])
+	subs.append(["catalogues", tr("Catalogues")])
 	for sb in subs:
 		var b := UI.button(str(sb[1]), go_to.bind("Feed", str(sb[0])), 13, Vector2(110, 36))
 		var st := GUI.seg_style(seg() == sb[0])
@@ -4916,6 +4925,7 @@ func build_dealer() -> void:
 	var chips: Array = GameData.chip_stock if GameData.unlocked("moves") else []
 	if stock.is_empty():
 		section("Sold out! New stock arrives on Sunday (or pay to restock now).")
+	catalogue_rack()
 	var items: Array = []
 	for i in stock.size():
 		items.append({"d": GameData.part_def(stock[i]), "p": {}, "i": i})
@@ -4940,6 +4950,81 @@ func build_dealer() -> void:
 		section(tr("TECHNIQUE CHIPS: each one changes an arm's or a leg's everyday hit."))
 		for id in GameData.TECH_ORDER:
 			tech_row(id)
+
+
+## (1.96) The catalogue rack at Parts-R-Us: this season's issue from every maker, free. Taking one
+## puts it on your shelf at home (BotMedia > Profile > Catalogues).
+func catalogue_rack() -> void:
+	section(tr("CATALOGUES: free, one from every maker, a new issue every season (%s).") % GameData.issue_name(GameData.issue_now()))
+	var f := flow_bar()
+	for m in GameData.Makers.ORDER:
+		if GameData.catalogue_parts(m).is_empty():
+			continue
+		var th := Catalogue.Thumb.new(m, GameData.issue_now(), 92.0 * UI.SCALE)
+		th.tooltip_text = GameData.Makers.label(m)
+		th.pressed.connect(open_catalogue.bind(m, ""))
+		f.add_child(th)
+		GUI.mark_new(th, not GameData.has_issue(m))
+
+
+## (1.96) Your shelf: the issues you've picked up, one stack per maker (newest on top).
+func build_catalogue_shelf() -> void:
+	if GameData.catalogues.is_empty():
+		var l := GUI.text(tr("No catalogues yet. Every maker leaves theirs on the rack at Parts-R-Us, free. New issues every season."), 15, GUI.MUTED)
+		l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		list_box.add_child(l)
+		return
+	section(tr("YOUR CATALOGUES: tap one to read it. Your parts are stamped OWNED."))
+	var f := flow_bar()
+	for m in GameData.Makers.ORDER:
+		var got: Array = GameData.catalogues.get(m, [])
+		if got.is_empty():
+			continue
+		var col := VBoxContainer.new()
+		col.add_theme_constant_override("separation", 2)
+		f.add_child(col)
+		var newest := str(got[-1])
+		var th := Catalogue.Thumb.new(m, newest, 110.0 * UI.SCALE)
+		th.pressed.connect(open_catalogue.bind(m, "", newest))
+		col.add_child(th)
+		var lab := GUI.text(GameData.Makers.label(m) + " · " + GameData.issue_name(newest), 12, GUI.TEXT, "headb")
+		lab.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		lab.custom_minimum_size.x = th.custom_minimum_size.x
+		col.add_child(lab)
+		if got.size() > 1:
+			var older := flow_bar(col)
+			older.add_child(GUI.text(tr("Older:"), 11, GUI.MUTED))
+			for k in range(got.size() - 2, maxi(-1, got.size() - 6), -1):
+				var b := UI.button(GameData.issue_name(str(got[k])), open_catalogue.bind(m, "", str(got[k])), 11, Vector2(0, 30))
+				older.add_child(b)
+
+
+var catalogue: Control = null
+
+## Opens a maker's catalogue (this season's issue unless `key` says otherwise), on a part's page
+## when `design` is a part id. Opening this season's issue puts it on your shelf.
+func open_catalogue(m: String, design: String = "", key: String = "") -> void:
+	if catalogue != null and is_instance_valid(catalogue):
+		catalogue.queue_free()
+	if key == "":
+		key = GameData.issue_now()
+		if GameData.take_catalogue(m):
+			GameData.save_game()
+	var c = Catalogue.new()
+	c.setup(m, key, design)
+	add_child(c)
+	catalogue = c
+	c.buy.connect(func(id: String):
+		_on_buy_keep(id)
+		GameData.save_game()
+		c.refresh())
+	c.test_drive.connect(func(id: String):
+		c._close()
+		_on_test_drive("toaster", id, best_slot(str(GameData.part_def(id)["kind"])), "dealer"))
+	c.closed.connect(func():
+		catalogue = null
+		if tab == "Parts" or seg() == "catalogues":
+			refresh())
 
 
 ## Pilot gear: controllers change how your robots fight. Bought and picked in Crew > Pilot.

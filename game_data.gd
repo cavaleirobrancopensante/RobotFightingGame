@@ -3,7 +3,7 @@ const PlayLog = preload("res://playlog.gd")   # (1.87) the playtest log
 
 # helper scripts, loaded by path so the game also runs without an editor scan
 ## The game's version, shown on the main menu. Bump it with every change (1.1, 1.2, ...).
-const VERSION := "1.95"
+const VERSION := "1.96"
 const Arena = preload("res://arena.gd")
 const I18n = preload("res://i18n.gd")
 const Catalog = preload("res://catalog.gd")
@@ -619,6 +619,7 @@ func new_game() -> void:
 	pilot_name = "Rook"
 	pilot_look = DEFAULT_PILOT_LOOK.duplicate()
 	places_been = ["home"]
+	catalogues = {}
 	pilot_at = "home"
 	owned_controllers = ["gamepad"]
 	spare_controllers = []
@@ -970,6 +971,77 @@ func sale_pct(m: String) -> int:
 	return int(sl[1]) if sl.size() == 2 and int(sl[0]) >= abs_week() else 0
 
 
+## (1.96) The makers' catalogues: a new issue every season (13 weeks), free at Parts-R-Us.
+const SEASON_NAMES := ["SPRING", "SUMMER", "AUTUMN", "WINTER"]
+
+func season_now() -> int:
+	return clampi((week - 1) / 13, 0, 3)
+
+
+func issue_now() -> String:
+	return "%d:%d" % [year, season_now()]
+
+
+## "SPRING 2042" for an issue key.
+func issue_name(key: String) -> String:
+	var b := key.split(":")
+	if b.size() != 2:
+		return ""
+	return tr(SEASON_NAMES[clampi(int(b[1]), 0, 3)]) + " " + str(2041 + int(b[0]))
+
+
+func has_issue(m: String, key: String = "") -> bool:
+	return (catalogues.get(m, []) as Array).has(issue_now() if key == "" else key)
+
+
+## Picks up this season's issue of a maker's catalogue (true if it's new on your shelf).
+func take_catalogue(m: String) -> bool:
+	if m == "" or has_issue(m):
+		return false
+	if not catalogues.has(m):
+		catalogues[m] = []
+	(catalogues[m] as Array).append(issue_now())
+	return true
+
+
+## Every part a maker sells (the base design, Scrap grade), heads first, cheapest first.
+func catalogue_parts(m: String) -> Array:
+	var out: Array = []
+	for id in PARTS:
+		var d: Dictionary = PARTS[id]
+		if str(d.get("maker", "")) == m and int(d.get("grade", 0)) == 1 and not d.has("variant_of") and int(d.get("cost", 0)) > 0:
+			out.append(str(id))
+	out.sort_custom(func(a, b):
+		var da: Dictionary = PARTS[a]
+		var db: Dictionary = PARTS[b]
+		var ka := KINDS.find(str(da["kind"]))
+		var kb := KINDS.find(str(db["kind"]))
+		return ka < kb if ka != kb else int(da["cost"]) < int(db["cost"]))
+	return out
+
+
+## Do you own this design at any grade (on a robot or in Storage)?
+func owns_design(base: String) -> bool:
+	for p in inventory:
+		if design_of(str(p["id"])) == base:
+			return true
+	return false
+
+
+## A part id without its grade or size ("volta_arm_1~S^3" -> "volta_arm_1").
+static func design_of(id: String) -> String:
+	return id.get_slice("^", 0).get_slice("~", 0)
+
+
+## Which grades of this design are on the Parts-R-Us shelf this week.
+func stock_grades(base: String) -> Array:
+	var out: Array = []
+	for id in shop_stock:
+		if design_of(str(id)) == base:
+			out.append(grade_of(str(id)))
+	return out
+
+
 func buy(id: String) -> String:
 	var d := part_def(id)
 	var cost := price_of(id)
@@ -1106,6 +1178,7 @@ const MECHANIC_WAGE := 0.3         # a mechanic's monthly wage: this share of yo
 const OVERTIME_PRICE := 80         # per pair of hands per night, x3 a grade
 var phase := 0                     # 0 morning, 1 afternoon, 2 evening (fights are in the evening)
 var places_been: Array = ["home"]   # (1.83) places you've been to (quick buttons over the map)
+var catalogues := {}               # (1.96) maker -> [issue keys "y:s"] picked up (free at Parts-R-Us)
 var pilot_at := "home"             # (1.77) where your pilot is in Port Ferrum (the City map)
 var pilot_used := 0.0              # (1.77) hours of this part of the day your pilot has spent going places
 var jobs: Array = []               # the job board, in order: {kind: "repair"/"swap", uid, robot, slot, total, done, rush, start}
@@ -5418,7 +5491,7 @@ func save_game(path: String = "") -> bool:
 		"owned_chips": owned_chips, "chips": chips, "circuit": circuit, "circuit_offers": circuit_offers,
 		"circuits_won": circuits_won, "pickup": pickup, "setups": setups, "custom_parts": custom_parts,
 		"year": year, "week": week, "day": day, "rank": rank, "event": {}, "leagues": leagues, "title_seeds": title_seeds, "trophies": trophies, "career_stats": career_stats,
-		"pecking_k": pecking_k(), "style": style, "style_locked": style_locked, "shop_stock": shop_stock, "chip_stock": chip_stock, "scout": scout, "wingmen": wingmen, "sending": sending, "pilot_look": pilot_look, "owned_controllers": owned_controllers, "spare_controllers": spare_controllers, "techs": techs, "tech_fit": tech_fit, "tips_seen": tips_seen, "tips_log": tips_log, "h2h": h2h, "rivals": rivals, "rel": rel, "nemeses": nemeses, "pending_talk": pending_talk, "inbox": inbox, "inbox_seen": inbox_seen, "social": social, "pilot_at": pilot_at, "places_been": places_been, "pilot_used": pilot_used, "film_index": film_index, "film_pending": film_pending, "films_seen": films_seen, "contracts": contracts, "alerts_unseen": alerts_unseen, "day_log": day_log, "ledger": ledger, "bet_log": bet_log, "patched_week": patched_week, "loan": loan, "gus_alerts": gus_alerts, "tour": tour, "streak": streak, "pub_seen": pub_seen, "digs_left": digs_left, "dig_luck": dig_luck, "bills_note": bills_note, "fight_log": fight_log, "bets": bets, "world": world,
+		"pecking_k": pecking_k(), "style": style, "style_locked": style_locked, "shop_stock": shop_stock, "chip_stock": chip_stock, "scout": scout, "wingmen": wingmen, "sending": sending, "pilot_look": pilot_look, "owned_controllers": owned_controllers, "spare_controllers": spare_controllers, "techs": techs, "tech_fit": tech_fit, "tips_seen": tips_seen, "tips_log": tips_log, "h2h": h2h, "rivals": rivals, "rel": rel, "nemeses": nemeses, "pending_talk": pending_talk, "inbox": inbox, "inbox_seen": inbox_seen, "social": social, "pilot_at": pilot_at, "places_been": places_been, "catalogues": catalogues, "pilot_used": pilot_used, "film_index": film_index, "film_pending": film_pending, "films_seen": films_seen, "contracts": contracts, "alerts_unseen": alerts_unseen, "day_log": day_log, "ledger": ledger, "bet_log": bet_log, "patched_week": patched_week, "loan": loan, "gus_alerts": gus_alerts, "tour": tour, "streak": streak, "pub_seen": pub_seen, "digs_left": digs_left, "dig_luck": dig_luck, "bills_note": bills_note, "fight_log": fight_log, "bets": bets, "world": world,
 	}
 	var f := FileAccess.open(slot_path(save_slot) if path == "" else path, FileAccess.WRITE)
 	if f == null:
@@ -5567,6 +5640,7 @@ func load_game(slot: int = -1, mine: bool = false) -> String:
 		clips_dirty = false
 	pilot_at = str(data.get("pilot_at", "home"))
 	places_been = data.get("places_been", ["home"])
+	catalogues = data.get("catalogues", {})
 	pilot_used = float(data.get("pilot_used", 0.0))
 	film_index = data.get("film_index", {})
 	film_pending = data.get("film_pending", [])

@@ -1216,7 +1216,7 @@ class PostPic extends Control:
 
 	## A plain backdrop with a cone of light from above and a floor.
 	## (1.95) A maker's advert: their colours, their logo, the part under a spotlight, a SALE ribbon,
-	## and a note to tap for the jingle.
+	## and a little magazine: (1.96) a tap opens that page of the catalogue.
 	func _maker_ad(W: float, H: float) -> void:
 		var M = load("res://makers.gd")
 		var m := str(pic.get("maker", ""))
@@ -1246,12 +1246,15 @@ class PostPic extends Control:
 			draw_colored_polygon(PackedVector2Array([Vector2(W - rw, 0), Vector2(W, 0), Vector2(W, rw * 0.5), Vector2(W - rw * 0.5, 0)]), Color(1.0, 0.85, 0.2))
 			draw_rect(Rect2(W - rw - 4, 12, rw - 8, fs + 10), Color(1.0, 0.85, 0.2))
 			draw_string(font, Vector2(W - rw + 2, 12 + fs + 2), tr("SALE -%d%%") % sale, HORIZONTAL_ALIGNMENT_LEFT, rw - 12, fs, Color(0.1, 0.08, 0.05))
-		# the jingle: tap to hear it
+		# (1.96) tap to open the catalogue: a little open magazine
 		var nc := Vector2(W - 30, H - 30)
 		draw_circle(nc, 18, Color(0, 0, 0, 0.5))
-		draw_circle(nc + Vector2(-4, 6), 5, Color(1, 1, 1, 0.9))
-		draw_line(nc + Vector2(0, 6), nc + Vector2(0, -10), Color(1, 1, 1, 0.9), 2.5)
-		draw_line(nc + Vector2(0, -10), nc + Vector2(7, -6), Color(1, 1, 1, 0.9), 2.5)
+		var wc := Color(1, 1, 1, 0.92)
+		draw_colored_polygon(PackedVector2Array([nc + Vector2(-11, -7), nc + Vector2(-1, -5), nc + Vector2(-1, 8), nc + Vector2(-11, 6)]), wc)
+		draw_colored_polygon(PackedVector2Array([nc + Vector2(1, -5), nc + Vector2(11, -7), nc + Vector2(11, 6), nc + Vector2(1, 8)]), wc)
+		for k in 3:
+			draw_line(nc + Vector2(-9, -3 + k * 3.5), nc + Vector2(-3, -2 + k * 3.5), col.darkened(0.3), 1.2)
+			draw_line(nc + Vector2(3, -2 + k * 3.5), nc + Vector2(9, -3 + k * 3.5), col.darkened(0.3), 1.2)
 
 	func _room(W: float, H: float, wall: Color, lamp: Color) -> void:
 		draw_rect(Rect2(0, 0, W, H), wall)

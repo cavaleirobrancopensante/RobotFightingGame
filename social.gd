@@ -1063,6 +1063,10 @@ static func maker_daily(rng: RandomNumberGenerator) -> void:
 		s["sales"] = {}
 	var aw: int = GameData.abs_week()
 	var g: int = GameData.my_grade()
+	if GameData.day == "mon" and (GameData.week - 1) % 13 == 0:
+		# (1.96) a new season: every maker's new catalogue is on the rack
+		post("partsrus", "New season, new catalogues. Every maker's %s issue is on the rack at the counter. Free, take one.", [GameData.issue_name(GameData.issue_now())],
+				{}, ["Catalogues"], false, "shop_ad")
 	if GameData.day == "mon" and rng.randf() < 0.3:
 		var m: String = M.ORDER[rng.randi() % M.ORDER.size()]
 		var pct: int = [10, 15, 20, 25][rng.randi() % 4]
