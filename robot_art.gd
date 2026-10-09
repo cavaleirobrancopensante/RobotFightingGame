@@ -60,7 +60,7 @@ const ARMS := {"rod": [12.0, 10.0], "piston": [15.0, 12.0], "claw": [14.0, 7.0],
 		"blade": [13.0, 7.0], "flame": [16.0, 7.0], "magnet": [15.0, 7.0],
 		"anvil": [18.0, 9.0], "crane": [13.0, 7.0], "wrench": [12.0, 7.0], "grabber": [11.0, 6.0],
 		"gauntlet": [15.0, 13.0], "riveter": [12.0, 7.0], "wrecker": [15.0, 13.0], "torch": [13.0, 7.0], "arcfist": [14.0, 13.0], "magclamp": [12.0, 7.0],
-		"wingblade": [12.0, 7.0], "turbine": [14.0, 13.0], "executor": [15.0, 7.0], "lancet": [12.0, 7.0], "beamsword": [14.0, 8.0], "gorilla": [17.0, 13.0]}
+		"wingblade": [12.0, 7.0], "turbine": [14.0, 13.0], "executor": [15.0, 7.0], "lancet": [12.0, 7.0], "beamsword": [14.0, 8.0], "gorilla": [17.0, 13.0], "tentacle": [18.0, 6.0]}
 
 
 ## (1.93) Normal hits by limb, techniques included, and the arm poses that reach as far as a punch
@@ -240,6 +240,66 @@ static func limb_poses(look: Dictionary, pose: Dictionary) -> Dictionary:
 	return {"arms": arm_pose, "legs": leg_pose}
 
 
+# ---------------------------------------------------------------- segmented limbs (1.105)
+
+## How far an Octopus Tentacle's tip whips out past the hand (x part size).
+const TENTACLE_TIP := 30.0
+const TENTACLE_SEGS := 7
+
+## A segmented limb: n + 1 points from a to b through a bend toward `via`, that bend in a wave.
+## wave = a sway that travels out to the tip and grows along it, phase = where the wave is,
+## curl = how far the outer part rolls round (radians, + = toward the limb's left), segments keep their length.
+## Used by the Octopus Tentacle and the Wrecking Ball's chain (and the Elephant Trunk later).
+static func chain_points(a: Vector2, b: Vector2, n: int, via: Vector2, wave: float, phase: float, curl: float = 0.0) -> PackedVector2Array:
+	var raw := PackedVector2Array()
+	var dir := (b - a).normalized()
+	var perp := dir.orthogonal()
+	for k in n + 1:
+		var u := float(k) / n
+		var q := a.lerp(via, u).lerp(via.lerp(b, u), u)   # a quadratic curve through the bend
+		q += perp * sin(phase - u * 3.2) * wave * u
+		raw.append(q)
+	if curl == 0.0:
+		return raw
+	# roll the outer part round, segment by segment, keeping each segment's length
+	var out := PackedVector2Array([raw[0]])
+	var turn := 0.0
+	for k in n:
+		var u2 := float(k + 1) / n
+		if u2 > 0.45:
+			turn += curl / (n * 0.55)
+		out.append(out[k] + (raw[k + 1] - raw[k]).rotated(turn))
+	return out
+
+
+## The Octopus Tentacle's segments for a pose: shoulder s, the pose's elbow e and hand h.
+## It sways and curls at rest, whips out nearly straight on a strike, wraps right round on a hook.
+static func tentacle_chain(s: Vector2, e: Vector2, h: Vector2, pose: String, sz: float, t: float) -> PackedVector2Array:
+	var dir := (h - e).normalized()
+	if REACH_POSES.has(pose):
+		return chain_points(s, h + dir * TENTACLE_TIP * sz, TENTACLE_SEGS, e.lerp(s.lerp(h, 0.5), 0.6), 3.0 * sz, t * 16.0, 0.12)
+	match pose:
+		"hook":
+			return chain_points(s, h + dir * 12.0 * sz, TENTACLE_SEGS, e, 2.0 * sz, t * 10.0, 1.9)
+		"block":
+			# raised in front of the face, the tip rolled over
+			return chain_points(s, s + Vector2(30.0, -40.0) * sz, TENTACLE_SEGS, s + Vector2(38.0, 0.0) * sz, 3.0 * sz, t * 3.0, -1.1)
+		"flung":
+			return chain_points(s, h, TENTACLE_SEGS, e, 3.0 * sz, t * 3.0, -1.2)
+		"limp":
+			return chain_points(s, s + Vector2(14.0, 60.0) * sz, TENTACLE_SEGS, s + Vector2(18.0, 20.0) * sz, 1.5 * sz, t * 1.5, 0.3)
+	# guard: it hangs forward and never keeps still, the tip curling up like a question mark
+	var sway := sin(t * 1.3)
+	return chain_points(s, s + Vector2(26.0 + 4.0 * sway, 62.0) * sz, TENTACLE_SEGS, s + Vector2(46.0, 10.0) * sz, 5.0 * sz, t * 2.4, -1.5 - 0.3 * sway)
+
+
+## Where the Wrecking Ball hangs (or flies) from the hand h.
+static func wrecker_ball(h: Vector2, dir: Vector2, pose: String, sz: float, t: float) -> Vector2:
+	if REACH_POSES.has(pose):
+		return h + dir * 30.0 * sz
+	return h + Vector2(sin(t * 2.2) * 7.0 * sz + dir.x * 4.0, 26.0 * sz)
+
+
 ## What a hit has to touch, in local coordinates, for the robot as it's drawn in a pose: the head(s)
 ## and torso as boxes, every arm and leg as a chain of capsules along the drawn limb.
 ## [[slot, "rect", Rect2] or [slot, "cap", a, b, radius], ...]
@@ -261,8 +321,21 @@ static func hit_shapes(look: Dictionary, pose: Dictionary) -> Array:
 		var s := shoulder_of(g, slot)
 		var ap: String = lp["arms"][slot]
 		var pts := arm_pose_points(s, ap, is_rear(look, slot), punch_reach_x(g) if REACH_POSES.has(ap) else 0.0, aim if slot == limb else 0.0, Vector2.ZERO, arm_len_of(look, slot))
+		var shp := str(p.get("shape", ""))
+		if shp == "tentacle" and str(p.get("swap", "")) == "":
+			# (1.105) a segmented limb: one capsule per segment, as it's drawn
+			var ch := tentacle_chain(pts[2], pts[0], pts[1], ap, sz, float(pose.get("time", 0.0)))
+			for k in ch.size() - 1:
+				out.append([slot, "cap", ch[k], ch[k + 1], dims[0] * sz * lerpf(0.55, 0.22, float(k) / (ch.size() - 1))])
+			continue
 		out.append([slot, "cap", pts[2], pts[0], dims[0] * sz * 0.55])
 		out.append([slot, "cap", pts[0], pts[1], maxf(dims[0] * sz * 0.5, dims[1] * sz)])
+		if shp == "wrecker":
+			# (1.105) the chain and the ball can be hit too, wherever they swing
+			var hh: Vector2 = pts[1]
+			var ball := wrecker_ball(hh, ((pts[1] as Vector2) - (pts[0] as Vector2)).normalized(), ap, sz, float(pose.get("time", 0.0)))
+			out.append([slot, "cap", hh, ball, 5.0 * sz])
+			out.append([slot, "cap", ball, ball, dims[1] * sz])
 	for slot in ["leg_front", "leg_back"]:
 		if not _alive(look, slot):
 			continue
@@ -1135,6 +1208,7 @@ static func arm_tip_extra(look: Dictionary, slot: String, pose: String) -> Vecto
 		"lancet": ext = 58.0 * sz
 		"beamsword": ext = 56.0 * sz
 		"gorilla": ext = fr + 14.0 * sz   # (1.104) the long forearm and the big knuckles
+		"tentacle": ext = TENTACLE_TIP * sz if REACH_POSES.has(pose) else 12.0 * sz
 	if pose == "elbow" or pose == "shove":
 		ext = 6.0   # the elbow (or a flat palm) does the hitting, not the weapon
 	return Vector2(ext, maxf(fr, th * 0.5))
@@ -1240,6 +1314,34 @@ static func _leg_goal(hip: Vector2, pose: String, aim: float, leg_len: float, dr
 	return Vector2(hip.x, -drop)
 
 
+## (1.105) Menagerie's Octopus Tentacle: a tapering chain of segments with a gold cuff at the shoulder
+## and pale suckers along its underside.
+static func _tentacle(ci: CanvasItem, s: Vector2, e: Vector2, h: Vector2, pose: String, c: Color, th: float, sz: float, t: float, back: bool, flash: bool) -> void:
+	var ch := tentacle_chain(s, e, h, pose, sz, t)
+	var n := ch.size() - 1
+	var sk := Color(0.93, 0.8, 0.72) if not flash else Color.WHITE
+	if back:
+		sk = sk.darkened(0.3)
+	for k in n:
+		var w := th * lerpf(1.15, 0.38, float(k) / n)
+		_limb(ci, ch[k], ch[k + 1], c, w)
+	# the underside: suckers on the side that faces the floor
+	for k in range(1, n):
+		var sd := (ch[k + 1] - ch[k]).normalized()
+		var nm := sd.orthogonal()
+		if nm.y < 0.0:
+			nm = -nm
+		var w2 := th * lerpf(1.15, 0.38, float(k) / n)
+		var sp := ch[k].lerp(ch[k + 1], 0.5) + nm * w2 * 0.32
+		ci.draw_circle(sp, maxf(1.5, w2 * 0.2), sk)
+		ci.draw_circle(sp, maxf(0.8, w2 * 0.09), c.darkened(0.45))
+	# a rounded tip, and the circus cuff where it joins the shoulder
+	_joint(ci, ch[n], th * 0.2, c.darkened(0.1))
+	var cd := (ch[1] - ch[0]).normalized().orthogonal()
+	ci.draw_line(ch[0].lerp(ch[1], 0.35) - cd * th * 0.62, ch[0].lerp(ch[1], 0.35) + cd * th * 0.62, Color(0.95, 0.75, 0.25), 3.0)
+	_joint(ci, s, th * 0.6, Color(0.55, 0.13, 0.12) if not flash else Color.WHITE)
+
+
 static func _draw_arm(ci: CanvasItem, look: Dictionary, slot: String, s: Vector2, pose: String,
 		back: bool, flash: bool, trim: Color, t: float, fist_gone: bool = false, aim: float = 0.0, bob: Vector2 = Vector2.ZERO) -> void:
 	var p := _part(look, slot)
@@ -1266,6 +1368,10 @@ static func _draw_arm(ci: CanvasItem, look: Dictionary, slot: String, s: Vector2
 	var perp := dir.orthogonal()
 	_grade = int(p.get("grade", 3))
 
+	if p["shape"] == "tentacle" and str(p.get("swap", "")) == "":
+		_tentacle(ci, s, e, h, pose, c, th, sz, t, back, flash)
+		_damage_marks(ci, s, h, p.get("health", 1.0), t)
+		return
 	if p["shape"] == "bulky":
 		_round(ci, s, th * 0.8, c.darkened(0.1))
 	_limb(ci, s, e, c, th)
@@ -1410,13 +1516,15 @@ static func _draw_arm(ci: CanvasItem, look: Dictionary, slot: String, s: Vector2
 		"wrecker":
 			# (1.99) Hellfire: a wrecking ball on a short chain. It hangs and sways, and flies out straight on a punch
 			_plate(ci, _chamfer(Rect2(h - Vector2(7, 7) * sz, Vector2(14, 14) * sz), 3.0), c.darkened(0.2))
-			var ball := h + dir * 30.0 * sz
-			if not REACH_POSES.has(pose):
-				ball = h + Vector2(sin(t * 2.2) * 7.0 * sz + dir.x * 4.0, 26.0 * sz)
-			var links := 5
+			var ball := wrecker_ball(h, dir, pose, sz, t)
+			# (1.105) the chain is a segmented limb: it sags and trails behind the swing, and snaps taut on a punch
+			var reach := REACH_POSES.has(pose)
+			var mid := h.lerp(ball, 0.5) + (Vector2(-cos(t * 2.2) * 5.0 * sz, 3.0 * sz) if not reach else Vector2.ZERO)
+			var links := 6
+			var ch := chain_points(h, ball, links, mid, (1.5 if reach else 2.5) * sz, t * (12.0 if reach else 2.2))
 			for k in links:
-				var lp := h.lerp(ball, (k + 0.5) / float(links + 1))
-				var ld := (ball - h).normalized()
+				var lp := ch[k].lerp(ch[k + 1], 0.5)
+				var ld := (ch[k + 1] - ch[k]).normalized()
 				if k % 2 == 1:
 					ld = ld.orthogonal() * 0.55   # every other link turned edge on
 				ci.draw_line(lp - ld * 4.0 * sz, lp + ld * 4.0 * sz, OUTLINE, 5.0 * sz)

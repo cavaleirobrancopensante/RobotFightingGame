@@ -104,6 +104,7 @@ const SHAPE := {
 	"arm:lancet": ["Lancet, a spear on a servo", "Hits from further than they think"],
 	"arm:beamsword": ["Beam sword, never needs sharpening", "Hums when it's angry"],
 	"arm:gorilla": ["Gorilla arm, knuckles first", "Longest reach in the ring"],
+	"arm:tentacle": ["Octopus tentacle, seven segments", "Goes round a guard, not through it"],
 	# legs
 	"leg:rod": ["Pipe leg, rubber foot", "Knee is a bike hub"],
 	"leg:piston": ["Piston knee, soft landing", "Hydraulic shock absorber"],

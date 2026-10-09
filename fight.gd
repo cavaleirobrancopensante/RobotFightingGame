@@ -3381,9 +3381,11 @@ func apply_hit(att: Fighter, d: Fighter, a: Dictionary, at: Vector2) -> void:
 			if d.alive(s2):
 				arm = s2
 				break
-		if a.has("through"):
+		# (1.105) an Octopus Tentacle bends round the guard on every punch
+		var thru := maxf(float(a.get("through", 0.0)), wrap_k(att, src) if family == "punch" and ATTACKS.has(att.state) else 0.0)
+		if thru > 0.0:
 			# (1.93) a hook wraps round the guard: much of it gets through
-			damage_part(d, "torso" if d.alive("torso") else arm, dmg * float(a["through"]))
+			damage_part(d, "torso" if d.alive("torso") else arm, dmg * thru, false, armor_k(att, src))
 			popup(tr("AROUND THE GUARD"), d.pos + Vector2(0, -200.0 * d.scale), Color(1.0, 0.75, 0.4))
 		var kk := knock_k(att, d)
 		if a.has("push"):
@@ -3398,7 +3400,7 @@ func apply_hit(att: Fighter, d: Fighter, a: Dictionary, at: Vector2) -> void:
 		else:
 			damage_part(d, arm, dmg * (0.08 if d.style == "tank" else 0.3) * d.ctrl.get("block", 1.0))
 			d.pos.x += att.facing * 25.0 * kk
-		if family == "punch" and ATTACKS.has(att.state) and not a.has("through") and not a.has("push"):
+		if family == "punch" and ATTACKS.has(att.state) and thru <= 0.0 and not a.has("push"):
 			# block beats punch: the fist bounces off and the puncher is left open
 			att.state = "hit"
 			att.timer = 0.32
@@ -3464,7 +3466,7 @@ func apply_hit(att: Fighter, d: Fighter, a: Dictionary, at: Vector2) -> void:
 			if hov > 0.0:
 				dmg *= 1.0 - hov / 100.0
 		var part_dmg := dmg * (HEAD_FACTOR if slot.begins_with("head") else 1.0)
-		damage_part(d, slot, part_dmg)
+		damage_part(d, slot, part_dmg, false, armor_k(att, src))
 		if slot != "torso" and d.alive("torso"):
 			damage_part(d, "torso", dmg * CORE_SHARE * (1.0 - limb_trait(d, "torso", "isolate") * 2.0 / 100.0))   # (1.102) a Monolith's floating parts
 		# every part matters: hurt legs slow you down, hurt arms hit softer
@@ -3582,6 +3584,7 @@ func check_ko(att: Fighter, d: Fighter) -> void:
 const PRESSURE_FILL := 8.0
 const PRESSURE_VENT := 1.6
 const STEAM_MISS := 35.0
+const WRAP_ARMOR := 1.6   # (1.105) armour counts this much more against a tentacle
 
 
 ## (1.98) A cloud of steam round a robot for `t` seconds: anyone aiming at it loses the crosshair.
@@ -3655,7 +3658,18 @@ func mechanic_heal(f: Fighter, amount: float) -> void:
 		f.look_dirty = true
 
 
-func damage_part(f: Fighter, slot: String, amount: float, quiet: bool = false) -> void:
+## (1.105) How much of a punch from this limb bends round a guard (0 = none): the Octopus Tentacle's Wrap.
+func wrap_k(att: Fighter, src: String) -> float:
+	return limb_trait(att, src, "wrap") / 100.0 if src.begins_with("arm") else 0.0
+
+
+## (1.105) Armour counts more against a soft, bending limb.
+func armor_k(att: Fighter, src: String) -> float:
+	return WRAP_ARMOR if wrap_k(att, src) > 0.0 else 1.0
+
+
+## arm_k: how much the part's armour counts against this hit (1.105: x WRAP_ARMOR for a tentacle).
+func damage_part(f: Fighter, slot: String, amount: float, quiet: bool = false, arm_k: float = 1.0) -> void:
 	if not f.alive(slot):
 		return
 	var p: Dictionary = f.parts[slot]
@@ -3670,7 +3684,7 @@ func damage_part(f: Fighter, slot: String, amount: float, quiet: bool = false) -
 		amount *= 1.1
 	if simming:
 		amount = sim_amount(f, slot, amount)
-	p["hp"] -= amount * (1.0 - minf(armor, 75.0) / 100.0)
+	p["hp"] -= amount * (1.0 - minf(armor * arm_k, 75.0) / 100.0)
 	f.look_dirty = true
 	if f.spec.get("junk", "") == "dummy":
 		# the Mop Bucket never breaks: it dents, then pops back out
@@ -4464,7 +4478,7 @@ func body_pose(f: Fighter) -> Dictionary:
 	f.vis_sx = sx
 	f.vis_sy = sy
 	f.vis_ok = true
-	f.vis_pose = {"state": state, "extended": extended, "attack_limb": f.attack_limb, "aim": f.aim_ang,
+	f.vis_pose = {"state": state, "extended": extended, "attack_limb": f.attack_limb, "aim": f.aim_ang, "time": clock,
 			"dazed": f.daze_t > 0.0, "tuck": f.state == "jump" and not f.on_ground and absf(f.vel.y) < 330.0,
 			"blocking": f.blocking or (f.state == "special" and state == "block"),
 			"crawl": fmod(f.walk_phase / TAU, 1.0) if f.state == "walk" and f.legs() == 0 and f.arms() > 0 else -1.0,

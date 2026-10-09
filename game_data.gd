@@ -3,7 +3,7 @@ const PlayLog = preload("res://playlog.gd")   # (1.87) the playtest log
 
 # helper scripts, loaded by path so the game also runs without an editor scan
 ## The game's version, shown on the main menu. Bump it with every change (1.1, 1.2, ...).
-const VERSION := "1.104"
+const VERSION := "1.105"
 const Arena = preload("res://arena.gd")
 const I18n = preload("res://i18n.gd")
 const Catalog = preload("res://catalog.gd")
@@ -1781,7 +1781,7 @@ const TECH_DEFAULT := {"arm": "Jab", "leg": "Kick"}
 const TECH_NOT := {
 	"hook": ["hammer", "drill", "saw", "flame", "blade", "anvil", "crane", "wrecker", "torch", "magclamp", "wingblade", "executor", "lancet", "beamsword"],
 	"overhand": ["flame", "grapple", "grabber", "torch"],
-	"elbow": ["hammer", "anvil", "wrecker"],
+	"elbow": ["hammer", "anvil", "wrecker", "tentacle"],
 	"roundhouse": ["pillar", "tread", "wheel", "pogo", "thick", "hover", "stomper", "excavator"],
 	"axe_kick": ["tread", "wheel", "pillar", "hover", "excavator"],
 	"knee": ["tread", "wheel", "pogo", "spring", "pillar", "hover", "excavator", "maglev", "ductfan", "gravpad", "hakama"],
