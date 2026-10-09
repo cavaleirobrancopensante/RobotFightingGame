@@ -22,6 +22,10 @@ const SHAPE := {
 	"head:knight": ["Visor slit, 6 mm", "Plume mount, no plume"],
 	"head:orb": ["Sealed sphere, no seams", "Gyro keeps the eye level"],
 	"head:speaker": ["Woofer face, 400 W", "Plays the crowd back at them"],
+	"head:rivet": ["Cast pail, 200 rivets", "Porthole glass, 2 cm thick"],
+	"head:grille": ["Radiator grille for a jaw", "Brow plate takes the punches"],
+	"head:peeper": ["Periscope looks over guards", "Bucket, now with a view"],
+	"head:busted": ["Screen cracked, still works", "Hit it twice when it flickers"],
 	# torsos
 	"torso:barrel": ["Oil drum, two hoops", "Still smells of diesel"],
 	"torso:box": ["Boxed steel frame", "Hatch for the battery"],
@@ -38,6 +42,9 @@ const SHAPE := {
 	"torso:yoke": ["Two necks, one spine", "Second head mount"],
 	"torso:quad": ["Four shoulder mounts", "Extra arms bolt on low"],
 	"torso:monster": ["Every mount there is", "Spikes are load-bearing"],
+	"torso:engine": ["Straight-six block, cast 1951", "Fins keep it cool under fire"],
+	"torso:loco": ["Smokebox door, hand-painted", "Cowcatcher clears the ring"],
+	"torso:drum": ["Oil drum, three ribs", "Dents add character, says Gus"],
 	# arms
 	"arm:rod": ["Steel pipe, ball fist", "Elbow is a door hinge"],
 	"arm:piston": ["Hydraulic piston, 2 t push", "Piston stroke 30 cm"],
@@ -52,6 +59,10 @@ const SHAPE := {
 	"arm:blade": ["Forearm blade, honed", "Blade folds for transport"],
 	"arm:flame": ["Flamer nozzle, pilot light on", "Fuel line runs to the torso"],
 	"arm:magnet": ["Electromagnet, 1 t pull", "Keep your keys away"],
+	"arm:anvil": ["Forged anvil, 90 kg", "The horn finds the gaps"],
+	"arm:crane": ["Crane hook, 5 t rated", "Clamps on and won't let go"],
+	"arm:wrench": ["36 mm wrench, never lost", "Tightens bolts between rounds"],
+	"arm:grabber": ["Litter picker, long reach", "Jaws snap shut on a spring"],
 	# legs
 	"leg:rod": ["Pipe leg, rubber foot", "Knee is a bike hub"],
 	"leg:piston": ["Piston knee, soft landing", "Hydraulic shock absorber"],
@@ -65,6 +76,8 @@ const SHAPE := {
 	"leg:blade": ["Blade runner foot", "Carbon spring blade"],
 	"leg:hover": ["Hover pad, 5 cm lift", "Fan intake, keep fingers out"],
 	"leg:spider": ["Spider leg, low stance", "Three joints, all wobbly"],
+	"leg:stomper": ["Cast boot, size 60", "Ankle ram stamps it flat"],
+	"leg:pipe": ["Copper pipe, elbow knee", "Leaks a little in the rain"],
 	# back gear
 	"back:battery": ["Spare battery pack", "Hot-swappable cells"],
 	"back:spikes": ["Back spikes, no hugs", "Spikes face the grabber"],
@@ -73,6 +86,8 @@ const SHAPE := {
 	"back:plating": ["Bolt-on back plating", "Armor where they grab you"],
 	"back:wings": ["Folding wings, double jump", "Flaps for balance"],
 	"back:shield": ["Pop-up shield arm", "Shield on a swing mount"],
+	"back:flywheel": ["Flywheel stores spare power", "Spins up while it rests"],
+	"back:tarp": ["Tarp hides what's broken", "Grommets, rope, hope"],
 }
 
 const KIND := {

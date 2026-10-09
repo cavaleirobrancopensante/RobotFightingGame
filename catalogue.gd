@@ -930,9 +930,11 @@ class Painter extends RefCounted:
 		var af := "ibody" if m in ["brassworks", "nimbus", "scrapworks", "menagerie"] else "body"
 		y += para(ci, af, Vector2(x, y), ad, w, fs, ink if not m == "kane" else Color(ink, 0.85), 2 if m == "tenryu" else 4) + fs * (0.4 if m == "tenryu" else 0.7)
 		# the stats: icon and number, two columns
-		var stats: Array = [["hp", "%d" % int(d["hp"])]]
-		stats.append_array(GameData.part_stats(d, true))
+		var stats: Array = [["hp", "%d" % int(d["hp"])]] if k in ["head", "torso", "arm", "leg"] else []
+		var all_st: Array = GameData.part_stats(d, true)
+		stats.append_array(all_st)
 		stats = stats.filter(func(s): return str(s[1]) != "")
+		var notes_st: Array = all_st.filter(func(s): return str(s[1]) == "" and s.size() > 3 and str(s[3]) != "")
 		var colw := w * 0.5
 		var ih := fs * 1.15
 		for i in stats.size():
@@ -943,6 +945,11 @@ class Painter extends RefCounted:
 			StatIcons.draw_icon(ci, str(s[0]), Rect2(Vector2(sx, sy), Vector2(ih, ih)), icol)
 			tx(ci, "headb", Vector2(sx + ih * 1.25, sy + ih * 0.82), str(s[1]), fs, ink, colw - ih * 1.4)
 		y += int(ceil(stats.size() / 2.0)) * ih * 1.25 + fs * 0.4
+		# a trait or a gadget: its star and what it does
+		for ns in notes_st:
+			var ncol: Color = ink if st["mono"] else StatIcons.color_of(str(ns[0]))
+			StatIcons.draw_icon(ci, str(ns[0]), Rect2(Vector2(x, y), Vector2(ih, ih)), ncol)
+			y += maxf(ih, para(ci, "body", Vector2(x + ih * 1.25, y), str(ns[3]), w - ih * 1.3, maxi(5, int(fs * 0.85)), ink, 2)) + fs * 0.35
 		# the grades it comes in
 		var stock: Array = GameData.stock_grades(base)
 		var gx := x
@@ -1067,7 +1074,7 @@ class Painter extends RefCounted:
 				var a := TAU * i / 6.0
 				ci.draw_circle(c + Vector2(cos(a), sin(a)) * rr * 0.92, rr * 0.06, Color(0.75, 0.75, 0.8))
 		else:
-			PartIcon.draw_part(ci, Rect2(c - Vector2(span, span) * 0.5, Vector2(span, span)), d, 1.0)
+			PartIcon.draw_part(ci, Rect2(c - Vector2(span, span) * 0.5, Vector2(span, span)), d, 1.0, Color(0.85, 0.85, 0.9), false)
 		ci.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
 	# ---- the "more soon" page

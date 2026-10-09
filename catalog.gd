@@ -18,6 +18,12 @@ const TRAITS := {
 	"leech": {"name": "Leech", "desc": "Repairs your torso by %d%% of the damage you deal.", "values": [10, 18]},
 	"explosive": {"name": "Volatile", "desc": "Explodes for %d damage when it's destroyed.", "values": [15, 26]},
 	"plating": {"name": "Plating", "desc": "+%d armor on your torso.", "values": [8, 14]},
+	# (1.97) Old Iron and Scrapworks
+	"ram": {"name": "Ram", "desc": "Your hits push %d%% further.", "values": [40, 70]},
+	"crush": {"name": "Crush", "desc": "Hits clamp on: %d damage to that part over 2s.", "values": [8, 13]},
+	"anchored": {"name": "Anchored", "desc": "Knockback on this robot cut by %d%%.", "values": [50, 80]},
+	"flywheel": {"name": "Flywheel", "desc": "Once the tank is full, stores up to %d%% more as spare power.", "values": [25, 40]},
+	"tarp": {"name": "Tarp", "desc": "The tarp hides your weak spot: the enemy's first scans find nothing (%d of them).", "values": [1, 2]},
 }
 
 # name: brand name. trait: signature. colors: [Mk I, X]. mods: stat changes. cost: price multiplier.

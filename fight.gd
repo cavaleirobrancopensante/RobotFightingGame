@@ -203,7 +203,9 @@ class Fighter:
 	var numb_t := 0.0        # arm got hit: weaker hits
 	var armor_t := 0.0       # bulwark slam armor buff
 	var haste_t := 0.0       # overclock
-	var burns: Array = []    # [{slot, dps, t}]
+	var burns: Array = []    # [{slot, dps, t}] (crush: true = a Crane Hook's clamp, no fire)
+	var fly := 0.0           # (1.97) Flywheel Back: spare power stored once the tank is full
+	var tarp_left := 0       # (1.97) Tarp Cape: enemy scans it still fools
 	# teams (multibot fights)
 	var team := 0            # 0 = player's side, 1 = CPU's side
 	var foe = null           # the enemy this fighter is fighting right now
@@ -827,6 +829,7 @@ func make_fighter(spec: Dictionary) -> Fighter:
 	for t in spec.get("traits", []):
 		var tid: String = t["trait"]
 		f.gtraits[tid] = f.gtraits.get(tid, 0.0) + Catalog.trait_value(t)
+	f.tarp_left = int(f.gtraits.get("tarp", 0.0))
 	return f
 
 
@@ -2225,6 +2228,11 @@ func spend(f: Fighter, cost: float) -> void:
 		return
 	if f.over_t > 0.0:
 		cost *= 0.5   # overcharged: everything's cheap... until it isn't
+	if f.fly > 0.0:
+		# (1.97) the flywheel pays first
+		var take := minf(f.fly, cost)
+		f.fly -= take
+		cost -= take
 	f.power -= cost
 	f.idle_t = 0.0
 	if f.power <= 0.0:
@@ -2251,7 +2259,13 @@ func update_power(f: Fighter, delta: float) -> void:
 		return
 	if not busy and f.idle_t > REFILL_DELAY and f.state != "ko":
 		var rate := REFILL * (1.35 if f.style == "mechanic" else 1.0) * (0.4 if f.blocking else 1.0) * (1.25 if f.sets.has("brassworks") else 1.0)
-		f.power = minf(f.power_max, f.power + f.power_max * rate * delta)
+		var room := f.power_max - f.power
+		var add := f.power_max * rate * delta
+		f.power = minf(f.power_max, f.power + add)
+		var fw: float = f.gtraits.get("flywheel", 0.0)
+		if fw > 0.0 and add > room:
+			# (1.97) a full tank spins up the flywheel
+			f.fly = minf(f.power_max * fw / 100.0, f.fly + (add - room) * 0.6)
 
 
 ## (1.93) Techniques for a robot that isn't yours: seeded by its name, so the same robot always fights
@@ -2349,7 +2363,13 @@ func update_aim(f: Fighter, delta: float) -> void:
 		f.scan_t = 0.0
 	if f.weak == "" and wp != "":
 		f.scan_t += delta
-		if f.scan_t >= f.scan_time:
+		if f.scan_t >= f.scan_time and o.tarp_left > 0:
+			# (1.97) a Tarp Cape: the scan comes back empty and starts again
+			o.tarp_left -= 1
+			f.scan_t = 0.0
+			if f == player or o == player:
+				popup(tr("SCAN FOOLED"), visual_point(o, RobotArt.part_center(o.get_look(), "torso")) + Vector2(0, -60), Color(0.6, 0.9, 0.6))
+		elif f.scan_t >= f.scan_time:
 			f.weak = wp
 			if f.team == 0 and f == player:
 				popup(tr("WEAK SPOT FOUND"), visual_point(o, RobotArt.part_center(o.get_look(), wp)) + Vector2(0, -40), Color(1.0, 0.9, 0.2))
@@ -2719,7 +2739,7 @@ func update_fighter(f: Fighter, o: Fighter, i: Dictionary, delta: float) -> void
 			if f.alive(b["slot"]):
 				damage_part(f, b["slot"], b["dps"] * delta, true)
 				if randf() < delta * 12.0:
-					add_spark(visual_point(f, RobotArt.part_center(f.get_look(), b["slot"])) + Vector2(randf_range(-14, 14), randf_range(-14, 8)), Color(1.0, 0.5, 0.1), 12.0)
+					add_spark(visual_point(f, RobotArt.part_center(f.get_look(), b["slot"])) + Vector2(randf_range(-14, 14), randf_range(-14, 8)), Color(0.85, 0.85, 0.8) if b.get("crush", false) else Color(1.0, 0.5, 0.1), 12.0)
 		f.burns = f.burns.filter(func(b): return b["t"] > 0.0)
 		check_ko(o, f)
 	if i["gadget"] >= 0 and i["gadget"] < gadget_buttons.size() and gadget_buttons[i["gadget"]]["owner"] == f:
@@ -3208,18 +3228,19 @@ func apply_hit(att: Fighter, d: Fighter, a: Dictionary, at: Vector2) -> void:
 			# (1.93) a hook wraps round the guard: much of it gets through
 			damage_part(d, "torso" if d.alive("torso") else arm, dmg * float(a["through"]))
 			popup(tr("AROUND THE GUARD"), d.pos + Vector2(0, -200.0 * d.scale), Color(1.0, 0.75, 0.4))
+		var kk := knock_k(att, d)
 		if a.has("push"):
-			d.pos.x += att.facing * float(a["push"])   # (1.93) shoves and push kicks move the guard too
+			d.pos.x += att.facing * float(a["push"]) * kk   # (1.93) shoves and push kicks move the guard too
 		if family == "kick":
 			# a kick only partly stops on a guard: some gets through and it shoves you back
 			damage_part(d, arm, dmg * (0.2 if d.style == "tank" else 0.35) * d.ctrl.get("block", 1.0))
 			if d.alive("torso"):
 				damage_part(d, "torso", dmg * 0.1)
-			d.pos.x += att.facing * 60.0
+			d.pos.x += att.facing * 60.0 * kk
 			popup(tr("CHIP"), d.pos + Vector2(0, -200.0 * d.scale), Color(1.0, 0.75, 0.4))
 		else:
 			damage_part(d, arm, dmg * (0.08 if d.style == "tank" else 0.3) * d.ctrl.get("block", 1.0))
-			d.pos.x += att.facing * 25.0
+			d.pos.x += att.facing * 25.0 * kk
 		if family == "punch" and ATTACKS.has(att.state) and not a.has("through") and not a.has("push"):
 			# block beats punch: the fist bounces off and the puncher is left open
 			att.state = "hit"
@@ -3291,6 +3312,11 @@ func apply_hit(att: Fighter, d: Fighter, a: Dictionary, at: Vector2) -> void:
 		var burn := off_trait(att, src, "burn")
 		if burn > 0.0 and d.alive(slot):
 			d.burns.append({"slot": slot, "dps": burn / 3.0 * att.gpow, "t": 6.0 if att.sets.has("hellfire") else 3.0})
+		var crush := off_trait(att, src, "crush")
+		if crush > 0.0 and d.alive(slot):
+			# (1.97) a Crane Hook clamps on and keeps crushing
+			d.burns.append({"slot": slot, "dps": crush / 2.0 * att.gpow, "t": 2.0, "crush": true})
+			popup(tr("CLAMPED"), hit_at + Vector2(0, -50), Color(1.0, 0.85, 0.35))
 		var chill := off_trait(att, src, "chill")
 		if chill > 0.0:
 			d.slow_t = maxf(d.slow_t, chill)
@@ -3323,7 +3349,7 @@ func apply_hit(att: Fighter, d: Fighter, a: Dictionary, at: Vector2) -> void:
 			d.blocking = false
 			d.special_id = ""
 			d.boost_t = 0.0
-			d.vel.x = att.facing * float(a.get("knock", 320.0)) * KNOCK_K
+			d.vel.x = att.facing * float(a.get("knock", 320.0)) * KNOCK_K * knock_k(att, d)
 			if off_trait(att, src, "magnet") > 0.0:
 				d.vel.x = -att.facing * 260.0   # magnets yank the enemy in
 			if a.has("launch"):
@@ -3363,6 +3389,13 @@ func check_ko(att: Fighter, d: Fighter) -> void:
 		knockout(att, d, "HEAD KNOCKED OFF" if d.parts["head2"].is_empty() else "BOTH HEADS KNOCKED OFF")
 	if att.state != "ko" and (not att.alive("torso") or att.heads() == 0):   # thorns or explosions can finish an attacker
 		knockout(d, att, "BLOWN APART")
+
+
+## (1.97) How far a hit pushes: a Locomotive Front shoves harder, Caterpillar Tracks barely move.
+func knock_k(att: Fighter, d: Fighter) -> float:
+	var ram := limb_trait(att, "torso", "ram") * 2.0
+	var anchor := (limb_trait(d, "leg_front", "anchored") + limb_trait(d, "leg_back", "anchored")) * 0.5
+	return (1.0 + ram / 100.0) * (1.0 - minf(anchor, 90.0) / 100.0)
 
 
 ## Trait value on one part (heads and torso give half, limbs full).
@@ -3424,7 +3457,7 @@ func damage_part(f: Fighter, slot: String, amount: float, quiet: bool = false) -
 	if f.armor_t > 0.0:
 		armor += 15.0
 	if slot == "torso":
-		armor += f.gtraits.get("plating", 0.0)
+		armor += f.gtraits.get("plating", 0.0) + limb_trait(f, "torso", "plating") * 2.0   # (1.97) an Engine Block's own plating
 	if f.style == "striker":
 		amount *= 1.1
 	if simming:
@@ -4520,6 +4553,10 @@ func draw_team_bars(team: Array, x: float, y: float, w: float, bh: float, right:
 		elif f.power < f.power_max * 0.25:
 			pc = POWER_COLOR.lerp(Color.WHITE, 0.5 + 0.5 * sin(clock * 14.0))
 		GUI.draw_blocks(ci, pr, pn, clampf(f.power, 0.0, f.power_max), pc, Color(0.02, 0.06, 0.1, 0.85), right)
+		if f.fly > 0.3:
+			# (1.97) the flywheel's spare power: an amber strip under the tank
+			var fwid := pr.size.x * clampf(f.fly / maxf(1.0, f.power_max), 0.0, 1.0)
+			ci.draw_rect(Rect2(pr.position.x + (pr.size.x - fwid if right else 0.0), pr.end.y + 1.0, fwid, 3.0), Color(1.0, 0.7, 0.2))
 		if n > 1:
 			var t := (tr("%s  ") % f.tag if f.tag != "" else "") + f.label + (tr("  · DOWN") if f.state == "ko" else "")
 			ci.draw_string(font, Vector2(x + 6, by + h - 1), t, HORIZONTAL_ALIGNMENT_RIGHT if right else HORIZONTAL_ALIGNMENT_LEFT, w - 12, int(h * 0.95), Color(0.08, 0.08, 0.1))
@@ -4563,8 +4600,10 @@ func draw_hud() -> void:
 		status.append(tr("ARM HIT: WEAKER"))
 	if player.slow_t > 0.0:
 		status.append(tr("FROZEN"))
-	if not player.burns.is_empty():
+	if player.burns.any(func(b): return not b.get("crush", false)):
 		status.append(tr("ON FIRE"))
+	if player.burns.any(func(b): return b.get("crush", false)):
+		status.append(tr("CLAMPED"))
 	# the pilots, under the robots' names
 	var pl_y := y + bh + 28 + fs(17) + 2
 	var has_pilots := false

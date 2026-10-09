@@ -142,6 +142,8 @@ static func _props_back(ci: CanvasItem, size: Vector2, scene: String, t: float, 
 				if int(t * 0.7 + k) % 3 == 0:
 					_rc(ci, Rect2(bx + 4, w.end.y - bh + 6, 3, 3), Color(1.0, 0.85, 0.4))
 			_rc(ci, w, Color(0.35, 0.35, 0.4), false, 3.0)
+			# (1.97) Parts-R-Us is Old Iron's dealer: the foundry's enamel sign on the wall
+			_maker_plaque(ci, Rect2(size.x * 0.06, 26, size.x * 0.4, 40), "oldiron", I18n.t("OLD IRON FOUNDRY"), I18n.t("AUTHORISED DEALER"))
 		"workshop":
 			_sign(ci, Vector2(size.x * 0.8, 30), I18n.t("CUSTOM ORDERS"), Color(0.6, 0.85, 1.0))
 			# shelves of parts
@@ -158,6 +160,11 @@ static func _props_back(ci: CanvasItem, size: Vector2, scene: String, t: float, 
 			_ln(ci, Vector2(size.x * 0.5, 26), Vector2(hook_x, 70), Color(0.2, 0.2, 0.2), 2.0)
 			_ac(ci, Vector2(hook_x, 76), 6, 0, PI * 1.3, 8, Color(0.3, 0.3, 0.3), 3.0)
 			_scrap_pile(ci, Vector2(size.x * 0.38, floor_y), size.x * 0.42, size.y * 0.45, t)
+			# (1.97) Scrapworks' hand-painted board, nailed to a post and taped where it split
+			var pl := Rect2(size.x * 0.18, 72, size.x * 0.24, 32)   # hung from the crane's jib on two ropes
+			_ln(ci, Vector2(pl.position.x + 6, 26), Vector2(pl.position.x + 6, pl.position.y + 3), Color(0.55, 0.45, 0.3), 1.5)
+			_ln(ci, Vector2(pl.end.x - 6, 26), Vector2(pl.end.x - 6, pl.position.y + 1), Color(0.55, 0.45, 0.3), 1.5)
+			_maker_plaque(ci, pl, "scrapworks", I18n.t("SCRAPWORKS"), I18n.t("WE BUY JUNK"))
 		"paint":
 			# drop cloth with splatters in the paint colour
 			var pc: Color = info.get("paint", Color(0.8, 0.3, 0.2))
@@ -909,6 +916,27 @@ static func _wall(ci: CanvasItem, size: Vector2, floor_y: float, c1: Color, c2: 
 	for k in int(size.x / 18.0) + 1:   # corrugated metal
 		ci.draw_rect(Rect2(k * 18.0, 0, 9.0, floor_y), c2)
 	ci.draw_rect(Rect2(0, floor_y, size.x, size.y - floor_y), floor_c)
+
+
+## (1.97) A maker's sign in its shop: enamel for Old Iron, a painted plank for Scrapworks.
+static func _maker_plaque(ci: CanvasItem, r: Rect2, m: String, title: String, sub: String) -> void:
+	var f := ThemeDB.fallback_font
+	var col: Color = load("res://makers.gd").color(m)
+	var room := r.size.x - (8.0 if m == "scrapworks" else r.size.y + 4.0)
+	var tsz := mini(13, int(13.0 * room / maxf(1.0, f.get_string_size(title, HORIZONTAL_ALIGNMENT_LEFT, -1, 13).x)))
+	var ssz := mini(10, int(10.0 * room / maxf(1.0, f.get_string_size(sub, HORIZONTAL_ALIGNMENT_LEFT, -1, 10).x)))
+	if m == "scrapworks":
+		_pg(ci, PackedVector2Array([r.position + Vector2(0, 3), Vector2(r.end.x, r.position.y), r.end - Vector2(0, 2), Vector2(r.position.x, r.end.y)]), Color(0.55, 0.44, 0.3))
+		ci.draw_line(r.position + Vector2(r.size.x * 0.55, 0), Vector2(r.position.x + r.size.x * 0.58, r.end.y), Color(0.3, 0.22, 0.14), 1.5)
+		ci.draw_rect(Rect2(r.position.x + r.size.x * 0.5, r.position.y + 6, 16, 8), Color(0.85, 0.8, 0.6, 0.85))
+		ci.draw_string(f, Vector2(r.position.x, r.position.y + r.size.y * 0.5), title, HORIZONTAL_ALIGNMENT_CENTER, r.size.x, tsz, Color(0.95, 0.9, 0.8))
+		ci.draw_string(f, Vector2(r.position.x, r.position.y + r.size.y * 0.88), sub, HORIZONTAL_ALIGNMENT_CENTER, r.size.x, ssz, Color(0.15, 0.1, 0.06))
+		return
+	_rc(ci, r, Color(0.93, 0.89, 0.8))
+	_rc(ci, r.grow(-3), col, false, 2.0)
+	load("res://logos.gd").draw_logo(ci, load("res://makers.gd").logo(m), r.position + Vector2(r.size.y * 0.5, r.size.y * 0.5), r.size.y * 0.32)
+	ci.draw_string(f, Vector2(r.position.x + r.size.y, r.position.y + r.size.y * 0.48), title, HORIZONTAL_ALIGNMENT_LEFT, r.size.x - r.size.y - 4, tsz, col.darkened(0.2))
+	ci.draw_string(f, Vector2(r.position.x + r.size.y, r.position.y + r.size.y * 0.82), sub, HORIZONTAL_ALIGNMENT_LEFT, r.size.x - r.size.y - 4, ssz, Color(0.2, 0.18, 0.16))
 
 
 static func _sign(ci: CanvasItem, center: Vector2, text: String, c: Color) -> void:

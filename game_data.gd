@@ -3,7 +3,7 @@ const PlayLog = preload("res://playlog.gd")   # (1.87) the playtest log
 
 # helper scripts, loaded by path so the game also runs without an editor scan
 ## The game's version, shown on the main menu. Bump it with every change (1.1, 1.2, ...).
-const VERSION := "1.96"
+const VERSION := "1.97"
 const Arena = preload("res://arena.gd")
 const I18n = preload("res://i18n.gd")
 const Catalog = preload("res://catalog.gd")
@@ -31,6 +31,7 @@ const Career = preload("res://career.gd")
 const World = preload("res://world.gd")
 const Social = preload("res://social.gd")
 const Makers = preload("res://makers.gd")
+const MakerParts = preload("res://maker_parts.gd")
 const Contracts = preload("res://contracts.gd")
 const Clips = preload("res://clips.gd")
 const PILOT_NAMES := ["Rook", "Marisol", "Dex", "Kit", "Juno", "Tavi", "Bram", "Nia", "Otto", "Zara", "Lio", "Mags",
@@ -153,7 +154,7 @@ const PART_LIST := [
 	{"id": "fork_torso",   "kind": "torso", "name": "Forklift Chassis", "cost": 120, "hp": 82, "armor": 3, "speed": -5, "draw": 1, "shape": "crate", "color": "#e0a81c", "shop": false},
 	{"id": "fork_arm",     "kind": "arm", "name": "Lift Fork",          "cost": 80,  "hp": 30, "armor": 0, "damage": 2, "speed": -5, "draw": 1, "shape": "blade", "color": "#5a5a5a", "size": 0.9, "shop": false},
 	{"id": "fork_leg",     "kind": "leg", "name": "Forklift Wheel",     "cost": 90,  "hp": 34, "armor": 2, "damage": 0, "speed": 0, "draw": 1, "shape": "wheel", "color": "#2b2b2b", "size": 0.9, "shop": false},
-	{"id": "junk_reactor",   "kind": "reactor", "name": "Car Battery", "cost": 0,    "output": 10, "color": "#ff9a3c"},
+	{"id": "junk_reactor",   "kind": "reactor", "name": "Flat Battery", "cost": 0,    "output": 10, "color": "#ff9a3c"},
 	{"id": "reactor_diesel", "kind": "reactor", "name": "Diesel Core", "cost": 300,  "output": 18, "color": "#ff5533"},
 	{"id": "reactor_cell",   "kind": "reactor", "name": "Fuel Cell",   "cost": 900,  "output": 26, "color": "#ffd23f"},
 	{"id": "reactor_fusion", "kind": "reactor", "name": "Fusion Core", "cost": 1800, "output": 36, "color": "#2ec4ff"},
@@ -198,7 +199,7 @@ const OPPONENTS := [
 	 "parts": {"head": "head_wedge", "torso": "torso_box", "arm_front": "arm_hammer", "arm_back": "arm_rocket", "leg_front": "leg_piston", "leg_back": "leg_piston"}, "specials": ["haymaker", "rocket_punch"]},
 	{"name": "VOLTAGE", "pilot": "NIK & NAT", "style": "specialist", "hp": 1.0, "damage": 0.95, "speed": 1.15, "scale": 0.95, "think": 0.35, "block": 0.35, "smart": 0.5, "reward": 1100,
 	 "body": "#d4c21f", "trim": "#2b2b2b", "eye": "#00b7ff",
-	 "parts": {"head": "head_bulb", "torso": "torso_slim", "arm_front": "arm_claw", "arm_back": "arm_claw", "leg_front": "leg_pogo", "leg_back": "leg_spring", "back": "back_jet", "reactor": "reactor_cap"}, "specials": ["lightning_legs", "emp_pulse", "dive_stomp"]},
+	 "parts": {"head": "head_bulb", "torso": "torso_slim", "arm_front": "volta_arm_1", "arm_back": "volta_arm_1", "leg_front": "leg_pogo", "leg_back": "leg_spring", "back": "back_jet", "reactor": "reactor_cap"}, "specials": ["lightning_legs", "emp_pulse", "dive_stomp"]},
 	{"name": "SLEDGE", "pilot": "BULL", "style": "tank", "hp": 1.05, "damage": 0.95, "speed": 0.95, "scale": 1.10, "think": 0.30, "block": 0.42, "smart": 0.55, "reward": 1300,
 	 "body": "#7a2e2e", "trim": "#d6c9a8", "eye": "#ffe14d",
 	 "parts": {"head": "head_tv", "torso": "torso_hex", "arm_front": "arm_hammer", "arm_back": "arm_hammer", "leg_front": "leg_pillar", "leg_back": "leg_pillar", "reactor": "reactor_over"}, "specials": ["haymaker", "grab_slam"]},
@@ -559,7 +560,7 @@ func clear_error_log() -> void:
 
 func _ready() -> void:
 	start_error_log()
-	for p in PART_LIST + Catalog.generate():
+	for p in MakerParts.merge(PART_LIST + Catalog.generate()):   # (1.97) the makers' own lines in
 		var d: Dictionary = p.duplicate()
 		ALL_PARTS.append(d["id"])
 		if not d.has("trait"):
@@ -592,13 +593,17 @@ func _ready() -> void:
 		d["cost_v5"] = int(d["cost"])   # the price before grades (old saves get their grade from it)
 		d["cost"] = grade_one_price(int(d["cost"]))
 		PARTS[d["id"]] = d
-	# Mini and Heavy versions of every body part
+	# Mini and Heavy versions of every body part. (1.97) Makers whose parts come in one size and
+	# retired parts keep theirs only so old saves and robots stay valid: never sold.
 	var base_ids := ALL_PARTS.duplicate()
 	for c in ["S", "L"]:
 		for id in base_ids:
 			var d: Dictionary = PARTS[id]
-			if d["kind"] in ["head", "torso", "arm", "leg"] and d["cost"] > 0 and d["shop"]:
+			if d["kind"] in ["head", "torso", "arm", "leg"] and d["cost"] > 0 and (d["shop"] or d.get("retired", false)):
 				var v := sized_variant(d, c)
+				if MakerParts.one_size(d) or d.get("retired", false):
+					v["shop"] = false
+					v["retired"] = true
 				PARTS[v["id"]] = v
 				ALL_PARTS.append(v["id"])
 	for id in PARTS:
@@ -1009,7 +1014,7 @@ func catalogue_parts(m: String) -> Array:
 	var out: Array = []
 	for id in PARTS:
 		var d: Dictionary = PARTS[id]
-		if str(d.get("maker", "")) == m and int(d.get("grade", 0)) == 1 and not d.has("variant_of") and int(d.get("cost", 0)) > 0:
+		if str(d.get("maker", "")) == m and int(d.get("grade", 0)) == 1 and not d.has("variant_of") and int(d.get("cost", 0)) > 0 and not d.get("retired", false):
 			out.append(str(id))
 	out.sort_custom(func(a, b):
 		var da: Dictionary = PARTS[a]
@@ -1576,7 +1581,8 @@ static func fight_tank(output: float, used: float) -> float:
 ## make any head quicker.
 const HEAD_KIND := {"bucket": "plain", "box": "plain", "skull": "plain", "tall": "allround", "dome": "allround",
 		"horned": "allround", "knight": "allround", "orb": "allround", "cyclops": "sniper", "visor": "sniper",
-		"wedge": "sniper", "laser": "sniper", "dish": "scanner", "tv": "scanner", "bulb": "scanner", "speaker": "scanner"}
+		"wedge": "sniper", "laser": "sniper", "dish": "scanner", "tv": "scanner", "bulb": "scanner", "speaker": "scanner",
+		"rivet": "plain", "grille": "plain", "peeper": "scanner", "busted": "plain"}
 const HEAD_TIMES := {"junk": [5.0, 8.0], "plain": [2.5, 4.0], "sniper": [0.6, 5.0], "scanner": [3.0, 1.0], "allround": [1.5, 2.0]}
 
 
@@ -1767,10 +1773,10 @@ const TECH_ORDER := ["hook", "overhand", "shove", "elbow", "push_kick", "roundho
 const TECH_DEFAULT := {"arm": "Jab", "leg": "Kick"}
 ## Part shapes a technique can't be thrown with (a hammer can't hook, a tread can't throw a knee).
 const TECH_NOT := {
-	"hook": ["hammer", "drill", "saw", "flame", "blade"],
-	"overhand": ["flame", "grapple"],
-	"elbow": ["hammer"],
-	"roundhouse": ["pillar", "tread", "wheel", "pogo", "thick", "hover"],
+	"hook": ["hammer", "drill", "saw", "flame", "blade", "anvil", "crane"],
+	"overhand": ["flame", "grapple", "grabber"],
+	"elbow": ["hammer", "anvil"],
+	"roundhouse": ["pillar", "tread", "wheel", "pogo", "thick", "hover", "stomper"],
 	"axe_kick": ["tread", "wheel", "pillar", "hover"],
 	"knee": ["tread", "wheel", "pogo", "spring", "pillar", "hover"],
 }
@@ -5565,6 +5571,7 @@ func load_game(slot: int = -1, mine: bool = false) -> String:
 			var g := grade_of(str(p["id"]))
 			if g > 1:
 				p["hp"] = float(p["hp"]) * grade_mult(g) / pow(old_k, g - 1)
+	one_size_owned()   # (1.97) Light / Heavy copies of one-size makers' parts become the part itself
 	var eq: Dictionary = data.get("equipped", {})
 	for sl in SLOTS:
 		var uid := int(eq.get(sl, -1))
@@ -5730,7 +5737,7 @@ func load_game(slot: int = -1, mine: bool = false) -> String:
 		bolt_everything()   # a save from before time in the bay: everything's on and fixed as it was
 	if not Catalog.STYLES.has(style):
 		style = "striker"
-	shop_stock = data.get("shop_stock", []).filter(func(id): return PARTS.has(id))
+	shop_stock = data.get("shop_stock", []).filter(func(id): return PARTS.has(id) and PARTS[id].get("shop", true))   # (1.97) retired stock leaves the shelf
 	chip_stock = data.get("chip_stock", []).filter(func(id): return Specials.MOVES.has(id) and not owned_chips.has(id))
 	if shop_stock.is_empty():
 		roll_stock()
@@ -5823,6 +5830,28 @@ func load_game(slot: int = -1, mine: bool = false) -> String:
 
 
 ## A part id from before grades -> the same design in the grade its old price fits.
+## (1.97) An owned Light / Heavy copy of a part whose maker now builds one size (or a retired copy of
+## a part that's still sold) becomes that part, same grade, same health ratio.
+func one_size_owned() -> void:
+	for p in inventory:
+		var id := str(p["id"])
+		if not id.contains("~"):
+			continue
+		var d := part_def(id)
+		if not d.get("retired", false):
+			continue
+		var base := design_of(id)
+		var bd := part_def(base)
+		if bd.is_empty() or bd.get("retired", false):
+			continue   # the design itself is retired: the copy stays as it is
+		var nid := graded_id(base, grade_of(id))
+		var nd := part_def(nid)
+		if nd.is_empty():
+			continue
+		p["hp"] = float(p["hp"]) / maxf(1.0, float(d["hp"])) * float(nd["hp"])
+		p["id"] = nid
+
+
 func v5_graded(id: String) -> String:
 	var d := part_def(id)
 	if d.is_empty() or int(d.get("grade", 0)) != 1:

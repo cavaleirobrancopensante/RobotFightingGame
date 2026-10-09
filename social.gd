@@ -1056,6 +1056,10 @@ static func _fit(line: String, args: Array) -> Array:
 
 ## Every day: an advert most days (with a part in their colours), a sale on Mondays now and then,
 ## a maker sniping at its rival, and fans of two makers going at it.
+## (1.97) A maker's launch posts (maker, one of the new parts).
+const LAUNCH_LINES := ["The new %s line is here. Start with the %s.", "All new from %s. Meet the %s.", "%s, built again from scratch. Look at the %s."]
+
+
 static func maker_daily(rng: RandomNumberGenerator) -> void:
 	var M = GameData.Makers
 	var s := st()
@@ -1063,6 +1067,20 @@ static func maker_daily(rng: RandomNumberGenerator) -> void:
 		s["sales"] = {}
 	var aw: int = GameData.abs_week()
 	var g: int = GameData.my_grade()
+	# (1.97) a maker's new line is in: it launches once, with an advert of one of the new parts
+	if not s.has("launched"):
+		s["launched"] = []
+	for lm in GameData.MakerParts.LAUNCHED:
+		if (s["launched"] as Array).has(lm):
+			continue
+		s["launched"].append(lm)
+		var ids: Array = GameData.catalogue_parts(lm)
+		if ids.is_empty():
+			continue
+		var lid := GameData.graded_id(str(ids[rng.randi() % ids.size()]), g)
+		post("mk:" + lm, LAUNCH_LINES[rng.randi() % LAUNCH_LINES.size()], [M.label(lm), M.ad_name(GameData.part_def(lid))],
+				{"kind": "mkad", "maker": lm, "id": lid, "sale": GameData.sale_pct(lm)}, [str(M.info(lm)["label"]).replace(" ", "") + "Launch"], false, "maker_ad")
+		post("botmedia", "%s unveils its new line, from the %s up. The new catalogue is on the rack at Parts-R-Us.", [M.label(lm), M.ad_name(GameData.part_def(lid))], {}, ["Launch"], false, "news")
 	if GameData.day == "mon" and (GameData.week - 1) % 13 == 0:
 		# (1.96) a new season: every maker's new catalogue is on the rack
 		post("partsrus", "New season, new catalogues. Every maker's %s issue is on the rack at the counter. Free, take one.", [GameData.issue_name(GameData.issue_now())],

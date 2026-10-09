@@ -27,24 +27,28 @@ const GRADE_EDGE := [0.35, 0.45, 0.6, 0.8, 1.0, 1.0]
 const LEGS := {"rod": [60.0, 14.0], "piston": [62.0, 18.0], "spring": [66.0, 13.0],
 		"reverse": [70.0, 16.0], "pillar": [48.0, 27.0], "thick": [56.0, 23.0],
 		"pogo": [68.0, 13.0], "wheel": [58.0, 16.0], "tread": [52.0, 25.0],
-		"blade": [64.0, 12.0], "hover": [50.0, 18.0], "spider": [62.0, 13.0]}
+		"blade": [64.0, 12.0], "hover": [50.0, 18.0], "spider": [62.0, 13.0],
+		"stomper": [56.0, 22.0], "pipe": [62.0, 14.0]}
 # [width, height]
 const TORSOS := {"barrel": [60.0, 70.0], "box": [56.0, 76.0], "vee": [70.0, 78.0],
 		"core": [60.0, 76.0], "tank": [84.0, 82.0], "slim": [42.0, 82.0],
 		"ribcage": [54.0, 74.0], "hex": [70.0, 80.0], "cannon": [66.0, 78.0],
 		"crate": [62.0, 66.0], "furnace": [64.0, 78.0], "orb": [70.0, 70.0],
-		"yoke": [82.0, 74.0], "quad": [74.0, 84.0], "monster": [92.0, 90.0]}
+		"yoke": [82.0, 74.0], "quad": [74.0, 84.0], "monster": [92.0, 90.0],
+		"engine": [74.0, 74.0], "loco": [70.0, 80.0], "drum": [58.0, 72.0]}
 const HEADS := {"bucket": [34.0, 32.0], "box": [38.0, 34.0], "dome": [42.0, 34.0], "cyclops": [40.0, 40.0],
 		"visor": [48.0, 28.0], "horned": [40.0, 34.0], "skull": [40.0, 42.0], "wedge": [44.0, 30.0],
 		"tall": [26.0, 52.0], "bulb": [44.0, 44.0], "tv": [46.0, 36.0], "dish": [40.0, 34.0], "laser": [38.0, 34.0],
-		"knight": [40.0, 42.0], "orb": [38.0, 38.0], "speaker": [44.0, 38.0]}
+		"knight": [40.0, 42.0], "orb": [38.0, 38.0], "speaker": [44.0, 38.0],
+		"rivet": [38.0, 36.0], "grille": [50.0, 38.0], "peeper": [34.0, 32.0], "busted": [46.0, 36.0]}
 const PUNCH_LEN := 84.0   # how far a punching hand reaches from the lead shoulder
 
 # [thickness, fist radius]
 const ARMS := {"rod": [12.0, 10.0], "piston": [15.0, 12.0], "claw": [14.0, 7.0], "spike": [15.0, 12.0],
 		"bulky": [20.0, 16.0], "hammer": [16.0, 7.0], "drill": [15.0, 7.0],
 		"rocket": [16.0, 14.0], "grapple": [14.0, 7.0], "saw": [14.0, 7.0],
-		"blade": [13.0, 7.0], "flame": [16.0, 7.0], "magnet": [15.0, 7.0]}
+		"blade": [13.0, 7.0], "flame": [16.0, 7.0], "magnet": [15.0, 7.0],
+		"anvil": [18.0, 9.0], "crane": [13.0, 7.0], "wrench": [12.0, 7.0], "grabber": [11.0, 6.0]}
 
 
 ## (1.93) Normal hits by limb, techniques included, and the arm poses that reach as far as a punch
@@ -1081,6 +1085,10 @@ static func arm_tip_extra(look: Dictionary, slot: String, pose: String) -> Vecto
 		"magnet": ext = 8.0 + 13.0 * sz
 		"grapple": ext = 18.0
 		"flame": ext = 60.0 if pose == "punch" or pose == "low_punch" else 16.0
+		"anvil": ext = 22.0 * sz
+		"crane": ext = 22.0 * sz
+		"wrench": ext = 21.0 * sz
+		"grabber": ext = 22.0 * sz
 	if pose == "elbow" or pose == "shove":
 		ext = 6.0   # the elbow (or a flat palm) does the hitting, not the weapon
 	return Vector2(ext, maxf(fr, th * 0.5))
@@ -1303,6 +1311,38 @@ static func _draw_arm(ci: CanvasItem, look: Dictionary, slot: String, s: Vector2
 				_poly(ci, PackedVector2Array([cen + o * rr * 0.9, cen + o.rotated(0.35) * (rr + 6.0), cen + o.rotated(0.5) * rr * 0.9]), tc.darkened(0.2))
 			_disc(ci, cen, rr, tc)
 			ci.draw_circle(cen, rr * 0.3, c.darkened(0.4))
+		"anvil":
+			# (1.97) Old Iron: a forged anvil for a fist
+			var k := sz
+			# its height runs along the punch: the flat top face is the striking face, the horn sticks out sideways
+			var uv := [Vector2(0, -10), Vector2(5, -10), Vector2(9, -5), Vector2(12, -13), Vector2(22, -13), Vector2(22, 14),
+					Vector2(19, 26), Vector2(15, 13), Vector2(12, 12), Vector2(9, 5), Vector2(5, 10), Vector2(0, 10)]
+			var body := PackedVector2Array()
+			for q in uv:
+				body.append(h + dir * (q as Vector2).x * k + perp * (q as Vector2).y * k)
+			_plate(ci, body, Color(0.24, 0.26, 0.29) if not flash else Color.WHITE)
+			ci.draw_line(h + dir * 21.0 * k - perp * 12.0 * k, h + dir * 21.0 * k + perp * 12.0 * k, Color(0.78, 0.8, 0.82, 0.75), 2.5)
+			_hexbolt(ci, h + dir * 16.0 * k, 3.0 * k)
+		"crane":
+			# (1.97) Old Iron: a pulley block and a yellow crane hook
+			_plate(ci, PackedVector2Array([h - dir * 4.0 - perp * 8.0 * sz, h + dir * 8.0 * sz - perp * 8.0 * sz, h + dir * 8.0 * sz + perp * 8.0 * sz, h - dir * 4.0 + perp * 8.0 * sz]), Color(0.28, 0.29, 0.31))
+			_joint(ci, h + dir * 2.0 * sz, 3.0 * sz, tc)
+			var hook := PackedVector2Array([h + dir * 8.0 * sz, h + dir * 16.0 * sz, h + dir * 21.0 * sz + perp * 4.0 * sz,
+					h + dir * 19.0 * sz + perp * 10.0 * sz, h + dir * 12.0 * sz + perp * 11.0 * sz, h + dir * 9.0 * sz + perp * 6.0 * sz])
+			_pl(ci, hook, Color(0.9, 0.68, 0.12) if not flash else Color.WHITE, 5.0 * sz)
+		"wrench":
+			# (1.97) Scrapworks: a big open-end wrench where the hand should be
+			var wc := h + dir * 10.0 * sz
+			_disc(ci, wc, 11.0 * sz, tc)
+			ci.draw_colored_polygon(PackedVector2Array([wc + dir * 12.0 * sz + perp * 5.0 * sz, wc + dir * 1.0 * sz + perp * 3.5 * sz,
+					wc + dir * 1.0 * sz - perp * 3.5 * sz, wc + dir * 12.0 * sz - perp * 5.0 * sz]), Color(0.07, 0.07, 0.08))
+			_ln(ci, h - dir * 2.0, wc - dir * 6.0 * sz, tc, 7.0 * sz)
+		"grabber":
+			# (1.97) Scrapworks: a litter picker's jaws on the end of a long pipe
+			_ln(ci, h, h + dir * 10.0 * sz, tc, 4.0)
+			_pl(ci, PackedVector2Array([h + dir * 10.0 * sz, h + dir * 17.0 * sz + perp * 6.0 * sz, h + dir * 22.0 * sz + perp * 3.0 * sz]), tc, 3.0)
+			_pl(ci, PackedVector2Array([h + dir * 10.0 * sz, h + dir * 17.0 * sz - perp * 6.0 * sz, h + dir * 22.0 * sz - perp * 3.0 * sz]), tc, 3.0)
+			_joint(ci, h, th * 0.5, c.darkened(0.3))
 		_:
 			_round(ci, h, fr, tc)
 	_finish_limb(ci, s, e, p, th, t)
@@ -1375,6 +1415,28 @@ static func _draw_back(ci: CanvasItem, look: Dictionary, g: Dictionary, pose: Di
 			for k in 2:
 				var root := Vector2(bx - 2, top + 16 + k * 10)
 				_poly(ci, PackedVector2Array([root, root + Vector2(-56, -40 - k * 8 + flap), root + Vector2(-40, -6 + flap), root + Vector2(-60, 6 + flap * 0.5)]), Color(c.r, c.g, c.b, 0.85 - k * 0.25))
+		"flywheel":
+			# (1.97) Old Iron: a spoked flywheel on the back, spinning
+			var fc := Vector2(bx - 6.0, top + float(g["th"]) * 0.42)
+			var fr2 := 24.0
+			_box(ci, Rect2(fc.x - 2.0, fc.y - 5.0, 10.0, 10.0), c.darkened(0.3))
+			_disc(ci, fc, fr2, c.darkened(0.1))
+			ci.draw_arc(fc, fr2 * 0.78, 0, TAU, 24, c.darkened(0.45), 3.0)
+			for k in 6:
+				var a := t * 5.0 + k * TAU / 6.0
+				ci.draw_line(fc, fc + Vector2(cos(a), sin(a)) * fr2 * 0.76, c.darkened(0.4), 3.0)
+			_joint(ci, fc, 6.0, trim)
+		"tarp":
+			# (1.97) Scrapworks: a green tarp tied on at the shoulders, flapping
+			var fl := sin(t * 3.0) * 5.0
+			var th2: float = g["th"]
+			_plate(ci, PackedVector2Array([Vector2(bx + 6, top + 2), Vector2(bx - 6, top), Vector2(bx - 22 + fl, top + th2 * 0.5),
+					Vector2(bx - 30 + fl * 1.4, top + th2 + 14), Vector2(bx - 8 + fl * 0.6, top + th2 + 8), Vector2(bx + 6, top + th2 * 0.85)]), c)
+			ci.draw_line(Vector2(bx - 4, top + 6), Vector2(bx - 18 + fl, top + th2 + 6), c.darkened(0.25), 2.0)
+			ci.draw_line(Vector2(bx + 2, top + 10), Vector2(bx - 6 + fl * 0.5, top + th2 + 4), c.darkened(0.2), 2.0)
+			for gp in [Vector2(bx - 2, top + 4), Vector2(bx - 12 + fl * 0.3, top + th2 * 0.3)]:
+				ci.draw_circle(gp, 2.5, Color(0.8, 0.8, 0.75))
+			_ln(ci, Vector2(bx + 6, top + 4), Vector2(bx + 14, top + 9), Color(0.62, 0.5, 0.3), 2.0)
 		"shield":
 			_ln(ci, Vector2(bx - 6, top + 40), Vector2(bx - 14, top - 18), c.darkened(0.3), 4.0)
 			_arc(ci, Vector2(bx - 14, top - 18), 14.0, PI * 0.6, PI * 1.6, 12, c, 5.0)
@@ -1473,6 +1535,23 @@ static func _draw_leg(ci: CanvasItem, look: Dictionary, slot: String, hip: Vecto
 			_limb(ci, knee, foot + Vector2(0, -12), c, th * 0.8)
 		"tread":
 			_limb(ci, hip, foot + Vector2(0, -10), c, th)
+		"stomper":
+			# (1.97) Old Iron: a thick leg with a ram at the ankle
+			_limb(ci, hip, knee, c, th)
+			_limb(ci, knee, foot + Vector2(0, -10), c, th * 0.85)
+			_ln(ci, knee + perp * th * 0.6, foot + Vector2(0, -12) + perp * th * 0.6, c.darkened(0.35), 4.0)
+			_joint(ci, knee, th * 0.62, c.darkened(0.2))
+			_hexbolt(ci, knee, 3.0)
+		"pipe":
+			# (1.97) Scrapworks: plumbing, with an elbow fitting for a knee
+			_limb(ci, hip, knee, c, th)
+			_limb(ci, knee, foot + Vector2(0, -6), c, th)
+			for f2 in [0.5]:
+				var q := hip.lerp(knee, f2)
+				_ln(ci, q - perp * th * 0.62, q + perp * th * 0.62, c.darkened(0.3), 4.0)
+			var q2 := knee.lerp(foot, 0.55)
+			_ln(ci, q2 - perp * th * 0.62, q2 + perp * th * 0.62, c.darkened(0.3), 4.0)
+			_plate(ci, _chamfer(Rect2(knee - Vector2(th * 0.7, th * 0.7), Vector2(th * 1.4, th * 1.4)), 3.0), c.darkened(0.15))
 		_:
 			_limb(ci, hip, knee, c, th)
 			_limb(ci, knee, foot, c, th * 0.85)
@@ -1498,6 +1577,12 @@ static func _draw_leg(ci: CanvasItem, look: Dictionary, slot: String, hip: Vecto
 		_joint(ci, Vector2(tr.end.x - 8, tr.get_center().y), 5.0, tc)
 	elif p["shape"] == "pogo":
 		_box(ci, Rect2(foot.x - 14.0, foot.y - 6.0, 28.0, 6.0), Color(0.15, 0.15, 0.17))
+	elif p["shape"] == "stomper":
+		# a huge cast boot that kicks and stamps flat
+		var bt := Rect2(foot.x - 16.0, foot.y - 14.0, 40.0, 14.0)
+		_plate(ci, _chamfer(bt, 3.0), tc.darkened(0.15))
+		_hexbolt(ci, Vector2(bt.position.x + 6, bt.position.y + 5), 2.5)
+		_hexbolt(ci, Vector2(bt.end.x - 6, bt.position.y + 5), 2.5)
 	elif p["shape"] == "hover":
 		var gl := 0.6 + 0.4 * sin(foot.x * 0.3 + Time.get_ticks_msec() * 0.02)
 		ci.draw_colored_polygon(PackedVector2Array([foot + Vector2(-10, -10), foot + Vector2(10, -10), foot + Vector2(0, 6.0 + 8.0 * gl)]), Color(0.4, 0.8, 1.0, 0.8))
@@ -1634,12 +1719,62 @@ static func _draw_torso(ci: CanvasItem, look: Dictionary, g: Dictionary, flash: 
 			_glow(ci, chest + Vector2(0, 6), w * 0.2, eye)
 			ci.draw_circle(chest + Vector2(0, 6), w * 0.2 * pulse, eye)
 			ci.draw_circle(chest + Vector2(0, 6), w * 0.09, Color(1, 1, 1, 0.8))
+		"engine":
+			# (1.97) Old Iron: an engine block, two valve covers on top, cooling fins, a pulley and its belt
+			_plate(ci, plate, c)
+			for k in 2:
+				var vr := Rect2(x0 + w * (0.06 + 0.48 * k), y0 - 10.0, w * 0.42, 14.0)
+				_plate(ci, _chamfer(vr, 4.0), trim)
+				ci.draw_circle(vr.get_center() + Vector2(w * 0.08, -1.0), 2.5, trim.darkened(0.45))
+			for k in 6:
+				var fy := y0 + r.size.y * (0.22 + k * 0.08)
+				ci.draw_line(Vector2(x0 + 5, fy), Vector2(x1 - 5, fy), c.darkened(0.32), 2.0)
+			var pc := Vector2(r.get_center().x if front else x1 - w * 0.2, y1 - r.size.y * 0.2)
+			_disc(ci, pc, w * 0.13, trim.darkened(0.15))
+			ci.draw_circle(pc, w * 0.05, c.darkened(0.4))
+			_ln(ci, pc + Vector2(-w * 0.13, 0), pc + Vector2(-w * 0.09, -r.size.y * 0.42), Color(0.12, 0.12, 0.13), 3.0)
+			if not front:
+				_limb(ci, Vector2(x0 + 6, y0 + 8), Vector2(x0 - 6, y0 + r.size.y * 0.55), Color(0.36, 0.3, 0.27), 7.0)   # exhaust
+			for bp in [Vector2(x0 + 6, y1 - 7), Vector2(x1 - 6, y1 - 7), Vector2(x0 + 6, y0 + 7), Vector2(x1 - 6, y0 + 7)]:
+				_hexbolt(ci, bp, 3.2)
+		"loco":
+			# (1.97) Old Iron: a locomotive's front, the round smokebox door, headlamp and cowcatcher
+			_plate(ci, _rounded(r, w * 0.18), c)
+			var sbc := Vector2(r.get_center().x if front else x1 - w * 0.12, y0 + r.size.y * 0.42)
+			var sbr := r.size.y * 0.27
+			_round(ci, sbc, sbr, c.darkened(0.28))
+			ci.draw_arc(sbc, sbr * 0.82, 0, TAU, 24, trim, 3.0)
+			ci.draw_circle(sbc, 3.5, trim)
+			ci.draw_line(sbc, sbc + Vector2(sbr * 0.8, 0), trim.darkened(0.2), 2.5)
+			var lamp := sbc + Vector2(0, -sbr - 7.0)
+			_disc(ci, lamp, 7.0, trim.darkened(0.2))
+			_glow(ci, lamp, 5.0, Color(1.0, 0.88, 0.5))
+			ci.draw_circle(lamp, 4.5, Color(1.0, 0.92, 0.6))
+			_plate(ci, _chamfer(Rect2(sbc.x - 9, sbc.y + sbr * 0.4, 18, 8), 2.0), Color(0.85, 0.7, 0.3))   # brass number plate
+			var cw := w * 0.5
+			var cx := r.get_center().x if front else x1 - cw * 0.5
+			var cow := PackedVector2Array([Vector2(cx - cw * 0.5, y1 - 14), Vector2(cx + cw * 0.5, y1 - 14), Vector2(cx + cw * 0.5 + (0.0 if front else 10.0), y1 + 2), Vector2(cx - cw * 0.5 - (6.0 if front else 0.0), y1 + 2)])
+			_plate(ci, cow, Color(0.22, 0.22, 0.24))
+			for k in 5:
+				var bx2 := cx - cw * 0.4 + k * cw * 0.2
+				ci.draw_line(Vector2(bx2, y1 - 12), Vector2(bx2 + (0.0 if front else 4.0), y1), Color(0.5, 0.5, 0.52), 2.0)
+		"drum":
+			# (1.97) Scrapworks: an oil drum, ribbed and dented, a bung on top
+			_plate(ci, _rounded(r, w * 0.12), c)
+			for k in 3:
+				var ry := y0 + r.size.y * (0.18 + k * 0.32)
+				_limb(ci, Vector2(x0 + 2, ry), Vector2(x1 - 2, ry), c.darkened(0.18), 5.0)
+			_box(ci, Rect2(x0 + w * 0.62, y0 - 5, 8, 6), trim)
+			ci.draw_rect(Rect2(x0 + w * 0.18, y0 + r.size.y * 0.38, w * 0.46, r.size.y * 0.17), Color(0.86, 0.74, 0.3, 0.75))
+			ci.draw_line(Vector2(x0 + w * 0.22, y0 + r.size.y * 0.47), Vector2(x0 + w * 0.58, y0 + r.size.y * 0.47), Color(0.2, 0.15, 0.1, 0.7), 2.0)
+			_dent(ci, Vector2(x0 + w * 0.32, y0 + r.size.y * 0.72), 6.0)
+			_dent(ci, Vector2(x0 + w * 0.76, y0 + r.size.y * 0.3), 4.0)
 		_:
 			_plate(ci, plate, c)
 			_bolts(ci, r)
 			_plate(ci, _chamfer(Rect2(x0 - 4, y0 - 2, w + 8, 12), 3.0), trim)
 			_plate(ci, _chamfer(Rect2(x0, y1 - 14, w, 10), 3.0), trim)
-	if p["shape"] != "core":
+	if not p["shape"] in ["core", "loco"]:
 		ci.draw_circle(chest, 9.0, eye.darkened(0.45))
 		_glow(ci, chest, 6.0, eye)
 		ci.draw_circle(chest, 6.0, eye)
@@ -1810,6 +1945,68 @@ static func _draw_head(ci: CanvasItem, look: Dictionary, g: Dictionary, flash: b
 			for k in 7:
 				fil.append(Vector2(cen.x - 10 + k * 3.3, y0 + h * 0.5 + (-6.0 if k % 2 else 0.0) + sin(t * 20.0 + k) * 1.5))
 			ci.draw_polyline(fil, eye, 2.0)
+		"rivet":
+			# (1.97) Old Iron: an iron pail, rows of rivets, one porthole eye and a carry handle
+			_plate(ci, PackedVector2Array([Vector2(x0 + 4, y0), Vector2(x0 + w - 4, y0), Vector2(x0 + w, y0 + h), Vector2(x0, y0 + h)]), c)
+			_plate(ci, _chamfer(Rect2(x0 - 2, y0 + h - 8, w + 4, 8), 2.0), trim)
+			_arc(ci, Vector2(cen.x, y0), w * 0.32, PI, TAU, 10, trim.darkened(0.2), 3.0)
+			for k in 5:
+				ci.draw_circle(Vector2(x0 + 6 + k * (w - 12) / 4.0, y0 + 5), 1.8, c.darkened(0.45))
+				ci.draw_circle(Vector2(x0 + 5 + k * (w - 10) / 4.0, y0 + h - 12), 1.8, c.darkened(0.45))
+			var ep := Vector2(cen.x if front else x0 + w * 0.68, y0 + h * 0.45)
+			_disc(ci, ep, 7.5, trim)
+			ci.draw_circle(ep, 5.0, eye)
+			ci.draw_circle(ep + Vector2(-1.5, -1.5), 1.5, Color(1, 1, 1, 0.6))
+		"grille":
+			# (1.97) Old Iron: a bulldog's jowls with a chrome radiator grille for a mouth
+			_plate(ci, PackedVector2Array([Vector2(x0 + 6, y0), Vector2(x0 + w - 6, y0), Vector2(x0 + w, y0 + h * 0.35),
+					Vector2(x0 + w + 3, y0 + h), Vector2(x0 - 3, y0 + h), Vector2(x0, y0 + h * 0.35)]), c)
+			_plate(ci, _chamfer(Rect2(x0 - 2, y0 + h * 0.12, w + 4, h * 0.18), 2.0), c.darkened(0.15))   # the brow
+			if front:
+				ci.draw_rect(Rect2(cen.x - w * 0.26, y0 + h * 0.36, 7, 4), eye)
+				ci.draw_rect(Rect2(cen.x + w * 0.26 - 7, y0 + h * 0.36, 7, 4), eye)
+			else:
+				ci.draw_rect(Rect2(x0 + w * 0.72, y0 + h * 0.36, 8, 4), eye)
+			var gr := Rect2(cen.x - w * 0.33, y0 + h * 0.55, w * 0.66, h * 0.36) if front else Rect2(x0 + w * 0.42, y0 + h * 0.55, w * 0.58, h * 0.36)
+			_plate(ci, _chamfer(gr, 2.0), Color(0.78, 0.8, 0.82))
+			for k in 6:
+				var gx := gr.position.x + 3.0 + k * (gr.size.x - 6.0) / 5.0
+				ci.draw_line(Vector2(gx, gr.position.y + 2), Vector2(gx, gr.end.y - 2), Color(0.25, 0.26, 0.28), 2.0)
+			_hexbolt(ci, Vector2(x0 + 4, y0 + h - 5), 2.5)
+			_hexbolt(ci, Vector2(x0 + w - 4, y0 + h - 5), 2.5)
+		"peeper":
+			# (1.97) Scrapworks: a bucket with a periscope sticking out of the top
+			_plate(ci, PackedVector2Array([Vector2(x0 + 5, y0), Vector2(x0 + w - 5, y0), Vector2(x0 + w + 2, y0 + h), Vector2(x0 - 2, y0 + h)]), c)
+			ci.draw_rect(Rect2(cen.x - (w * 0.2 if front else -w * 0.05), y0 + h * 0.45, w * 0.36, 4), Color(0.06, 0.06, 0.06))
+			var px := cen.x - (0.0 if front else w * 0.1)
+			_ln(ci, Vector2(px, y0 + 2), Vector2(px, y0 - 14), trim, 5.0)
+			if front:
+				_disc(ci, Vector2(px, y0 - 16), 5.5, trim)
+				ci.draw_circle(Vector2(px, y0 - 16), 3.5, eye)
+			else:
+				_ln(ci, Vector2(px, y0 - 14), Vector2(px + 10, y0 - 14), trim, 5.0)
+				_disc(ci, Vector2(px + 12, y0 - 14), 4.5, trim)
+				ci.draw_circle(Vector2(px + 13, y0 - 14), 3.0, eye)
+		"busted":
+			# (1.97) Scrapworks: an old TV, screen cracked, one eye on the blink, an antenna bent and taped
+			_plate(ci, plate, c)
+			var scr := Rect2(x0 + 5, y0 + 5, w - 14, h - 10)
+			ci.draw_rect(scr, Color(0.06, 0.1, 0.08))
+			var rngs := int(t * 12.0)
+			for k in 10:
+				var sx := scr.position.x + fmod(float((k * 37 + rngs * 13) % 97) / 97.0 * scr.size.x, scr.size.x)
+				var sy := scr.position.y + fmod(float((k * 53 + rngs * 7) % 89) / 89.0 * scr.size.y, scr.size.y)
+				ci.draw_rect(Rect2(sx, sy, 2, 1), Color(1, 1, 1, 0.25))
+			var fy := scr.position.y + scr.size.y * 0.4
+			var bxs := -scr.size.x * 0.2 if front else 0.0
+			ci.draw_rect(Rect2(scr.position.x + scr.size.x * 0.45 + bxs, fy, 5, 5), eye)
+			if fmod(t * 3.0, 1.0) < 0.7:
+				ci.draw_rect(Rect2(scr.position.x + scr.size.x * 0.75 + bxs, fy, 5, 5), eye)
+			ci.draw_polyline(PackedVector2Array([scr.position + Vector2(scr.size.x * 0.2, 0), scr.position + Vector2(scr.size.x * 0.35, scr.size.y * 0.4),
+					scr.position + Vector2(scr.size.x * 0.28, scr.size.y * 0.6), scr.position + Vector2(scr.size.x * 0.5, scr.size.y)]), Color(0.85, 0.9, 0.9, 0.7), 1.5)
+			_ln(ci, Vector2(cen.x - 6, y0), Vector2(cen.x - 14, y0 - 14), trim, 2.0)
+			_pl(ci, PackedVector2Array([Vector2(cen.x + 2, y0), Vector2(cen.x + 8, y0 - 8), Vector2(cen.x + 16, y0 - 10)]), trim, 2.0)
+			ci.draw_rect(Rect2(cen.x + 4, y0 - 7, 6, 4), Color(0.85, 0.8, 0.6, 0.85))   # tape on the bent one
 		_:
 			_plate(ci, plate, c)
 			ci.draw_rect(Rect2(cen.x - (w * 0.25 if front else -2.0), y0 + h * 0.36, w * (0.5 if front else 0.42), 7), eye)

@@ -42,8 +42,9 @@ static func draw_maker(ci: CanvasItem, box: Rect2, part: Dictionary) -> void:
 
 
 ## Draw a part picture into any rect of any canvas (the results screen uses this too).
-static func draw_part(ci: CanvasItem, box: Rect2, part: Dictionary, health: float = 1.0, trim: Color = Color(0.85, 0.85, 0.9)) -> void:
-	ci.draw_rect(box, Color(0.1, 0.1, 0.14))
+static func draw_part(ci: CanvasItem, box: Rect2, part: Dictionary, health: float = 1.0, trim: Color = Color(0.85, 0.85, 0.9), with_bg: bool = true) -> void:
+	if with_bg:
+		ci.draw_rect(box, Color(0.1, 0.1, 0.14))
 	if part.is_empty():
 		return
 	var size := box.size
