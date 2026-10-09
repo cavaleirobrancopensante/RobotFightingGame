@@ -100,6 +100,7 @@ const ZONES := {
 	"sweep": {"leg_front": 0.7, "leg_back": 0.3},
 	"torso": {"torso": 1.0},
 	"head_torso": {"head": 0.5, "head2": 0.3, "torso": 0.5},
+	"arms": {"arm_front": 0.45, "arm_back": 0.25, "arm_front2": 0.3, "arm_back2": 0.15, "head": 0.15, "torso": 0.2},   # (1.93) roundhouse
 	"any": {"head": 0.15, "head2": 0.08, "torso": 0.45, "arm_front": 0.15, "arm_back": 0.05, "arm_front2": 0.08, "arm_back2": 0.04, "leg_front": 0.15, "leg_back": 0.05},
 }
 

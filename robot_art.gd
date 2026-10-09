@@ -47,6 +47,23 @@ const ARMS := {"rod": [12.0, 10.0], "piston": [15.0, 12.0], "claw": [14.0, 7.0],
 		"blade": [13.0, 7.0], "flame": [16.0, 7.0], "magnet": [15.0, 7.0]}
 
 
+## (1.93) Normal hits by limb, techniques included, and the arm poses that reach as far as a punch
+## (the rear hand crosses over and the shoulder turns into them).
+const ARM_HITS := ["punch", "low_punch", "uppercut", "hook", "overhand", "shove", "elbow"]
+const LEG_HITS := ["kick", "sweep", "high_kick", "push_kick", "roundhouse", "axe_kick", "knee"]
+const REACH_POSES := ["punch", "low_punch", "uppercut", "hammer", "overhand", "shove"]
+
+
+## (1.93) Where a leg's hip is in a pose: a rear leg that kicks turns the hips, so its hip comes
+## through to the front (the body pivots on the planted lead foot, like a real rear kick).
+static func kick_hip(look: Dictionary, g: Dictionary, slot: String, pose: String) -> Vector2:
+	var hip: Vector2 = g["hip_front"] if slot == "leg_front" else g["hip_back"]
+	if LEG_HITS.has(pose) and pose != "sweep" and is_rear(look, slot):
+		var other: Vector2 = g["hip_back"] if slot == "leg_front" else g["hip_front"]
+		return Vector2(maxf(hip.x, other.x) + 6.0, hip.y)
+	return hip
+
+
 static func _part(look: Dictionary, slot: String) -> Dictionary:
 	return look["parts"].get(slot, {"alive": false})
 
@@ -174,9 +191,9 @@ static func limb_poses(look: Dictionary, pose: Dictionary) -> Dictionary:
 	elif blocking:
 		arm_pose = {"arm_front": "block", "arm_back": "block", "arm_front2": "block", "arm_back2": "block"}
 	if extended and limb != "":
-		if state in ["punch", "uppercut", "low_punch"] and limb.begins_with("arm"):
+		if ARM_HITS.has(state) and limb.begins_with("arm"):
 			arm_pose[limb] = state
-		elif state in ["kick", "sweep", "high_kick"] and limb.begins_with("leg"):
+		elif LEG_HITS.has(state) and limb.begins_with("leg"):
 			leg_pose[limb] = state
 	elif state == "charge" and limb != "" and limb.begins_with("arm"):
 		arm_pose[limb] = "charge"   # winding up a charged hit: the arm drawn back
@@ -217,7 +234,7 @@ static func hit_shapes(look: Dictionary, pose: Dictionary) -> Array:
 		var sz: float = p.get("size", 1.0)
 		var s := shoulder_of(g, slot)
 		var ap: String = lp["arms"][slot]
-		var pts := arm_pose_points(s, ap, is_rear(look, slot), punch_reach_x(g) if ap in ["punch", "low_punch", "uppercut", "hammer"] else 0.0, aim if slot == limb else 0.0, Vector2.ZERO, arm_len_of(look, slot))
+		var pts := arm_pose_points(s, ap, is_rear(look, slot), punch_reach_x(g) if REACH_POSES.has(ap) else 0.0, aim if slot == limb else 0.0, Vector2.ZERO, arm_len_of(look, slot))
 		out.append([slot, "cap", pts[2], pts[0], dims[0] * sz * 0.55])
 		out.append([slot, "cap", pts[0], pts[1], maxf(dims[0] * sz * 0.5, dims[1] * sz)])
 	for slot in ["leg_front", "leg_back"]:
@@ -225,7 +242,7 @@ static func hit_shapes(look: Dictionary, pose: Dictionary) -> Array:
 			continue
 		var p2 := _part(look, slot)
 		var ld: Array = LEGS.get(p2.get("shape", "rod"), LEGS["rod"])
-		var hip: Vector2 = g["hip_front"] if slot == "leg_front" else g["hip_back"]
+		var hip := kick_hip(look, g, slot, lp["legs"][slot])
 		var foot := leg_pose_foot(hip, lp["legs"][slot], 0.0, aim if slot == limb else 0.0, leg_len_of(look, slot), float(pose.get("drop", 0.0)))
 		out.append([slot, "cap", hip, foot, maxf(8.0, ld[1] * float(p2.get("size", 1.0)) * 0.6)])
 	if _alive(look, "torso"):
@@ -290,12 +307,18 @@ static func draw(ci: CanvasItem, base: Vector2, look: Dictionary, pose: Dictiona
 		_draw_arm(ci, look, ra2, shoulder_of(g, ra2), arm_pose[ra2], true, flash, trim, t, fist_out.has(ra2), aim if limb == ra2 else 0.0, bob_r)
 	_draw_arm(ci, look, ra, shoulder_of(g, ra), arm_pose[ra], true, flash, trim, t, fist_out.has(ra), aim if limb == ra else 0.0, bob_r)
 	var drop: float = pose.get("drop", 0.0)   # a sweep sinks the body; the standing leg bends to stay on the floor
-	_draw_leg(ci, look, rl, g["hip_back"], g["L"], leg_pose[rl], -swing, true, flash, trim, aim if limb == rl else 0.0, drop)
+	# (1.93) a rear leg that kicks swings through in front of the body, so it's seen (a high kick or an
+	# axe kick would otherwise vanish behind the torso)
+	var rear_kick: bool = limb == rl and LEG_HITS.has(str(leg_pose[rl]))
+	if not rear_kick:
+		_draw_leg(ci, look, rl, g["hip_back"], g["L"], leg_pose[rl], -swing, true, flash, trim, aim if limb == rl else 0.0, drop)
 	_draw_torso(ci, look, g, flash, trim, eye, t)
 	_sticker(ci, look, rl, g["hip_back"] + Vector2(0, 14), 7.0)
 	_sticker(ci, look, "torso", (g["torso"] as Rect2).get_center() + Vector2(0, g["th"] * 0.14), minf(g["tw"], g["th"]) * 0.2)
 	_draw_leg(ci, look, ll, g["hip_front"], g["L"], leg_pose[ll], swing, false, flash, trim, aim if limb == ll else 0.0, drop)
 	_sticker(ci, look, ll, g["hip_front"] + Vector2(0, 14), 8.0)
+	if rear_kick:
+		_draw_leg(ci, look, rl, kick_hip(look, g, rl, str(leg_pose[rl])), g["L"], leg_pose[rl], -swing, true, flash, trim, aim, drop)
 	# the head pans a little while it waits (pose "head_dx")
 	var gh := g
 	var hdx: float = pose.get("head_dx", 0.0)
@@ -915,6 +938,28 @@ static func arm_pose_points(s: Vector2, pose: String, back: bool, reach_x: float
 			e = s + Vector2(ux * 0.5, 6)
 			h = s + Vector2(ux, -56)
 			tilt = true
+		# (1.93) techniques
+		"hook":
+			# the elbow comes up and out, the fist swings round into the side of the head
+			e = s + Vector2(42, 2)
+			h = s + Vector2(58, -22)
+			tilt = true
+		"overhand":
+			# the haymaker: over the top and down onto them
+			var ox := PUNCH_LEN if reach_x <= 0.0 or not back else maxf(PUNCH_LEN, reach_x - s.x)
+			e = s + Vector2(ox * 0.42, -38)
+			h = s + Vector2(ox * 0.95, 6)
+			tilt = true
+		"shove":
+			# a flat palm, straight out at chest height
+			var sx2 := PUNCH_LEN if reach_x <= 0.0 or not back else maxf(PUNCH_LEN, reach_x - s.x)
+			e = s + Vector2(sx2 * 0.5, 10)
+			h = s + Vector2(sx2 * 0.95, 12)
+			tilt = true
+		"elbow":
+			# folded: the elbow drives forward, the fist tucked by the head
+			e = s + Vector2(40, -2)
+			h = s + Vector2(16, -20)
 		"charge":
 			# drawn back, ready to let go
 			e = s + Vector2(-26 if not back else -18, 14)
@@ -964,7 +1009,7 @@ static func arm_pose_points(s: Vector2, pose: String, back: bool, reach_x: float
 	if arm_len <= 0.0 or pose.begins_with("claw:"):
 		return [e, h, s]   # (crawling arms reach for the floor however they can)
 	var slide := 0.0
-	if pose in ["punch", "low_punch", "uppercut", "hammer"]:
+	if REACH_POSES.has(pose) or pose == "hook" or pose == "elbow":
 		slide = 12.0
 		if back:
 			slide = 24.0
@@ -1036,6 +1081,8 @@ static func arm_tip_extra(look: Dictionary, slot: String, pose: String) -> Vecto
 		"magnet": ext = 8.0 + 13.0 * sz
 		"grapple": ext = 18.0
 		"flame": ext = 60.0 if pose == "punch" or pose == "low_punch" else 16.0
+	if pose == "elbow" or pose == "shove":
+		ext = 6.0   # the elbow (or a flat palm) does the hitting, not the weapon
 	return Vector2(ext, maxf(fr, th * 0.5))
 
 
@@ -1057,12 +1104,21 @@ static func limb_strike(look: Dictionary, slot: String, pose: String, aim: float
 		var s := shoulder_of(g, slot)
 		var pts := arm_pose_points(s, pose, is_rear(look, slot), punch_reach_x(g), aim, Vector2.ZERO, arm_len_of(look, slot))
 		var ex := arm_tip_extra(look, slot, pose)
+		if pose == "elbow":
+			# the point of the elbow does the hitting
+			var ed: Vector2 = ((pts[0] as Vector2) - (pts[2] as Vector2)).normalized()
+			return {"a": pts[2], "b": (pts[0] as Vector2) + ed * 8.0, "r": maxf(ex.y, 10.0)}
 		var dir: Vector2 = ((pts[1] as Vector2) - (pts[0] as Vector2)).normalized()
 		return {"a": pts[0], "b": (pts[1] as Vector2) + dir * ex.x, "r": ex.y}
 	if slot.begins_with("leg"):
-		var hip: Vector2 = g["hip_front"] if slot == "leg_front" else g["hip_back"]
-		var foot := leg_pose_foot(hip, pose, 0.0, aim, leg_len_of(look, slot), drop)
+		var hip := kick_hip(look, g, slot, pose)
+		var ll := leg_len_of(look, slot)
+		var foot := leg_pose_foot(hip, pose, 0.0, aim, ll, drop)
 		var p := _part(look, slot)
+		if pose == "knee":
+			# the knee does the hitting
+			var kn := ik_joint(hip, foot, ll * 0.5, ll * 0.5, hip.lerp(foot, 0.5) + Vector2(8.0, 0.0))
+			return {"a": hip, "b": kn + (kn - hip).normalized() * 8.0, "r": 14.0 * maxf(0.8, float(p.get("size", 1.0)))}
 		return {"a": hip.lerp(foot, 0.45), "b": foot + (foot - hip).normalized() * 8.0, "r": 12.0 * maxf(0.8, float(p.get("size", 1.0)))}
 	# no limb: the front of the torso (shoulder charges, slams)
 	var t: Rect2 = g["torso"]
@@ -1099,6 +1155,8 @@ static func leg_pose_foot(hip: Vector2, pose: String, swing: float = 0.0, aim: f
 			return hip + Vector2(16.0, 34.0)   # knees up at the top of a jump
 		"fly_kick":
 			return Vector2(maxf(hip.x + 70.0, 84.0), hip.y + 58.0)
+		"push_kick", "roundhouse", "axe_kick", "knee":
+			return _leg_goal(hip, pose, aim, 60.0, 0.0)
 	return Vector2(hip.x + swing, 0.0)
 
 
@@ -1116,6 +1174,15 @@ static func _leg_goal(hip: Vector2, pose: String, aim: float, leg_len: float, dr
 			return hip + Vector2(16.0, 34.0)
 		"fly_kick":
 			return hip + Vector2(0.77, 0.64) * leg_len
+		# (1.93) techniques
+		"push_kick":
+			return hip + Vector2(1.0, -0.32).normalized().rotated(aim) * leg_len   # the sole, flat out at the belly
+		"roundhouse":
+			return hip + Vector2(0.84, -0.54).normalized().rotated(aim) * leg_len
+		"axe_kick":
+			return hip + Vector2(0.42, -0.91).normalized() * leg_len   # up high, about to chop down
+		"knee":
+			return hip + Vector2(0.12, 0.42) * leg_len   # foot tucked under: the knee drives up and forward
 	return Vector2(hip.x, -drop)
 
 
@@ -1134,7 +1201,7 @@ static func _draw_arm(ci: CanvasItem, look: Dictionary, slot: String, s: Vector2
 	var sz: float = p["size"]
 	var th: float = dims[0] * sz
 	var fr: float = dims[1] * sz
-	var reach_x := punch_reach_x(geom(look)) if pose in ["punch", "low_punch", "uppercut", "hammer"] else 0.0
+	var reach_x := punch_reach_x(geom(look)) if REACH_POSES.has(pose) else 0.0
 	var ph := arm_pose_points(s, pose, back, reach_x, aim, bob, arm_len_of(look, slot))
 	var e: Vector2 = ph[0]
 	var h: Vector2 = ph[1]
@@ -1438,7 +1505,7 @@ static func _draw_leg(ci: CanvasItem, look: Dictionary, slot: String, hip: Vecto
 		_pl(ci, PackedVector2Array([foot + Vector2(-6, 4), foot, foot + Vector2(10, 4)]), tc, 4.0)
 	elif p["shape"] == "blade":
 		_ln(ci, foot + Vector2(-4, 0), foot + Vector2(18, 0), tc, 4.0)
-	elif pose == "kick" or pose == "sweep" or pose == "high_kick" or pose == "fly_kick":
+	elif (LEG_HITS.has(pose) and pose != "knee") or pose == "fly_kick":
 		_plate(ci, _chamfer(Rect2(foot.x - 2.0, foot.y - 12.0, 12.0, 22.0), 3.0), tc)
 	elif p["shape"] == "reverse":
 		_plate(ci, PackedVector2Array([foot + Vector2(-8, 0), foot + Vector2(22, 0), foot + Vector2(-2, -10)]), tc)

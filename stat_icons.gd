@@ -31,6 +31,7 @@ const STATS := {
 	"price": ["Price", Color(1.0, 0.765, 0.353)],
 	"sell": ["Sells for", Color(1.0, 0.765, 0.353)],
 	"hours": ["Hours in the bay to bolt on", Color(0.6, 0.7, 0.85)],
+	"tech": ["Technique", Color(1.0, 0.62, 0.35)],
 }
 
 
@@ -168,6 +169,11 @@ static func draw_icon(ci: CanvasItem, key: String, r: Rect2, col: Color) -> void
 			var f := GUI.headb()
 			var fs := int(s * 1.3)
 			ci.draw_string(f, c + Vector2(-f.get_string_size("$", HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x * 0.5, s * 0.45), "$", HORIZONTAL_ALIGNMENT_LEFT, -1, fs, col)
+		"tech":
+			# a fist with a motion line: the limb's technique
+			ci.draw_rect(Rect2(c + Vector2(-0.3, -0.55) * s, Vector2(1.1, 1.0) * s), col)
+			ci.draw_line(c + Vector2(-1.0, -0.2) * s, c + Vector2(-0.45, -0.2) * s, col, w * 0.7)
+			ci.draw_line(c + Vector2(-1.0, 0.2) * s, c + Vector2(-0.55, 0.2) * s, col, w * 0.7)
 		"hours":
 			ci.draw_arc(c, s * 0.85, 0, TAU, 18, col, w * 0.8)
 			ci.draw_line(c, c + Vector2(0, -0.6) * s, col, w * 0.8)

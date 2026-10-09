@@ -40,8 +40,8 @@ const MOVE_PUNCH := 0.6
 const MOVE_BLOCK := 0.4
 const MOVE_CHARGE := 0.35
 const KICK_HOP_UP := 300.0
-const PUNCHES := ["punch", "low_punch", "uppercut"]
-const KICKS := ["kick", "high_kick", "sweep"]
+const PUNCHES := ["punch", "low_punch", "uppercut", "hook", "overhand", "shove", "elbow"]
+const KICKS := ["kick", "high_kick", "sweep", "push_kick", "roundhouse", "axe_kick", "knee"]
 const JUMP_SPEED := 860.0
 const STUN_K := 1.18          # hit stun and knockback a bit longer: room after each hit, less mashing
 const KNOCK_K := 1.125
@@ -83,6 +83,15 @@ const ATTACKS := {
 	# (both fists overhead, smashed down: blocked only standing)
 	"fly_kick":  {"startup": 0.08, "active": 0.60, "recovery": 0.25, "reach": 100.0, "damage": 11.0, "height": "mid",  "stun": 0.34, "limb": "leg", "zone": "kick", "family": "kick", "air": true},
 	"hammer":    {"startup": 0.16, "active": 0.12, "recovery": 0.30, "reach": 70.0,  "damage": 12.0, "height": "overhead", "stun": 0.40, "limb": "arm", "zone": "head_torso", "family": "punch", "air": true},
+	# (1.93) techniques: a technique chip in a limb replaces its middle hit (punch / kick)
+	"hook":       {"startup": 0.09, "active": 0.09, "recovery": 0.20, "reach": 62.0,  "damage": 8.0,  "height": "high", "stun": 0.26, "limb": "arm", "zone": "head_torso", "family": "punch", "through": 0.55},
+	"overhand":   {"startup": 0.24, "active": 0.10, "recovery": 0.44, "reach": 84.0,  "damage": 15.0, "height": "high", "stun": 0.58, "limb": "arm", "zone": "head_torso", "family": "punch", "knock": 460.0, "telegraph": true},
+	"shove":      {"startup": 0.08, "active": 0.10, "recovery": 0.22, "reach": 80.0,  "damage": 2.0,  "height": "mid",  "stun": 0.30, "limb": "arm", "zone": "torso", "family": "punch", "knock": 900.0, "push": 150.0},
+	"elbow":      {"startup": 0.06, "active": 0.08, "recovery": 0.18, "reach": 46.0,  "damage": 12.0, "height": "high", "stun": 0.30, "limb": "arm", "zone": "head_torso", "family": "punch"},
+	"push_kick":  {"startup": 0.10, "active": 0.10, "recovery": 0.24, "reach": 104.0, "damage": 4.0,  "height": "mid",  "stun": 0.36, "limb": "leg", "zone": "torso", "family": "kick", "knock": 1000.0, "push": 110.0},
+	"roundhouse": {"startup": 0.18, "active": 0.12, "recovery": 0.40, "reach": 100.0, "damage": 11.0, "height": "high", "stun": 0.32, "limb": "leg", "zone": "arms", "family": "kick"},
+	"axe_kick":   {"startup": 0.22, "active": 0.10, "recovery": 0.34, "reach": 86.0,  "damage": 13.0, "height": "overhead", "stun": 0.45, "limb": "leg", "zone": "head_torso", "family": "kick"},
+	"knee":       {"startup": 0.07, "active": 0.09, "recovery": 0.22, "reach": 50.0,  "damage": 14.0, "height": "mid",  "stun": 0.36, "limb": "leg", "zone": "torso", "family": "kick"},
 }
 ## Which hit a button makes, by the pad's height: [up, level, down]
 const HITS_BY_HEIGHT := {"punch": ["uppercut", "punch", "low_punch"], "kick": ["high_kick", "kick", "sweep"]}
@@ -188,6 +197,7 @@ class Fighter:
 	var mk := ""             # (1.92) the maker it moves and sounds like ("" = plain)
 	var mo: Dictionary = {}  # that maker's motion dials (Makers.MOTION)
 	var hero_t := 0.0        # (1.92) Tenryu: holding a hero landing
+	var tech := {}           # (1.93) arm / leg slot -> technique id: what its middle hit is
 	var slow_t := 0.0        # frost
 	var hobble_t := 0.0      # leg got hit: slower walking
 	var numb_t := 0.0        # arm got hit: weaker hits
@@ -795,6 +805,11 @@ func make_fighter(spec: Dictionary) -> Fighter:
 	var tp = spec["parts"].get("torso", {})
 	f.mk = GameData.Makers.motion_maker(ids, str(tp.get("id", "")) if tp is Dictionary else "")
 	f.mo = GameData.Makers.motion(f.mk)
+	# (1.93) techniques: yours from the Bay; other robots pick some by their name (junk and test dummies: none)
+	if spec.has("tech"):
+		f.tech = (spec["tech"] as Dictionary).duplicate()
+	elif str(spec.get("junk", "")) == "" and not spec.get("demo", false):
+		f.tech = roll_techs(spec)
 	if f.sets.has("kane"):
 		f.aim_time *= 0.75
 		f.scan_time *= 0.75
@@ -2174,7 +2189,8 @@ func quit_fight() -> void:
 # limb draws, times the move's weight: punches are cheap, kicks are hungry. Refills when you
 # stop attacking. Empty it and you burn out.
 
-const MOVE_COST := {"punch": 1.0, "low_punch": 1.0, "uppercut": 1.3, "sweep": 2.0, "kick": 2.6, "high_kick": 2.8, "fly_kick": 2.4, "hammer": 1.6}
+const MOVE_COST := {"punch": 1.0, "low_punch": 1.0, "uppercut": 1.3, "sweep": 2.0, "kick": 2.6, "high_kick": 2.8, "fly_kick": 2.4, "hammer": 1.6,
+		"hook": 1.1, "overhand": 1.9, "shove": 0.9, "elbow": 1.0, "push_kick": 2.2, "roundhouse": 3.0, "axe_kick": 3.0, "knee": 2.2}
 const REFILL := 0.20          # share of the tank refilled per second when not attacking
 const REFILL_DELAY := 0.6     # seconds after a move before it starts refilling
 const BURNOUT_TIME := 1.5
@@ -2189,7 +2205,7 @@ func limb_draw(f: Fighter, limb: String) -> float:
 
 func attack_cost(f: Fighter, attack: String, limb: String) -> float:
 	var c: float = MOVE_COST.get(attack, 1.0) * limb_draw(f, limb)
-	if f.style == "striker" and attack in ["punch", "low_punch", "uppercut"]:
+	if f.style == "striker" and PUNCHES.has(attack):
 		c *= 0.75
 	return c
 
@@ -2232,12 +2248,31 @@ func update_power(f: Fighter, delta: float) -> void:
 		f.power = minf(f.power_max, f.power + f.power_max * rate * delta)
 
 
+## (1.93) Techniques for a robot that isn't yours: seeded by its name, so the same robot always fights
+## the same way; about half its limbs get one its parts can throw.
+func roll_techs(spec: Dictionary) -> Dictionary:
+	var out := {}
+	var rng := RandomNumberGenerator.new()
+	rng.seed = hash(str(spec.get("name", "")) + "tech")
+	for sl in GameData.TECH_LIMB_SLOTS:
+		var pp = spec.get("parts", {}).get(sl, {})
+		if not (pp is Dictionary) or not pp.has("id") or rng.randf() > 0.45:
+			continue
+		var opts: Array = GameData.techs_for(GameData.part_def(str(pp["id"])))
+		if not opts.is_empty():
+			out[sl] = opts[rng.randi() % opts.size()]
+	return out
+
+
 ## Throw a normal hit. charge: 0 = a plain tap, up to 1 = fully charged.
 func start_attack(f: Fighter, attack: String, charge: float = 0.0) -> void:
 	var a: Dictionary = ATTACKS[attack]
 	var limb := f.next_limb(a["limb"])
 	if limb == "":
 		return
+	if (attack == "punch" or attack == "kick") and f.tech.has(limb) and ATTACKS.has(str(f.tech[limb])):
+		attack = str(f.tech[limb])   # (1.93) this limb's technique chip
+		a = ATTACKS[attack]
 	f.state = attack
 	f.kick_hop = false
 	pilot_jerk(f.team)
@@ -2262,7 +2297,7 @@ func start_attack(f: Fighter, attack: String, charge: float = 0.0) -> void:
 		f.vel = Vector2(f.facing * 430.0 * f.scale, 620.0)   # dives at the floor, forward
 	if charge > 0.0:
 		Sfx.play("hit_big", 0.1, -4.0)
-	Sfx.play("uppercut" if attack == "uppercut" else "swing", 0.15)
+	Sfx.play("uppercut" if attack == "uppercut" or attack == "overhand" else "swing", 0.15)
 
 
 ## Fire the buffered attack (or a special, if the buffered button completes a sequence).
@@ -3011,6 +3046,8 @@ func strike_reach(f: Fighter, kind: String, pose: String) -> float:
 	var slot := f.next_limb(kind, true)
 	if slot == "":
 		return 0.0
+	if (pose == "punch" or pose == "kick") and f.tech.has(slot):
+		pose = str(f.tech[slot])   # (1.93) an elbow reaches far less than a jab
 	var st := RobotArt.limb_strike(f.get_look(), slot, pose)
 	return (float((st["b"] as Vector2).x) + float(st["r"])) * f.scale
 
@@ -3040,7 +3077,8 @@ func aim_angle(f: Fighter, attack: String) -> float:
 ## How far each hit can tilt toward its target: [its own angle, most it tilts up, most it tilts down].
 ## Small enough that crouching under a high punch, or jumping a sweep, still works.
 const AIM_TILT := {"punch": [0.02, 0.30, 0.30], "low_punch": [0.46, 0.25, 0.25], "uppercut": [-0.67, 0.2, 0.55],
-		"kick": [-0.17, 0.25, 0.25], "high_kick": [-0.69, 0.2, 0.5]}
+		"kick": [-0.17, 0.25, 0.25], "high_kick": [-0.69, 0.2, 0.5],
+		"hook": [-0.1, 0.2, 0.25], "overhand": [0.07, 0.2, 0.3], "shove": [0.14, 0.2, 0.2], "push_kick": [-0.31, 0.2, 0.25], "roundhouse": [-0.57, 0.2, 0.45]}
 
 
 ## Melee hit check: does the limb (or the body, for slams) reach the enemy?
@@ -3160,6 +3198,12 @@ func apply_hit(att: Fighter, d: Fighter, a: Dictionary, at: Vector2) -> void:
 			if d.alive(s2):
 				arm = s2
 				break
+		if a.has("through"):
+			# (1.93) a hook wraps round the guard: much of it gets through
+			damage_part(d, "torso" if d.alive("torso") else arm, dmg * float(a["through"]))
+			popup(tr("AROUND THE GUARD"), d.pos + Vector2(0, -200.0 * d.scale), Color(1.0, 0.75, 0.4))
+		if a.has("push"):
+			d.pos.x += att.facing * float(a["push"])   # (1.93) shoves and push kicks move the guard too
 		if family == "kick":
 			# a kick only partly stops on a guard: some gets through and it shoves you back
 			damage_part(d, arm, dmg * (0.2 if d.style == "tank" else 0.35) * d.ctrl.get("block", 1.0))
@@ -3170,7 +3214,7 @@ func apply_hit(att: Fighter, d: Fighter, a: Dictionary, at: Vector2) -> void:
 		else:
 			damage_part(d, arm, dmg * (0.08 if d.style == "tank" else 0.3) * d.ctrl.get("block", 1.0))
 			d.pos.x += att.facing * 25.0
-		if family == "punch" and ATTACKS.has(att.state):
+		if family == "punch" and ATTACKS.has(att.state) and not a.has("through") and not a.has("push"):
 			# block beats punch: the fist bounces off and the puncher is left open
 			att.state = "hit"
 			att.timer = 0.32
@@ -3258,7 +3302,7 @@ func apply_hit(att: Fighter, d: Fighter, a: Dictionary, at: Vector2) -> void:
 			damage_part(att, limb, dmg * 0.25)
 			add_spark(att.pos + Vector2(att.facing * 40.0, -100.0 * att.scale), Color(0.8, 0.8, 0.8), 14.0)
 		# kick beats punch: a kick on its way powers through punches (it still takes the damage)
-		var armored: bool = a.get("family", "") == "punch" and (d.state == "kick" or d.state == "sweep" or d.state == "high_kick") \
+		var armored: bool = a.get("family", "") == "punch" and KICKS.has(d.state) \
 				and d.timer <= float(ATTACKS[d.state]["startup"]) + float(ATTACKS[d.state]["active"])
 		if armored:
 			popup(tr("POWERED THROUGH"), d.pos + Vector2(0, -220.0 * d.scale), Color(0.85, 0.9, 1.0))
@@ -3962,7 +4006,7 @@ func body_pose(f: Fighter) -> Dictionary:
 			if state == "sweep":
 				drop = float(RobotArt.geom(f.get_look())["L"]) * 0.5 * phase_t
 				lean = 0.0
-			if f.state == "special" and TELEGRAPH.has(f.special_id):
+			if (f.state == "special" and TELEGRAPH.has(f.special_id)) or (ATTACKS.has(f.state) and ATTACKS[f.state].get("telegraph", false)):
 				dx += sin(clock * 70.0) * 3.0 * f.scale   # the heavy ones shake as they wind up
 		elif f.timer <= st + act + a.get("recovery", 0.2) * 0.5:
 			swoosh = f.timer <= st + act + 0.05
@@ -3990,6 +4034,36 @@ func body_pose(f: Fighter) -> Dictionary:
 				"sweep":
 					drop = float(RobotArt.geom(f.get_look())["L"]) * 0.5
 					dx = f.facing * 40.0 * f.scale
+				# (1.93) techniques
+				"hook":
+					lean = f.facing * 0.2
+					dx = f.facing * 18.0 * f.scale
+				"overhand":
+					lean = f.facing * 0.34
+					dx = f.facing * 34.0 * f.scale
+					sy = 0.94
+				"shove":
+					lean = f.facing * 0.24
+					dx = f.facing * 44.0 * f.scale
+					sx = 1.1
+				"elbow":
+					lean = f.facing * 0.26
+					dx = f.facing * 22.0 * f.scale
+				"push_kick":
+					lean = -f.facing * 0.22
+					dx = f.facing * 30.0 * f.scale
+				"roundhouse":
+					lean = -f.facing * 0.32
+					dx = f.facing * 28.0 * f.scale
+				"axe_kick":
+					# up, then the chop: the body follows the heel down
+					var chop := clampf((f.timer - st) / maxf(0.01, act), 0.0, 1.0)
+					lean = f.facing * lerpf(-0.2, 0.18, chop)
+					dx = f.facing * 24.0 * f.scale
+				"knee":
+					lean = -f.facing * 0.06
+					dx = f.facing * 26.0 * f.scale
+					sy = 1.05
 				"block":
 					lean = f.facing * 0.22
 					dx = f.facing * 16.0 * f.scale
@@ -4099,6 +4173,11 @@ func body_pose(f: Fighter) -> Dictionary:
 				sy *= 1.0 - 0.05 * pow(w, 8.0) * (1.0 if c > 0.0 else 0.0)   # a thud as it lands
 			drop = maxf(drop, diff * w)
 			lean += f.facing * side * (0.1 + 0.6 * kk) * w * (0.6 if f.state != "walk" else 1.0)
+	# (1.93) a rear-leg kick: the hips and shoulders turn side-on as the back leg comes through
+	if extended and KICKS.has(state) and state != "sweep" and f.attack_limb.begins_with("leg") and RobotArt.is_rear(f.get_look(), f.attack_limb):
+		sx *= 0.86
+		lean -= f.facing * 0.06
+		dx += f.facing * 8.0 * f.scale
 	if not f.on_ground and f.state != "ko":
 		if f.vel.y < 0.0:
 			sy *= 1.12
@@ -4161,7 +4240,7 @@ func draw_fighter(f: Fighter, off: Vector2) -> void:
 	var dx: float = bp["dx"]
 	if swoosh and extended:
 		var g := RobotArt.geom(f.get_look())
-		var low := state == "kick" or state == "sweep" or state == "high_kick"
+		var low := KICKS.has(state)
 		var pivot: Vector2 = (g["hip_front"] if f.attack_limb != "leg_back" else g["hip_back"]) if low else RobotArt.shoulder_of(g, f.attack_limb if f.attack_limb.begins_with("arm") else "arm_front")
 		var c := to_world_point(f, pivot) + Vector2(dx, 0)
 		var a0 := 0.0 if f.facing == 1 else PI
@@ -4171,7 +4250,7 @@ func draw_fighter(f: Fighter, off: Vector2) -> void:
 	RobotArt.draw(ci, base, f.get_look(), {
 		"light": fight_light(),
 		"facing": f.facing, "state": state, "extended": extended, "attack_limb": f.attack_limb, "aim": f.aim_ang,
-		"swing": sin(f.walk_phase) * 10.0 if (f.state == "walk" or (f.on_ground and absf(f.vel.x) > 20.0 and f.state in ["punch", "low_punch", "uppercut", "charge"])) and f.legs() == 2 else 0.0,
+		"swing": sin(f.walk_phase) * 10.0 if (f.state == "walk" or (f.on_ground and absf(f.vel.x) > 20.0 and (PUNCHES.has(f.state) or f.state == "charge"))) and f.legs() == 2 else 0.0,
 		"drop": f.vis_pose.get("drop", 0.0),
 		"crawl": fmod(f.walk_phase / TAU, 1.0) if f.state == "walk" and f.legs() == 0 and f.arms() > 0 else -1.0,
 		"crouch": f.crouching, "blocking": f.blocking or (f.state == "special" and state == "block"),
@@ -5744,10 +5823,15 @@ func draw_coach() -> void:
 func setup_demo() -> void:
 	mode = "demo"
 	Sfx.quiet += 1   # the garage shouldn't sound like a fight
-	var m: Dictionary = Specials.MOVES[demo_move]
+	var m: Dictionary = Specials.MOVES.get(demo_move, {})
 	var ps: Dictionary = GameData.player_spec()
-	ps["specials"] = [demo_move]
+	ps["specials"] = [demo_move] if not m.is_empty() else []
 	ps["style"] = str(m.get("style", GameData.style))
+	if demo_move.begins_with("tech:"):
+		# (1.93) a technique chip on show: both limbs of its kind throw it
+		var tid := demo_move.substr(5)
+		var lk: String = GameData.TECHNIQUES[tid]["limb"]
+		ps["tech"] = {lk + "_front": tid, lk + "_back": tid}
 	ps["gadgets"] = []
 	opp = GameData.OPPONENTS[0].duplicate(true)
 	opp["pilot"] = ""
@@ -5798,7 +5882,10 @@ func demo_reset() -> void:
 	var gap := screen.x * 0.17
 	me.pos = Vector2(screen.x * 0.5 - gap, floor_y)
 	dummy.pos = Vector2(screen.x * 0.5 + gap * 0.6, floor_y)
-	if Specials.MOVES[demo_move].has("projectile"):
+	if demo_move.begins_with("tech:"):
+		var short: bool = ["elbow", "knee", "hook"].has(demo_move.substr(5))
+		dummy.pos.x = me.pos.x + screen.x * (0.13 if short else 0.19)
+	elif Specials.MOVES[demo_move].has("projectile"):
 		# (1.87) a thrown move needs the width of the ring, or the bolt starts inside the dummy
 		me.pos.x = screen.x * 0.15
 		dummy.pos.x = screen.x * 0.8
@@ -5820,9 +5907,20 @@ func demo_process(delta: float) -> void:
 	if slowmo > 0.0:
 		slowmo -= delta
 		delta *= 0.35
-	var m: Dictionary = Specials.MOVES[demo_move]
 	demo_t -= delta
-	if not demo_fired and demo_t <= 0.0:
+	if demo_move.begins_with("tech:"):
+		var tid := demo_move.substr(5)
+		if not demo_fired and demo_t <= 0.0:
+			player.power = player.power_max
+			start_attack(player, "punch" if GameData.TECHNIQUES[tid]["limb"] == "arm" else "kick")
+			demo_fired = true
+			demo_t = 1.4
+		elif demo_fired and demo_t <= 0.0 and not ATTACKS.has(player.state):
+			demo_reset()
+	var m: Dictionary = Specials.MOVES.get(demo_move, {"air": false})
+	if demo_move.begins_with("tech:"):
+		pass
+	elif not demo_fired and demo_t <= 0.0:
 		var air: bool = m.get("air", false)
 		if air and player.on_ground:
 			player.vel.y = -JUMP_SPEED   # air moves start with a jump
@@ -6215,7 +6313,10 @@ func draw_robot_card(ci: CanvasItem, f: Fighter, left: bool, w: float, h: float,
 			lx = x + lr * 2.0 + 6.0
 		var sw := font.get_string_size(slot_txt, HORIZONTAL_ALIGNMENT_LEFT, -1, fs(11)).x + (lx - x)
 		ci.draw_string(font, Vector2(lx, y), slot_txt, HORIZONTAL_ALIGNMENT_LEFT, -1, fs(11), Color(0.62, 0.62, 0.7, a))
-		ci.draw_string(font, Vector2(x + sw + 8, y), ("★ " if special else "") + tr(str(d["name"])), HORIZONTAL_ALIGNMENT_LEFT, cw - sw - 8,
+		var nm := ("★ " if special else "") + tr(str(d["name"]))
+		if f.tech.has(slot):
+			nm += "  · " + GameData.tech_name(str(f.tech[slot])).to_upper()   # (1.93) its technique, so you can read what's coming
+		ci.draw_string(font, Vector2(x + sw + 8, y), nm, HORIZONTAL_ALIGNMENT_LEFT, cw - sw - 8,
 				fs(14), gold if special else Color(1, 1, 1, a))
 		# line 2: health blocks (1 block = 25 HP, dents show as empty blocks), HP numbers, then armor / damage / speed
 		y += l2

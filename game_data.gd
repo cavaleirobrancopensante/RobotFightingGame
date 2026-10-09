@@ -3,7 +3,7 @@ const PlayLog = preload("res://playlog.gd")   # (1.87) the playtest log
 
 # helper scripts, loaded by path so the game also runs without an editor scan
 ## The game's version, shown on the main menu. Bump it with every change (1.1, 1.2, ...).
-const VERSION := "1.92"
+const VERSION := "1.93"
 const Arena = preload("res://arena.gd")
 const I18n = preload("res://i18n.gd")
 const Catalog = preload("res://catalog.gd")
@@ -281,6 +281,8 @@ const CONTROLLER_INFO := {
 var pilot_look := DEFAULT_PILOT_LOOK.duplicate()   # how your pilot looks in the corner and in the story
 var owned_controllers: Array = ["gamepad"]
 var spare_controllers: Array = []   # dug-up controllers waiting in Storage (1.54): add one to your gear, or sell it
+var techs: Array = []        # (1.93) technique chips you own (ids from TECHNIQUES)
+var tech_fit := {}           # (1.93) arm / leg slot -> the technique chip in it
 var tips_seen: Array = []
 var opening_replay := false   # the opening cutscene was asked for again (BotMedia): back to the bay after it
 var social := {}      # BotMedia: posts, follows, your followers (social.gd)
@@ -614,6 +616,8 @@ func new_game() -> void:
 	pilot_at = "home"
 	owned_controllers = ["gamepad"]
 	spare_controllers = []
+	techs = []
+	tech_fit = {}
 	tips_seen = []
 	tips_log = []
 	h2h = {}
@@ -1628,6 +1632,118 @@ func gimmick_text(d: Dictionary) -> String:
 
 # ---------------------------------------------------------------- chips (special moves)
 
+## The techniques on the main robot's limbs, for a fight spec: {slot: id}.
+func player_techs() -> Dictionary:
+	var out := {}
+	for sl in TECH_LIMB_SLOTS:
+		var t := tech_in(sl)
+		if t != "":
+			out[sl] = t
+	return out
+
+
+# ---------------------------------------------------------------- techniques (1.93)
+# Technique chips change a limb's everyday hit (the middle of the pad): one slot on each arm and leg.
+# Each has a job and a weakness; each part's shape decides which it can take. Head chips stay special moves.
+
+const TECHNIQUES := {
+	"hook": {"name": "Hook", "limb": "arm", "maker": "oldiron", "price": 240,
+		"job": "More of it gets through a raised guard, and it doesn't bounce off.", "weak": "Short reach."},
+	"overhand": {"name": "Haymaker", "limb": "arm", "maker": "hellfire", "price": 280,
+		"job": "A big swing that staggers.", "weak": "Slow and easy to see coming. Miss and you're wide open."},
+	"shove": {"name": "Shove", "limb": "arm", "maker": "scrapworks", "price": 160,
+		"job": "Pushes them away and into the ropes, guard or no guard.", "weak": "Almost no damage."},
+	"elbow": {"name": "Elbow", "limb": "arm", "maker": "tenryu", "price": 220,
+		"job": "Big damage point blank. Fast.", "weak": "Tiny reach."},
+	"push_kick": {"name": "Push Kick", "limb": "leg", "maker": "nimbus", "price": 200,
+		"job": "Stops anyone walking in and knocks a charge out.", "weak": "Little damage."},
+	"roundhouse": {"name": "Roundhouse", "limb": "leg", "maker": "tenryu", "price": 300,
+		"job": "A wide arc that finds the arms. Good for tearing them off.", "weak": "Slow to come back: open to a counter."},
+	"axe_kick": {"name": "Axe Kick", "limb": "leg", "maker": "kane", "price": 300,
+		"job": "Comes down from above and beats a crouch.", "weak": "Slow to start."},
+	"knee": {"name": "Knee", "limb": "leg", "maker": "hellfire", "price": 240,
+		"job": "Point blank and hits hard.", "weak": "Tiny reach."},
+}
+const TECH_ORDER := ["hook", "overhand", "shove", "elbow", "push_kick", "roundhouse", "axe_kick", "knee"]
+const TECH_DEFAULT := {"arm": "Jab", "leg": "Kick"}
+## Part shapes a technique can't be thrown with (a hammer can't hook, a tread can't throw a knee).
+const TECH_NOT := {
+	"hook": ["hammer", "drill", "saw", "flame", "blade"],
+	"overhand": ["flame", "grapple"],
+	"elbow": ["hammer"],
+	"roundhouse": ["pillar", "tread", "wheel", "pogo", "thick", "hover"],
+	"axe_kick": ["tread", "wheel", "pillar", "hover"],
+	"knee": ["tread", "wheel", "pogo", "spring", "pillar", "hover"],
+}
+const TECH_LIMB_SLOTS := ["arm_front", "arm_back", "leg_front", "leg_back"]
+
+
+func tech_price(id: String) -> int:
+	return int(float(TECHNIQUES[id]["price"]) * pow(GRADE_PRICE, my_grade() - 1))
+
+
+## Can this part throw this technique? (Off-label parts throw only their default.)
+func tech_fits(d: Dictionary, id: String) -> bool:
+	if d.is_empty() or not TECHNIQUES.has(id):
+		return false
+	if str(d.get("kind", "")) != str(TECHNIQUES[id]["limb"]):
+		return false
+	return not (TECH_NOT.get(id, []) as Array).has(str(d.get("shape", "")))
+
+
+## Every technique a part's shape can take.
+func techs_for(d: Dictionary) -> Array:
+	return TECH_ORDER.filter(func(t): return tech_fits(d, t))
+
+
+## The technique in a slot right now ("" = the default), dropped quietly if the part there can't throw it.
+func tech_in(slot: String, eq: Dictionary = {}) -> String:
+	var t := str(tech_fit.get(slot, ""))
+	if t == "":
+		return ""
+	var e: Dictionary = equipped if eq.is_empty() else eq
+	var uid := int(e.get(slot, -1))
+	var p := inst(uid) if uid >= 0 else {}
+	if p.is_empty() or is_wreck(p) or not tech_fits(part_def(p["id"]), t) or off_label(part_def(p["id"]), slot) != "":
+		return ""
+	return t
+
+
+func tech_name(id: String, limb: String = "arm") -> String:
+	return tr(str(TECHNIQUES[id]["name"])) if TECHNIQUES.has(id) else tr(str(TECH_DEFAULT.get(limb, "Jab")))
+
+
+func buy_tech(id: String) -> String:
+	if not TECHNIQUES.has(id):
+		return ""
+	if techs.has(id):
+		return tr("You already have that technique.")
+	var c := tech_price(id)
+	if money < c:
+		return tr("Not enough money.")
+	book("parts", -c)
+	techs.append(id)
+	save_game()
+	return tr("Bought the %s chip. Fit it in an arm or leg on Bay > Chips.") % tech_name(id)
+
+
+func fit_tech(slot: String, id: String) -> String:
+	if id == "":
+		tech_fit.erase(slot)
+		save_game()
+		return tr("%s back to its plain hit.") % tr(SLOT_NAMES[slot])
+	var uid := int(equipped.get(slot, -1))
+	var p := inst(uid) if uid >= 0 else {}
+	if p.is_empty() or not tech_fits(part_def(p["id"]), id):
+		return tr("That part can't throw a %s.") % tech_name(id)
+	for sl in tech_fit.keys():
+		if str(tech_fit[sl]) == id:
+			tech_fit.erase(sl)   # one chip, one limb
+	tech_fit[slot] = id
+	save_game()
+	return tr("%s now throws a %s.") % [tr(SLOT_NAMES[slot]), tech_name(id)]
+
+
 func chip_slots() -> int:
 	var n := 0
 	for slot in ["head", "head2"]:
@@ -1784,6 +1900,7 @@ func player_spec(eq: Dictionary = {}, label: String = "") -> Dictionary:
 			"eye": Color(part_def(reactor["id"])["color"]) if not reactor.is_empty() else Color(0.4, 0.9, 1.0),
 			"back": {} if back.is_empty() else {"shape": part_def(back["id"])["shape"], "color": Color(part_def(back["id"])["color"])},
 			"gadgets": gadgets, "specials": active_chips() if eq == equipped else [], "style": style,
+			"tech": player_techs() if eq == equipped else {},
 			"controller": str(pilot_look.get("controller", "gamepad")),
 			"stickers": Contracts.stickers() if eq == equipped else {},
 			"pods": pods,
@@ -5275,7 +5392,7 @@ func save_game(path: String = "") -> bool:
 		"owned_chips": owned_chips, "chips": chips, "circuit": circuit, "circuit_offers": circuit_offers,
 		"circuits_won": circuits_won, "pickup": pickup, "setups": setups, "custom_parts": custom_parts,
 		"year": year, "week": week, "day": day, "rank": rank, "event": {}, "leagues": leagues, "title_seeds": title_seeds, "trophies": trophies, "career_stats": career_stats,
-		"pecking_k": pecking_k(), "style": style, "style_locked": style_locked, "shop_stock": shop_stock, "chip_stock": chip_stock, "scout": scout, "wingmen": wingmen, "sending": sending, "pilot_look": pilot_look, "owned_controllers": owned_controllers, "spare_controllers": spare_controllers, "tips_seen": tips_seen, "tips_log": tips_log, "h2h": h2h, "rivals": rivals, "rel": rel, "nemeses": nemeses, "pending_talk": pending_talk, "inbox": inbox, "inbox_seen": inbox_seen, "social": social, "pilot_at": pilot_at, "places_been": places_been, "pilot_used": pilot_used, "film_index": film_index, "film_pending": film_pending, "films_seen": films_seen, "contracts": contracts, "alerts_unseen": alerts_unseen, "day_log": day_log, "ledger": ledger, "bet_log": bet_log, "patched_week": patched_week, "loan": loan, "gus_alerts": gus_alerts, "tour": tour, "streak": streak, "pub_seen": pub_seen, "digs_left": digs_left, "dig_luck": dig_luck, "bills_note": bills_note, "fight_log": fight_log, "bets": bets, "world": world,
+		"pecking_k": pecking_k(), "style": style, "style_locked": style_locked, "shop_stock": shop_stock, "chip_stock": chip_stock, "scout": scout, "wingmen": wingmen, "sending": sending, "pilot_look": pilot_look, "owned_controllers": owned_controllers, "spare_controllers": spare_controllers, "techs": techs, "tech_fit": tech_fit, "tips_seen": tips_seen, "tips_log": tips_log, "h2h": h2h, "rivals": rivals, "rel": rel, "nemeses": nemeses, "pending_talk": pending_talk, "inbox": inbox, "inbox_seen": inbox_seen, "social": social, "pilot_at": pilot_at, "places_been": places_been, "pilot_used": pilot_used, "film_index": film_index, "film_pending": film_pending, "films_seen": films_seen, "contracts": contracts, "alerts_unseen": alerts_unseen, "day_log": day_log, "ledger": ledger, "bet_log": bet_log, "patched_week": patched_week, "loan": loan, "gus_alerts": gus_alerts, "tour": tour, "streak": streak, "pub_seen": pub_seen, "digs_left": digs_left, "dig_luck": dig_luck, "bills_note": bills_note, "fight_log": fight_log, "bets": bets, "world": world,
 	}
 	var f := FileAccess.open(slot_path(save_slot) if path == "" else path, FileAccess.WRITE)
 	if f == null:
@@ -5453,6 +5570,16 @@ func load_game(slot: int = -1, mine: bool = false) -> String:
 		if typeof(e) == TYPE_DICTIONARY:
 			fight_log.append({"y": int(e.get("y", 1)), "w": int(e.get("w", 1)), "d": str(e.get("d", "sat")), "opp": str(e.get("opp", "?")), "won": bool(e.get("won", false)),
 					"mode": str(e.get("mode", "")), "stage": str(e.get("stage", "")), "title": str(e.get("title", ""))})
+	techs = []
+	for t in data.get("techs", []):
+		if TECHNIQUES.has(str(t)) and not techs.has(str(t)):
+			techs.append(str(t))
+	tech_fit = {}
+	var tf = data.get("tech_fit", {})
+	if tf is Dictionary:
+		for sl in tf:
+			if TECHNIQUES.has(str(tf[sl])) and techs.has(str(tf[sl])):
+				tech_fit[str(sl)] = str(tf[sl])
 	spare_controllers = []
 	for c in data.get("spare_controllers", []):
 		if CONTROLLER_INFO.has(str(c)):

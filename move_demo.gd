@@ -5,6 +5,7 @@ extends Control
 const FightScene = preload("res://fight.tscn")
 
 var move := ""
+var res := Vector2i(640, 360)   # (1.93) inline demos in lists render smaller
 var sv: SubViewport
 var tex: TextureRect
 var fight: Node
@@ -13,7 +14,7 @@ var fight: Node
 func _ready() -> void:
 	clip_contents = true
 	sv = SubViewport.new()
-	sv.size = Vector2i(640, 360)
+	sv.size = res
 	sv.render_target_update_mode = SubViewport.UPDATE_ALWAYS
 	sv.gui_disable_input = true
 	sv.handle_input_locally = true

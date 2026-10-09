@@ -183,6 +183,77 @@ class ChipIcon extends Control:
 		draw_circle(r.get_center(), 4.0, Color(0.4, 1.0, 0.6) if installed else Color(0.4, 0.4, 0.4))
 
 
+## (1.93) A move playing on a loop right in its row: no "See it" button. It only runs while it's on
+## screen, and only a few at a time (each is a small fight scene running off screen).
+class InlineDemo extends Control:
+	const MAX_LIVE := 4
+	static var live := 0
+	var move := ""
+	var demo: Control = null
+	func _init(m: String = "", w: float = 176.0) -> void:
+		move = m
+		custom_minimum_size = Vector2(w, w * 9.0 / 16.0)
+		mouse_filter = Control.MOUSE_FILTER_IGNORE
+		size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		clip_contents = true
+	func _draw() -> void:
+		draw_rect(Rect2(Vector2.ZERO, size), Color(0.05, 0.05, 0.07))
+		draw_rect(Rect2(Vector2.ZERO, size), Color(0.3, 0.3, 0.36), false, 1.0)
+	func _process(_d: float) -> void:
+		var area := get_viewport_rect()
+		var sc: Node = get_parent()
+		while sc != null and not (sc is ScrollContainer):
+			sc = sc.get_parent()
+		if sc != null:
+			area = (sc as Control).get_global_rect()   # rows scrolled out of the list don't count
+		var r := get_global_rect()
+		var on := is_visible_in_tree() and area.intersects(r) and area.intersection(r).size.y > r.size.y * 0.4
+		if on and demo == null and live < MAX_LIVE and move != "":
+			var MD = load("res://move_demo.gd")
+			demo = MD.new()
+			demo.res = Vector2i(384, 216)
+			demo.move = move
+			demo.set_anchors_preset(Control.PRESET_FULL_RECT)
+			demo.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			add_child(demo)
+			live += 1
+		elif not on and demo != null:
+			demo.queue_free()
+			demo = null
+			live -= 1
+	func _exit_tree() -> void:
+		if demo != null:
+			live -= 1
+			demo = null
+
+
+## (1.93) A technique chip: a chip board with a fist (arm techniques) or a boot (leg ones) in its maker's colour.
+class TechIcon extends Control:
+	var tech := ""
+	var on := false
+	func _draw() -> void:
+		draw_rect(Rect2(Vector2.ZERO, size), Color(0.1, 0.1, 0.14))
+		var M = load("res://makers.gd")
+		var t: Dictionary = GameData.TECHNIQUES.get(tech, {})
+		var col: Color = M.color(str(t.get("maker", ""))) if not t.is_empty() else Color(0.5, 0.5, 0.55)
+		var r := Rect2(size * 0.15, size * 0.7)
+		for k in 3:
+			var y := r.position.y + 6 + k * (r.size.y - 12) / 2.0
+			draw_line(Vector2(r.position.x - 6, y), Vector2(r.end.x + 6, y), Color(0.8, 0.7, 0.3), 2.0)
+		draw_rect(r, col.darkened(0.55) if not on else col.darkened(0.2))
+		draw_rect(r, col, false, 2.0)
+		var c := r.get_center()
+		var u := r.size.x * 0.12
+		if str(t.get("limb", "arm")) == "arm":
+			draw_rect(Rect2(c + Vector2(-2.2, -1.6) * u, Vector2(4.4, 3.6) * u), Color(0.92, 0.92, 0.95))
+			for k in 3:
+				draw_line(c + Vector2(-2.2 + 1.4 * (k + 1) * 0.75, -1.6) * u, c + Vector2(-2.2 + 1.4 * (k + 1) * 0.75, 0.2) * u, col.darkened(0.5), 1.5)
+			draw_rect(Rect2(c + Vector2(-3.2, 0.2) * u, Vector2(1.2, 1.6) * u), Color(0.92, 0.92, 0.95))
+		else:
+			draw_colored_polygon(PackedVector2Array([c + Vector2(-1.4, -2.6) * u, c + Vector2(0.6, -2.6) * u, c + Vector2(0.6, 0.6) * u,
+					c + Vector2(2.8, 0.8) * u, c + Vector2(2.8, 2.2) * u, c + Vector2(-1.4, 2.2) * u]), Color(0.92, 0.92, 0.95))
+
+
 func _ready() -> void:
 	# first time in the bay after a fight: Gus explains how things work around here.
 	# Everything else that opens up waits with a star; Gus explains it when you first tap it.
@@ -1498,6 +1569,11 @@ func build_detail() -> void:
 	maker_strip(d, inv, detail_box)
 	# (1.91) every stat at a glance as icons (tap one for its name)
 	detail_box.add_child(StatIcons.chips(GameData.part_stats(d), 15))
+	if kind == "arm" or kind == "leg":
+		var tk: Array = GameData.techs_for(d)
+		var tl := GUI.text(tr("TECHNIQUES IT TAKES: %s") % (", ".join(tk.map(func(t): return GameData.tech_name(t))) if not tk.is_empty() else tr("only its plain hit")), 12, GUI.CYAN, "headb")
+		tl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		detail_box.add_child(tl)
 	# notes and extras (traits, gadgets)
 	for n in PartNotes.notes(d, kind, health, str(p.get("uid", d["id"]))):
 		var warn := str(n).begins_with("!")
@@ -2030,6 +2106,14 @@ func part_filter_bar(screen: String, items: Array, extra_kinds: Array = [], pare
 	bar.add_child(vb)
 	compare_tray(parent)
 	return bar
+
+
+## (1.93) The technique on a limb as a chip ([] when it throws its plain hit).
+func tech_chip(slot: String) -> Array:
+	var t := GameData.tech_in(slot)
+	if t == "":
+		return []
+	return [["tech", GameData.tech_name(t).to_upper(), null, "%s: %s" % [GameData.tech_name(t), tr(str(GameData.TECHNIQUES[t]["job"]))]]]
 
 
 ## A part's maker as a stat chip: logo and short name, tap = who they are and their set perk.
@@ -2610,7 +2694,7 @@ func build_overview() -> void:
 		var d := GameData.part_def(p["id"])
 		var off_note := GameData.off_label_text(d, slot)
 		var row := make_tap_row(part_icon(d, GameData.hp_ratio(p)), d["name"], job_line("m", slot, p).strip_edges() + ("" if off_note == "" else "[color=#f2b84a]%s[/color]" % (tr("OFF-LABEL") + ": " + off_note)),
-				_on_slot.bind(slot), slot_name, false, null, StatIcons.chips(part_chips(d, true), 13))
+				_on_slot.bind(slot), slot_name, false, null, StatIcons.chips(part_chips(d, true) + tech_chip(slot), 13))
 		if not GameData.UNDAMAGEABLE.has(d["kind"]):
 			row.add_child(hp_widget(p))
 			var c := GameData.repair_cost(p)
@@ -4796,6 +4880,11 @@ func build_dealer() -> void:
 		section("TRAINING CHIPS: each one teaches your robot a special move.")
 		for id in chips.duplicate():
 			chip_row(id, false)
+	# (1.93) technique chips: always on the shelf
+	if (f == "all" or f == "chip") and GameData.unlocked("moves"):
+		section(tr("TECHNIQUE CHIPS: each one changes an arm's or a leg's everyday hit."))
+		for id in GameData.TECH_ORDER:
+			tech_row(id)
 
 
 ## Pilot gear: controllers change how your robots fight. Bought and picked in Crew > Pilot.
@@ -5051,38 +5140,21 @@ var demo_chip := ""   # the move looping at the top of the Moves tab
 
 ## Your training chips: plug them into the head (better heads have more slots), watch each move loop.
 func build_moves_tab() -> void:
-	section(tr("Chips teach special moves. Slots used: %d/%d, better heads hold more. In the inputs, → means toward the enemy, ← away.")
+	build_techniques()
+	section(tr("SPECIAL MOVES: chips in the head teach them. Slots used: %d/%d, better heads hold more. In the inputs, → means toward the enemy, ← away.")
 			% [GameData.active_chips().size(), GameData.chip_slots()])
 	var chip_ids: Array = GameData.owned_chips.duplicate()
 	if chip_ids.is_empty():
 		section(tr("No chips yet. The dealer, Made to order and the scrapyard all have them."))
 		return
-	if demo_chip == "" or not chip_ids.has(demo_chip):
-		demo_chip = GameData.chips[0] if not GameData.chips.is_empty() else (GameData.owned_chips[0] if not GameData.owned_chips.is_empty() else chip_ids[0])
-	# the selected move, looping: see it before you buy it, and get used to it before a fight
-	var top := HBoxContainer.new()
-	top.add_theme_constant_override("separation", 12)
-	list_box.add_child(top)
-	var demo := MoveDemo.new()
-	demo.custom_minimum_size = Vector2(320, 180)
-	demo.move = demo_chip
-	top.add_child(demo)
-	var dm: Dictionary = Specials.MOVES[demo_chip]
-	var info := UI.label(tr("%s\n%s\n\n%s") % [tr(dm["name"]).to_upper(), Specials.seq_text(dm["seq"]), tr(dm["desc"])], 15, Color(0.5, 0.9, 1.0))
-	info.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	info.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	top.add_child(info)
 	for id in chip_ids:
 		var m: Dictionary = Specials.MOVES[id]
-		var owned := true
 		var installed := GameData.chips.has(id)
 		var icon := ChipIcon.new()
 		icon.installed = installed
 		var row := make_row(icon, tr("%s    %s") % [tr(m["name"]), Specials.seq_text(m["seq"])], tr("%s  Cooldown %ds.") % [tr(m["desc"]), int(m["cd"])])
-		row_button(row, "Watching" if id == demo_chip else "See it", _on_chip_demo.bind(id), id != demo_chip, 100)
-		if not owned:
-			row_button(row, tr("Buy $%d") % m["cost"], _on_buy_chip.bind(id), GameData.money >= m["cost"], 115)
-		elif installed:
+		row.add_child(InlineDemo.new(id))   # (1.93) the move loops right there
+		if installed:
 			row_button(row, "Remove", _on_uninstall_chip.bind(id), true, 115)
 		else:
 			row_button(row, "Install", _on_install_chip.bind(id), GameData.chips.size() < GameData.chip_slots(), 115)
@@ -5091,6 +5163,115 @@ func build_moves_tab() -> void:
 func _on_chip_demo(id: String) -> void:
 	demo_chip = id
 	refresh()
+
+
+# ---------------------------------------------------------------- techniques (1.93)
+
+## Bay > Chips, first: what each arm and leg throws on the middle of the pad, and the technique chips
+## you own to change it. The one on show loops on the dummy.
+func build_techniques() -> void:
+	section(tr("TECHNIQUES: a chip in an arm or leg changes its everyday hit (the middle of the pad). Each has a job and a weakness."))
+	for sl in GameData.TECH_LIMB_SLOTS:
+		var p := GameData.equipped_inst(sl)
+		if p.is_empty():
+			continue
+		var d := GameData.part_def(p["id"])
+		var limb: String = "arm" if sl.begins_with("arm") else "leg"
+		var cur := GameData.tech_in(sl)
+		var icon := TechIcon.new()
+		icon.tech = cur
+		icon.on = cur != ""
+		var sub := tr(str(GameData.TECHNIQUES[cur]["job"])) if cur != "" else tr("The plain hit.")
+		if GameData.off_label(d, sl) != "":
+			sub = tr("Off-label parts throw only their plain hit.")
+		var row := make_row(icon, "%s: %s" % [tr(GameData.SLOT_NAMES[sl]), GameData.tech_name(cur, limb)], sub)
+		if cur != "":
+			row.add_child(InlineDemo.new("tech:" + cur))
+		var fb := flow_bar()
+		fb.custom_minimum_size.x = 0
+		var opts: Array = GameData.techs_for(d).filter(func(t): return GameData.techs.has(t))
+		if GameData.off_label(d, sl) != "":
+			opts = []
+		var plain := row_button(fb, tr(str(GameData.TECH_DEFAULT[limb])), _on_fit_tech.bind(sl, ""), true, 0)
+		if cur == "":
+			plain.add_theme_color_override("font_color", GUI.YELLOW)
+			plain.text = "✓ " + plain.text
+		for t in opts:
+			var b := row_button(fb, GameData.tech_name(t), _on_fit_tech.bind(sl, t), true, 0)
+			if cur == t:
+				b.add_theme_color_override("font_color", GUI.YELLOW)
+				b.text = "✓ " + b.text
+		var takes: Array = GameData.techs_for(d).filter(func(t): return not GameData.techs.has(t))
+		if not takes.is_empty() and GameData.off_label(d, sl) == "":
+			var tl := GUI.text(tr("This part could also take: %s") % ", ".join(takes.map(func(t): return GameData.tech_name(t))), 11, GUI.MUTED)
+			tl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+			list_box.add_child(tl)
+	if GameData.techs.is_empty():
+		section(tr("No technique chips yet. Parts-R-Us sells them."))
+	list_box.add_child(GUI.HazardStrip.new())
+
+
+func _on_fit_tech(slot: String, id: String) -> void:
+	note(GameData.fit_tech(slot, id), "equip")
+	tech_lesson()
+	refresh()
+
+
+func _on_buy_tech(id: String) -> void:
+	var before := GameData.money
+	var text := GameData.buy_tech(id)
+	note(text, "buy" if GameData.money < before else "error")
+	if GameData.money < before:
+		tech_lesson()
+	refresh()
+
+
+## Gus explains techniques once.
+func tech_lesson() -> void:
+	if GameData.story_seen.has("tech_lesson"):
+		return
+	GameData.story_seen.append("tech_lesson")
+	say(tr("A technique changes that limb's everyday hit. Pick the one that answers what they do to you."))
+
+
+## A technique chip on sale: what it does, its weakness, what it fits, See it / Buy.
+func tech_row(id: String) -> void:
+	var t: Dictionary = GameData.TECHNIQUES[id]
+	var icon := TechIcon.new()
+	icon.tech = id
+	var M = GameData.Makers
+	var sub := "[color=#%s][b]%s[/b][/color] · %s %s" % [M.color(str(t["maker"])).lightened(0.25).to_html(false), M.short(str(t["maker"])),
+			tr(str(t["job"])), "[color=#ff9a7a]" + tr("Weakness: %s") % tr(str(t["weak"])) + "[/color]"]
+	var row := make_tap_row(icon, GameData.tech_name(id), sub, _on_tech_preview.bind(id), tr("ARM TECHNIQUE") if t["limb"] == "arm" else tr("LEG TECHNIQUE"))
+	row.add_child(InlineDemo.new("tech:" + id))
+	if GameData.techs.has(id):
+		row_button(row, tr("Owned"), func(): pass, false, 110)
+	else:
+		var price := GameData.tech_price(id)
+		row_button(row, tr("Buy $%d") % price, _on_buy_tech.bind(id), GameData.money >= price, 115)
+
+
+func _on_tech_preview(id: String) -> void:
+	var t: Dictionary = GameData.TECHNIQUES[id]
+	var col := open_popup(GameData.tech_name(id).to_upper())
+	var demo := MoveDemo.new()
+	demo.custom_minimum_size = Vector2(480, 270)
+	demo.move = "tech:" + id
+	col.add_child(demo)
+	var l := UI.label("%s\n%s" % [tr(str(t["job"])), tr("Weakness: %s") % tr(str(t["weak"]))], 15, Color(0.5, 0.9, 1.0))
+	l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	col.add_child(l)
+	var fits: Array = []
+	for sl in GameData.TECH_LIMB_SLOTS:
+		var p := GameData.equipped_inst(sl)
+		if not p.is_empty() and GameData.tech_fits(GameData.part_def(p["id"]), id):
+			fits.append(tr(GameData.SLOT_NAMES[sl]))
+	col.add_child(GUI.text((tr("Fits on your robot: %s") % ", ".join(fits)) if not fits.is_empty() else tr("None of your fitted parts can throw it."), 13, GUI.GREEN if not fits.is_empty() else GUI.AMBER))
+	if not GameData.techs.has(id):
+		var price := GameData.tech_price(id)
+		var b := UI.button(tr("Buy $%d") % price, func(): close_popup(); _on_buy_tech(id), 16, Vector2(0, 48))
+		b.disabled = GameData.money < price
+		popup_footer.add_child(b)
 
 
 func build_cups_tab() -> void:
@@ -7023,16 +7204,6 @@ func build_style_view() -> void:
 	var body := VBoxContainer.new()
 	body.add_theme_constant_override("separation", 10)
 	col.add_child(body)
-	# on top: the signature move, looping, so you know what it looks like before a fight
-	var left := VBoxContainer.new()
-	body.add_child(left)
-	style_demo = MoveDemo.new()
-	style_demo.custom_minimum_size = Vector2(400, 225)
-	left.add_child(style_demo)
-	style_demo_label = UI.label("", 14, Color(0.5, 0.9, 1.0))
-	style_demo_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	style_demo_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	left.add_child(style_demo_label)
 	var list := VBoxContainer.new()
 	list.add_theme_constant_override("separation", 6)
 	body.add_child(list)
@@ -7053,11 +7224,11 @@ func build_style_view() -> void:
 		text.add_child(UI.label(tr("Signature: %s  %s") % [tr(sig["name"]), Specials.seq_text(sig["seq"])], 12, Color(0.5, 0.9, 1.0)))
 		var btns := VBoxContainer.new()
 		row.add_child(btns)
-		btns.add_child(UI.button("See it", _on_style_demo.bind(id), 14, Vector2(84, 38)))
+		row.add_child(InlineDemo.new(st["signature"]))   # (1.93) each style's signature move loops in its row
+		row.move_child(btns, -1)
 		var b := UI.button("Pick", _on_pick_style.bind(id), 14, Vector2(84, 38))
 		b.disabled = id == GameData.style or GameData.style_locked
 		btns.add_child(b)
-	_on_style_demo(GameData.style)
 	if GameData.unlocked("paint"):
 		section(tr("PAINT JOB"), col)
 		var grid := GridContainer.new()
@@ -7084,6 +7255,8 @@ var style_demo_label: Label
 
 ## Loop a style's signature move in the popup's little window.
 func _on_style_demo(id: String) -> void:
+	if style_demo == null or not is_instance_valid(style_demo):
+		return
 	var st: Dictionary = Catalog.STYLES[id]
 	var sig: Dictionary = Specials.MOVES[st["signature"]]
 	style_demo.show_move(st["signature"])
@@ -7341,7 +7514,7 @@ func chip_row(id: String, ordered: bool) -> void:
 	var m: Dictionary = Specials.MOVES[id]
 	var icon := ChipIcon.new()
 	var row := make_row(icon, tr("%s    %s") % [tr(m["name"]), Specials.seq_text(m["seq"])], tr("%s  Cooldown %ds.") % [tr(m["desc"]), int(m["cd"])])
-	row_button(row, "See it", _on_chip_preview.bind(id), true, 90)
+	row.add_child(InlineDemo.new(id))
 	var price := GameData.chip_price(id, ordered)
 	row_button(row, (tr("Order $%d") if ordered else tr("Buy $%d")) % price, _on_buy_chip.bind(id, ordered), GameData.money >= price, 115)
 
