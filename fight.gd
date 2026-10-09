@@ -869,6 +869,11 @@ func make_fighter(spec: Dictionary) -> Fighter:
 			if ap is Dictionary and str(ap.get("trait", "")) == "knuckle":
 				f.specials.append("chest_pound")
 				break
+	# (1.108) a prototype part can carry a signature of its own (Tenryu's Dragon Crest)
+	for pid in ids:
+		var psig := str(GameData.part_def(str(pid)).get("sig", ""))
+		if psig != "" and Specials.MOVES.has(psig) and not f.specials.has(psig):
+			f.specials.append(psig)
 	for t in spec.get("traits", []):
 		var tid: String = t["trait"]
 		f.gtraits[tid] = f.gtraits.get(tid, 0.0) + Catalog.trait_value(t)

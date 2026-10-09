@@ -74,7 +74,16 @@ static func sp(id: String) -> Dictionary:
 
 const MAKER_PARTNER_N := 2
 const MAKER_WORKS_N := 4
-const MAKER_OFF := {"partner": 15, "title": 25}
+const MAKER_OFF := {"partner": 15, "title": 25, "factory": 40}
+# (1.108) Factory team: only their parts on the robot's body (heads, torso, arms, legs) at every bell,
+# the biggest fee, 40% off and their prototype. Rare: a winning record, followers, most of the robot theirs.
+const FACTORY_SLOTS := ["head", "head2", "torso", "arm_front", "arm_back", "arm_front2", "arm_back2", "leg_front", "leg_back"]
+const FACTORY_WINS := 12
+const FACTORY_RATE := 0.55
+const FACTORY_FOL := 2000
+const FACTORY_NEED := 5      # of their parts on the robot before they'll ask
+const FACTORY_GAP := 26      # weeks between factory offers
+const FACTORY_CHANCE := 0.35
 
 
 static func maker_sp(m: String) -> Dictionary:
@@ -96,7 +105,39 @@ static func maker_contract(m: String) -> Dictionary:
 
 
 static func works_for(m: String) -> bool:
-	return m != "" and str(maker_contract(m).get("role", "")) == "title"
+	return m != "" and str(maker_contract(m).get("role", "")) in ["title", "factory"]
+
+
+## (1.108) The maker whose factory team you drive ("" = none).
+static func factory_maker() -> String:
+	for c in st()["active"]:
+		if str(c["role"]) == "factory":
+			return str(c["sp"]).substr(3)
+	return ""
+
+
+## Body parts on your robot from anyone else than maker m.
+static func not_theirs(m: String) -> int:
+	var n := 0
+	var eq: Dictionary = GameData.equipped_ids()
+	for slot in FACTORY_SLOTS:
+		if eq.has(slot) and str(GameData.part_def(str(eq[slot])).get("maker", "")) != m:
+			n += 1
+	return n
+
+
+## Would maker m ask you onto its factory team now?
+static func factory_ready(m: String) -> bool:
+	var s := st()
+	var games := GameData.wins + GameData.losses
+	if GameData.rank_index() < 2 or GameData.wins < FACTORY_WINS or games == 0 or float(GameData.wins) / games < FACTORY_RATE:
+		return false
+	if GameData.Social.followers() < FACTORY_FOL or maker_count(m) < FACTORY_NEED or factory_maker() != "":
+		return false
+	if World.abs_week() - int(s.get("factory_aw", -999)) < FACTORY_GAP:
+		return false
+	# another maker's title deal stands in the way (their own Works deal can be upgraded)
+	return not s["active"].any(func(c): return str(c["role"]) == "title" and str(c["sp"]) != "mk:" + m)
 
 
 ## Percent off a maker's parts from your contract with them.
@@ -134,7 +175,7 @@ static func paint_required() -> int:
 
 
 static func title_held() -> bool:
-	return st()["active"].any(func(c): return c["role"] == "title")
+	return st()["active"].any(func(c): return c["role"] == "title" or c["role"] == "factory")
 
 
 static func partners_held() -> int:
@@ -168,8 +209,10 @@ static func can_offer(id: String) -> bool:
 		return false
 	if id.begins_with("mk:"):
 		# a maker only calls a pilot who already runs its parts
-		if s["active"].any(func(c): return c["sp"] == id or c["sp"] == "kane") or s["offers"].any(func(o): return o["sp"] == id):
+		if s["offers"].any(func(o): return o["sp"] == id) or s["active"].any(func(c): return c["sp"] == "kane"):
 			return false
+		if s["active"].any(func(c): return c["sp"] == id):
+			return factory_ready(id.substr(3))   # (1.108) their partner or works driver may get the factory call
 		if float(s["mood"].get(id, 0.0)) < -0.6:
 			return false
 		return maker_count(id.substr(3)) >= 1 and GameData.rank_index() >= 1
@@ -196,11 +239,16 @@ static func make_offer(id: String) -> Dictionary:
 	if id.begins_with("mk:"):
 		# Works driver from the Rust League, and only for a pilot already running 3 of their parts
 		role = "title" if not title_held() and GameData.rank_index() >= 2 and maker_count(id.substr(3)) >= 3 else "partner"
+		if factory_ready(id.substr(3)) and (not maker_contract(id.substr(3)).is_empty() or rng.randf() < FACTORY_CHANCE):
+			role = "factory"   # (1.108) the rare one
+			s["factory_aw"] = World.abs_week()
+		elif not maker_contract(id.substr(3)).is_empty():
+			return {}
 	if role == "partner" and partners_held() >= MAX_PARTNERS:
 		return {}
 	var want := want_of(id)
 	var k := clampf(0.75 + 0.35 * want, 0.6, 1.4)
-	var fee := int(fee_base() * float(d["mult"]) * (2.0 if role == "title" else 1.0) * k)
+	var fee := int(fee_base() * float(d["mult"]) * (3.0 if role == "factory" else (2.0 if role == "title" else 1.0)) * k)
 	var slots := free_slots()
 	var reqs: Array = []
 	if role == "title":
@@ -209,11 +257,13 @@ static func make_offer(id: String) -> Dictionary:
 		reqs.append(make_req(str(a), rng))
 	if id.begins_with("mk:"):
 		reqs = [{"kind": "maker_parts", "maker": id.substr(3), "n": MAKER_WORKS_N if role == "title" else MAKER_PARTNER_N}]
-		if role == "title":
+		if role == "factory":
+			reqs = [{"kind": "maker_all", "maker": id.substr(3)}]
+		if role == "title" or role == "factory":
 			reqs.push_front({"kind": "paint", "paint": int(d["paint"])})
-	var o := {"id": int(s["next"]), "sp": id, "role": role, "slot": "torso" if role == "title" else (slots[rng.randi() % slots.size()] if not slots.is_empty() else "head"),
+	var o := {"id": int(s["next"]), "sp": id, "role": role, "slot": "torso" if role == "title" or role == "factory" else (slots[rng.randi() % slots.size()] if not slots.is_empty() else "head"),
 			"fee": fee, "sign": int(fee * rng.randf_range(0.5, 1.2)), "win": int(fee * 0.15), "rip": int(fee * 0.05), "podium": fee * 3,
-			"weeks": [8, 12, 16, 26][rng.randi() % 4], "reqs": reqs, "strikes": 0, "want": want,
+			"weeks": ([26, 39, 52][rng.randi() % 3] if role == "factory" else [8, 12, 16, 26][rng.randi() % 4]), "reqs": reqs, "strikes": 0, "want": want,
 			"patience": rng.randi_range(2, 4), "ceiling": k * (1.15 + 0.35 * want), "k": k, "asks": 0, "played": false,
 			"sleeping": false, "expires": World.abs_week() + 1, "reply": ""}
 	s["next"] = int(s["next"]) + 1
@@ -274,6 +324,8 @@ static func weekly_offers() -> void:
 static func gus_line(o: Dictionary) -> String:
 	if o["sp"] == "kane" or o["sp"] == "mk:kane":
 		return I18n.t("Kane money. Over my dead body, kid. Your call.")
+	if o["role"] == "factory":
+		return I18n.t("A factory team. Every bolt theirs, every fight. Big money, and their prototype. Think hard.")
 	if str(o["sp"]).begins_with("mk:"):
 		return I18n.t("If you'd run their parts anyway, it's money for nothing. Just don't get stuck with them.")
 	var per_base := float(o["fee"]) / maxf(1.0, fee_base() * float(sp(o["sp"])["mult"]) * (2.0 if o["role"] == "title" else 1.0))
@@ -336,7 +388,7 @@ static func ask(id: int, what: String) -> String:
 				o["weeks"] = maxi(6, int(o["weeks"]) - 4)
 				o["reply"] = I18n.t("Shorter it is.")
 			"drop":
-				var opt: Array = o["reqs"].filter(func(r): return r["kind"] != "paint" and r["kind"] != "exclusive")
+				var opt: Array = o["reqs"].filter(func(r): return not r["kind"] in ["paint", "exclusive", "maker_all", "maker_parts"])
 				if opt.is_empty():
 					o["reply"] = I18n.t("There's nothing left to drop.")
 				else:
@@ -401,6 +453,13 @@ static func sign(id: int) -> String:
 	if i < 0:
 		return ""
 	var o: Dictionary = s["offers"][i]
+	if o["role"] == "factory":
+		# (1.108) a factory deal replaces your works deal with the same maker
+		for c0 in s["active"].duplicate():
+			if str(c0["sp"]) == str(o["sp"]):
+				s["active"].erase(c0)
+		if title_held():
+			return I18n.t("You already have a title sponsor.")
 	if o["role"] == "title" and title_held():
 		return I18n.t("You already have a title sponsor.")
 	if o["role"] == "partner" and partners_held() >= MAX_PARTNERS:
@@ -427,11 +486,25 @@ static func sign(id: int) -> String:
 	var d := sp(str(c["sp"]))
 	GameData.Social.post("sp:" + str(c["sp"]), "Welcome to the family, %s. #%s", ["@" + GameData.Social.account("me")["handle"], d["tag"]], {"kind": "logo", "logo": c["sp"]}, [d["tag"]], true, "sponsor_welcome")
 	GameData.Social.post("botmedia", "%s signs with %s.", [GameData.pilot_name, d["name"]], {"kind": "logo", "logo": c["sp"]}, [d["tag"]], false, "news_me_good")
+	if c["role"] == "factory":
+		var m := str(c["sp"]).substr(3)
+		var pname := GameData.give_proto(m)
+		GameData.Social.post("botmedia", "%s joins the %s factory team.", [GameData.pilot_name, d["name"]], {"kind": "logo", "logo": c["sp"]}, [d["tag"], "FactoryTeam"], false, "news_me_good")
+		GameData.log_talk("GUS", I18n.t("Factory team. Every part on her body is theirs now, kid. Fit anything else and they'll know."), "gus")
+		if pname != "":
+			GameData.log_talk(str(d["name"]).to_upper(), I18n.t("The %s is yours while you drive for us. Nobody else has one.") % I18n.t(pname), "sponsor:" + str(c["sp"]))
 	if c["sp"] == "kane":
 		var s2: Dictionary = GameData.Social.st()
 		s2["followers"] = int(int(s2["followers"]) * 0.8)   # the pilots' fans don't forgive this
 		GameData.log_talk("GUS", I18n.t("You signed with Kane. I don't want to talk about it."), "gus")
 	return I18n.t("Signed with %s. $%d up front.") % [d["name"], int(c["sign"])]
+
+
+## (1.108) A contract is over: a factory team takes its prototype back.
+static func ended(c: Dictionary) -> void:
+	if str(c.get("role", "")) == "factory":
+		GameData.take_proto(str(c["sp"]).substr(3))
+		GameData.log_talk("GUS", I18n.t("The factory took their prototype back. It was never ours, kid."), "gus")
 
 
 # ---------------------------------------------------------------- the rules
@@ -460,6 +533,8 @@ static func req_text(r: Dictionary) -> String:
 			return I18n.t("Fight every week")
 		"exclusive":
 			return I18n.t("No other sponsors")
+		"maker_all":
+			return I18n.t("Only %s parts on the robot's body at every bell (%d not theirs now)") % [GameData.Makers.label(str(r["maker"])), not_theirs(str(r["maker"]))]
 		"maker_parts":
 			return I18n.t("At least %d %s parts on the robot at every bell (%d now)") % [int(r["n"]), GameData.Makers.label(str(r["maker"])), maker_count(str(r["maker"]))]
 	return str(r["kind"])
@@ -491,6 +566,7 @@ static func strike(c: Dictionary, why: String) -> void:
 			GameData.gus_alert(I18n.t("One more and %s walks") % str(d["name"]), I18n.t("%s fined us for the second time: %s. The next broken rule tears the contract up. Check what they want on the Contracts page.") % [str(d["name"]), why], "contracts")
 		_:
 			st()["active"].erase(c)
+			ended(c)
 			st()["mood"][c["sp"]] = float(st()["mood"].get(c["sp"], 0.0)) - 0.3
 			GameData.log_talk(who, I18n.t("We're done. Contract torn up, sticker off."), "sponsor:" + str(c["sp"]))
 			GameData.Social.post("botmedia", "%s and %s part ways.", [d["name"], GameData.pilot_name], {"kind": "logo", "logo": c["sp"]}, [d["tag"]], false, "news_me_bad")
@@ -514,6 +590,9 @@ static func check_bell(hp_ratio: float) -> void:
 				"maker_parts":
 					if maker_count(str(r["maker"])) < int(r["n"]):
 						strike(c, I18n.t("only %d of our parts on the robot") % maker_count(str(r["maker"])))
+				"maker_all":
+					if not_theirs(str(r["maker"])) > 0:
+						strike(c, I18n.t("%d parts from other makers on the robot") % not_theirs(str(r["maker"])))
 
 
 ## After your fight: bonuses, win targets, forfeits.
@@ -590,6 +669,7 @@ static func week_end() -> void:
 		c["weeks"] = int(c["weeks"]) - 1
 		if int(c["weeks"]) <= 0:
 			st()["active"].erase(c)
+			ended(c)
 			st()["mood"][c["sp"]] = float(st()["mood"].get(c["sp"], 0.0)) + (0.15 if int(c.get("strikes", 0)) == 0 else 0.0)
 			GameData.log_talk(sp_name(c).to_upper(), I18n.t("Our contract's up. Thanks for the ride. We'll be in touch."), "sponsor:" + str(c["sp"]))
 

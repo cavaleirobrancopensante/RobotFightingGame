@@ -1586,6 +1586,10 @@ func build_detail() -> void:
 	head.add_child(x)
 	# (1.90) who made it, and how close the robot is to that maker's set
 	maker_strip(d, inv, detail_box)
+	if d.has("proto_of"):
+		var ptl := GUI.text(tr("PROTOTYPE: only their factory team pilot has one. It goes back if you leave the team, and it can't be sold."), 14, GUI.CYAN, "headb")
+		ptl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		detail_box.add_child(ptl)
 	# (1.91) every stat at a glance as icons (tap one for its name)
 	detail_box.add_child(StatIcons.chips(GameData.part_stats(d), 15))
 	if kind == "arm" or kind == "leg":
@@ -1720,7 +1724,9 @@ func makers_line(ids: Array) -> String:
 		for r in GameData.Contracts.maker_contract(m).get("reqs", []):
 			if str(r["kind"]) == "maker_parts":
 				need = int(r["n"])
-		if need > 0:
+		if GameData.Contracts.factory_maker() == m:
+			bits.append(tr("%s FACTORY TEAM, %d not theirs") % [M.label(m).to_upper(), GameData.Contracts.not_theirs(m)])   # (1.108)
+		elif need > 0:
 			bits.append(tr("%s %d of %d") % [M.label(m).to_upper(), int(c.get(m, 0)), need])   # (1.95) a maker contract's count
 		elif int(c.get(m, 0)) > 0:
 			bits.append("%s %d" % [M.label(m), int(c[m])])
@@ -1803,14 +1809,27 @@ func _on_test_drive(junker_id: String, try_id: String, slot: String, from: Strin
 	Loading.go("res://fight.tscn")
 
 
-func _on_detail_fit(uid: int, slot: String) -> void:
+## (1.108) On a factory team, fitting another maker's part to the body asks first. True = it asked.
+func factory_guard(id: String, slot: String, go: Callable) -> bool:
+	var fm: String = GameData.Contracts.factory_maker()
+	if fm == "" or not GameData.Contracts.FACTORY_SLOTS.has(slot) or str(GameData.part_def(id).get("maker", "")) == fm:
+		return false
+	confirm(tr("Not a %s part") % GameData.Makers.label(fm), tr("You drive for the %s factory team: only their parts on the body at the bell. Fit it anyway, and they'll strike you at the next fight.") % GameData.Makers.label(fm), tr("Fit it anyway"), go)
+	return true
+
+
+func _on_detail_fit(uid: int, slot: String, sure: bool = false) -> void:
+	if not sure and factory_guard(str(GameData.inst(uid).get("id", "")), slot, _on_detail_fit.bind(uid, slot, true)):
+		return
 	note(GameData.equip(uid, slot), "equip")
 	detail = {}
 	refresh()
 
 
 ## Buy a part and bolt it straight on.
-func _on_buy_fit(id: String, slot: String) -> void:
+func _on_buy_fit(id: String, slot: String, sure: bool = false) -> void:
+	if not sure and factory_guard(id, slot, _on_buy_fit.bind(id, slot, true)):
+		return
 	var before := GameData.money
 	var text := GameData.buy(id)
 	if GameData.money >= before and GameData.part_def(id)["cost"] > 0:
@@ -4031,7 +4050,7 @@ func build_contracts() -> void:
 		list_box.add_child(tl)
 	for c in s["active"]:
 		var d: Dictionary = C.sp(str(c["sp"]))
-		var role := tr("TITLE SPONSOR") if c["role"] == "title" else tr("PARTNER")
+		var role := tr("FACTORY TEAM") if c["role"] == "factory" else (tr("TITLE SPONSOR") if c["role"] == "title" else tr("PARTNER"))
 		var sub := tr("$%d a month · $%d a win · %d weeks left · sticker %s") % [int(c["fee"]), int(c["win"]), int(c["weeks"]), C.slot_text(str(c["slot"]))]
 		make_row(Logos.LogoIcon.new(str(c["sp"]), 52), str(d["name"]), sub, null, role)
 		for r in c["reqs"]:
@@ -4057,7 +4076,7 @@ func build_contracts() -> void:
 		section(tr("No offers right now. Win fights and grow your followers: sponsors are watching. Offers come on Mondays."))
 	for o in s["offers"]:
 		var d2: Dictionary = C.sp(str(o["sp"]))
-		var role2 := tr("TITLE") if o["role"] == "title" else tr("PARTNER")
+		var role2 := tr("FACTORY TEAM") if o["role"] == "factory" else (tr("TITLE") if o["role"] == "title" else tr("PARTNER"))
 		var row := make_tap_row(Logos.LogoIcon.new(str(o["sp"]), 52), str(d2["name"]),
 				tr("$%d a month · $%d to sign · %d weeks") % [int(o["fee"]), int(o["sign"]), int(o["weeks"])] + ("  ·  " + tr("sleeping on it") if o.get("sleeping", false) else ""),
 				open_offer.bind(int(o["id"])), role2)
@@ -4084,6 +4103,8 @@ func req_ok(r: Dictionary) -> bool:
 			return int(r.get("played", 0)) - int(r.get("won", 0)) <= int(r["m"]) - int(r["n"])
 		"maker_parts":
 			return GameData.Contracts.maker_count(str(r["maker"])) >= int(r["n"])
+		"maker_all":
+			return GameData.Contracts.not_theirs(str(r["maker"])) == 0
 	return true
 
 
@@ -4109,7 +4130,23 @@ func open_offer(id: int) -> void:
 	var tv := VBoxContainer.new()
 	tv.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	top.add_child(tv)
-	tv.add_child(GUI.text(tr("TITLE SPONSOR: their paint, their logo on the chest.") if o["role"] == "title" else tr("PARTNER: a sticker %s.") % C.slot_text(str(o["slot"])), 14, GUI.YELLOW, "headb"))
+	var rtext := tr("TITLE SPONSOR: their paint, their logo on the chest.") if o["role"] == "title" else tr("PARTNER: a sticker %s.") % C.slot_text(str(o["slot"]))
+	if o["role"] == "factory":
+		rtext = tr("FACTORY TEAM: only their parts on the robot, their paint, 40% off, and their prototype while you drive for them.")
+	tv.add_child(GUI.text(rtext, 14, GUI.YELLOW, "headb"))
+	if o["role"] == "factory":
+		var pd := GameData.part_def("proto_" + str(o["sp"]).substr(3))
+		if not pd.is_empty():
+			var pr := HBoxContainer.new()
+			pr.add_theme_constant_override("separation", 10)
+			col.add_child(pr)
+			var pic := part_icon(pd)
+			pic.custom_minimum_size = Vector2(64, 64)
+			pr.add_child(pic)
+			var pl := GUI.text(tr("THE PROTOTYPE: %s. Nobody else can buy one. It goes back if you leave the team.") % tr(str(pd["name"])), 14, GUI.CYAN)
+			pl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+			pl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			pr.add_child(pl)
 	var tagline := GUI.text("@%s · %s" % [d["handle"], tr("%s followers") % GameData.Social.fol_text(int(d["fol"]))], 12, GUI.MUTED)
 	tv.add_child(tagline)
 	var grid := GridContainer.new()
@@ -7587,7 +7624,9 @@ func _on_buy(id: String) -> void:
 	refresh()
 
 
-func _on_equip(uid: int, slot: String) -> void:
+func _on_equip(uid: int, slot: String, sure: bool = false) -> void:
+	if not sure and factory_guard(str(GameData.inst(uid).get("id", "")), slot, _on_equip.bind(uid, slot, true)):
+		return
 	note(GameData.equip(uid, slot), "equip")
 	refresh()
 
@@ -7994,7 +8033,7 @@ func open_fight_popup() -> void:
 	# sponsors check their rules at the bell
 	for c in GameData.Contracts.st()["active"]:
 		for r in c["reqs"]:
-			if str(r["kind"]) in ["paint", "controller", "repaired", "maker_parts"] and not req_ok(r):
+			if str(r["kind"]) in ["paint", "controller", "repaired", "maker_parts", "maker_all"] and not req_ok(r):
 				var sl := GUI.text(tr("%s wants: %s") % [GameData.Contracts.sp_name(c), GameData.Contracts.req_text(r)], 14, GUI.AMBER)
 				sl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 				col.add_child(sl)

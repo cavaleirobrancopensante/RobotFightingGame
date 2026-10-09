@@ -3,7 +3,7 @@ const PlayLog = preload("res://playlog.gd")   # (1.87) the playtest log
 
 # helper scripts, loaded by path so the game also runs without an editor scan
 ## The game's version, shown on the main menu. Bump it with every change (1.1, 1.2, ...).
-const VERSION := "1.107"
+const VERSION := "1.108"
 const Arena = preload("res://arena.gd")
 const I18n = preload("res://i18n.gd")
 const Catalog = preload("res://catalog.gd")
@@ -1016,7 +1016,7 @@ func catalogue_parts(m: String) -> Array:
 	var out: Array = []
 	for id in PARTS:
 		var d: Dictionary = PARTS[id]
-		if str(d.get("maker", "")) == m and int(d.get("grade", 0)) == 1 and not d.has("variant_of") and int(d.get("cost", 0)) > 0 and not d.get("retired", false):
+		if str(d.get("maker", "")) == m and int(d.get("grade", 0)) == 1 and not d.has("variant_of") and int(d.get("cost", 0)) > 0 and not d.get("retired", false) and not d.has("proto_of"):
 			out.append(str(id))
 	out.sort_custom(func(a, b):
 		var da: Dictionary = PARTS[a]
@@ -1559,6 +1559,8 @@ func sell(uid: int) -> String:
 	var p := inst(uid)
 	if p.is_empty() or slot_of_uid(uid) != "":
 		return "Unequip it before selling."
+	if part_def(p["id"]).has("proto_of"):
+		return tr("Prototypes belong to the factory. It goes back if you leave the team.")
 	if wingman_of_uid(uid) != -1:
 		return "A wingman is using that part."
 	var v := sell_value(p)
@@ -2025,6 +2027,34 @@ func ids_of(eq: Dictionary) -> Dictionary:
 		if not p.is_empty():
 			out[slot] = p["id"]
 	return out
+
+
+# ---------------------------------------------------------------- prototypes (1.108)
+
+## A maker's factory team prototype: one part (the Silverback Arms come as a pair) at your grade.
+func give_proto(m: String) -> String:
+	var base := "proto_" + m
+	if not PARTS.has(base):
+		return ""
+	take_proto(m)
+	var n := 2 if base == "proto_menagerie" else 1
+	for k in n:
+		var uid := add_part(graded_id(base, my_grade()))
+		inst(uid)["proto"] = true
+	return str(part_def(base)["name"])
+
+
+## Leaving the team: the prototype goes back to the factory (off the robot if it's fitted).
+func take_proto(m: String) -> void:
+	for p in inventory.duplicate():
+		if str(part_def(p["id"]).get("proto_of", "")) == m:
+			var s := slot_of_uid(int(p["uid"]))
+			if s != "":
+				equipped[s] = -1
+			release_from_wingman(int(p["uid"]))
+			jobs = jobs.filter(func(j): return int(j["uid"]) != int(p["uid"]))
+			inventory.erase(p)
+	sync_swaps()
 
 
 ## (1.107) A trait on your fitted parts (its value, 0 = none): the Rooster Comb's Strut.
