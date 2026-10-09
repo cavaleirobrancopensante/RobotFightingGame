@@ -187,6 +187,7 @@ class Fighter:
 	var stun_t := 0.0
 	var boost_t := 0.0
 	var boost_hit := false
+	var boost_fire := false  # (1.99) Exhaust Stacks: the dash is a flame dash
 	var jet_t := 0.0
 	var air_jumps := 0
 	var squash := 0.0        # landing squash timer (animation)
@@ -1387,6 +1388,8 @@ func read_ai_input(delta: float) -> Dictionary:
 	# booster in the air: rocket down onto them from above
 	if not cpu.on_ground and cpu.state == "jump" and ai_plan.get("air_in", false) and dist < 300.0 and dist > 90.0:
 		var bo := ai_gadget("booster")
+		if bo.is_empty():
+			bo = ai_gadget("flame_dash")
 		if not bo.is_empty() and randf() < 0.1 + ai_smart * 0.1:
 			use_gadget(cpu, bo)
 	# combo cancel: a normal that landed flows straight into a special
@@ -1747,6 +1750,8 @@ func ai_use_gadgets(dist: float, threatened: bool, toward: String) -> Dictionary
 			use_gadget(cpu, g)
 			return {}
 	g = ai_gadget("booster")
+	if g.is_empty():
+		g = ai_gadget("flame_dash")
 	var whiffed: bool = ATTACKS.has(player.state) and player.timer > ATTACKS[player.state]["startup"] + ATTACKS[player.state]["active"]
 	if not g.is_empty() and dist > 160.0 and dist < 620.0 and lined_up and (whiffed or player.stun_t > 0.0 or randf() < 0.45):
 		use_gadget(cpu, g)
@@ -2368,8 +2373,10 @@ func pad_height(i: Dictionary) -> int:
 ## The head at work: the aim cooldown runs down, and the scan hunts for the enemy's weakest part.
 ## When the weakest part changes (a fresh dent somewhere else), the scan starts over.
 func update_aim(f: Fighter, delta: float) -> void:
-	f.aim_cd = maxf(0.0, f.aim_cd - delta)
 	var o: Fighter = f.foe
+	# (1.99) a Hazard Beacon's flashing makes it slower to aim at
+	var dz := 0.0 if o == null else (limb_trait(o, "head", "dazzle") + limb_trait(o, "head2", "dazzle")) * 2.0
+	f.aim_cd = maxf(0.0, f.aim_cd - delta / (1.0 + dz / 100.0))
 	if o == null or o.state == "ko" or f.heads() == 0:
 		return
 	if f.scan_on != o:
@@ -2638,9 +2645,13 @@ func use_gadget(f: Fighter, g: Dictionary) -> void:
 		"shield":
 			f.shield_t = 2.5
 			Sfx.play("repair", 0.1)
-		"booster":
+		"booster", "flame_dash":
 			f.boost_t = 0.3
 			f.boost_hit = false
+			f.boost_fire = id == "flame_dash"
+			if f.boost_fire:
+				popup(tr("FLAME DASH!"), f.pos + Vector2(0, -230.0 * f.scale), Color(1.0, 0.55, 0.15))
+				Sfx.play("strike_hellfire", 0.1)
 			if not f.on_ground:
 				f.vel.y = minf(f.vel.y, -150.0)
 			Sfx.play("swing")
@@ -2782,6 +2793,12 @@ func update_fighter(f: Fighter, o: Fighter, i: Dictionary, delta: float) -> void
 		if not f.boost_hit and absf(o.pos.x - f.pos.x) < 90.0 * (f.scale + o.scale) * 0.5 and absf(o.pos.y - f.pos.y) < 150.0:
 			f.boost_hit = true
 			apply_hit(f, o, {"damage": 10.0 * f.mod_damage(), "zone": "torso", "knock": 520.0, "stun": 0.4}, o.pos + Vector2(0, -90))
+			if f.boost_fire and o.alive("torso") and o.shield_t <= 0.0:
+				# (1.99) through the wall of fire: it sets them burning
+				o.burns.append({"slot": "torso", "dps": 4.0 * f.gpow, "t": 6.0 if f.sets.has("hellfire") else 3.0})
+				popup(tr("SCORCHED"), o.pos + Vector2(0, -170.0 * o.scale), Color(1.0, 0.5, 0.15))
+		if f.boost_fire and randf() < 0.6:
+			add_spark(f.pos + Vector2(-f.facing * randf_range(20.0, 70.0), randf_range(-140.0, -40.0)) * Vector2(1.0, f.scale), Color(1.0, randf_range(0.35, 0.7), 0.1), randf_range(14.0, 26.0) * f.scale)
 
 	update_power(f, delta)
 	if f.burn_t > 0.0:
@@ -2958,6 +2975,16 @@ func update_fighter(f: Fighter, o: Fighter, i: Dictionary, delta: float) -> void
 				add_spark(Vector2(f.pos.x + f.facing * 26.0 * f.scale, floor_y - 4.0), Color(1.0, 0.75, 0.3), 26.0 * f.scale)
 			elif f.mk == "oldiron":
 				shake = maxf(shake, 4.0)
+			var stomp := maxf(limb_trait(f, "leg_front", "stomp"), limb_trait(f, "leg_back", "stomp"))
+			if stomp > 0.0 and f.state in ["jump", "fly_kick", "hammer"] and phase == "fight":
+				# (1.99) Hydraulic Rams: the landing hits the floor hard enough to stagger anyone close
+				shake = maxf(shake, 7.0)
+				add_spark(Vector2(f.pos.x, floor_y - 6.0), Color(1.0, 0.6, 0.2), 34.0 * f.scale)
+				for e in enemies_of(f):
+					if e.on_ground and e.state != "ko" and e.state != "down" and absf(e.pos.x - f.pos.x) < 160.0 * (f.scale + e.scale) * 0.5:
+						apply_hit(f, e, {"damage": stomp * f.gpow, "zone": "sweep", "knock": 140.0, "stun": 0.35, "unblockable": true},
+								Vector2(e.pos.x, floor_y - 30.0 * e.scale))
+						popup(tr("STOMP!"), e.pos + Vector2(0, -200.0 * e.scale), Color(1.0, 0.6, 0.2))
 			for k in 2:
 				add_spark(Vector2(f.pos.x + (k * 2 - 1) * 30.0 * f.scale, floor_y - 6.0), Color(0.6, 0.6, 0.6, 0.6), 16.0 * f.scale)
 			if f.state == "jump":
@@ -3357,6 +3384,8 @@ func apply_hit(att: Fighter, d: Fighter, a: Dictionary, at: Vector2) -> void:
 			d.numb_t = 1.5
 		# offensive traits
 		var burn := off_trait(att, src, "burn")
+		if not src.begins_with("head"):
+			burn += limb_trait(att, "head", "burn")   # (1.99) a Welder's Mask: every hit comes with a spit of flame
 		if burn > 0.0 and d.alive(slot):
 			d.burns.append({"slot": slot, "dps": burn / 3.0 * att.gpow, "t": 6.0 if att.sets.has("hellfire") else 3.0})
 		var crush := off_trait(att, src, "crush")

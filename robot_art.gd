@@ -28,20 +28,22 @@ const LEGS := {"rod": [60.0, 14.0], "piston": [62.0, 18.0], "spring": [66.0, 13.
 		"reverse": [70.0, 16.0], "pillar": [48.0, 27.0], "thick": [56.0, 23.0],
 		"pogo": [68.0, 13.0], "wheel": [58.0, 16.0], "tread": [52.0, 25.0],
 		"blade": [64.0, 12.0], "hover": [50.0, 18.0], "spider": [62.0, 13.0],
-		"stomper": [56.0, 22.0], "pipe": [62.0, 14.0], "bellows": [60.0, 17.0], "tripod": [64.0, 13.0]}
+		"stomper": [56.0, 22.0], "pipe": [62.0, 14.0], "bellows": [60.0, 17.0], "tripod": [64.0, 13.0],
+		"excavator": [50.0, 22.0], "hydraulic": [64.0, 17.0]}
 # [width, height]
 const TORSOS := {"barrel": [60.0, 70.0], "box": [56.0, 76.0], "vee": [70.0, 78.0],
 		"core": [60.0, 76.0], "tank": [84.0, 82.0], "slim": [42.0, 82.0],
 		"ribcage": [54.0, 74.0], "hex": [70.0, 80.0], "cannon": [66.0, 78.0],
 		"crate": [62.0, 66.0], "furnace": [64.0, 78.0], "orb": [70.0, 70.0],
 		"yoke": [82.0, 74.0], "quad": [74.0, 84.0], "monster": [92.0, 90.0],
-		"engine": [74.0, 74.0], "loco": [70.0, 80.0], "drum": [58.0, 72.0], "boiler": [62.0, 80.0], "clockwork": [62.0, 76.0]}
+		"engine": [74.0, 74.0], "loco": [70.0, 80.0], "drum": [58.0, 72.0], "boiler": [62.0, 80.0], "clockwork": [62.0, 76.0],
+		"fueltank": [62.0, 78.0], "hull": [78.0, 80.0]}
 const HEADS := {"bucket": [34.0, 32.0], "box": [38.0, 34.0], "dome": [42.0, 34.0], "cyclops": [40.0, 40.0],
 		"visor": [48.0, 28.0], "horned": [40.0, 34.0], "skull": [40.0, 42.0], "wedge": [44.0, 30.0],
 		"tall": [26.0, 52.0], "bulb": [44.0, 44.0], "tv": [46.0, 36.0], "dish": [40.0, 34.0], "laser": [38.0, 34.0],
 		"knight": [40.0, 42.0], "orb": [38.0, 38.0], "speaker": [44.0, 38.0],
 		"rivet": [38.0, 36.0], "grille": [50.0, 38.0], "peeper": [34.0, 32.0], "busted": [46.0, 36.0],
-		"periscope": [36.0, 34.0], "divingbell": [44.0, 42.0]}
+		"periscope": [36.0, 34.0], "divingbell": [44.0, 42.0], "welder": [40.0, 40.0], "beacon": [36.0, 30.0]}
 const PUNCH_LEN := 84.0   # how far a punching hand reaches from the lead shoulder
 
 # [thickness, fist radius]
@@ -50,7 +52,7 @@ const ARMS := {"rod": [12.0, 10.0], "piston": [15.0, 12.0], "claw": [14.0, 7.0],
 		"rocket": [16.0, 14.0], "grapple": [14.0, 7.0], "saw": [14.0, 7.0],
 		"blade": [13.0, 7.0], "flame": [16.0, 7.0], "magnet": [15.0, 7.0],
 		"anvil": [18.0, 9.0], "crane": [13.0, 7.0], "wrench": [12.0, 7.0], "grabber": [11.0, 6.0],
-		"gauntlet": [15.0, 13.0], "riveter": [12.0, 7.0]}
+		"gauntlet": [15.0, 13.0], "riveter": [12.0, 7.0], "wrecker": [15.0, 13.0], "torch": [13.0, 7.0]}
 
 
 ## (1.93) Normal hits by limb, techniques included, and the arm poses that reach as far as a punch
@@ -1093,6 +1095,8 @@ static func arm_tip_extra(look: Dictionary, slot: String, pose: String) -> Vecto
 		"grabber": ext = 22.0 * sz
 		"gauntlet": ext = fr + 3.0
 		"riveter": ext = 24.0 * sz
+		"wrecker": ext = 30.0 * sz + fr if REACH_POSES.has(pose) or LEG_HITS.has(pose) else fr + 8.0
+		"torch": ext = 60.0 if pose == "punch" or pose == "low_punch" else 22.0 * sz
 	if pose == "elbow" or pose == "shove":
 		ext = 6.0   # the elbow (or a flat palm) does the hitting, not the weapon
 	return Vector2(ext, maxf(fr, th * 0.5))
@@ -1365,6 +1369,38 @@ static func _draw_arm(ci: CanvasItem, look: Dictionary, slot: String, s: Vector2
 				var rq := body0 + dir * (3.0 + k * 4.0) * sz
 				ci.draw_line(rq - perp * 6.0 * sz, rq + perp * 6.0 * sz, tc.darkened(0.3), 1.5)
 			_pl(ci, PackedVector2Array([body0 + perp * 6.0, body0 + perp * 14.0 - dir * 6.0, e + perp * 10.0, e + perp * 3.0]), Color(0.18, 0.16, 0.14), 3.0)
+		"wrecker":
+			# (1.99) Hellfire: a wrecking ball on a short chain. It hangs and sways, and flies out straight on a punch
+			_plate(ci, _chamfer(Rect2(h - Vector2(7, 7) * sz, Vector2(14, 14) * sz), 3.0), c.darkened(0.2))
+			var ball := h + dir * 30.0 * sz
+			if not REACH_POSES.has(pose):
+				ball = h + Vector2(sin(t * 2.2) * 7.0 * sz + dir.x * 4.0, 26.0 * sz)
+			var links := 5
+			for k in links:
+				var lp := h.lerp(ball, (k + 0.5) / float(links + 1))
+				var ld := (ball - h).normalized()
+				if k % 2 == 1:
+					ld = ld.orthogonal() * 0.55   # every other link turned edge on
+				ci.draw_line(lp - ld * 4.0 * sz, lp + ld * 4.0 * sz, OUTLINE, 5.0 * sz)
+				ci.draw_line(lp - ld * 3.2 * sz, lp + ld * 3.2 * sz, Color(0.55, 0.55, 0.58), 2.6 * sz)
+			_round(ci, ball, fr, Color(0.22, 0.22, 0.24) if not flash else Color.WHITE)
+			ci.draw_arc(ball, fr * 0.7, -2.4, -1.2, 8, Color(1, 1, 1, 0.18), 2.0)
+			_joint(ci, ball - (ball - h).normalized() * fr, 3.0 * sz, c.darkened(0.2))
+		"torch":
+			# (1.99) Hellfire: a cutting torch, a gas bottle on the forearm, a blue pilot flame; a punch is a jet of fire
+			_plate(ci, PackedVector2Array([e.lerp(h, 0.25) + perp * th * 0.5, e.lerp(h, 0.7) + perp * th * 0.5, e.lerp(h, 0.7) + perp * th * 1.2, e.lerp(h, 0.25) + perp * th * 1.2]), Color(0.75, 0.55, 0.12))
+			_pl(ci, PackedVector2Array([e.lerp(h, 0.7) + perp * th * 0.9, h + perp * 6.0 - dir * 4.0, h]), Color(0.15, 0.13, 0.12), 2.5)
+			_plate(ci, _chamfer(Rect2(h - Vector2(6, 6), Vector2(12, 12)), 2.0), c.darkened(0.3))
+			var nz := h + dir * 18.0 * sz + perp * 3.0
+			_ln(ci, h, nz, Color(0.72, 0.6, 0.35), 5.0)
+			if pose == "punch" or pose == "low_punch":
+				var fl := 0.7 + 0.3 * sin(t * 40.0)
+				ci.draw_colored_polygon(PackedVector2Array([nz + perp * 7.0, nz + dir * (44.0 * fl), nz - perp * 7.0]), Color(1.0, 0.45, 0.08, 0.85))
+				ci.draw_colored_polygon(PackedVector2Array([nz + perp * 4.0, nz + dir * (28.0 * fl), nz - perp * 4.0]), Color(1.0, 0.92, 0.5))
+				ci.draw_colored_polygon(PackedVector2Array([nz + perp * 2.0, nz + dir * 10.0, nz - perp * 2.0]), Color(0.5, 0.75, 1.0))
+			else:
+				var pf := 0.75 + 0.25 * sin(t * 30.0)
+				ci.draw_colored_polygon(PackedVector2Array([nz + perp * 2.5, nz + dir * 9.0 * pf, nz - perp * 2.5]), Color(0.45, 0.7, 1.0, 0.9))
 		_:
 			_round(ci, h, fr, tc)
 	_finish_limb(ci, s, e, p, th, t)
@@ -1470,6 +1506,21 @@ static func _draw_back(ci: CanvasItem, look: Dictionary, g: Dictionary, pose: Di
 			for k in 3:
 				var ph := fmod(t * 0.7 + k * 0.33, 1.0)
 				ci.draw_circle(Vector2(sk.get_center().x - ph * 14.0, sk.position.y - 8.0 - ph * 30.0), 4.0 + ph * 8.0, Color(0.92, 0.93, 0.95, 0.45 * (1.0 - ph)))
+		"exhaust":
+			# (1.99) Hellfire: two truck exhaust stacks; they belch smoke, and fire on a flame dash
+			for k in 2:
+				var sx := bx + 5.0 - k * 10.0
+				var sy := top - 24.0 + k * 10.0
+				_limb(ci, Vector2(sx, top + float(g["th"]) * 0.5), Vector2(sx, sy), Color(0.75, 0.76, 0.8), 8.0)
+				_plate(ci, PackedVector2Array([Vector2(sx - 4, sy + 2), Vector2(sx + 4, sy + 2), Vector2(sx + 1, sy - 6), Vector2(sx - 6, sy - 4)]), Color(0.62, 0.63, 0.67))
+				_plate(ci, _chamfer(Rect2(sx - 6, sy + 16, 12, 14), 2.0), c)   # heat shield
+				if pose.get("boost", false):
+					var ff := 0.7 + 0.3 * sin(t * 40.0 + k)
+					ci.draw_colored_polygon(PackedVector2Array([Vector2(sx - 5, sy - 5), Vector2(sx - 30.0 * ff, sy - 22.0 * ff), Vector2(sx + 2, sy - 7)]), Color(1.0, 0.45, 0.1, 0.9))
+					ci.draw_colored_polygon(PackedVector2Array([Vector2(sx - 3, sy - 5), Vector2(sx - 16.0 * ff, sy - 14.0 * ff), Vector2(sx, sy - 6)]), Color(1.0, 0.92, 0.5))
+				else:
+					var ph := fmod(t * 0.9 + k * 0.5, 1.0)
+					ci.draw_circle(Vector2(sx - 3.0 - ph * 10.0, sy - 8.0 - ph * 24.0), 3.0 + ph * 6.0, Color(0.16, 0.15, 0.16, 0.45 * (1.0 - ph)))
 		"shield":
 			_ln(ci, Vector2(bx - 6, top + 40), Vector2(bx - 14, top - 18), c.darkened(0.3), 4.0)
 			_arc(ci, Vector2(bx - 14, top - 18), 14.0, PI * 0.6, PI * 1.6, 12, c, 5.0)
@@ -1593,6 +1644,23 @@ static func _draw_leg(ci: CanvasItem, look: Dictionary, slot: String, hip: Vecto
 			_limb(ci, knee, foot + Vector2(0, -4), c.lightened(0.15), th * 0.7)
 			_ln(ci, knee.lerp(foot, 0.3) - perp * th * 0.5, knee.lerp(foot, 0.3) + perp * th * 0.5, c.darkened(0.35), 3.0)
 			_joint(ci, knee, th * 0.6, c.darkened(0.25))
+		"excavator":
+			# (1.99) Hellfire: an excavator's boom for a thigh, a hydraulic ram along it, and a track unit for a foot
+			_limb(ci, hip, knee, c, th)
+			_limb(ci, knee, foot + Vector2(0, -16), c, th * 0.8)
+			_ln(ci, hip.lerp(knee, 0.15) + perp * th * 0.7, knee.lerp(foot, 0.6) + perp * th * 0.6, Color(0.2, 0.2, 0.22), 5.0)
+			_ln(ci, knee + perp * th * 0.66, knee.lerp(foot, 0.6) + perp * th * 0.6, Color(0.82, 0.84, 0.88), 2.5)
+			_joint(ci, knee, th * 0.55, c.darkened(0.25))
+		"hydraulic":
+			# (1.99) Hellfire: a big hydraulic cylinder and a chrome ram that telescopes into a stamping pad
+			_limb(ci, hip, knee, c, th)
+			var rod_end := foot + Vector2(0, -8)
+			_limb(ci, knee, knee.lerp(rod_end, 0.5), c.darkened(0.15), th * 1.1)
+			_limb(ci, knee.lerp(rod_end, 0.45), rod_end, Color(0.82, 0.84, 0.88), th * 0.45)
+			for k in 3:
+				var hq := hip.lerp(knee, 0.25 + k * 0.22)
+				ci.draw_line(hq - perp * th * 0.45, hq + perp * th * 0.45, Color(0.08, 0.08, 0.08) if k % 2 == 0 else Color(0.95, 0.75, 0.1), 3.0)
+			_joint(ci, knee, th * 0.6, c.darkened(0.3))
 		"pipe":
 			# (1.97) Scrapworks: plumbing, with an elbow fitting for a knee
 			_limb(ci, hip, knee, c, th)
@@ -1633,6 +1701,23 @@ static func _draw_leg(ci: CanvasItem, look: Dictionary, slot: String, hip: Vecto
 		for dx in [-12.0, 2.0, 16.0]:
 			_ln(ci, foot + Vector2(2, -5), foot + Vector2(dx, 0), tc, 3.5)
 		_joint(ci, foot + Vector2(2, -5), 4.0, tc.darkened(0.2))
+	elif p["shape"] == "excavator":
+		# a yellow-framed track unit: black links, rollers, a hazard edge
+		var er := Rect2(foot.x - 24.0, foot.y - 22.0, 52.0, 22.0)
+		_plate(ci, _rounded(er, 10.0), Color(0.12, 0.12, 0.13))
+		for k in 7:
+			var lx := er.position.x + 5.0 + k * 7.0 + fmod(-foot.x * 0.3, 7.0)
+			if lx < er.end.x - 3.0:
+				ci.draw_line(Vector2(lx, er.position.y + 1), Vector2(lx, er.position.y + 4), Color(0.32, 0.32, 0.34), 2.0)
+				ci.draw_line(Vector2(lx, er.end.y - 4), Vector2(lx, er.end.y - 1), Color(0.32, 0.32, 0.34), 2.0)
+		_plate(ci, _chamfer(Rect2(er.position.x + 6, er.position.y + 5, er.size.x - 12, er.size.y - 10), 3.0), tc if not flash else Color.WHITE)
+		for k in 3:
+			_joint(ci, Vector2(er.position.x + 13 + k * 13.0, er.get_center().y), 3.5, Color(0.2, 0.2, 0.22))
+	elif p["shape"] == "hydraulic":
+		# a stamping pad
+		var hp2 := Rect2(foot.x - 16.0, foot.y - 9.0, 34.0, 9.0)
+		_plate(ci, _chamfer(hp2, 2.0), Color(0.28, 0.28, 0.3))
+		ci.draw_line(Vector2(hp2.position.x + 3, hp2.position.y + 2), Vector2(hp2.end.x - 3, hp2.position.y + 2), Color(0.95, 0.75, 0.1), 2.0)
 	elif p["shape"] == "stomper":
 		# a huge cast boot that kicks and stamps flat
 		var bt := Rect2(foot.x - 16.0, foot.y - 14.0, 40.0, 14.0)
@@ -1854,6 +1939,35 @@ static func _draw_torso(ci: CanvasItem, look: Dictionary, g: Dictionary, flash: 
 				_ln(ci, Vector2(bxk, y0 + 3), Vector2(bxk, y1 - 3), c, 3.5)
 			_plate(ci, _chamfer(Rect2(x0 - 3, y0 - 2, w + 6, 9), 2.0), trim)
 			_plate(ci, _chamfer(Rect2(x0 - 3, y1 - 8, w + 6, 9), 2.0), trim)
+		"fueltank":
+			# (1.99) Hellfire: an upright fuel tank, red, two straps, a valve on top and the flame diamond
+			_plate(ci, _rounded(r, w * 0.36), c)
+			for k in 2:
+				var sy2 := y0 + r.size.y * (0.24 + k * 0.5)
+				_limb(ci, Vector2(x0 + 1, sy2), Vector2(x1 - 1, sy2), Color(0.2, 0.2, 0.22), 6.0)
+				_hexbolt(ci, Vector2(x0 + w * 0.5, sy2), 2.6)
+			_plate(ci, _chamfer(Rect2(x0 + w * 0.4, y0 - 9, w * 0.2, 10), 2.0), Color(0.62, 0.63, 0.67))
+			_disc(ci, Vector2(x0 + w * 0.5, y0 - 11), 5.0, Color(0.85, 0.25, 0.15))
+			var dc := Vector2(r.get_center().x + (0.0 if front else w * 0.12), y0 + r.size.y * 0.5)
+			var dd := w * 0.17
+			ci.draw_colored_polygon(PackedVector2Array([dc + Vector2(0, -dd), dc + Vector2(dd, 0), dc + Vector2(0, dd), dc + Vector2(-dd, 0)]), Color(0.98, 0.8, 0.15))
+			ci.draw_polyline(PackedVector2Array([dc + Vector2(0, -dd), dc + Vector2(dd, 0), dc + Vector2(0, dd), dc + Vector2(-dd, 0), dc + Vector2(0, -dd)]), OUTLINE, 1.5)
+			ci.draw_colored_polygon(PackedVector2Array([dc + Vector2(-dd * 0.32, dd * 0.42), dc + Vector2(dd * 0.32, dd * 0.42), dc + Vector2(dd * 0.18, -dd * 0.1),
+					dc + Vector2(0, -dd * 0.55), dc + Vector2(-dd * 0.1, -dd * 0.15), dc + Vector2(-dd * 0.25, 0)]), Color(0.1, 0.08, 0.08))
+		"hull":
+			# (1.99) Hellfire: a bulldozer's hull, thick plate, a hazard band, the push blade bolted across the front
+			_plate(ci, plate, c)
+			var hb2 := Rect2(x0 + 3, y1 - r.size.y * 0.26, w - 6, 11)
+			ci.draw_rect(hb2, Color(0.95, 0.75, 0.1))
+			for k in int(hb2.size.x / 12.0) + 1:
+				var sx2 := hb2.position.x + k * 12.0
+				ci.draw_colored_polygon(PackedVector2Array([Vector2(sx2, hb2.end.y), Vector2(minf(sx2 + 6.0, hb2.end.x), hb2.end.y), Vector2(minf(sx2 + 12.0, hb2.end.x), hb2.position.y), Vector2(minf(sx2 + 6.0, hb2.end.x), hb2.position.y)]), Color(0.08, 0.08, 0.08))
+			var bl := Rect2(x1 - 10.0, y0 + r.size.y * 0.22, 16.0, r.size.y * 0.7) if not front else Rect2(x0 - 4.0, y1 - 18.0, w + 8.0, 16.0)
+			_plate(ci, _chamfer(bl, 3.0), Color(0.38, 0.38, 0.4))
+			for k in 3:
+				var hpnt := bl.position + (Vector2(bl.size.x * 0.5, bl.size.y * (0.2 + k * 0.3)) if not front else Vector2(bl.size.x * (0.2 + k * 0.3), bl.size.y * 0.5))
+				_hexbolt(ci, hpnt, 2.6)
+			_plate(ci, _chamfer(Rect2(x0 - 4, y0 - 2, w + 8, 12), 3.0), trim)
 		"drum":
 			# (1.97) Scrapworks: an oil drum, ribbed and dented, a bung on top
 			_plate(ci, _rounded(r, w * 0.12), c)
@@ -1870,7 +1984,7 @@ static func _draw_torso(ci: CanvasItem, look: Dictionary, g: Dictionary, flash: 
 			_bolts(ci, r)
 			_plate(ci, _chamfer(Rect2(x0 - 4, y0 - 2, w + 8, 12), 3.0), trim)
 			_plate(ci, _chamfer(Rect2(x0, y1 - 14, w, 10), 3.0), trim)
-	if not p["shape"] in ["core", "loco", "boiler"]:
+	if not p["shape"] in ["core", "loco", "boiler", "fueltank"]:
 		ci.draw_circle(chest, 9.0, eye.darkened(0.45))
 		_glow(ci, chest, 6.0, eye)
 		ci.draw_circle(chest, 6.0, eye)
@@ -2113,6 +2227,38 @@ static func _draw_head(ci: CanvasItem, look: Dictionary, g: Dictionary, flash: b
 				ci.draw_line(pc2 + Vector2(off2, -pr2), pc2 + Vector2(off2, pr2), Color(0.8, 0.64, 0.2), 2.0)
 			if not front:
 				_disc(ci, hc2 + Vector2(-w * 0.22, -h * 0.05), h * 0.1, Color(0.8, 0.64, 0.2))
+		"welder":
+			# (1.99) Hellfire: a welding mask, the dark glass glowing with the eye behind it, straps and a hinge
+			var mk := PackedVector2Array([Vector2(x0 + w * 0.12, y0), Vector2(x0 + w * 0.88, y0), Vector2(x0 + w, y0 + h * 0.4),
+					Vector2(x0 + w * 0.86, y0 + h), Vector2(x0 + w * 0.14, y0 + h), Vector2(x0, y0 + h * 0.4)])
+			if not front:
+				mk = PackedVector2Array([Vector2(x0 + w * 0.1, y0), Vector2(x0 + w * 0.8, y0), Vector2(x0 + w * 1.06, y0 + h * 0.5),
+						Vector2(x0 + w * 0.9, y0 + h), Vector2(x0 + w * 0.15, y0 + h), Vector2(x0, y0 + h * 0.45)])
+			_plate(ci, mk, c)
+			var gl2 := Rect2(cen.x - w * 0.3, y0 + h * 0.3, w * 0.6, h * 0.2) if front else Rect2(x0 + w * 0.5, y0 + h * 0.3, w * 0.46, h * 0.2)
+			ci.draw_rect(gl2, Color(0.08, 0.16, 0.1))
+			ci.draw_rect(gl2.grow(-2.0), Color(eye.r, eye.g, eye.b, 0.55))
+			ci.draw_rect(gl2, OUTLINE, false, 1.5)
+			_joint(ci, Vector2(x0 + w * (0.08 if front else 0.18), y0 + h * 0.42), 3.2, Color(0.6, 0.6, 0.64))
+			if front:
+				_joint(ci, Vector2(x0 + w * 0.92, y0 + h * 0.42), 3.2, Color(0.6, 0.6, 0.64))
+			ci.draw_line(Vector2(x0 + w * 0.2, y0 + h * 0.66), Vector2(x0 + w * 0.8, y0 + h * 0.66), c.darkened(0.3), 2.0)
+			ci.draw_line(Vector2(x0 + w * 0.25, y0 + h * 0.8), Vector2(x0 + w * 0.75, y0 + h * 0.8), c.darkened(0.3), 2.0)
+		"beacon":
+			# (1.99) Hellfire: a squat box with one wide eye and an amber hazard beacon turning on top
+			_plate(ci, plate, c)
+			ci.draw_rect(Rect2(cen.x - (w * 0.3 if front else -w * 0.02), y0 + h * 0.4, w * (0.6 if front else 0.44), h * 0.22), Color(0.07, 0.07, 0.08))
+			ci.draw_rect(Rect2(cen.x - (w * 0.24 if front else -w * 0.08), y0 + h * 0.45, w * (0.48 if front else 0.32), h * 0.12), eye)
+			var bc := Vector2(cen.x, y0 - 9.0)
+			_plate(ci, _chamfer(Rect2(bc.x - 9, y0 - 4, 18, 5), 1.5), Color(0.2, 0.2, 0.22))
+			var on := 0.5 + 0.5 * sin(t * 7.0)
+			ci.draw_circle(bc, 9.0, OUTLINE)
+			ci.draw_circle(bc, 8.0, Color(1.0, 0.55 + 0.25 * on, 0.1))
+			ci.draw_circle(bc + Vector2(-2, -2), 3.0, Color(1.0, 0.95, 0.7, 0.8))
+			var ba := t * 5.0
+			var bdir := Vector2(cos(ba), 0.0)
+			if absf(bdir.x) > 0.2:
+				ci.draw_colored_polygon(PackedVector2Array([bc, bc + Vector2(bdir.x * 48.0, -12.0), bc + Vector2(bdir.x * 48.0, 10.0)]), Color(1.0, 0.65, 0.15, 0.22 * absf(bdir.x)))
 		"busted":
 			# (1.97) Scrapworks: an old TV, screen cracked, one eye on the blink, an antenna bent and taped
 			_plate(ci, plate, c)

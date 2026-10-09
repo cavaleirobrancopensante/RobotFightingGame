@@ -248,6 +248,14 @@ const SCENES := {
 		["SILAS", "So you're the kid. Your father bought his first gauge at this counter. Paid in coins, every one polished."],
 		["SILAS", "Everything here is built by hand. Brass, steam and patience. Look all you like."],
 	]},
+	"hell_invite": {"place": "GUS'S BAY", "lines": [
+		["GUS", "Magda from Hellfire Heavy called. She saw you tear parts off and liked it."],
+		["GUS", "Her breaker's yard is down on the Docks. Big heavy parts, and she'll sell them to you now."],
+	]},
+	"hell_first": {"place": "HELLFIRE HEAVY", "lines": [
+		["MAGDA", "You're the one ripping arms off in the scrap ring. Good. I buy what's left."],
+		["MAGDA", "Everything here hits hard and some of it burns. Don't touch the barrels."],
+	]},
 	"unlock_season": {"place": "GUS'S BAY", "lines": [
 		["GUS", "The calendar. League nights every other Saturday, cups on Wednesdays, rent the last Sunday. The tables and the odds are in here too."],
 	]},

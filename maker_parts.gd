@@ -11,7 +11,7 @@ extends RefCounted
 
 ## Makers whose parts come in one size only (no Light / Heavy copies). Scrapworks keeps loose sizes:
 ## odd, mismatched sizes are its character.
-const ONE_SIZE := ["oldiron", "brassworks"]
+const ONE_SIZE := ["oldiron", "brassworks", "hellfire"]
 
 const DEFS := [
 	# ---- Old Iron Foundry: cast iron, big hex bolts, most HP and armour, slow, heavy on power
@@ -81,18 +81,43 @@ const DEFS := [
 		"maker": "brassworks", "gimmick": "steam_burst"},
 	{"id": "torso_hydra", "kind": "torso", "name": "Hydra Yoke", "cost": 1800, "hp": 130, "armor": 10, "speed": 0, "draw": 4,
 		"shape": "yoke", "color": "#b87333", "mounts": ["head2"], "maker": "brassworks"},
+	# ---- Hellfire Heavy (1.99): demolition gear. Hits hard, burns, blows up; slow and thirsty
+	{"id": "pyro_head_1", "kind": "head", "name": "Welder's Mask", "cost": 800, "hp": 52, "armor": 12, "aim": 6, "draw": 3, "chips": 2,
+		"shape": "welder", "color": "#3a3d42", "maker": "hellfire", "trait": "burn", "trait_lv": 1},
+	{"id": "boom_head_1", "kind": "head", "name": "Hazard Beacon", "cost": 1100, "hp": 46, "armor": 8, "aim": 10, "draw": 3, "chips": 3,
+		"shape": "beacon", "color": "#e0a526", "size": 0.95, "maker": "hellfire", "trait": "dazzle", "trait_lv": 1},
+	{"id": "boom_torso_1", "kind": "torso", "name": "Fuel Tank", "cost": 1100, "hp": 118, "armor": 8, "speed": 2, "draw": 3,
+		"shape": "fueltank", "color": "#c0392b", "maker": "hellfire", "trait": "explosive", "trait_lv": 2},
+	{"id": "pyro_torso_1", "kind": "torso", "name": "Wrecking Hull", "cost": 1700, "hp": 150, "armor": 18, "speed": -6, "draw": 5,
+		"shape": "hull", "color": "#e0a526", "maker": "hellfire"},
+	{"id": "boom_arm_1", "kind": "arm", "name": "Wrecking Ball", "cost": 1600, "hp": 68, "armor": 10, "damage": 55, "speed": -18, "draw": 5,
+		"shape": "wrecker", "color": "#3d4045", "size": 1.1, "maker": "hellfire"},
+	{"id": "pyro_arm_1", "kind": "arm", "name": "Torch Arm", "cost": 1300, "hp": 52, "armor": 6, "damage": 22, "speed": 4, "draw": 4,
+		"shape": "torch", "color": "#c0392b", "size": 0.95, "maker": "hellfire", "trait": "burn", "trait_lv": 2},
+	{"id": "pyro_leg_1", "kind": "leg", "name": "Excavator Track", "cost": 1400, "hp": 90, "armor": 18, "damage": 24, "speed": -8, "draw": 5,
+		"shape": "excavator", "color": "#e0a526", "size": 1.05, "maker": "hellfire"},
+	{"id": "boom_leg_1", "kind": "leg", "name": "Hydraulic Ram", "cost": 1200, "hp": 66, "armor": 10, "damage": 26, "speed": 6, "draw": 4,
+		"shape": "hydraulic", "color": "#d35400", "maker": "hellfire", "trait": "stomp", "trait_lv": 1},
+	{"id": "boom_reactor", "kind": "reactor", "name": "Unstable Barrel", "cost": 900, "output": 40, "color": "#d35400", "maker": "hellfire",
+		"trait": "explosive", "trait_lv": 1},
+	{"id": "hell_exhaust", "kind": "back", "name": "Exhaust Stacks", "cost": 1000, "draw": 2, "shape": "exhaust", "color": "#3a3d42",
+		"maker": "hellfire", "gimmick": "flame_dash"},
+	{"id": "torso_monster", "kind": "torso", "name": "Monster Chassis", "cost": 3900, "hp": 165, "armor": 14, "speed": -10, "draw": 7,
+		"shape": "monster", "color": "#c0392b", "mounts": ["head2", "arm_front2", "arm_back2"], "maker": "hellfire"},
 ]
 
-## Old Old Iron and Scrapworks parts the new lines replace.
+## Old parts the new lines replace.
 const RETIRED := ["torso_box", "torso_plate", "torso_tank", "arm_rod", "arm_bulky", "leg_steel", "leg_pillar", "back_battery",
 		"ironclad_head_2", "ironclad_arm_1", "ironclad_leg_2", "fork_head", "fork_torso", "fork_arm", "fork_leg",
 		"scrap_hydra", "torso_rib",
-		"head_cyclops", "torso_core", "arm_piston", "arm_grapple", "leg_piston", "reactor_cap", "reactor_regen"]   # (1.98) Brassworks
+		"head_cyclops", "torso_core", "arm_piston", "arm_grapple", "leg_piston", "reactor_cap", "reactor_regen",   # (1.98) Brassworks
+		"torso_hex", "torso_cannon", "arm_spike", "arm_hammer", "arm_saw", "leg_thick", "reactor_over", "back_spikes",   # (1.99) Hellfire
+		"pyro_head_2", "pyro_torso_2", "pyro_arm_2", "pyro_leg_2", "boom_head_2", "boom_torso_2", "boom_arm_2", "boom_leg_2", "pyro_reactor"]
 
 ## The makers whose lines are in (their launch posts once on BotMedia).
-const LAUNCHED := ["oldiron", "scrapworks", "brassworks"]
+const LAUNCHED := ["oldiron", "scrapworks", "brassworks", "hellfire"]
 ## (1.98) Makers with their own shop in the city: Parts-R-Us stops stocking them.
-const OWN_SHOP := {"brassworks": "brassworks"}
+const OWN_SHOP := {"brassworks": "brassworks", "hellfire": "breakers"}
 
 
 ## The part list with the makers' lines in: same ids replaced whole, new ids added, old ones retired.

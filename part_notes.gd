@@ -28,6 +28,8 @@ const SHAPE := {
 	"head:busted": ["Screen cracked, still works", "Hit it twice when it flickers"],
 	"head:periscope": ["Periscope sees over guards", "Lens ground by hand"],
 	"head:divingbell": ["Copper helmet, 12 bolts", "Built for the harbour floor"],
+	"head:welder": ["Welding mask, shade 12 glass", "Spits a flame with every hit"],
+	"head:beacon": ["Hazard beacon, always turning", "Hard to aim at a flashing light"],
 	# torsos
 	"torso:barrel": ["Oil drum, two hoops", "Still smells of diesel"],
 	"torso:box": ["Boxed steel frame", "Hatch for the battery"],
@@ -49,6 +51,8 @@ const SHAPE := {
 	"torso:drum": ["Oil drum, three ribs", "Dents add character, says Gus"],
 	"torso:boiler": ["Copper boiler, coal fired", "Watch the gauge, not the fire"],
 	"torso:clockwork": ["Gears wound by hand", "Every tick feeds the core"],
+	"torso:fueltank": ["Fuel tank, mostly full", "Do not puncture. They will"],
+	"torso:hull": ["Bulldozer hull, 4 cm plate", "Hazard stripes, earned"],
 	# arms
 	"arm:rod": ["Steel pipe, ball fist", "Elbow is a door hinge"],
 	"arm:piston": ["Hydraulic piston, 2 t push", "Piston stroke 30 cm"],
@@ -69,6 +73,8 @@ const SHAPE := {
 	"arm:grabber": ["Litter picker, long reach", "Jaws snap shut on a spring"],
 	"arm:gauntlet": ["Brass gauntlet, steam piston", "Valve lets off a puff each hit"],
 	"arm:riveter": ["Pneumatic riveter, 9 a second", "Hose runs back to the boiler"],
+	"arm:wrecker": ["Wrecking ball, 2 t of iron", "Slow to swing, worse to catch"],
+	"arm:torch": ["Cutting torch, 3,000 °C", "Blue flame means it's ready"],
 	# legs
 	"leg:rod": ["Pipe leg, rubber foot", "Knee is a bike hub"],
 	"leg:piston": ["Piston knee, soft landing", "Hydraulic shock absorber"],
@@ -86,6 +92,8 @@ const SHAPE := {
 	"leg:pipe": ["Copper pipe, elbow knee", "Leaks a little in the rain"],
 	"leg:bellows": ["Leather bellows shin", "Every step puffs"],
 	"leg:tripod": ["Three toes, never tips", "Telescoping brass strut"],
+	"leg:excavator": ["Excavator track, 12 t rated", "Hydraulics hiss on every step"],
+	"leg:hydraulic": ["Hydraulic ram, lands like a press", "Jump, land, feel it in your teeth"],
 	# back gear
 	"back:battery": ["Spare battery pack", "Hot-swappable cells"],
 	"back:spikes": ["Back spikes, no hugs", "Spikes face the grabber"],
@@ -97,6 +105,7 @@ const SHAPE := {
 	"back:flywheel": ["Flywheel stores spare power", "Spins up while it rests"],
 	"back:tarp": ["Tarp hides what's broken", "Grommets, rope, hope"],
 	"back:smokestack": ["Chimney, swept weekly", "One pull and they can't see you"],
+	"back:exhaust": ["Truck stacks, straight pipe", "Lights up for a flame dash"],
 }
 
 const KIND := {

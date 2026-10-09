@@ -124,6 +124,8 @@ const GADGETS := {
 		"desc": "Gadget: rocket dash that rams the enemy. Works in mid-air."},
 	"steam_burst": {"name": "Steam Burst", "short": "STEAM", "active": true, "cd": 9.0,
 		"desc": "Gadget: a cloud of steam hides you for 2s. Their crosshair and scan reset, and hits can miss you in the cloud."},
+	"flame_dash": {"name": "Flame Dash", "short": "FLAME", "active": true, "cd": 5.0,
+		"desc": "Gadget: the exhausts roar and you ram the enemy through a wall of fire. It sets them burning. Works in mid-air."},
 	"double_jump": {"name": "Jet Pack", "short": "", "active": false,
 		"desc": "Passive: press jump again in mid-air to jump twice."},
 	"high_jump": {"name": "Pogo Spring", "short": "", "active": false,

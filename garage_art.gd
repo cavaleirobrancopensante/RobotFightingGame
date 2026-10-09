@@ -10,7 +10,7 @@ const Light = preload("res://light.gd")
 
 ## Where the robot stands in each scene: [x as fraction of width, height as fraction of panel]
 const ROBOT_SPOT := {
-	"build": [0.55, 0.64], "shop": [0.8, 0.5], "brass": [0.8, 0.5], "workshop": [0.74, 0.56], "scrap": [0.8, 0.5],
+	"build": [0.55, 0.64], "shop": [0.8, 0.5], "brass": [0.8, 0.5], "hell": [0.8, 0.5], "workshop": [0.74, 0.56], "scrap": [0.8, 0.5],
 	"paint": [0.5, 0.72], "moves": [0.62, 0.7], "team": [0.64, 0.66], "cups": [0.68, 0.62],
 	"storage": [0.72, 0.5],
 }
@@ -63,6 +63,31 @@ static func _environment(ci: CanvasItem, screen: Vector2, floor_y: float, scene:
 		_scrap_pile(ci, Vector2(screen.x * 0.62, floor_y), screen.x * 0.3, floor_y * 0.45, t)
 		_scrap_pile(ci, Vector2(screen.x * 0.95, floor_y), screen.x * 0.2, floor_y * 0.6, t + 3.0)
 		ci.draw_rect(Rect2(0, floor_y, screen.x, screen.y - floor_y), Color(0.25, 0.2, 0.15))
+	elif scene == "hell":
+		# (1.99) the breaker's yard on the docks at dusk: a bruised sky, the harbour, cranes against it
+		for k in 10:
+			var c := Color(0.95, 0.45, 0.22).lerp(Color(0.16, 0.1, 0.22), 1.0 - k / 9.0)
+			ci.draw_rect(Rect2(0, k * floor_y * 0.07, screen.x, floor_y * 0.07 + 1), c)
+		ci.draw_rect(Rect2(0, floor_y * 0.7, screen.x, floor_y * 0.3), Color(0.12, 0.1, 0.16))   # the water
+		for k in 6:
+			var wy := floor_y * (0.74 + k * 0.04)
+			ci.draw_line(Vector2(fmod(k * 137.0 + t * 8.0, screen.x * 0.6), wy), Vector2(fmod(k * 137.0 + t * 8.0, screen.x * 0.6) + 40.0, wy), Color(1.0, 0.55, 0.3, 0.18), 2.0)
+		for cx in [screen.x * 0.3, screen.x * 0.58, screen.x * 0.9]:
+			var hb := floor_y * 0.7
+			var top := floor_y * 0.16
+			var col := Color(0.1, 0.08, 0.13)
+			ci.draw_line(Vector2(cx - 18, hb), Vector2(cx - 6, top), col, 4.0)
+			ci.draw_line(Vector2(cx + 18, hb), Vector2(cx + 6, top), col, 4.0)
+			for j in 4:
+				var yy := lerpf(hb, top, (j + 1) / 5.0)
+				ci.draw_line(Vector2(cx - 15 + j * 2.4, yy), Vector2(cx + 15 - j * 2.4, yy), col, 2.0)
+			ci.draw_line(Vector2(cx - 70, top), Vector2(cx + 50, top), col, 5.0)
+			ci.draw_line(Vector2(cx + 30, top), Vector2(cx + 30, top + 40), col, 1.5)
+			if fmod(t * 0.8 + cx, 2.0) < 1.0:
+				ci.draw_circle(Vector2(cx - 6, top - 4), 2.5, Color(1.0, 0.25, 0.2))
+		ci.draw_rect(Rect2(0, floor_y, screen.x, screen.y - floor_y), Color(0.24, 0.22, 0.22))   # concrete
+		for k in int(screen.x / 120.0) + 1:
+			ci.draw_line(Vector2(k * 120.0, floor_y), Vector2(k * 120.0 - 40.0, screen.y), Color(0.18, 0.17, 0.17), 2.0)
 	elif scene == "phone":
 		# night, your room above the bay: dark walls, the city through the window
 		ci.draw_rect(Rect2(Vector2.ZERO, screen), Color(0.06, 0.06, 0.1))
@@ -147,6 +172,8 @@ static func _props_back(ci: CanvasItem, size: Vector2, scene: String, t: float, 
 			_maker_plaque(ci, Rect2(size.x * 0.06, 26, size.x * 0.4, 40), "oldiron", I18n.t("OLD IRON FOUNDRY"), I18n.t("AUTHORISED DEALER"))
 		"brass":
 			_brass_back(ci, size, floor_y, t)
+		"hell":
+			_hell_back(ci, size, floor_y, t)
 		"workshop":
 			_sign(ci, Vector2(size.x * 0.8, 30), I18n.t("CUSTOM ORDERS"), Color(0.6, 0.85, 1.0))
 			# shelves of parts
@@ -254,7 +281,7 @@ static func draw_front(ci: CanvasItem, stage: Rect2, scene: String, t: float, in
 ## The light the people in a scene stand in (1.60): Gus's building is the bay's work lamp, the places
 ## outside have their own.
 static func scene_light(scene: String) -> String:
-	return scene if scene in ["pub", "shop", "scrap", "phone", "brass"] else "bay"
+	return scene if scene in ["pub", "shop", "scrap", "phone", "brass", "hell"] else "bay"
 
 
 static func _front(ci: CanvasItem, size: Vector2, scene: String, t: float, info: Dictionary, robot_base: Vector2, robot_h: float) -> void:
@@ -316,6 +343,20 @@ static func _front(ci: CanvasItem, size: Vector2, scene: String, t: float, info:
 			ci.draw_line(gc, gc + Vector2(cos(na), sin(na)) * 5.5 * s, Color(0.6, 0.1, 0.08), 1.5)
 			PilotArt.draw_person(ci, Vector2(ct.end.x + 26 * s, floor_y), s, pilot, -1.0, "point", t + 0.5)
 			_head(info, "YOU", Vector2(ct.end.x + 26 * s, floor_y), s)
+		"hell":
+			# (1.99) Magda welds a crushed bale in her mask, sparks everywhere; you watch from a safe distance
+			var magda := {"skin": "#c8946e", "hair": "#2a1d14", "eyes": "#5b3a1e", "outfit": "#d35400", "hat": "headband", "beard": "none",
+					"glasses": "goggles", "long_hair": true, "female": true, "scar": true}
+			var bale := Rect2(size.x * 0.06, floor_y - 44 * s, 62 * s, 44 * s)
+			_crushed(ci, bale, 3)
+			var mf := Vector2(bale.end.x + 24 * s, floor_y)
+			PilotArt.draw_person(ci, mf, s, magda, -1.0, "wrench", t)
+			_head(info, "MAGDA", mf, s)
+			if fmod(t, 1.6) < 0.9:
+				_sparks(ci, Vector2(bale.end.x - 2 * s, bale.position.y + 18 * s), t, 1.2)
+				ci.draw_circle(Vector2(bale.end.x - 2 * s, bale.position.y + 18 * s), 16 * s, Color(0.7, 0.85, 1.0, 0.25 + 0.15 * sin(t * 40.0)))
+			PilotArt.draw_person(ci, Vector2(size.x * 0.37, floor_y), s, pilot, -1.0, "point", t + 0.5)
+			_head(info, "YOU", Vector2(size.x * 0.37, floor_y), s)
 		"workshop":
 			# workbench with a vise and a spinning grinder; both of them hard at work
 			var bench := Rect2(10, floor_y - 40 * s, size.x * 0.62, 8 * s)
@@ -986,6 +1027,77 @@ static func _brass_back(ci: CanvasItem, size: Vector2, floor_y: float, t: float)
 	_maker_plaque(ci, Rect2(size.x * 0.66, 70, size.x * 0.3, 36), "brassworks", I18n.t("BRASSWORKS & SONS"), I18n.t("EST. 1898 · BUILT BY HAND"))
 
 
+## (1.99) Hellfire Heavy's breaker's yard: a container office, crushed bales, a drum fire, a wrecking ball on a crane.
+static func _hell_back(ci: CanvasItem, size: Vector2, floor_y: float, t: float) -> void:
+	# the jib of a yard crane across the top, a wrecking ball swinging slowly on its chain
+	_rc(ci, Rect2(size.x * 0.5, 18, size.x * 0.36, 12), Color(0.85, 0.6, 0.12))
+	for k in 6:
+		var jx := size.x * 0.5 + k * size.x * 0.06
+		ci.draw_line(Vector2(jx, 18), Vector2(jx + size.x * 0.03, 30), Color(0.4, 0.28, 0.06), 2.0)
+	var pivot := Vector2(size.x * 0.78, 30)
+	var ang := sin(t * 0.7) * 0.12
+	var ball := pivot + Vector2(sin(ang), cos(ang)) * 70.0
+	for k in 9:
+		var cp := pivot.lerp(ball, k / 9.0)
+		ci.draw_arc(cp, 3.0, 0, TAU, 8, Color(0.25, 0.25, 0.27), 2.0)
+	_cr(ci, ball + Vector2(0, 14), 18, Color(0.2, 0.2, 0.22))
+	# the office: a shipping container with a door, a lit window and a hazard band
+	var ct := Rect2(size.x * 0.02, floor_y - 132, size.x * 0.4, 132)
+	_rc(ci, ct, Color(0.62, 0.22, 0.14))
+	for k in int(ct.size.x / 9.0):
+		ci.draw_line(Vector2(ct.position.x + 4 + k * 9.0, ct.position.y + 14), Vector2(ct.position.x + 4 + k * 9.0, ct.end.y - 2), Color(0.45, 0.15, 0.1), 2.0)
+	var band := Rect2(ct.position.x, ct.position.y, ct.size.x, 12)
+	ci.draw_rect(band, Color(0.95, 0.75, 0.1))
+	for k in int(band.size.x / 14.0) + 1:
+		var bx := band.position.x + k * 14.0
+		ci.draw_colored_polygon(PackedVector2Array([Vector2(bx, band.end.y), Vector2(bx + 7, band.end.y), Vector2(minf(bx + 14, band.end.x), band.position.y), Vector2(minf(bx + 7, band.end.x), band.position.y)]), Color(0.08, 0.08, 0.08))
+	var win := Rect2(ct.position.x + ct.size.x * 0.58, ct.position.y + 34, ct.size.x * 0.3, 34)
+	ci.draw_rect(win, Color(1.0, 0.78, 0.4, 0.85))
+	ci.draw_rect(win, Color(0.15, 0.1, 0.08), false, 3.0)
+	ci.draw_line(Vector2(win.get_center().x, win.position.y), Vector2(win.get_center().x, win.end.y), Color(0.15, 0.1, 0.08), 2.0)
+	_rc(ci, Rect2(ct.position.x + ct.size.x * 0.12, ct.position.y + 30, ct.size.x * 0.22, ct.size.y - 30), Color(0.5, 0.17, 0.1))
+	_maker_plaque(ci, Rect2(ct.position.x + 6, ct.position.y - 40, ct.size.x - 12, 34), "hellfire", I18n.t("HELLFIRE HEAVY"), I18n.t("DEMOLITION & SALVAGE"))
+	# crushed robots stacked in bales, a heap behind them
+	_scrap_pile(ci, Vector2(size.x * 0.66, floor_y), size.x * 0.14, 70.0, t)
+	_crushed(ci, Rect2(size.x * 0.53, floor_y - 40, 52, 40), 1)
+	_crushed(ci, Rect2(size.x * 0.53 + 54, floor_y - 40, 52, 40), 2)
+	_crushed(ci, Rect2(size.x * 0.53 + 26, floor_y - 80, 52, 40), 4)
+	# the oil drum fire: it flickers and lights the ground
+	var dr := Rect2(size.x * 0.47 - 14, floor_y - 40, 28, 40)
+	var fl := 0.8 + 0.2 * sin(t * 11.0) + 0.1 * sin(t * 23.0)
+	ci.draw_circle(Vector2(dr.get_center().x, dr.position.y), 70.0 * fl, Color(1.0, 0.5, 0.15, 0.08))
+	_rc(ci, dr, Color(0.25, 0.25, 0.28))
+	for k in 2:
+		ci.draw_line(Vector2(dr.position.x, dr.position.y + 12 + k * 14), Vector2(dr.end.x, dr.position.y + 12 + k * 14), Color(0.16, 0.16, 0.18), 2.0)
+	for k in 5:
+		var fx := dr.position.x + 4 + k * 5.0
+		var fh := (14.0 + 10.0 * sin(t * 9.0 + k * 1.7)) * fl
+		ci.draw_colored_polygon(PackedVector2Array([Vector2(fx - 4, dr.position.y), Vector2(fx + 1, dr.position.y - fh), Vector2(fx + 5, dr.position.y)]), Color(1.0, 0.45 + 0.1 * k, 0.1, 0.9))
+	for k in 3:
+		var ph := fmod(t * 0.6 + k * 0.33, 1.0)
+		ci.draw_circle(Vector2(dr.get_center().x + sin(ph * 6.0 + k) * 6.0, dr.position.y - 20 - ph * 50.0), 3.0 + ph * 7.0, Color(0.15, 0.13, 0.14, 0.4 * (1.0 - ph)))
+
+
+## A robot crushed into a bale: a dented block with bits of it sticking out.
+static func _crushed(ci: CanvasItem, r: Rect2, seed: int) -> void:
+	var cols := [Color(0.42, 0.4, 0.38), Color(0.55, 0.32, 0.2), Color(0.35, 0.4, 0.45), Color(0.5, 0.45, 0.2), Color(0.4, 0.3, 0.3)]
+	_rc(ci, r, cols[seed % cols.size()])
+	for k in 3:
+		var y := r.position.y + (k + 1) * r.size.y / 4.0
+		ci.draw_line(Vector2(r.position.x + 2, y + (seed + k) % 3 - 1), Vector2(r.end.x - 2, y - (seed * k) % 3 + 1), Color(0, 0, 0, 0.35), 2.0)
+	var bits := [Vector2(0.2, 0.3), Vector2(0.7, 0.55), Vector2(0.45, 0.8)]
+	for k in 3:
+		var b: Vector2 = r.position + r.size * (bits[(k + seed) % 3] as Vector2)
+		match (k + seed) % 3:
+			0:
+				ci.draw_circle(b, 4.0, Color(0.15, 0.15, 0.15))
+				ci.draw_circle(b, 1.8, Color(1.0, 0.3, 0.2) if seed % 2 == 0 else Color(0.3, 0.3, 0.3))
+			1:
+				ci.draw_rect(Rect2(b - Vector2(5, 3), Vector2(10, 6)), cols[(seed + 2) % cols.size()].darkened(0.2))
+			_:
+				ci.draw_line(b, b + Vector2(10, -6), Color(0.3, 0.3, 0.32), 3.0)
+
+
 ## (1.97) A maker's sign in its shop: enamel for Old Iron, a painted plank for Scrapworks.
 static func _maker_plaque(ci: CanvasItem, r: Rect2, m: String, title: String, sub: String) -> void:
 	var f := ThemeDB.fallback_font
@@ -999,6 +1111,14 @@ static func _maker_plaque(ci: CanvasItem, r: Rect2, m: String, title: String, su
 		ci.draw_rect(Rect2(r.position.x + r.size.x * 0.5, r.position.y + 6, 16, 8), Color(0.85, 0.8, 0.6, 0.85))
 		ci.draw_string(f, Vector2(r.position.x, r.position.y + r.size.y * 0.5), title, HORIZONTAL_ALIGNMENT_CENTER, r.size.x, tsz, Color(0.95, 0.9, 0.8))
 		ci.draw_string(f, Vector2(r.position.x, r.position.y + r.size.y * 0.88), sub, HORIZONTAL_ALIGNMENT_CENTER, r.size.x, ssz, Color(0.15, 0.1, 0.06))
+		return
+	if m == "hellfire":
+		# (1.99) a black steel sign, a hazard border, yellow stencil letters
+		_rc(ci, r, Color(0.95, 0.75, 0.1))
+		var inner := r.grow(-4)
+		ci.draw_rect(inner, Color(0.09, 0.08, 0.08))
+		ci.draw_string(f, Vector2(r.position.x, r.position.y + r.size.y * 0.5), title, HORIZONTAL_ALIGNMENT_CENTER, r.size.x, tsz, Color(0.98, 0.78, 0.15))
+		ci.draw_string(f, Vector2(r.position.x, r.position.y + r.size.y * 0.86), sub, HORIZONTAL_ALIGNMENT_CENTER, r.size.x, ssz, Color(1.0, 0.5, 0.2))
 		return
 	_rc(ci, r, Color(0.93, 0.89, 0.8))
 	_rc(ci, r.grow(-3), col, false, 2.0)
@@ -1293,6 +1413,7 @@ const ROOM := {
 	"pub": {"tint": Color(0.05, 0.0, 0.02), "dim": 0.32, "pool": 0.09},
 	"shop": {"tint": Color(0.0, 0.02, 0.06), "dim": 0.22, "pool": 0.08},
 	"brass": {"tint": Color(0.05, 0.02, 0.0), "dim": 0.26, "pool": 0.1},
+	"hell": {"tint": Color(0.06, 0.02, 0.04), "dim": 0.14, "pool": 0.09},
 	"scrap": {"tint": Color(0.06, 0.02, 0.08), "dim": 0.12, "pool": 0.07},
 	"phone": {"tint": Color(0.0, 0.0, 0.03), "dim": 0.0, "pool": 0.0},
 }

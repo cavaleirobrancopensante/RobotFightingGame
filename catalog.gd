@@ -26,6 +26,9 @@ const TRAITS := {
 	# (1.98) Brassworks
 	"pressure": {"name": "Pressure", "desc": "Builds Pressure as it fights (%d%% speed). Full, the next hit vents: big damage and a cloud of steam.", "values": [70, 100]},
 	"vent": {"name": "Vent", "desc": "Hits puff steam in their face: %d%% chance to knock their crosshair off.", "values": [25, 40]},
+	# (1.99) Hellfire Heavy
+	"dazzle": {"name": "Dazzle", "desc": "A flashing beacon: enemies aim at you %d%% slower.", "values": [25, 40]},
+	"stomp": {"name": "Stomp", "desc": "Landing from a jump next to them hits their legs for %d and staggers them.", "values": [8, 13]},
 	"tarp": {"name": "Tarp", "desc": "The tarp hides your weak spot: the enemy's first scans find nothing (%d of them).", "values": [1, 2]},
 }
 
