@@ -708,6 +708,12 @@ func _ready() -> void:
 	var boss: bool = fight_idx == GameData.OPPONENTS.size() - 1 or GameData.fight_is_final()
 	var pick: int = fight_idx if fight_idx >= 0 else randi() % 97
 	fight_track = "boss" if boss else Sfx.FIGHT_TRACKS[pick % Sfx.FIGHT_TRACKS.size()]
+	# (1.94) a set of 3+ parts from one maker in the left corner (yours, or the left robot when you watch,
+	# so the music never hints at the winner): that maker's fight song
+	if not boss and not team_p.is_empty() and not (team_p[0] as Fighter).sets.is_empty():
+		var mf := Sfx.maker_fight(str((team_p[0] as Fighter).sets[0]))
+		if mf != "":
+			fight_track = mf
 	Sfx.music(WALKIN_MUSIC.get(barrier_kind, "walkin_arena") if intro_step == "show" else fight_track)
 	Sfx.play("crowd_cheer", 0.0, -9.0)   # the crowd warms up quietly; it gets loud on big moments
 	cheer = 3.0

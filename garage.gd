@@ -260,6 +260,8 @@ func _ready() -> void:
 	if GameData.open_tab != "" and (tab_list().has(GameData.open_tab) or CITY_TABS.has(GameData.open_tab)):
 		tab = GameData.open_tab
 	GameData.open_tab = ""
+	var eids: Dictionary = GameData.equipped_ids()
+	Sfx.favour = GameData.Makers.motion_maker(eids.values(), str(eids.get("torso", "")))   # (1.94) your maker's songs come up more often
 	Sfx.music("garage")
 	GameData.queue_night_films()   # (1.75) last night's big fights get filmed in the background
 	reset_workshop("arm")
@@ -6167,6 +6169,7 @@ func build_jukebox() -> void:
 	section(tr("Every song in Port Ferrum. Tap one to play it."))
 	for k in Sfx.JUKEBOX.size():
 		var e: Array = Sfx.JUKEBOX[k]
+		juke_header(k, list_box)
 		var num := GUI.readout("%02d" % (k + 1), 20, GUI.AMBER if k == cur else GUI.MUTED)
 		num.custom_minimum_size = Vector2(52, 0)
 		num.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -8756,6 +8759,25 @@ class GusBust extends Control:
 
 # ---------------------------------------------------------------- (1.84) the music pop-up
 
+## (1.94) In the jukebox lists: a maker's logo and name over its three songs.
+func juke_header(k: int, parent: Control) -> void:
+	var e: Array = Sfx.JUKEBOX[k]
+	if e.size() < 4:
+		return
+	var prev: Array = Sfx.JUKEBOX[k - 1] if k > 0 else []
+	if prev.size() >= 4 and str(prev[3]) == str(e[3]):
+		return
+	var M = GameData.Makers
+	var m := str(e[3])
+	var h := HBoxContainer.new()
+	h.add_theme_constant_override("separation", 8)
+	parent.add_child(h)
+	h.add_child(Logos.LogoIcon.new(M.logo(m), 30))
+	var l := GUI.text(str(M.info(m)["name"]).to_upper(), 14, M.color(m).lightened(0.3), "headb")
+	l.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	h.add_child(l)
+
+
 func song_title(file: String) -> Array:
 	for e in Sfx.JUKEBOX:
 		if e[0] == file:
@@ -8786,6 +8808,7 @@ func open_music() -> void:
 	col.add_child(GUI.text(tr("Tap a song to play it. It carries on down the list."), 12, GUI.MUTED))
 	for k in Sfx.JUKEBOX.size():
 		var e: Array = Sfx.JUKEBOX[k]
+		juke_header(k, col)
 		var on: bool = playing and e[0] == np
 		var num := GUI.readout("%02d" % (k + 1), 18, GUI.AMBER if on else GUI.MUTED)
 		num.custom_minimum_size = Vector2(46, 0)

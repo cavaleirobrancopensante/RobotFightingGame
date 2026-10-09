@@ -111,11 +111,33 @@ func play_raw(sound: String, pitch_jitter: float = 0.0, volume_db: float = 0.0, 
 ## Playlists rotate through their songs; a single track name just loops that track.
 const PLAYLISTS := {
 	"menu": ["menu", "rain_docks", "chiptune_cafe", "harbour_waltz", "night_shift", "lounge", "bossa", "workshop", "rust_shuffle", "sunset_drive", "gamelan", "anthem", "garage",
-			"smoke_break", "chrome_morning", "harbour_lights", "scrap_market"],
+			"smoke_break", "chrome_morning", "harbour_lights", "scrap_market"] + MAKER_MENU,
 	"garage": ["garage", "rust_shuffle", "sunset_drive", "rain_docks", "workshop", "bossa", "chiptune_cafe", "gamelan", "lounge", "night_shift", "harbour_waltz", "menu",
-			"smoke_break", "chrome_morning", "harbour_lights", "scrap_market"],
+			"smoke_break", "chrome_morning", "harbour_lights", "scrap_market"] + MAKER_MENU,
 	"story": ["story", "lounge"],
 }
+## (1.94) The makers' record (tools/make_songs4.py): two menu songs and a fight song each.
+const MAKER_SONGS := {
+	"scrapworks": ["scrap_skiffle", "scrap_jug", "scrap_stomp"],
+	"oldiron": ["iron_bigband", "iron_ballad", "iron_rockabilly"],
+	"brassworks": ["brass_musicbox", "brass_bandstand", "brass_march"],
+	"hellfire": ["hell_blues", "hell_groove", "hell_riff"],
+	"volta": ["volta_sunset", "volta_drive", "volta_fight"],
+	"nimbus": ["nimbus_lounge", "nimbus_clouds", "nimbus_breaks"],
+	"kane": ["kane_tower", "kane_hold", "kane_fight"],
+	"tenryu": ["tenryu_citypop", "tenryu_koto", "tenryu_anthem"],
+	"menagerie": ["men_calliope", "men_tango", "men_galop"],
+}
+const MAKER_MENU := ["scrap_skiffle", "scrap_jug", "iron_bigband", "iron_ballad", "brass_musicbox", "brass_bandstand", "hell_blues", "hell_groove",
+		"volta_sunset", "volta_drive", "nimbus_lounge", "nimbus_clouds", "kane_hold", "tenryu_citypop", "tenryu_koto", "men_calliope", "men_tango"]
+const MAKER_FIGHT := ["scrap_stomp", "iron_rockabilly", "brass_march", "hell_riff", "volta_fight", "nimbus_breaks", "kane_fight", "tenryu_anthem", "men_galop"]
+var favour := ""   # (1.94) the maker whose menu songs come up more often (your robot's main maker)
+
+
+## A maker's fight song ("" when it has none).
+func maker_fight(maker: String) -> String:
+	var l: Array = MAKER_SONGS.get(maker, [])
+	return str(l[2]) if l.size() > 2 else ""
 ## Fight themes, picked per opponent (boss gets its own).
 const FIGHT_TRACKS := ["fight", "fight_pump", "fight_rush", "fight_heavy", "fight_neon", "fight_chrome", "fight_scrapyard", "fight_thunder"]
 
@@ -143,7 +165,6 @@ const JUKEBOX := [
 	["chrome_morning", "Chrome Morning", "Menus and garage"],
 	["harbour_lights", "Harbour Lights", "Menus and garage"],
 	["scrap_market", "Scrap Market", "Menus and garage"],
-	["kane_tower", "Kane Tower", "Kane's scenes"],
 	["walkin_scrap", "Settle Down, You Lot", "Walk-in: the Scrap Heap Ring"],
 	["walkin_arena", "Fight Night Fanfare", "Walk-in: Regional and cups"],
 	["walkin_grand", "The Grand Hall", "Walk-in: the Championship"],
@@ -157,6 +178,34 @@ const JUKEBOX := [
 	["fight_thunder", "Thunder Gallop", "Fights"],
 	["boss", "OVERLORD", "Boss fights and finals"],
 	["anthem", "Champion of the Docks", "The finale"],
+	# (1.94) the makers' record: [file, title, where, maker]
+	["scrap_skiffle", "Tin Can Skiffle", "Menus and garage", "scrapworks"],
+	["scrap_jug", "Jug Band Shuffle", "Menus and garage", "scrapworks"],
+	["scrap_stomp", "Pots and Pans Stomp", "Fights with a Scrapworks set", "scrapworks"],
+	["iron_bigband", "Shift Whistle Swing", "Menus and garage", "oldiron"],
+	["iron_ballad", "Cast Iron Heart", "Menus and garage", "oldiron"],
+	["iron_rockabilly", "Foundry Rockabilly", "Fights with an Old Iron set", "oldiron"],
+	["brass_musicbox", "Music Box Waltz", "Menus and garage", "brassworks"],
+	["brass_bandstand", "Bandstand in the Park", "Menus and garage", "brassworks"],
+	["brass_march", "Steam Engine March", "Fights with a Brassworks set", "brassworks"],
+	["hell_blues", "Slow Burn Blues", "Menus and garage", "hellfire"],
+	["hell_groove", "Welding Shop Groove", "Menus and garage", "hellfire"],
+	["hell_riff", "Anvil and Engine", "Fights with a Hellfire set", "hellfire"],
+	["volta_sunset", "Sunset Coupe", "Menus and garage", "volta"],
+	["volta_drive", "Night Drive", "Menus and garage", "volta"],
+	["volta_fight", "Overdrive Arc", "Fights with a Volta set", "volta"],
+	["nimbus_lounge", "Jet Age Lounge", "Menus and garage", "nimbus"],
+	["nimbus_clouds", "Above the Clouds", "Menus and garage", "nimbus"],
+	["nimbus_breaks", "Tailwind Breaks", "Fights with a Nimbus set", "nimbus"],
+	["kane_tower", "Kane Tower", "Kane's scenes", "kane"],
+	["kane_hold", "Please Hold", "Menus and garage", "kane"],
+	["kane_fight", "Dynamics", "Fights with a Kane set", "kane"],
+	["tenryu_citypop", "Summer Night City", "Menus and garage", "tenryu"],
+	["tenryu_koto", "Garden at Dawn", "Menus and garage", "tenryu"],
+	["tenryu_anthem", "Strike a Pose!", "Fights with a Tenryu set", "tenryu"],
+	["men_calliope", "Calliope Waltz", "Menus and garage", "menagerie"],
+	["men_tango", "Tango of the Beasts", "Menus and garage", "menagerie"],
+	["men_galop", "Big Top Galop", "Fights with a Menagerie set", "menagerie"],
 ]
 
 
@@ -192,17 +241,38 @@ func music(name: String) -> void:
 		return
 	# moving between menu screens: keep the current song if the new playlist has it
 	if music_player.playing and list.size() > 1 and list.has(now_playing()):
-		playlist_pos = list.find(now_playing())
-		playlist = list
+		var cur := now_playing()
+		playlist = _order(name, list)
+		playlist.erase(cur)
+		playlist.push_front(cur)   # the song carries on; the shuffle comes after it
+		playlist_pos = 0
 		current_track = name
 		return
 	current_track = name
-	playlist = _shuffled(list)   # (1.84) shuffled, so the same few songs don't come round in the same order
+	playlist = _order(name, list)
 	playlist_pos = 0
 	if not GameData.settings.get("music", true):
 		stop_music()
 		return
 	_play_current()
+
+
+## (1.84) shuffled, so the same few songs don't come round in the same order; (1.94) your main
+## maker's menu songs come round every few songs.
+func _order(name: String, list: Array) -> Array:
+	var order := _shuffled(list)
+	if (name == "menu" or name == "garage") and MAKER_SONGS.has(favour):
+		# (1.94) your main maker's menu songs come round every few songs
+		var fav: Array = (MAKER_SONGS[favour] as Array).slice(0, 2).filter(func(x): return list.has(x))
+		if not fav.is_empty():
+			var rest: Array = order.filter(func(x): return not fav.has(x))
+			var out: Array = []
+			for k in rest.size():
+				if k % 4 == 1:
+					out.append(fav[(k / 4) % fav.size()])
+				out.append(rest[k])
+			order = out
+	return order
 
 
 func _play_current() -> void:
@@ -223,7 +293,7 @@ func _play_current() -> void:
 	music_player.volume_db = -40.0
 	music_player.play()
 	# fight music fades in gently instead of hitting at full volume
-	var fight: bool = FIGHT_TRACKS.has(playlist[playlist_pos]) or playlist[playlist_pos] == "boss"
+	var fight: bool = FIGHT_TRACKS.has(playlist[playlist_pos]) or playlist[playlist_pos] == "boss" or MAKER_FIGHT.has(playlist[playlist_pos])
 	create_tween().tween_property(music_player, "volume_db", FIGHT_MUSIC_DB if fight else MUSIC_DB, 2.0 if fight else 0.8)
 
 
@@ -232,7 +302,7 @@ func _on_music_finished() -> void:
 		return
 	playlist_pos = (playlist_pos + 1) % playlist.size()
 	if playlist_pos == 0 and playlist.size() > 2 and current_track != "jukebox":
-		playlist = _shuffled(playlist)   # a fresh order every time round
+		playlist = _order(current_track, PLAYLISTS.get(current_track, playlist))   # a fresh order every time round
 	_play_current()
 
 
