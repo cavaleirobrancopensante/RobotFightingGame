@@ -73,6 +73,7 @@ const SHAPE := {
 	"torso:herochest": ["Hero chest, glowing vents", "It shouts the move before it lands"],
 	"torso:samurai": ["Lacquered plate, laced in gold", "The skirt plates turn a sweep"],
 	"torso:combiner": ["Combiner frame, four shoulders", "Docking ports, waiting for friends"],
+	"torso:armadillo": ["Armadillo shell, four bands", "Curls up tighter than a fist"],
 	"torso:gorillachest": ["Gorilla chest, made for pounding", "Circus gold across the belly"],
 	# arms
 	"arm:rod": ["Steel pipe, ball fist", "Elbow is a door hinge"],

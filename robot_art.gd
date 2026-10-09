@@ -42,7 +42,7 @@ const TORSOS := {"barrel": [60.0, 70.0], "box": [56.0, 76.0], "vee": [70.0, 78.0
 		"fueltank": [62.0, 78.0], "hull": [78.0, 80.0], "coupe": [58.0, 74.0], "dynamo": [62.0, 76.0], "twincoil": [80.0, 72.0],
 		"fuselage": [54.0, 80.0], "cryopod": [60.0, 76.0], "biplane": [78.0, 78.0],
 		"paragon": [66.0, 80.0], "monolith": [56.0, 88.0], "hydraprime": [92.0, 86.0],
-		"herochest": [72.0, 80.0], "samurai": [70.0, 82.0], "combiner": [80.0, 82.0], "gorillachest": [88.0, 80.0]}
+		"herochest": [72.0, 80.0], "samurai": [70.0, 82.0], "combiner": [80.0, 82.0], "gorillachest": [88.0, 80.0], "armadillo": [84.0, 74.0]}
 const HEADS := {"bucket": [34.0, 32.0], "box": [38.0, 34.0], "dome": [42.0, 34.0], "cyclops": [40.0, 40.0],
 		"visor": [48.0, 28.0], "horned": [40.0, 34.0], "skull": [40.0, 42.0], "wedge": [44.0, 30.0],
 		"tall": [26.0, 52.0], "bulb": [44.0, 44.0], "tv": [46.0, 36.0], "dish": [40.0, 34.0], "laser": [38.0, 34.0],
@@ -300,10 +300,64 @@ static func wrecker_ball(h: Vector2, dir: Vector2, pose: String, sz: float, t: f
 	return h + Vector2(sin(t * 2.2) * 7.0 * sz + dir.x * 4.0, 26.0 * sz)
 
 
+# ---------------------------------------------------------------- the Armadillo ball (1.106)
+
+## Where the ball sits when an Armadillo Shell curls up: [centre, radius] (local, the floor at y = 0).
+static func ball_geom(look: Dictionary) -> Array:
+	var t: Rect2 = geom(look)["torso"]
+	var r := (t.size.x + t.size.y) * 0.34
+	return [Vector2(t.get_center().x, -r), r]
+
+
+## The robot curled up in its shell. pose: facing, k (0..1 how far it's closed), spin, time, flash, light.
+static func draw_ball(ci: CanvasItem, base: Vector2, look: Dictionary, pose: Dictionary) -> void:
+	var facing: float = float(pose.get("facing", 1))
+	var sc: float = float(pose.get("scale", 1.0)) * float(look.get("scale", 1.0))
+	var k: float = clampf(float(pose.get("k", 1.0)), 0.0, 1.0)
+	var spin: float = float(pose.get("spin", 0.0)) * facing
+	var flash: bool = pose.get("flash", false)
+	ci.draw_set_transform(base, 0.0, Vector2(facing * sc, sc))
+	_set_light(str(pose.get("light", "fight")), facing)
+	_flash = flash
+	var p := _part(look, "torso")
+	_grade = int(p.get("grade", 3))
+	var bg := ball_geom(look)
+	var r: float = float(bg[1]) * (0.45 + 0.55 * k)
+	var cen := Vector2((bg[0] as Vector2).x, -r)
+	var c := _col(p, flash, false)
+	_round(ci, cen, r, c)
+	# the bands: parallel arcs across the ball that turn with it
+	var u := Vector2(cos(spin), sin(spin))
+	var w := u.orthogonal()
+	for b in 5:
+		var o := -0.72 + b * 0.36
+		var half := sqrt(maxf(0.0, 1.0 - o * o)) * r * 0.97
+		var arc := PackedVector2Array()
+		for q in 9:
+			var sq := -1.0 + q * 0.25
+			arc.append(cen + u * (o * r - r * 0.14 * (1.0 - sq * sq)) + w * sq * half)
+		ci.draw_polyline(arc, c.darkened(0.55), 4.0)
+		ci.draw_polyline(arc, c.lightened(0.25), 1.2)
+		if b == 2:
+			for q in range(1, 8, 2):
+				ci.draw_circle(arc[q], 2.0, Color(0.95, 0.75, 0.25))
+	# the seam where the head tucked in, and the eye glinting through it
+	var sp := cen + w * r * 0.82
+	ci.draw_line(sp - u * r * 0.2, sp + u * r * 0.2, Color(0.08, 0.06, 0.05), 4.0)
+	ci.draw_circle(sp, 2.5, look.get("eye", Color(1, 0.5, 0.2)))
+	ci.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+	_flash = false
+
+
 ## What a hit has to touch, in local coordinates, for the robot as it's drawn in a pose: the head(s)
 ## and torso as boxes, every arm and leg as a chain of capsules along the drawn limb.
 ## [[slot, "rect", Rect2] or [slot, "cap", a, b, radius], ...]
 static func hit_shapes(look: Dictionary, pose: Dictionary) -> Array:
+	if float(pose.get("ball", 0.0)) >= 0.5 and _alive(look, "torso"):
+		# (1.106) curled into a ball: the shell is all there is to hit
+		var bg := ball_geom(look)
+		var br: float = bg[1]
+		return [["torso", "rect", Rect2((bg[0] as Vector2) - Vector2(br, br), Vector2(br, br) * 2.0)]]
 	var g := geom(look)
 	var lp := limb_poses(look, pose)
 	var limb: String = pose.get("attack_limb", "")
@@ -2333,6 +2387,30 @@ static func _draw_torso(ci: CanvasItem, look: Dictionary, g: Dictionary, flash: 
 				_ln(ci, Vector2(bxk, y0 + 3), Vector2(bxk, y1 - 3), c, 3.5)
 			_plate(ci, _chamfer(Rect2(x0 - 3, y0 - 2, w + 6, 9), 2.0), trim)
 			_plate(ci, _chamfer(Rect2(x0 - 3, y1 - 8, w + 6, 9), 2.0), trim)
+		"armadillo":
+			# (1.106) Menagerie: an arched shell of overlapping bands, gold rivets on each band's edge, a soft belly
+			var cx := r.get_center().x
+			var hh := r.size.y
+			var shell := PackedVector2Array()
+			for k in 17:
+				var a := PI + PI * k / 16.0
+				shell.append(Vector2(cx + cos(a) * (w * 0.56), y1 - hh * 0.18 + sin(a) * hh * 0.98))
+			shell.append(Vector2(x1 + 2, y1 - hh * 0.06))
+			shell.append(Vector2(x0 - 2, y1 - hh * 0.06))
+			_plate(ci, _rounded(Rect2(x0 + 4, y1 - hh * 0.32, w - 8, hh * 0.3), 8.0), Color(0.86, 0.72, 0.56) if not flash else Color.WHITE)   # the belly
+			_plate(ci, shell, c)
+			for b in 4:
+				# each band: an arch inside the last, its edge a lighter line with rivets
+				var f2 := 0.9 - b * 0.2
+				var band := PackedVector2Array()
+				for k in 13:
+					var a2 := PI + PI * k / 12.0
+					band.append(Vector2(cx + cos(a2) * w * 0.56 * f2, y1 - hh * 0.18 + sin(a2) * hh * 0.98 * f2))
+				ci.draw_polyline(band, c.darkened(0.35), 3.0)
+				ci.draw_polyline(band, c.lightened(0.2), 1.0)
+				for k in range(2, 11, 2):
+					ci.draw_circle(band[k], 1.8, Color(0.95, 0.75, 0.25))
+			ci.draw_line(Vector2(x0 - 2, y1 - hh * 0.12), Vector2(x1 + 2, y1 - hh * 0.12), Color(0.6, 0.12, 0.1), 3.0)   # a circus red hem
 		"gorillachest":
 			# (1.104) Menagerie: a broad barrel chest, cable fur at the shoulders, two pec plates, a circus band of red and gold
 			_plate(ci, _rounded(r, w * 0.3), c)
@@ -2540,7 +2618,7 @@ static func _draw_torso(ci: CanvasItem, look: Dictionary, g: Dictionary, flash: 
 			_bolts(ci, r)
 			_plate(ci, _chamfer(Rect2(x0 - 4, y0 - 2, w + 8, 12), 3.0), trim)
 			_plate(ci, _chamfer(Rect2(x0, y1 - 14, w, 10), 3.0), trim)
-	if not p["shape"] in ["core", "loco", "boiler", "fueltank", "cryopod", "herochest", "combiner"]:
+	if not p["shape"] in ["core", "loco", "boiler", "fueltank", "cryopod", "herochest", "combiner", "armadillo"]:
 		ci.draw_circle(chest, 9.0, eye.darkened(0.45))
 		_glow(ci, chest, 6.0, eye)
 		ci.draw_circle(chest, 6.0, eye)

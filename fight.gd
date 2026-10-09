@@ -191,6 +191,10 @@ class Fighter:
 	var sprint_t := 0.0      # (1.100) Neon Spoiler: how long it has walked the same way
 	var sprint_dir := 0
 	var sting_cd := 0.0      # (1.100) Volta set: a spark on the floor stung it a moment ago
+	var shell := 0.0         # (1.106) an Armadillo Shell: hold BLOCK to curl into a ball (damage cut by this %)
+	var curl_hold := 0.0     # how long BLOCK has been held standing
+	var ai_curl := 0.0       # the CPU wants to stay curled this long
+	var roll_hit := false    # this roll has already hit
 	var spirit_back := 0.0   # (1.103) power a Spirit finisher gives back when it lands
 	var jet_t := 0.0
 	var air_jumps := 0
@@ -856,6 +860,9 @@ func make_fighter(spec: Dictionary) -> Fighter:
 		var tid: String = t["trait"]
 		f.gtraits[tid] = f.gtraits.get(tid, 0.0) + Catalog.trait_value(t)
 	f.tarp_left = int(f.gtraits.get("tarp", 0.0))
+	var shp = f.parts.get("torso", {})
+	if shp is Dictionary and str(shp.get("trait", "")) == "shell":
+		f.shell = Catalog.trait_value(shp)
 	# (1.98) Pressure: a boiler (the Boiler Chest, a Coal Firebox) fills the gauge; every other
 	# Brassworks part on the robot helps a little, and the set doubles it
 	var src: float = f.gtraits.get("pressure", 0.0)
@@ -1288,6 +1295,50 @@ func ai_input_for(f: Fighter, delta: float) -> Dictionary:
 	ai_load(f)
 	var i := read_ai_input(delta)
 	ai_save(f)
+	if f.foe != null and f.foe.state == "roll" and f.state in ["idle", "walk"] and f.on_ground:
+		# (1.106) a ball rolling in: jump it or put the guard up
+		var gap: float = (f.pos.x - f.foe.pos.x) * float(f.foe.facing)
+		if gap > 0.0 and gap < 330.0:
+			if f.ai.get("vs_roll", -1.0) < 0.0:
+				f.ai["vs_roll"] = randf()
+			var smart: float = clampf(float(f.ai.get("smart", 0.3)), 0.0, 1.0)
+			var pick: float = f.ai["vs_roll"]
+			if pick < 0.25 + smart * 0.35 and f.legs() > 0:
+				i = empty_input()
+				i["jump"] = true
+				i["jump_press"] = true
+			elif pick < 0.55 + smart * 0.3:
+				i = empty_input()
+				i["block"] = true
+	elif f.foe != null and f.foe.state != "roll":
+		f.ai.erase("vs_roll")
+	if f.shell > 0.0 and f.foe != null:
+		i = ai_shell(f, i, delta)
+	return i
+
+
+## (1.106) The CPU with an Armadillo Shell: curls up now and then at range or when a hit is coming,
+## then rolls in.
+func ai_shell(f: Fighter, i: Dictionary, delta: float) -> Dictionary:
+	var o: Fighter = f.foe
+	var dist := absf(o.pos.x - f.pos.x)
+	f.ai_curl = maxf(0.0, f.ai_curl - delta)
+	if f.state == "curl":
+		var j := empty_input()
+		j["block"] = f.ai_curl > 0.0 or dist < 240.0
+		if f.timer >= CURL_IN and dist > 120.0 and dist < 600.0 and randf() < delta * 4.0:
+			j["punch"] = true
+		return j
+	if not f.state in ["idle", "walk"] or not f.on_ground:
+		return i
+	if f.ai_curl <= 0.0:
+		var coming := ATTACKS.has(o.state) and dist < 230.0 and o.timer < float(ATTACKS[o.state]["startup"])
+		if (coming and randf() < 0.03) or (dist > 240.0 and dist < 600.0 and f.power > f.power_max * 0.35 and randf() < delta * 0.15):
+			f.ai_curl = CURL_HOLD + randf_range(0.3, 0.9)
+	if f.ai_curl > 0.0:
+		var k := empty_input()
+		k["block"] = true
+		return k
 	return i
 
 
@@ -2910,6 +2961,9 @@ func update_fighter(f: Fighter, o: Fighter, i: Dictionary, delta: float) -> void
 			f.state = "idle"
 			f.recovered_at = clock
 		i = empty_input()
+	elif BALL_STATES.has(f.state):
+		update_ball(f, o, i, delta)
+		i = empty_input()
 	f.daze_t = maxf(0.0, f.daze_t - delta)
 	var punch: bool = i["punch"]
 	var kick: bool = i["kick"]
@@ -2969,7 +3023,7 @@ func update_fighter(f: Fighter, o: Fighter, i: Dictionary, delta: float) -> void
 			f.guard_break = false
 			if f.queued != "" and start_queued(f):
 				return
-	elif f.state in ["switch", "prejump", "down", "getup"]:
+	elif f.state in ["switch", "prejump", "down", "getup"] or BALL_STATES.has(f.state):
 		pass   # busy with its own timer (handled above)
 	elif update_charge(f, i, delta):
 		pass
@@ -2978,6 +3032,14 @@ func update_fighter(f: Fighter, o: Fighter, i: Dictionary, delta: float) -> void
 			f.facing = 1 if o.pos.x >= f.pos.x else -1
 		f.crouching = i["down"] and f.on_ground and f.legs() > 0
 		f.blocking = i["block"] and f.on_ground and f.arms() > 0
+		# (1.106) an Armadillo Shell: hold BLOCK and it curls into a ball
+		if f.shell > 0.0 and i["block"] and f.on_ground and f.alive("torso") and not punch and not kick:
+			f.curl_hold += delta
+			if f.curl_hold >= CURL_HOLD:
+				curl_up(f)
+				return
+		else:
+			f.curl_hold = 0.0
 		var sp := ""
 		if punch or kick:
 			sp = match_special(f, "P" if punch else "K")
@@ -3326,6 +3388,9 @@ func apply_hit(att: Fighter, d: Fighter, a: Dictionary, at: Vector2) -> void:
 				GameData.story_seen.append("big_special")   # (1.103) Tenryu notices
 	var touched: Array = a.get("touched", [])
 	var slot := choose_part(att, d, a.get("zone", "punch"), a.get("sure_aim", false), touched)
+	var balled := BALL_STATES.has(d.state) and d.alive("torso")
+	if balled:
+		slot = "torso"   # (1.106) curled up: everything lands on the shell
 	var hit_at := to_world_point(d, RobotArt.part_center(d.get_look(), slot))
 	# the spark goes where the limb met the body (shots and blasts: at the part they hit)
 	var spark_pos := at if not touched.is_empty() else Vector2(at.x, hit_at.y)
@@ -3465,6 +3530,10 @@ func apply_hit(att: Fighter, d: Fighter, a: Dictionary, at: Vector2) -> void:
 			var hov := maxf(limb_trait(d, "leg_front", "hover"), limb_trait(d, "leg_back", "hover"))
 			if hov > 0.0:
 				dmg *= 1.0 - hov / 100.0
+		if balled:
+			dmg *= 1.0 - d.shell / 100.0
+			if randf() < 0.5:
+				popup(tr("SHELL"), hit_at + Vector2(0, -50), Color(0.95, 0.8, 0.5))
 		var part_dmg := dmg * (HEAD_FACTOR if slot.begins_with("head") else 1.0)
 		damage_part(d, slot, part_dmg, false, armor_k(att, src))
 		if slot != "torso" and d.alive("torso"):
@@ -3528,7 +3597,10 @@ func apply_hit(att: Fighter, d: Fighter, a: Dictionary, at: Vector2) -> void:
 		if armored:
 			popup(tr("POWERED THROUGH"), d.pos + Vector2(0, -220.0 * d.scale), Color(0.85, 0.9, 1.0))
 			add_spark(hit_at, Color(0.85, 0.9, 1.0), 34.0)
-		if d.state != "ko" and not armored:
+		if balled:
+			if d.state == "curl":
+				d.vel.x = att.facing * 180.0 * knock_k(att, d)   # the ball skids, it doesn't open
+		elif d.state != "ko" and not armored:
 			d.charge_btn = ""   # a hit knocks a charge out
 			d.state = "hit"
 			d.timer = maxf(float(a.get("stun", 0.25)) * STUN_K, a.get("emp", 0.0))
@@ -3585,6 +3657,113 @@ const PRESSURE_FILL := 8.0
 const PRESSURE_VENT := 1.6
 const STEAM_MISS := 35.0
 const WRAP_ARMOR := 1.6   # (1.105) armour counts this much more against a tentacle
+
+
+# ---------------------------------------------------------------- the Armadillo Shell (1.106)
+
+const BALL_STATES := ["curl", "roll", "bounce", "uncurl"]
+const CURL_HOLD := 0.45     # hold BLOCK this long to curl up
+const CURL_IN := 0.18       # tucking in
+const UNCURL_T := 0.25      # opening up again
+const ROLL_SPEED := 760.0
+const ROLL_TIME := 0.9
+const ROLL_DMG := 14.0
+const ROLL_COST := 0.08     # of the tank
+
+
+func curl_up(f: Fighter) -> void:
+	f.state = "curl"
+	f.timer = 0.0
+	f.curl_hold = 0.0
+	f.blocking = false
+	f.crouching = false
+	f.charge_btn = ""
+	f.vel.x = 0.0
+	Sfx.play("block", 0.1, -6.0, 0.7)
+	if f.team == 0 and f == player:
+		coach("curl", tr("Curled up! Hits land on the shell. Punch or push toward them to roll."))
+
+
+func start_roll(f: Fighter) -> void:
+	f.state = "roll"
+	f.timer = ROLL_TIME
+	f.roll_hit = false
+	spend(f, f.power_max * ROLL_COST)
+	Sfx.play("swing", 0.1, -2.0, 0.6)
+	add_spark(f.pos + Vector2(-f.facing * 40.0, -10.0) * f.scale, Color(0.8, 0.7, 0.5), 22.0 * f.scale)
+
+
+## How far the ball has closed (0 = standing, 1 = a ball), from the state and its timer: drawing,
+## hit shapes and replays all work it out the same way.
+func ball_k(f: Fighter) -> float:
+	match f.state:
+		"curl":
+			return clampf(f.timer / CURL_IN, 0.0, 1.0)
+		"roll", "bounce":
+			return 1.0
+		"uncurl":
+			return clampf(f.timer / UNCURL_T, 0.0, 1.0)
+	return 0.0
+
+
+func update_ball(f: Fighter, o: Fighter, i: Dictionary, delta: float) -> void:
+	match f.state:
+		"curl":
+			f.timer += delta
+			f.vel.x = move_toward(f.vel.x, 0.0, 900.0 * delta)
+			if o != null and o.state != "ko":
+				f.facing = 1 if o.pos.x >= f.pos.x else -1
+			var rdir := int(i["right"]) - int(i["left"])
+			if f.timer >= CURL_IN and (i["punch"] or i["kick"] or (rdir != 0 and rdir == f.facing)) and f.power >= f.power_max * ROLL_COST:
+				start_roll(f)
+			elif f.timer >= CURL_IN and not i["block"]:
+				f.state = "uncurl"
+				f.timer = UNCURL_T
+		"roll":
+			f.timer -= delta
+			f.vel.x = f.facing * ROLL_SPEED * f.scale
+			f.roll_a += f.vel.x * delta / (34.0 * f.scale)
+			if randf() < delta * 14.0:
+				add_spark(Vector2(f.pos.x - f.facing * 30.0 * f.scale, floor_y - 4.0), Color(0.75, 0.65, 0.5), 12.0 * f.scale)
+			var reach := body_half(f) + (body_half(o) if o != null else 0.0) + 30.0 * f.scale
+			if o != null and o.state != "ko" and not f.roll_hit and absf(o.pos.x - f.pos.x) < reach and absf(o.pos.y - f.pos.y) < 150.0 \
+					and signf(o.pos.x - f.pos.x) == f.facing:
+				f.roll_hit = true
+				apply_hit(f, o, {"damage": ROLL_DMG * f.mod_damage(), "zone": "torso", "knock": 620.0, "stun": 0.45, "src": "torso", "family": "body"},
+						Vector2(f.pos.x + f.facing * body_half(f), f.pos.y - 60.0 * f.scale))
+				rec_mark("special", 30.0, "%s rolls into %s", [rec_name(f), rec_name(o)])
+				bounce_off(f)
+			elif f.pos.x <= wall_l + body_half(f) + 10.0 * f.scale or f.pos.x >= wall_r - body_half(f) - 10.0 * f.scale:
+				bounce_off(f)
+				shake = maxf(shake, 6.0)
+			elif f.timer <= 0.0:
+				f.state = "curl" if i["block"] else "uncurl"
+				f.timer = CURL_IN if i["block"] else UNCURL_T
+		"bounce":
+			f.timer -= delta
+			f.roll_a -= f.facing * delta * 9.0
+			f.vel.x = move_toward(f.vel.x, 0.0, 300.0 * delta)
+			if f.timer <= 0.0 and f.on_ground:
+				f.state = "uncurl"
+				f.timer = UNCURL_T
+				Sfx.play("land", 0.1, -6.0)
+		"uncurl":
+			f.timer -= delta
+			f.vel.x = 0.0
+			if f.timer <= 0.0:
+				f.state = "idle"
+				f.recovered_at = clock
+				f.roll_a = 0.0
+
+
+## The ball hits something and bounces back off it, up and away.
+func bounce_off(f: Fighter) -> void:
+	f.state = "bounce"
+	f.timer = 0.2
+	f.vel = Vector2(-f.facing * 420.0 * f.scale, -560.0)
+	f.on_ground = false
+	f.squash = 0.15
+	Sfx.play("land", 0.1, -2.0, 1.3)
 
 
 ## (1.98) A cloud of steam round a robot for `t` seconds: anyone aiming at it loses the crosshair.
@@ -4482,7 +4661,7 @@ func body_pose(f: Fighter) -> Dictionary:
 			"dazed": f.daze_t > 0.0, "tuck": f.state == "jump" and not f.on_ground and absf(f.vel.y) < 330.0,
 			"blocking": f.blocking or (f.state == "special" and state == "block"),
 			"crawl": fmod(f.walk_phase / TAU, 1.0) if f.state == "walk" and f.legs() == 0 and f.arms() > 0 else -1.0,
-			"fist_out": f.fist_out.keys(), "drop": drop}
+			"fist_out": f.fist_out.keys(), "drop": drop, "ball": ball_k(f)}
 	return {"base": base, "rot": rot, "sx": sx, "sy": sy, "state": state, "extended": extended, "swoosh": swoosh, "dx": dx}
 
 
@@ -4508,23 +4687,29 @@ func draw_fighter(f: Fighter, off: Vector2) -> void:
 		var span: float = {"uppercut": -0.9, "sweep": 0.5, "high_kick": -0.85, "low_punch": 0.4}.get(state, -0.5)
 		ci.draw_arc(c, 100.0 * f.scale, a0 + span * f.facing - 0.35, a0 + span * f.facing + 0.35, 14, Color(1, 1, 1, 0.28), 14.0 * f.scale)
 	var fist_out: Array = f.fist_out.keys()
-	RobotArt.draw(ci, base, f.get_look(), {
-		"light": fight_light(),
-		"facing": f.facing, "state": state, "extended": extended, "attack_limb": f.attack_limb, "aim": f.aim_ang,
-		"swing": sin(f.walk_phase) * 10.0 if (f.state == "walk" or (f.on_ground and absf(f.vel.x) > 20.0 and (PUNCHES.has(f.state) or f.state == "charge"))) and f.legs() == 2 else 0.0,
-		"drop": f.vis_pose.get("drop", 0.0),
-		"crawl": fmod(f.walk_phase / TAU, 1.0) if f.state == "walk" and f.legs() == 0 and f.arms() > 0 else -1.0,
-		"crouch": f.crouching, "blocking": f.blocking or (f.state == "special" and state == "block"),
-		"flash": f.flash > 0.0, "rot": rot, "time": clock, "fist_out": fist_out,
-		"shield": f.shield_t > 0.0, "overcharge": f.over_t > 0.0, "stunned": f.stun_t > 0.0,
-		"jet": f.jet_t > 0.0 or (not f.on_ground and f.vel.y < -400.0 and f.has_gadget("double_jump")),
-		"boost": f.boost_t > 0.0, "sprint": f.sprint_t > 0.5, "sx": sx, "sy": sy,
-		"pound": fmod(f.timer * 5.0, 1.0) if f.state == "special" and f.special_id == "chest_pound" else -1.0,
-		"dazed": f.vis_pose.get("dazed", false), "tuck": f.vis_pose.get("tuck", false),
-		"bob_l": idle_bits(f)[0], "bob_r": idle_bits(f)[1], "head_dx": idle_bits(f)[2],
-		# a core under a quarter: its eye flickers like a bad bulb
-		"eye_off": f.state != "ko" and f.alive("torso") and f.ratio("torso") < 0.25 and fmod(clock * 9.0 + f.team * 3.1, 3.7) < 0.9,
-	})
+	var bk := ball_k(f)   # (1.106) curling into the Armadillo Shell
+	if bk > 0.0:
+		sy *= 1.0 - 0.55 * bk
+	if bk < 1.0:
+		RobotArt.draw(ci, base, f.get_look(), {
+			"light": fight_light(),
+			"facing": f.facing, "state": state, "extended": extended, "attack_limb": f.attack_limb, "aim": f.aim_ang,
+			"swing": sin(f.walk_phase) * 10.0 if (f.state == "walk" or (f.on_ground and absf(f.vel.x) > 20.0 and (PUNCHES.has(f.state) or f.state == "charge"))) and f.legs() == 2 else 0.0,
+			"drop": f.vis_pose.get("drop", 0.0),
+			"crawl": fmod(f.walk_phase / TAU, 1.0) if f.state == "walk" and f.legs() == 0 and f.arms() > 0 else -1.0,
+			"crouch": f.crouching, "blocking": f.blocking or (f.state == "special" and state == "block"),
+			"flash": f.flash > 0.0, "rot": rot, "time": clock, "fist_out": fist_out,
+			"shield": f.shield_t > 0.0, "overcharge": f.over_t > 0.0, "stunned": f.stun_t > 0.0,
+			"jet": f.jet_t > 0.0 or (not f.on_ground and f.vel.y < -400.0 and f.has_gadget("double_jump")),
+			"boost": f.boost_t > 0.0, "sprint": f.sprint_t > 0.5, "sx": sx, "sy": sy,
+			"pound": fmod(f.timer * 5.0, 1.0) if f.state == "special" and f.special_id == "chest_pound" else -1.0,
+			"dazed": f.vis_pose.get("dazed", false), "tuck": f.vis_pose.get("tuck", false),
+			"bob_l": idle_bits(f)[0], "bob_r": idle_bits(f)[1], "head_dx": idle_bits(f)[2],
+			# a core under a quarter: its eye flickers like a bad bulb
+			"eye_off": f.state != "ko" and f.alive("torso") and f.ratio("torso") < 0.25 and fmod(clock * 9.0 + f.team * 3.1, 3.7) < 0.9,
+		})
+	if bk > 0.0:
+		RobotArt.draw_ball(ci, base, f.get_look(), {"facing": f.facing, "k": bk, "spin": f.roll_a, "time": clock, "flash": f.flash > 0.0, "light": fight_light()})
 	if f.state == "special" and TELEGRAPH.has(f.special_id) and f.timer < float(Specials.MOVES[f.special_id]["startup"]):
 		# a heavy special winding up: an orange glow round the body
 		var gc2 := visual_point(f, RobotArt.part_center(f.get_look(), "torso")) + off

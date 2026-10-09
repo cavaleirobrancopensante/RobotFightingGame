@@ -200,6 +200,9 @@ const DEFS := [
 		"shape": "gorilla", "color": "#6b5446", "size": 1.5, "maker": "menagerie", "trait": "knuckle", "trait_lv": 1},
 	{"id": "men_gorilla_chest", "kind": "torso", "name": "Gorilla Chest", "cost": 1800, "hp": 165, "armor": 14, "speed": -6, "draw": 5,
 		"shape": "gorillachest", "color": "#8e2c22", "maker": "menagerie", "trait": "pound", "trait_lv": 1},
+	# (1.106) hold BLOCK to curl into a ball, then roll in and bounce off
+	{"id": "men_armadillo", "kind": "torso", "name": "Armadillo Shell", "cost": 1700, "hp": 150, "armor": 16, "speed": -8, "draw": 5,
+		"shape": "armadillo", "color": "#a07d52", "maker": "menagerie", "trait": "shell", "trait_lv": 1},
 	# (1.105) a segmented limb that sways, whips and curls
 	{"id": "men_octopus_arm", "kind": "arm", "name": "Octopus Tentacle", "cost": 1500, "hp": 58, "armor": 3, "damage": 24, "speed": 8, "draw": 4,
 		"shape": "tentacle", "color": "#8a3550", "size": 1.15, "maker": "menagerie", "trait": "wrap", "trait_lv": 1},
