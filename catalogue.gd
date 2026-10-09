@@ -89,6 +89,7 @@ func _ready() -> void:
 	view = PageView.new()
 	view.cat = self
 	view.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	view.clip_contents = true   # (1.112) sunbursts and speed lines stay on the page
 	add_child(view)
 	spin = SpinView.new()
 	spin.cat = self
@@ -245,8 +246,8 @@ func _process(delta: float) -> void:
 		var c := cos(t * 0.45)
 		spin.scale = Vector2(signf(c) * maxf(0.08, absf(c)), 1.0)
 	_redraw_t -= delta
-	if _redraw_t <= 0.0:
-		_redraw_t = 1.0 / 24.0
+	if _redraw_t <= 0.0 and painter.animates(pages[at]):
+		_redraw_t = 1.0 / 24.0   # (1.112) only pages that move (Volta's grid, the Menagerie's bulbs, covers)
 		painter.t = t
 		view.queue_redraw()
 
@@ -383,6 +384,28 @@ class Painter extends RefCounted:
 		paper = Color(str(st["paper"]))
 		ink = Color(str(st["ink"]))
 		acc = Color(str(st["acc"]))
+
+	static var _glow: GradientTexture2D
+
+	## A soft round glow (white, see-through to the edge), modulated by the caller.
+	static func glow_tex() -> GradientTexture2D:
+		if _glow == null:
+			var g := Gradient.new()
+			g.set_color(0, Color(1, 1, 1, 0.35))
+			g.set_color(1, Color(1, 1, 1, 0.0))
+			g.add_point(0.4, Color(1, 1, 1, 0.21))
+			_glow = GradientTexture2D.new()
+			_glow.gradient = g
+			_glow.fill = GradientTexture2D.FILL_RADIAL
+			_glow.fill_from = Vector2(0.5, 0.5)
+			_glow.fill_to = Vector2(1.0, 0.5)
+			_glow.width = 128
+			_glow.height = 128
+		return _glow
+
+	## (1.112) Does this page move? Still pages are drawn once (and on a turn or a purchase).
+	func animates(pg: Dictionary) -> bool:
+		return m in ["volta", "menagerie"] or str(pg.get("t", "")) == "cover"
 
 	# ---- type
 
@@ -580,8 +603,8 @@ class Painter extends RefCounted:
 			"menagerie":
 				ci.draw_rect(r, paper)
 				var c := r.get_center()
-				for k in 10:
-					ci.draw_circle(c, W * (0.62 - k * 0.05), Color(1.0, 0.45, 0.25, 0.035))
+				var gr := W * 0.62   # (1.112) the warm glow: one radial texture instead of ten stacked circles
+				ci.draw_texture_rect(glow_tex(), Rect2(c - Vector2(gr, gr), Vector2(gr, gr) * 2.0), false, Color(1.0, 0.45, 0.25, 1.0))
 				var b := r.grow(-H * 0.03)
 				ci.draw_rect(b, acc, false, maxf(2.0, H * 0.008))
 				ci.draw_rect(b.grow(-H * 0.018), Color(acc, 0.7), false, maxf(1.0, H * 0.003))
@@ -1210,7 +1233,18 @@ class Painter extends RefCounted:
 		ci.draw_colored_polygon(inner, Color(0.62, 0.62, 0.6))
 		_tape(ci, c - ay * h + ax * w * 0.1, b.size.y * 0.16, b.size.y * 0.05, 0.1)
 
+	## (1.112) The speed lines are worked out once per rect and kept (they were clipped again on every redraw).
+	static var _speeds := {}
+
 	func _speed(ci: CanvasItem, b: Rect2, c: Vector2, n: int) -> void:
+		var key := "%s:%s:%s:%d" % [m, str(b), str(c), n]
+		if _speeds.has(key):
+			for pp in _speeds[key]:
+				ci.draw_colored_polygon(pp, Color(0, 0, 0, 0.85))
+			return
+		if _speeds.size() > 40:
+			_speeds.clear()
+		var keep: Array = []
 		var rng := RandomNumberGenerator.new()
 		rng.seed = hash(m + "speed")
 		var far := b.size.length()
@@ -1224,18 +1258,41 @@ class Painter extends RefCounted:
 			var poly := Geometry2D.intersect_polygons(PackedVector2Array([p0, p1, p2]), PackedVector2Array([b.position, Vector2(b.end.x, b.position.y), b.end, Vector2(b.position.x, b.end.y)]))
 			for pp in poly:
 				ci.draw_colored_polygon(pp, Color(0, 0, 0, 0.85))
+				keep.append(pp)
+		_speeds[key] = keep
+
+	## (1.112) Screentone is one tiled texture, not thousands of dots: a dot pattern made once per
+	## cell size and density, drawn repeated over the rect (the page redraw used to stall on it).
+	static var _tones := {}
+
+	static func tone_tex(cell: int, dense: float) -> ImageTexture:
+		var key := "%d:%.2f" % [cell, dense]
+		if _tones.has(key):
+			return _tones[key]
+		var ss := 4   # drawn 4x and shrunk, so the dots come out round
+		var w := cell * ss
+		var h := int(round(cell * 1.732)) * ss
+		var img := Image.create(w, h, false, Image.FORMAT_RGBA8)
+		img.fill(Color(0, 0, 0, 0))
+		var rr := cell * ss * 0.18 * dense
+		# two dots per tile: one in the corner (all four corners), one in the middle (the hex offset)
+		var centres := [Vector2(0, 0), Vector2(w, 0), Vector2(0, h), Vector2(w, h), Vector2(w * 0.5, h * 0.5)]
+		for y in h:
+			for x in w:
+				for c in centres:
+					if Vector2(x + 0.5, y + 0.5).distance_to(c) <= rr:
+						img.set_pixel(x, y, Color(0, 0, 0, 0.75))
+						break
+		img.resize(cell, int(round(cell * 1.732)), Image.INTERPOLATE_BILINEAR)
+		var tex := ImageTexture.create_from_image(img)
+		_tones[key] = tex
+		return tex
 
 	func _screentone(ci: CanvasItem, b: Rect2, dense: float) -> void:
-		var step := maxf(3.0, b.size.y / 40.0)
-		var y := b.position.y
-		var row := 0
-		while y < b.end.y:
-			var x := b.position.x + (step * 0.5 if row % 2 == 1 else 0.0)
-			while x < b.end.x:
-				ci.draw_circle(Vector2(x, y), step * 0.18 * dense, Color(0, 0, 0, 0.75))
-				x += step
-			y += step * 0.866
-			row += 1
+		var cell := int(clampf(b.size.y / 40.0, 4.0, 14.0))
+		if ci.texture_repeat != CanvasItem.TEXTURE_REPEAT_ENABLED:
+			ci.texture_repeat = CanvasItem.TEXTURE_REPEAT_ENABLED
+		ci.draw_texture_rect(tone_tex(cell, dense), b, true)
 
 	## A speech balloon (spiky when it shouts) with its words.
 	func _balloon(ci: CanvasItem, b: Rect2, s: String, fs: int, shout: bool = false, tail: Vector2 = Vector2.INF) -> void:
@@ -1258,6 +1315,9 @@ class Painter extends RefCounted:
 		ci.draw_polyline(pts, ink, maxf(2.0, b.size.y * 0.025))
 		var f := font("italic" if shout else "headb")
 		var inner := b.size.x * (0.62 if shout else 0.74)
+		for wd in s.split(" "):   # (1.112) a long word shrinks the text instead of being cut
+			while fs > 8 and f.get_string_size(wd, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x > inner:
+				fs -= 1
 		var hh := f.get_multiline_string_size(s, HORIZONTAL_ALIGNMENT_CENTER, inner, fs, 4).y
 		ci.draw_multiline_string(f, Vector2(c.x - inner * 0.5, c.y - hh * 0.5 + f.get_ascent(fs)), s, HORIZONTAL_ALIGNMENT_CENTER, inner, fs, 4, ink)
 
