@@ -17,6 +17,8 @@ static var classic := false
 static var _L: Dictionary = {}       # the light set the robot being drawn stands in
 static var _from := -0.55            # where the key light comes from, in the part's own coordinates
 static var _flash := false           # hit flash: plain white, no shading
+static var _bite := 0.0               # (1.107) a Bear-Trap Jaw mid-bite (seconds left, 0 = not biting)
+static var _proud := false            # (1.107) won by K.O.: the Rooster Comb stands up
 static var _grade := 3               # the grade of the part being drawn (its finish)
 const OUTLINE := Color(0.035, 0.035, 0.045)
 ## How strong the light edge is by grade: scrap and rust are dull, steel and titanium catch the light.
@@ -31,7 +33,7 @@ const LEGS := {"rod": [60.0, 14.0], "piston": [62.0, 18.0], "spring": [66.0, 13.
 		"stomper": [56.0, 22.0], "pipe": [62.0, 14.0], "bellows": [60.0, 17.0], "tripod": [64.0, 13.0],
 		"excavator": [50.0, 22.0], "hydraulic": [64.0, 17.0], "hotrod": [66.0, 13.0], "maglev": [58.0, 15.0],
 		"gear": [62.0, 13.0], "ductfan": [56.0, 14.0], "stride": [70.0, 15.0], "gravpad": [56.0, 15.0],
-		"greaves": [64.0, 16.0], "hakama": [58.0, 24.0]}
+		"greaves": [64.0, 16.0], "hakama": [58.0, 24.0], "arachnid": [62.0, 12.0], "gecko": [60.0, 15.0]}
 # [width, height]
 const TORSOS := {"barrel": [60.0, 70.0], "box": [56.0, 76.0], "vee": [70.0, 78.0],
 		"core": [60.0, 76.0], "tank": [84.0, 82.0], "slim": [42.0, 82.0],
@@ -42,7 +44,7 @@ const TORSOS := {"barrel": [60.0, 70.0], "box": [56.0, 76.0], "vee": [70.0, 78.0
 		"fueltank": [62.0, 78.0], "hull": [78.0, 80.0], "coupe": [58.0, 74.0], "dynamo": [62.0, 76.0], "twincoil": [80.0, 72.0],
 		"fuselage": [54.0, 80.0], "cryopod": [60.0, 76.0], "biplane": [78.0, 78.0],
 		"paragon": [66.0, 80.0], "monolith": [56.0, 88.0], "hydraprime": [92.0, 86.0],
-		"herochest": [72.0, 80.0], "samurai": [70.0, 82.0], "combiner": [80.0, 82.0], "gorillachest": [88.0, 80.0], "armadillo": [84.0, 74.0]}
+		"herochest": [72.0, 80.0], "samurai": [70.0, 82.0], "combiner": [80.0, 82.0], "gorillachest": [88.0, 80.0], "armadillo": [84.0, 74.0], "abdomen": [70.0, 60.0]}
 const HEADS := {"bucket": [34.0, 32.0], "box": [38.0, 34.0], "dome": [42.0, 34.0], "cyclops": [40.0, 40.0],
 		"visor": [48.0, 28.0], "horned": [40.0, 34.0], "skull": [40.0, 42.0], "wedge": [44.0, 30.0],
 		"tall": [26.0, 52.0], "bulb": [44.0, 44.0], "tv": [46.0, 36.0], "dish": [40.0, 34.0], "laser": [38.0, 34.0],
@@ -50,7 +52,7 @@ const HEADS := {"bucket": [34.0, 32.0], "box": [38.0, 34.0], "dome": [42.0, 34.0
 		"rivet": [38.0, 36.0], "grille": [50.0, 38.0], "peeper": [34.0, 32.0], "busted": [46.0, 36.0],
 		"periscope": [36.0, 34.0], "divingbell": [44.0, 42.0], "welder": [40.0, 40.0], "beacon": [36.0, 30.0],
 		"tesla": [34.0, 30.0], "racer": [42.0, 36.0], "canopy": [42.0, 34.0], "radarnose": [44.0, 30.0],
-		"sentinel": [30.0, 48.0], "oracle": [40.0, 40.0], "vfin": [40.0, 36.0], "faceplate": [42.0, 40.0]}
+		"sentinel": [30.0, 48.0], "oracle": [40.0, 40.0], "vfin": [40.0, 36.0], "faceplate": [42.0, 40.0], "beartrap": [46.0, 40.0], "rooster": [36.0, 32.0]}
 const PUNCH_LEN := 84.0   # how far a punching hand reaches from the lead shoulder
 
 # [thickness, fist radius]
@@ -475,6 +477,10 @@ static func draw(ci: CanvasItem, base: Vector2, look: Dictionary, pose: Dictiona
 	# the head pans a little while it waits (pose "head_dx")
 	var gh := g
 	var hdx: float = pose.get("head_dx", 0.0)
+	_bite = float(pose.get("bite", 0.0))
+	_proud = pose.get("proud", false)
+	if _bite > 0.0:
+		hdx += 22.0 * sin(clampf((0.6 - _bite) / 0.6, 0.0, 1.0) * PI)   # the jaw lunges at them
 	if hdx != 0.0:
 		gh = g.duplicate()
 		gh["head"] = (g["head"] as Rect2).grow_individual(-hdx, 0, hdx, 0)
@@ -482,6 +488,9 @@ static func draw(ci: CanvasItem, base: Vector2, look: Dictionary, pose: Dictiona
 	if look["parts"].has("head2") and look["parts"]["head2"].has("shape"):
 		_draw_head(ci, look, gh, flash, trim, eye, t, "head2")
 	_draw_head(ci, look, gh, flash, trim, eye, t, "head")
+	_bite = 0.0
+	if str(look.get("back", {}).get("shape", "")) == "trunk":
+		_draw_trunk(ci, look, gh, pose, flash, t, false)
 	_sticker(ci, look, "head", (gh["head"] as Rect2).get_center() + Vector2(0, (gh["head"] as Rect2).size.y * 0.22), minf((gh["head"] as Rect2).size.x, (gh["head"] as Rect2).size.y) * 0.2)
 	if look["parts"].has(la2) and look["parts"][la2].has("shape"):
 		_draw_arm(ci, look, la2, shoulder_of(g, la2), arm_pose[la2], false, flash, trim, t, fist_out.has(la2), aim if limb == la2 else 0.0, bob_l)
@@ -562,6 +571,8 @@ static func draw_front(ci: CanvasItem, base: Vector2, look: Dictionary, pose: Di
 	if look["parts"].has("head2") and look["parts"]["head2"].has("shape"):
 		_draw_head(ci, look, g, false, trim, eye, t, "head2", true)
 	_draw_head(ci, look, g, false, trim, eye, t, "head", true)
+	if str(look.get("back", {}).get("shape", "")) == "trunk":
+		_draw_trunk(ci, look, g, pose, false, t, true)
 	_sticker(ci, look, "head", (g["head"] as Rect2).get_center() + Vector2(0, (g["head"] as Rect2).size.y * 0.22), minf((g["head"] as Rect2).size.x, (g["head"] as Rect2).size.y) * 0.2)
 	ci.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
@@ -1396,6 +1407,47 @@ static func _tentacle(ci: CanvasItem, s: Vector2, e: Vector2, h: Vector2, pose: 
 	_joint(ci, s, th * 0.6, Color(0.55, 0.13, 0.12) if not flash else Color.WHITE)
 
 
+## (1.107) The Elephant Trunk: a segmented trunk hanging from the face that curls at the tip. pose "trunk"
+## = seconds into a throw (-1 = not): it reaches down, curls round the part, lifts it and throws it.
+static func _draw_trunk(ci: CanvasItem, look: Dictionary, g: Dictionary, pose: Dictionary, flash: bool, t: float, front: bool) -> void:
+	if not _alive(look, "head") and not _alive(look, "head2"):
+		return
+	var b: Dictionary = look["back"]
+	var c: Color = Color.WHITE if flash else b["color"]
+	var hr: Rect2 = g["head"]
+	var root := Vector2(hr.get_center().x if front else hr.end.x - 4.0, hr.position.y + hr.size.y * 0.72)
+	var tw: float = g["tw"]
+	var end := root + (Vector2(4.0, 58.0) if front else Vector2(16.0, 54.0))
+	var via := root + (Vector2(0.0, 26.0) if front else Vector2(18.0, 20.0))
+	var curl := -1.6 + 0.25 * sin(t * 1.4)
+	var tt: float = float(pose.get("trunk", -1.0))
+	var holding := false
+	if tt >= 0.0 and not front:
+		var keys := [[0.0, Vector2(16.0, 54.0), -1.6], [0.2, Vector2(tw * 0.5 + 40.0, -root.y - 14.0), 0.8],
+				[0.4, Vector2(-10.0, -70.0), -1.2], [0.55, Vector2(tw * 0.5 + 70.0, -40.0), 0.1], [0.75, Vector2(16.0, 54.0), -1.6]]
+		for k in keys.size() - 1:
+			var a0: Array = keys[k]
+			var a1: Array = keys[k + 1]
+			if tt >= float(a0[0]) and tt <= float(a1[0]):
+				var u := smoothstep(float(a0[0]), float(a1[0]), tt)
+				end = root + (a0[1] as Vector2).lerp(a1[1], u)
+				curl = lerpf(float(a0[2]), float(a1[2]), u)
+		via = root.lerp(end, 0.5) + Vector2(14.0, -10.0)
+		holding = tt >= 0.18 and tt < 0.45
+	var ch := chain_points(root, end, 8, via, 3.0, t * 2.2, curl)
+	var n := ch.size() - 1
+	for k in n:
+		_limb(ci, ch[k], ch[k + 1], c, lerpf(13.0, 6.0, float(k) / n))
+	for k in range(1, n, 2):
+		var sd := (ch[k + 1] - ch[k]).normalized().orthogonal()
+		ci.draw_line(ch[k] - sd * 5.0, ch[k] + sd * 5.0, c.darkened(0.3), 1.5)   # the rings
+	_joint(ci, ch[n], 3.5, c.darkened(0.15))
+	if holding:
+		var pd: Dictionary = pose.get("trunk_part", {})
+		var pc: Color = Color(str(pd.get("color", "#777777"))) if not flash else Color.WHITE
+		_plate(ci, _chamfer(Rect2(ch[n] - Vector2(12, 10), Vector2(24, 20)), 4.0), pc)
+
+
 static func _draw_arm(ci: CanvasItem, look: Dictionary, slot: String, s: Vector2, pose: String,
 		back: bool, flash: bool, trim: Color, t: float, fist_gone: bool = false, aim: float = 0.0, bob: Vector2 = Vector2.ZERO) -> void:
 	var p := _part(look, slot)
@@ -1809,6 +1861,36 @@ static func _draw_back(ci: CanvasItem, look: Dictionary, g: Dictionary, pose: Di
 					var ff3 := 0.7 + 0.3 * sin(t * 40.0 + k)
 					ci.draw_colored_polygon(PackedVector2Array([nz2 + Vector2(-4, 5), nz2 + Vector2(-30.0 * ff3, 16.0 * ff3), nz2 + Vector2(4, 5)]), Color(0.4, 0.75, 1.0, 0.9))
 					ci.draw_colored_polygon(PackedVector2Array([nz2 + Vector2(-2, 5), nz2 + Vector2(-14.0 * ff3, 9.0 * ff3), nz2 + Vector2(2, 5)]), Color(1, 1, 1, 0.9))
+		"peacock":
+			# (1.107) Menagerie: a Peacock Fan. Folded it trails down behind; open it fans up over the robot and shimmers
+			var k8: float = clampf(float(pose.get("fan", 0.0)), 0.0, 1.0)
+			var th8: float = g["th"]
+			var root8 := Vector2(bx - 4.0, top + th8 * 0.45)
+			var n8 := 11
+			for j in n8:
+				var u8 := float(j) / (n8 - 1)
+				var a_open := -PI * (0.95 - 0.9 * u8)
+				var a_fold := PI * (0.6 + 0.08 * u8) + sin(t * 2.0 + j) * 0.03
+				var a8 := lerp_angle(a_fold, a_open, k8)
+				var ln8 := lerpf(70.0 + 10.0 * sin(u8 * PI), 120.0, k8)
+				var dv := Vector2(cos(a8), sin(a8))
+				var tip8 := root8 + dv * ln8
+				var pv := dv.orthogonal()
+				ci.draw_line(root8, tip8, c.darkened(0.35), 2.0)
+				var vane := PackedVector2Array([root8 + dv * ln8 * 0.3, tip8 - dv * 10.0 + pv * 7.0, tip8 + dv * 4.0, tip8 - dv * 10.0 - pv * 7.0])
+				_poly(ci, vane, c.lightened(0.05 * (j % 2)))
+				var eye8 := tip8 - dv * 8.0
+				var sh8 := 0.75 + 0.25 * sin(t * 6.0 + j) * k8
+				ci.draw_circle(eye8, 5.0, Color(0.95, 0.75, 0.25, sh8))
+				ci.draw_circle(eye8, 3.2, Color(0.1, 0.55, 0.85, sh8))
+				ci.draw_circle(eye8, 1.6, Color(0.05, 0.1, 0.25))
+			_joint(ci, root8, 6.0, Color(0.85, 0.65, 0.2))
+		"trunk":
+			# (1.107) Menagerie: the Elephant Trunk's harness and air tank on the back (the trunk itself hangs in front)
+			var th9: float = g["th"]
+			_plate(ci, _rounded(Rect2(bx - 14.0, top + 6.0, 16.0, th9 * 0.55), 6.0), c.darkened(0.15))
+			ci.draw_line(Vector2(bx - 12, top + 14), Vector2(bx, top + 14), Color(0.85, 0.18, 0.15), 3.0)
+			ci.draw_line(Vector2(bx - 12, top + 20), Vector2(bx, top + 20), Color(0.95, 0.75, 0.25), 2.0)
 		"shieldgen":
 			# (1.102) Kane: a black pylon on the back, a gold ring floating round its tip, a faint field shimmering
 			var th5: float = g["th"]
@@ -1996,6 +2078,27 @@ static func _draw_leg(ci: CanvasItem, look: Dictionary, slot: String, hip: Vecto
 			_plate(ci, _chamfer(Rect2(noz.x - 5, noz.y - 6, 9, 12), 2.0), Color(0.75, 0.16, 0.18))
 			var fl2 := 0.6 + 0.4 * sin(Time.get_ticks_msec() * 0.04)
 			ci.draw_colored_polygon(PackedVector2Array([noz + Vector2(-5, 3), noz + Vector2(-5 - 10.0 * fl2, 6), noz + Vector2(-5, 8)]), Color(0.4, 0.75, 1.0, 0.7))
+		"arachnid":
+			# (1.107) Menagerie: a spider's leg, the knee raised high above the hip, a long thin shin down to a point
+			var standing := pose == "stand" or pose == ""
+			var kk := hip + Vector2(-26.0 if back else 30.0, -30.0) * sz if standing else ik_joint(hip, foot, own_len * 0.5, own_len * 0.62, hip.lerp(foot, 0.4) - perp * 24.0)
+			if _front_legs and standing:
+				kk = hip + Vector2(32.0, -26.0) * sz
+			_limb(ci, hip, kk, c, th * 1.1)
+			_limb(ci, kk, foot + Vector2(0, -4), c, th * 0.75)
+			_joint(ci, kk, th * 0.6, Color(0.85, 0.18, 0.15))
+			for k in 3:
+				var hq2 := kk.lerp(foot, 0.25 + k * 0.22)
+				var hd := (foot - kk).normalized().orthogonal()
+				ci.draw_line(hq2, hq2 + hd * 5.0 + (foot - kk).normalized() * 3.0, c.lightened(0.25), 1.2)   # hairs
+			ci.draw_line(kk.lerp(foot, 0.5) - (foot - kk).normalized().orthogonal() * th * 0.4, kk.lerp(foot, 0.5) + (foot - kk).normalized().orthogonal() * th * 0.4, Color(0.95, 0.75, 0.25), 2.0)
+		"gecko":
+			# (1.107) Menagerie: a gecko's leg, green with dark spots
+			_limb(ci, hip, knee, c, th)
+			_limb(ci, knee, foot + Vector2(0, -5), c, th * 0.85)
+			_joint(ci, knee, th * 0.55, c.darkened(0.25))
+			for k in 3:
+				ci.draw_circle(hip.lerp(knee, 0.3 + k * 0.25) + perp * th * 0.15 * (k - 1), 2.2, c.darkened(0.4))
 		"hakama":
 			# (1.103) Tenryu: armoured hakama, a wide pleated skirt that flares to the floor, plates over the thigh
 			var hk := PackedVector2Array([hip - perp * th * 0.5, hip + perp * th * 0.5, foot + Vector2(0, -6) + perp * th * 0.85, foot + Vector2(0, -6) - perp * th * 0.85])
@@ -2177,6 +2280,15 @@ static func _draw_leg(ci: CanvasItem, look: Dictionary, slot: String, hip: Vecto
 		ci.draw_colored_polygon(PackedVector2Array([foot + Vector2(-10, -10), foot + Vector2(10, -10), foot + Vector2(0, 6.0 + 8.0 * gl)]), Color(0.4, 0.8, 1.0, 0.8))
 	elif p["shape"] == "spider":
 		_pl(ci, PackedVector2Array([foot + Vector2(-6, 4), foot, foot + Vector2(10, 4)]), tc, 4.0)
+	elif p["shape"] == "arachnid":
+		_poly(ci, PackedVector2Array([foot + Vector2(-3, -6), foot + Vector2(3, -6), foot + Vector2(1, 0)]), Color(0.85, 0.18, 0.15))   # a red point
+	elif p["shape"] == "gecko":
+		# splayed toes with round sticky pads
+		for k in 3:
+			var tdir := Vector2(cos(-0.5 + k * 0.5), sin(-0.5 + k * 0.5) * 0.3 + 0.1)
+			var tp := foot + Vector2(2, -3) + tdir * 13.0
+			_ln(ci, foot + Vector2(0, -4), tp, c.darkened(0.1), 3.0)
+			_disc(ci, tp, 3.4, Color(0.75, 0.85, 0.45))
 	elif p["shape"] == "blade":
 		_ln(ci, foot + Vector2(-4, 0), foot + Vector2(18, 0), tc, 4.0)
 	elif (LEG_HITS.has(pose) and pose != "knee") or pose == "fly_kick":
@@ -2387,6 +2499,21 @@ static func _draw_torso(ci: CanvasItem, look: Dictionary, g: Dictionary, flash: 
 				_ln(ci, Vector2(bxk, y0 + 3), Vector2(bxk, y1 - 3), c, 3.5)
 			_plate(ci, _chamfer(Rect2(x0 - 3, y0 - 2, w + 6, 9), 2.0), trim)
 			_plate(ci, _chamfer(Rect2(x0 - 3, y1 - 8, w + 6, 9), 2.0), trim)
+		"abdomen":
+			# (1.107) Menagerie: a spider's body, a long low thorax with a big round abdomen behind, a red hourglass
+			var ac := Vector2(r.get_center().x - (0.0 if front else w * 0.55), y0 + r.size.y * 0.45)
+			var ar := Vector2(w * (0.62 if front else 0.55), r.size.y * (0.68 if front else 0.62))
+			var ab := PackedVector2Array()
+			for k in 24:
+				var a9 := k * TAU / 24.0
+				ab.append(ac + Vector2(cos(a9) * ar.x, sin(a9) * ar.y))
+			_plate(ci, ab, c.darkened(0.08))
+			for k in 3:
+				ci.draw_arc(ac + Vector2(ar.x * (0.15 if not front else 0.0), 0), ar.y * (0.35 + k * 0.22), -1.2, 1.2, 12, Color(0.95, 0.75, 0.25, 0.55), 2.0)
+			var hg := ac + Vector2(0 if front else -ar.x * 0.2, ar.y * 0.15)
+			_poly(ci, PackedVector2Array([hg + Vector2(-7, -12), hg + Vector2(7, -12), hg, hg + Vector2(7, 12), hg + Vector2(-7, 12), hg]), Color(0.85, 0.15, 0.12))
+			_plate(ci, _rounded(Rect2(x0 + (0.0 if front else w * 0.2), y0 + 4, w * (1.0 if front else 0.8), r.size.y - 8), 12.0), c)
+			ci.draw_line(Vector2(x0 + w * (0.25 if not front else 0.08), y0 + r.size.y * 0.5), Vector2(x1 - 6, y0 + r.size.y * 0.5), Color(0.85, 0.18, 0.15), 3.0)
 		"armadillo":
 			# (1.106) Menagerie: an arched shell of overlapping bands, gold rivets on each band's edge, a soft belly
 			var cx := r.get_center().x
@@ -2877,6 +3004,47 @@ static func _draw_head(ci: CanvasItem, look: Dictionary, g: Dictionary, flash: b
 					ci.draw_colored_polygon(PackedVector2Array([Vector2(cen.x + sgn2 * w * 0.06, y0 + h * 0.42), Vector2(cen.x + sgn2 * w * 0.3, y0 + h * 0.4), Vector2(cen.x + sgn2 * w * 0.28, y0 + h * 0.5), Vector2(cen.x + sgn2 * w * 0.06, y0 + h * 0.5)]), eye)
 			else:
 				ci.draw_colored_polygon(PackedVector2Array([Vector2(x0 + w * 0.5, y0 + h * 0.42), Vector2(x0 + w * 0.92, y0 + h * 0.4), Vector2(x0 + w * 0.9, y0 + h * 0.5), Vector2(x0 + w * 0.5, y0 + h * 0.5)]), eye)
+		"beartrap":
+			# (1.107) Menagerie: a bear trap for a head. Steel jaws with teeth, a spring at the hinge; it snaps when it bites
+			var hinge := Vector2(x0 + (w * 0.5 if front else w * 0.12), y0 + h * 0.55)
+			var open9 := 0.12 + 0.05 * sin(t * 1.7)
+			if _bite > 0.0:
+				open9 = 0.75 if _bite > 0.45 else 0.0   # wide, then shut
+			var up := PackedVector2Array([Vector2(x0, y0 + h * 0.55), Vector2(x0 + w * 0.15, y0 + 4), Vector2(x0 + w * 0.85, y0), Vector2(x0 + w, y0 + h * 0.55)])
+			_plate(ci, up, c)
+			var low := PackedVector2Array()
+			for q in [Vector2(x0, y0 + h * 0.55), Vector2(x0 + w, y0 + h * 0.55), Vector2(x0 + w * 0.82, y0 + h), Vector2(x0 + w * 0.2, y0 + h)]:
+				var qq: Vector2 = q
+				low.append(hinge + (qq - hinge).rotated(open9 * (1.0 if not front else 0.0)) + Vector2(0, open9 * h * 0.35 if front else 0.0))
+			_plate(ci, low, c.darkened(0.12))
+			for k in 6:
+				var tx9 := x0 + 4 + k * (w - 8) / 5.0
+				ci.draw_colored_polygon(PackedVector2Array([Vector2(tx9 - 3, y0 + h * 0.55), Vector2(tx9 + 3, y0 + h * 0.55), Vector2(tx9, y0 + h * 0.7)]), Color(0.88, 0.88, 0.9))
+				var lt := hinge + (Vector2(tx9, y0 + h * 0.56) - hinge).rotated(open9 * (1.0 if not front else 0.0)) + Vector2(0, open9 * h * 0.35 if front else 0.0)
+				ci.draw_colored_polygon(PackedVector2Array([lt + Vector2(-3, 0), lt + Vector2(3, 0), lt + Vector2(0, -10)]), Color(0.78, 0.78, 0.8))
+			if not front:
+				for k in 4:
+					ci.draw_arc(hinge + Vector2(-2, 0), 5.0 + k * 0.1, k * 1.6, k * 1.6 + 4.0, 8, Color(0.75, 0.6, 0.3), 2.0)   # the spring
+			ci.draw_circle(Vector2(x0 + w * (0.38 if front else 0.62), y0 + h * 0.26), 3.5, eye)
+			ci.draw_circle(Vector2(x0 + w * (0.62 if front else 0.8), y0 + h * 0.26), 3.5, eye)
+		"rooster":
+			# (1.107) Menagerie: a cream head with a red comb that wobbles as it walks and stands tall after a win, a beak, a wattle
+			_round(ci, cen + Vector2(0, h * 0.1), minf(w, h) * 0.5, c)
+			var tall := 1.45 if _proud else 1.0
+			for k in 5:
+				var lx9 := x0 + w * (0.18 + k * 0.16)
+				var wob := 0.0 if _proud else sin(t * 7.0 + k * 0.9) * 2.0
+				var lh := (8.0 + 4.0 * sin(float(k) / 4.0 * PI)) * tall
+				_disc(ci, Vector2(lx9 + wob, y0 + 2.0 - lh * 0.6), lh * 0.55, Color(0.88, 0.15, 0.12) if not flash else Color.WHITE)
+			if front:
+				_poly(ci, PackedVector2Array([Vector2(cen.x - 5, cen.y + 2), Vector2(cen.x + 5, cen.y + 2), Vector2(cen.x, cen.y + 12)]), Color(0.98, 0.72, 0.15))
+				_disc(ci, Vector2(cen.x, cen.y + 17), 4.0, Color(0.88, 0.15, 0.12))
+				ci.draw_circle(Vector2(cen.x - w * 0.2, cen.y - 2), 3.0, eye)
+				ci.draw_circle(Vector2(cen.x + w * 0.2, cen.y - 2), 3.0, eye)
+			else:
+				_poly(ci, PackedVector2Array([Vector2(x0 + w - 2, cen.y), Vector2(x0 + w + 12, cen.y + 5), Vector2(x0 + w - 2, cen.y + 9)]), Color(0.98, 0.72, 0.15))
+				_disc(ci, Vector2(x0 + w - 4, cen.y + 15), 4.5, Color(0.88, 0.15, 0.12))
+				ci.draw_circle(Vector2(cen.x + w * 0.2, cen.y - 1), 3.2, eye)
 		"faceplate":
 			# (1.103) Tenryu: a blue helmet with a white faceplate, narrow eye slits and a grille for a mouth
 			_plate(ci, _chamfer(Rect2(x0, y0, w, h), 7.0), c)

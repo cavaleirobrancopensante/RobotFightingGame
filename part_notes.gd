@@ -73,6 +73,13 @@ const SHAPE := {
 	"torso:herochest": ["Hero chest, glowing vents", "It shouts the move before it lands"],
 	"torso:samurai": ["Lacquered plate, laced in gold", "The skirt plates turn a sweep"],
 	"torso:combiner": ["Combiner frame, four shoulders", "Docking ports, waiting for friends"],
+	"torso:abdomen": ["Spider abdomen, four shoulders", "The hourglass is for luck"],
+	"head:beartrap": ["Bear trap, sprung and ready", "Don't put your hand near it"],
+	"head:rooster": ["Rooster comb, cast in red tin", "Crows when it wins"],
+	"back:peacock": ["Peacock fan, eleven feathers", "The crowd always looks"],
+	"back:trunk": ["Elephant trunk, air powered", "Picks things up. Throws them back"],
+	"leg:arachnid": ["Spider leg, knee up high", "Eight points of contact, they say"],
+	"leg:gecko": ["Gecko foot, sticky pads", "Walks up the ropes if you let it"],
 	"torso:armadillo": ["Armadillo shell, four bands", "Curls up tighter than a fist"],
 	"torso:gorillachest": ["Gorilla chest, made for pounding", "Circus gold across the belly"],
 	# arms

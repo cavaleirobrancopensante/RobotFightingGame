@@ -191,6 +191,19 @@ class Fighter:
 	var sprint_t := 0.0      # (1.100) Neon Spoiler: how long it has walked the same way
 	var sprint_dir := 0
 	var sting_cd := 0.0      # (1.100) Volta set: a spark on the floor stung it a moment ago
+	# (1.107) the quick animal parts
+	var bite_t := 0.0        # a Bear-Trap Jaw lunging: the head is out in front
+	var fan_t := 0.0         # a Peacock Fan open: no one can aim at it
+	var trunk_t := -1.0      # an Elephant Trunk throwing (counts up; -1 = not)
+	var trunk_def := {}      # the part it picked up
+	var trunk_fired := false
+	var trunk_from := Vector2.ZERO
+	var steady := 0.0        # Spider Legs: can't be swept or knocked down (low hits do this % less)
+	var cling := 0.0         # Gecko Feet: springs off the ropes (the kick hits this % harder)
+	var cling_y := 0.0
+	var cling_cd := 0.0
+	var spring_t := 0.0      # the kick after a spring is on
+	var proud := false       # won by K.O.: a Rooster Comb stands up
 	var shell := 0.0         # (1.106) an Armadillo Shell: hold BLOCK to curl into a ball (damage cut by this %)
 	var curl_hold := 0.0     # how long BLOCK has been held standing
 	var ai_curl := 0.0       # the CPU wants to stay curled this long
@@ -863,6 +876,12 @@ func make_fighter(spec: Dictionary) -> Fighter:
 	var shp = f.parts.get("torso", {})
 	if shp is Dictionary and str(shp.get("trait", "")) == "shell":
 		f.shell = Catalog.trait_value(shp)
+	for ls in ["leg_front", "leg_back"]:
+		var lp = f.parts.get(ls, {})
+		if lp is Dictionary and str(lp.get("trait", "")) == "steady":
+			f.steady = maxf(f.steady, Catalog.trait_value(lp))
+		if lp is Dictionary and str(lp.get("trait", "")) == "cling":
+			f.cling = maxf(f.cling, Catalog.trait_value(lp))
 	# (1.98) Pressure: a boiler (the Boiler Chest, a Coal Firebox) fills the gauge; every other
 	# Brassworks part on the robot helps a little, and the set doubles it
 	var src: float = f.gtraits.get("pressure", 0.0)
@@ -1314,6 +1333,31 @@ func ai_input_for(f: Fighter, delta: float) -> Dictionary:
 		f.ai.erase("vs_roll")
 	if f.shell > 0.0 and f.foe != null:
 		i = ai_shell(f, i, delta)
+	if f.cling > 0.0:
+		i = ai_gecko(f, i, delta)
+	return i
+
+
+## (1.107) The CPU with Gecko Feet now and then jumps into the ropes to spring off them.
+func ai_gecko(f: Fighter, i: Dictionary, delta: float) -> Dictionary:
+	var wd := int(f.ai.get("wall_dir", 0))
+	if f.state in ["prejump", "jump"] and wd != 0:
+		i["left"] = wd < 0
+		i["right"] = wd > 0
+		return i
+	if f.on_ground and wd != 0 and f.state != "prejump":
+		f.ai.erase("wall_dir")
+	if f.on_ground and f.state in ["idle", "walk"] and f.legs() > 0:
+		var near_l := f.pos.x - wall_l < 200.0
+		var near_r := wall_r - f.pos.x < 200.0
+		if (near_l or near_r) and randf() < delta * 0.8:
+			f.ai["wall_dir"] = -1 if near_l else 1
+			var j := empty_input()
+			j["jump"] = true
+			j["jump_press"] = true
+			j["left"] = near_l
+			j["right"] = near_r
+			return j
 	return i
 
 
@@ -1805,6 +1849,18 @@ func ai_use_gadgets(dist: float, threatened: bool, toward: String) -> Dictionary
 	if not g.is_empty() and threatened and dist < 200.0 * cpu.scale and randf() < 0.4 + ai_smart * 0.4:
 		use_gadget(cpu, g)
 		return {"hold": [toward]}   # walk through their attack behind the bubble
+	g = ai_gadget("bite")
+	if not g.is_empty() and absf(player.pos.x - cpu.pos.x) < body_half(cpu) + body_half(player) + BITE_REACH * 0.8 * cpu.scale and randf() < 0.3 + ai_smart * 0.4:
+		use_gadget(cpu, g)   # (1.107) close enough to bite
+		return {}
+	g = ai_gadget("fan")
+	if not g.is_empty() and (player.target != "" or player.weak != "" or threatened) and randf() < 0.2 + ai_smart * 0.3:
+		use_gadget(cpu, g)
+		return {}
+	g = ai_gadget("trunk")
+	if not g.is_empty() and cpu.trunk_t < 0.0 and trunk_pick(cpu) >= 0 and lined_up and randf() < 0.5:
+		use_gadget(cpu, g)
+		return {}
 	g = ai_gadget("steam_burst")
 	if not g.is_empty() and (threatened or player.target != "") and randf() < 0.25 + ai_smart * 0.3:
 		use_gadget(cpu, g)   # (1.98) hide in the steam when you're lining it up
@@ -2475,7 +2531,9 @@ func update_aim(f: Fighter, delta: float) -> void:
 	var o: Fighter = f.foe
 	# (1.99) a Hazard Beacon's flashing makes it slower to aim at
 	var dz := 0.0 if o == null else (limb_trait(o, "head", "dazzle") + limb_trait(o, "head2", "dazzle")) * 2.0
-	f.aim_cd = maxf(0.0, f.aim_cd - delta / (1.0 + dz / 100.0))
+	var fanned := o != null and o.fan_t > 0.0   # (1.107) a Peacock Fan open: nothing to aim at
+	if not fanned:
+		f.aim_cd = maxf(0.0, f.aim_cd - delta / (1.0 + dz / 100.0))
 	if o == null or o.state == "ko" or f.heads() == 0:
 		return
 	if f.scan_on != o:
@@ -2486,7 +2544,7 @@ func update_aim(f: Fighter, delta: float) -> void:
 	if f.weak != "" and f.weak != wp:
 		f.weak = ""
 		f.scan_t = 0.0
-	if f.weak == "" and wp != "" and o.steam_t <= 0.0:
+	if f.weak == "" and wp != "" and o.steam_t <= 0.0 and not fanned:
 		f.scan_t += delta
 		if f.scan_t >= f.scan_time and o.tarp_left > 0:
 			# (1.97) a Tarp Cape: the scan comes back empty and starts again
@@ -2725,6 +2783,10 @@ func use_gadget(f: Fighter, g: Dictionary) -> void:
 	if f.cooldowns.get(id, 0.0) > 0.0 or not f.gadget_working(g) or f.state in ["ko", "hit"] or f.stun_t > 0.0 or f.burn_t > 0.0:
 		return
 	var o: Fighter = f.foe
+	if id == "trunk" and (f.trunk_t >= 0.0 or trunk_pick(f) < 0):
+		if f.team == 0 and f.trunk_t < 0.0:
+			popup(tr("NOTHING TO THROW"), f.pos + Vector2(0, -230.0 * f.scale), Color(0.8, 0.8, 0.8))
+		return
 	if info.get("active", true) and id != "overcharge":
 		spend(f, f.power_max * 0.18)
 	match id:
@@ -2767,6 +2829,31 @@ func use_gadget(f: Fighter, g: Dictionary) -> void:
 		"shield":
 			f.shield_t = 2.5
 			Sfx.play("repair", 0.1)
+		"bite":
+			bite(f, o)
+		"fan":
+			# (1.107) the Peacock Fan opens: their crosshair comes off and they can't aim while it's up
+			f.fan_t = FAN_T
+			cheer = maxf(cheer, 2.0)
+			Sfx.play("crowd_ooh", 0.1)
+			Sfx.play("swing", 0.1, -2.0, 0.8)
+			popup(tr("FAN!"), f.pos + Vector2(0, -240.0 * f.scale), Color(0.3, 0.9, 0.8))
+			for e in enemies_of(f):
+				if e.foe == f:
+					if e.target != "":
+						e.target = ""
+						if e.team == 0:
+							popup(tr("LOST AIM"), e.pos + Vector2(0, -230.0 * e.scale), Color(1.0, 0.7, 0.4))
+					e.aim_cd = maxf(e.aim_cd, e.aim_time)
+					e.scan_t = 0.0
+		"trunk":
+			var k := trunk_pick(f)
+			f.trunk_def = debris[k]["def"]
+			f.trunk_from = debris[k]["pos"]
+			debris.remove_at(k)
+			f.trunk_t = 0.0
+			f.trunk_fired = false
+			Sfx.play("swing", 0.1, -4.0, 0.6)
 		"booster", "flame_dash":
 			f.boost_t = 0.3
 			f.boost_hit = false
@@ -2797,7 +2884,7 @@ func fire_projectile(f: Fighter, kind: String, dmg: float, zone: String, slot: S
 		start = to_world_point(f, RobotArt.part_center(f.get_look(), hs) + Vector2(24, 0))
 	elif kind == "shell":
 		start = to_world_point(f, (RobotArt.geom(f.get_look())["torso"] as Rect2).get_center() + Vector2(40, 0))
-	var speed: float = {"bolt": 900.0, "fist": 1050.0, "claw": 1100.0, "laser": 1700.0, "shell": 760.0}[kind]
+	var speed: float = {"bolt": 900.0, "fist": 1050.0, "claw": 1100.0, "laser": 1700.0, "shell": 760.0, "part": 880.0}[kind]
 	var src := slot
 	if kind == "laser":
 		src = "head" if f.alive("head") else "head2"
@@ -2846,7 +2933,7 @@ func update_projectiles(delta: float) -> void:
 			if p["kind"] == "claw":
 				a["stun"] = 0.6
 				a["knock"] = -700.0   # reel them in
-			if p["kind"] == "shell":
+			if p["kind"] == "shell" or p["kind"] == "part":
 				a["knock"] = 480.0
 				a["stun"] = 0.45
 			apply_hit(owner, o, a, p["pos"])
@@ -2883,6 +2970,12 @@ func update_fighter(f: Fighter, o: Fighter, i: Dictionary, delta: float) -> void
 	if f.has_gadget("regen") and f.alive("torso") and phase == "fight":
 		f.parts["torso"]["hp"] = minf(f.parts["torso"]["max_hp"], f.parts["torso"]["hp"] + 3.6 * f.gpow * delta)
 	f.slow_t = maxf(0.0, f.slow_t - delta)
+	f.bite_t = maxf(0.0, f.bite_t - delta)
+	f.fan_t = maxf(0.0, f.fan_t - delta)
+	f.cling_cd = maxf(0.0, f.cling_cd - delta)
+	f.spring_t = maxf(0.0, f.spring_t - delta)
+	if f.trunk_t >= 0.0:
+		update_trunk(f, delta)
 	f.hobble_t = maxf(0.0, f.hobble_t - delta)
 	f.numb_t = maxf(0.0, f.numb_t - delta)
 	f.armor_t = maxf(0.0, f.armor_t - delta)
@@ -2964,6 +3057,12 @@ func update_fighter(f: Fighter, o: Fighter, i: Dictionary, delta: float) -> void
 	elif BALL_STATES.has(f.state):
 		update_ball(f, o, i, delta)
 		i = empty_input()
+	elif f.state == "cling":
+		f.timer -= delta
+		f.vel = Vector2.ZERO
+		if f.timer <= 0.0:
+			spring_off(f, o)
+		i = empty_input()
 	f.daze_t = maxf(0.0, f.daze_t - delta)
 	var punch: bool = i["punch"]
 	var kick: bool = i["kick"]
@@ -3023,7 +3122,7 @@ func update_fighter(f: Fighter, o: Fighter, i: Dictionary, delta: float) -> void
 			f.guard_break = false
 			if f.queued != "" and start_queued(f):
 				return
-	elif f.state in ["switch", "prejump", "down", "getup"] or BALL_STATES.has(f.state):
+	elif f.state in ["switch", "prejump", "down", "getup", "cling"] or BALL_STATES.has(f.state):
 		pass   # busy with its own timer (handled above)
 	elif update_charge(f, i, delta):
 		pass
@@ -3154,6 +3253,21 @@ func update_fighter(f: Fighter, o: Fighter, i: Dictionary, delta: float) -> void
 	else:
 		f.on_ground = false
 	f.pos.x = clampf(f.pos.x, wall_l + body_half(f) + 8.0 * f.scale, wall_r - body_half(f) - 8.0 * f.scale)
+	if f.state == "cling":
+		f.pos.y = f.cling_y
+		f.vel = Vector2.ZERO
+	elif f.cling > 0.0 and f.state == "jump" and not f.on_ground and f.cling_cd <= 0.0 and f.legs() > 0:
+		# (1.107) Gecko Feet: a jump into the ropes sticks there a beat
+		var at_l := f.pos.x <= wall_l + body_half(f) + 9.0 * f.scale
+		var at_r := f.pos.x >= wall_r - body_half(f) - 9.0 * f.scale
+		if (at_l and f.vel.x < -20.0) or (at_r and f.vel.x > 20.0):
+			f.state = "cling"
+			f.timer = CLING_T
+			f.cling_y = f.pos.y
+			f.facing = 1 if at_l else -1   # it turns round on the rope, facing back in
+			f.vel = Vector2.ZERO
+			f.squash = 0.12
+			Sfx.play("land", 0.1, -6.0, 1.4)
 	f.squash = maxf(0.0, f.squash - delta)
 	f.hero_t = maxf(0.0, f.hero_t - delta) if f.state == "idle" else 0.0
 
@@ -3388,6 +3502,8 @@ func apply_hit(att: Fighter, d: Fighter, a: Dictionary, at: Vector2) -> void:
 				GameData.story_seen.append("big_special")   # (1.103) Tenryu notices
 	var touched: Array = a.get("touched", [])
 	var slot := choose_part(att, d, a.get("zone", "punch"), a.get("sure_aim", false), touched)
+	if d.bite_t > 0.0 and d.alive("head") and slot != "head" and randf() < BITE_RISK:
+		slot = "head"   # (1.107) the jaw leaned in to bite: the head is out in front
 	var balled := BALL_STATES.has(d.state) and d.alive("torso")
 	if balled:
 		slot = "torso"   # (1.106) curled up: everything lands on the shell
@@ -3525,6 +3641,10 @@ func apply_hit(att: Fighter, d: Fighter, a: Dictionary, at: Vector2) -> void:
 			dmg *= 0.25
 			popup(tr("DEFLECTED"), hit_at + Vector2(0, -30), Color(0.7, 0.8, 1.0))
 			add_spark(hit_at, Color(0.7, 0.8, 1.0), 30.0)
+		if att.spring_t > 0.0 and att.state == "fly_kick":
+			dmg *= 1.0 + att.cling / 100.0   # (1.107) off the ropes
+		if a.get("height", "mid") == "low" and d.steady > 0.0:
+			dmg *= 1.0 - d.steady / 100.0
 		if a.get("height", "mid") == "low":
 			# (1.100) Mag-Lev Skids float over sweeps and low jabs
 			var hov := maxf(limb_trait(d, "leg_front", "hover"), limb_trait(d, "leg_back", "hover"))
@@ -3597,7 +3717,13 @@ func apply_hit(att: Fighter, d: Fighter, a: Dictionary, at: Vector2) -> void:
 		if armored:
 			popup(tr("POWERED THROUGH"), d.pos + Vector2(0, -220.0 * d.scale), Color(0.85, 0.9, 1.0))
 			add_spark(hit_at, Color(0.85, 0.9, 1.0), 34.0)
-		if balled:
+		var swept: bool = d.steady > 0.0 and d.legs() > 0 and (a.get("height", "mid") == "low" or str(a.get("zone", "")) == "sweep") and not balled
+		if swept:
+			# (1.107) Spider Legs: a sweep lands and the robot just shudders
+			d.squash = maxf(d.squash, 0.1)
+			if randf() < 0.5:
+				popup(tr("STEADY"), d.pos + Vector2(0, -40.0), Color(0.8, 0.75, 0.95))
+		elif balled:
 			if d.state == "curl":
 				d.vel.x = att.facing * 180.0 * knock_k(att, d)   # the ball skids, it doesn't open
 		elif d.state != "ko" and not armored:
@@ -3613,7 +3739,9 @@ func apply_hit(att: Fighter, d: Fighter, a: Dictionary, at: Vector2) -> void:
 			d.vel.x = att.facing * float(a.get("knock", 320.0)) * KNOCK_K * knock_k(att, d) * (1.0 + off_trait(att, src, "gust") / 100.0)   # (1.101) a Turbine Arm blows them back
 			if off_trait(att, src, "magnet") > 0.0:
 				d.vel.x = -att.facing * 260.0   # magnets yank the enemy in
-			if a.has("launch"):
+			if a.has("launch") and d.steady > 0.0 and d.legs() > 0:
+				d.timer *= 0.6   # (1.107) Spider Legs stay planted: no launch, no knockdown
+			elif a.has("launch"):
 				d.vel.y = a["launch"]
 				d.on_ground = false
 				d.knocked = not d.sets.has("oldiron")   # it lands on its back (Old Iron's set stays on its feet)
@@ -3657,6 +3785,91 @@ const PRESSURE_FILL := 8.0
 const PRESSURE_VENT := 1.6
 const STEAM_MISS := 35.0
 const WRAP_ARMOR := 1.6   # (1.105) armour counts this much more against a tentacle
+
+
+# ---------------------------------------------------------------- the quick animal parts (1.107)
+
+const BITE_REACH := 70.0    # past the front of the body
+const BITE_DMG := 16.0
+const BITE_RISK := 0.45     # while it leans in, this share of hits find the head
+const FAN_T := 2.5
+const TRUNK_REACH := 360.0
+const TRUNK_THROW := 0.45   # the trunk lets go this far into the move
+const TRUNK_T := 0.75
+const TRUNK_DMG := 15.0
+const CLING_T := 0.22
+
+
+## The Bear-Trap Jaw: the head lunges and the trap snaps shut on whatever's close, and holds on.
+func bite(f: Fighter, o: Fighter) -> void:
+	f.bite_t = 0.6
+	Sfx.play("break", 0.1, -4.0, 1.5)
+	if o == null or o.state == "ko":
+		return
+	var reach := body_half(f) + body_half(o) + BITE_REACH * f.scale
+	if absf(o.pos.x - f.pos.x) < reach and absf(o.pos.y - f.pos.y) < 160.0 and signf(o.pos.x - f.pos.x) == f.facing:
+		var hs := "head" if f.alive("head") else "head2"
+		var at := to_world_point(f, RobotArt.part_center(f.get_look(), hs)) + Vector2(f.facing * 40.0 * f.scale, 0)
+		apply_hit(f, o, {"damage": BITE_DMG * f.mod_damage(), "zone": "head_torso", "stun": 0.4, "knock": 120.0, "src": hs, "family": "body"}, at)
+		var bit := "torso" if o.alive("torso") else ""
+		if bit != "" and o.shield_t <= 0.0:
+			o.burns.append({"slot": bit, "dps": 2.5 * f.gpow, "t": 1.5, "crush": true})   # it holds on
+		popup(tr("SNAP!"), at + Vector2(0, -30), Color(0.9, 0.9, 0.95))
+	else:
+		popup(tr("SNAP"), f.pos + Vector2(f.facing * 60.0, -150.0) * f.scale, Color(0.7, 0.7, 0.75))
+
+
+## The lying part nearest the Elephant Trunk within its reach (index in debris, -1 = none).
+func trunk_pick(f: Fighter) -> int:
+	var best := -1
+	var bd := TRUNK_REACH * f.scale
+	for k in debris.size():
+		var d: Dictionary = debris[k]
+		if not d.get("lie", false) or not d.has("def") or absf(float(d["vel"].y)) > 60.0:
+			continue
+		var dx: float = absf(float(d["pos"].x) - f.pos.x)
+		if dx < bd:
+			bd = dx
+			best = k
+	return best
+
+
+## Reach down, curl round the part, lift it and throw it.
+func update_trunk(f: Fighter, delta: float) -> void:
+	f.trunk_t += delta
+	if f.state == "ko":
+		f.trunk_t = -1.0
+		return
+	if not f.trunk_fired and f.trunk_t >= TRUNK_THROW:
+		f.trunk_fired = true
+		var o: Fighter = f.foe
+		if o != null:
+			f.facing = 1 if o.pos.x >= f.pos.x else -1
+		var g := RobotArt.geom(f.get_look())
+		var start := to_world_point(f, Vector2(0.0, float(g["top"]) - 40.0))
+		projectiles.append({"owner": f, "kind": "part", "pos": start, "src": "", "vel": Vector2(f.facing * 880.0, 0.0),
+				"damage": TRUNK_DMG * f.mod_damage(), "zone": "any", "travel": 0.0, "max": 2000.0,
+				"returning": false, "slot": "", "hit": false, "spin": 0.0, "def": f.trunk_def})
+		Sfx.play("swing", 0.1, 0.0, 0.7)
+		popup(tr("THROW!"), f.pos + Vector2(0, -240.0 * f.scale), Color(0.85, 0.85, 0.9))
+	if f.trunk_t >= TRUNK_T:
+		f.trunk_t = -1.0
+		f.trunk_def = {}
+
+
+## Gecko Feet: off the ropes and straight back in with a flying kick.
+func spring_off(f: Fighter, o: Fighter) -> void:
+	f.state = "jump"
+	f.cling_cd = 1.2
+	f.spring_t = 1.0
+	f.vel = Vector2(f.facing * 820.0, -480.0)
+	Sfx.play("jump", 0.1, 0.0, 1.3)
+	add_spark(f.pos + Vector2(-f.facing * 40.0, -60.0) * f.scale, Color(0.6, 0.9, 0.4), 20.0 * f.scale)
+	if f.legs() > 0:
+		start_attack(f, "fly_kick")
+	popup(tr("OFF THE ROPES!"), f.pos + Vector2(0, -230.0 * f.scale), Color(0.6, 0.95, 0.45))
+	if f.team == 0 and f == player:
+		coach("cling", tr("Gecko Feet! Jump into the ropes and you spring back with a kick."))
 
 
 # ---------------------------------------------------------------- the Armadillo Shell (1.106)
@@ -3960,6 +4173,7 @@ func rip_off(f: Fighter, slot: String, overkill: float = 0.0) -> void:
 
 
 func knockout(att: Fighter, d: Fighter, why: String) -> void:
+	att.proud = true
 	d.state = "ko"
 	d.vel = Vector2(att.facing * 400.0, -500.0)
 	d.on_ground = false
@@ -4401,6 +4615,15 @@ func draw_projectiles(off: Vector2) -> void:
 			"shell":
 				ci.draw_circle(pos, 11.0, Color(0.25, 0.25, 0.25))
 				ci.draw_circle(pos - dir * 14.0, 7.0, Color(1.0, 0.6, 0.2, 0.7))
+			"part":
+				# (1.107) a torn-off part the Elephant Trunk threw
+				var pd: Dictionary = p.get("def", {})
+				if pd.is_empty():
+					ci.draw_set_transform(pos, p["spin"] * 0.5, Vector2.ONE)
+					ci.draw_rect(Rect2(-14, -10, 28, 20), Color(0.45, 0.45, 0.5))
+					ci.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+				else:
+					PartIcon.draw_part_at(ci, pos, 54.0 * owner.scale, pd, 0.5, p["spin"] * 0.5)
 
 
 ## How the robot stands right now: the lean, lunge, squash and stretch of its pose. The drawing and
@@ -4703,6 +4926,8 @@ func draw_fighter(f: Fighter, off: Vector2) -> void:
 			"jet": f.jet_t > 0.0 or (not f.on_ground and f.vel.y < -400.0 and f.has_gadget("double_jump")),
 			"boost": f.boost_t > 0.0, "sprint": f.sprint_t > 0.5, "sx": sx, "sy": sy,
 			"pound": fmod(f.timer * 5.0, 1.0) if f.state == "special" and f.special_id == "chest_pound" else -1.0,
+			"bite": f.bite_t, "proud": f.proud, "trunk": f.trunk_t, "trunk_part": f.trunk_def,
+			"fan": clampf(minf((FAN_T - f.fan_t) / 0.25, f.fan_t / 0.3), 0.0, 1.0) if f.fan_t > 0.0 else 0.0,
 			"dazed": f.vis_pose.get("dazed", false), "tuck": f.vis_pose.get("tuck", false),
 			"bob_l": idle_bits(f)[0], "bob_r": idle_bits(f)[1], "head_dx": idle_bits(f)[2],
 			# a core under a quarter: its eye flickers like a bad bulb

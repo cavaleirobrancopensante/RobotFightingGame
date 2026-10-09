@@ -43,6 +43,9 @@ const TRAITS := {
 	# (1.104) Menagerie Mechanica
 	"knuckle": {"name": "Knuckle Walk", "desc": "Its fists help it walk: with a leg gone it still moves at %d%% speed.", "values": [85, 95]},
 	"pound": {"name": "Chest Pound", "desc": "With Gorilla Arms it learns the Chest Pound (down, up, punch): %d s of thick plating and a roar that shoves them back.", "values": [3, 4]},
+	"strut": {"name": "Strut", "desc": "Wins bring %d%% more BotMedia followers, and the pilot you beat takes it personally.", "values": [30, 45]},
+	"steady": {"name": "Eight-Point Stance", "desc": "Can't be swept or knocked down. Low hits do %d%% less.", "values": [15, 25]},
+	"cling": {"name": "Sticky Toes", "desc": "Jump at the ropes: it clings, springs off and flies back in with a kick that hits %d%% harder.", "values": [25, 40]},
 	"shell": {"name": "Curl Up", "desc": "Hold BLOCK to curl into a ball: hits land on the shell and do %d%% less. Punch or push toward them to roll in and bounce off.", "values": [35, 50]},
 	"wrap": {"name": "Wrap", "desc": "Its punches bend round a guard: %d%% gets through and it never bounces off. Armour stops it more.", "values": [45, 60]},
 	"tarp": {"name": "Tarp", "desc": "The tarp hides your weak spot: the enemy's first scans find nothing (%d of them).", "values": [1, 2]},

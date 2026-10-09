@@ -3,7 +3,7 @@ const PlayLog = preload("res://playlog.gd")   # (1.87) the playtest log
 
 # helper scripts, loaded by path so the game also runs without an editor scan
 ## The game's version, shown on the main menu. Bump it with every change (1.1, 1.2, ...).
-const VERSION := "1.106"
+const VERSION := "1.107"
 const Arena = preload("res://arena.gd")
 const I18n = preload("res://i18n.gd")
 const Catalog = preload("res://catalog.gd")
@@ -1588,7 +1588,7 @@ const HEAD_KIND := {"bucket": "plain", "box": "plain", "skull": "plain", "tall":
 		"horned": "allround", "knight": "allround", "orb": "allround", "cyclops": "sniper", "visor": "sniper",
 		"wedge": "sniper", "laser": "sniper", "dish": "scanner", "tv": "scanner", "bulb": "scanner", "speaker": "scanner",
 		"rivet": "plain", "grille": "plain", "peeper": "scanner", "busted": "plain", "periscope": "scanner", "divingbell": "plain",
-		"welder": "plain", "beacon": "allround", "tesla": "scanner", "racer": "sniper", "canopy": "allround", "radarnose": "sniper", "sentinel": "sniper", "oracle": "scanner", "vfin": "sniper", "faceplate": "plain"}
+		"welder": "plain", "beacon": "allround", "tesla": "scanner", "racer": "sniper", "canopy": "allround", "radarnose": "sniper", "sentinel": "sniper", "oracle": "scanner", "vfin": "sniper", "faceplate": "plain", "beartrap": "plain", "rooster": "allround"}
 const HEAD_TIMES := {"junk": [5.0, 8.0], "plain": [2.5, 4.0], "sniper": [0.6, 5.0], "scanner": [3.0, 1.0], "allround": [1.5, 2.0]}
 
 
@@ -2025,6 +2025,16 @@ func ids_of(eq: Dictionary) -> Dictionary:
 		if not p.is_empty():
 			out[slot] = p["id"]
 	return out
+
+
+## (1.107) A trait on your fitted parts (its value, 0 = none): the Rooster Comb's Strut.
+func my_trait(t: String) -> float:
+	var v := 0.0
+	for id in equipped_ids().values():
+		var d := part_def(str(id))
+		if str(d.get("trait", "")) == t:
+			v = maxf(v, Catalog.trait_value(d))
+	return v
 
 
 func equipped_ids() -> Dictionary:
@@ -2612,6 +2622,8 @@ func emergent_talk(o: Dictionary, won: bool) -> void:
 			var hit := REL_FIGHT_K * stakes * again * (1.0 if won else 0.8)
 			if r0 > 0.0:
 				hit *= 0.5   # friends take it better
+			if won:
+				hit *= 1.0 + my_trait("strut") / 100.0   # (1.107) a Rooster Comb crowing over them
 			rel_add(wid, -hit)
 		var r1 := rel_of(wid)
 		var name := str(World.pilot(wid)["name"])
