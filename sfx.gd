@@ -134,6 +134,43 @@ const MAKER_FIGHT := ["scrap_stomp", "iron_rockabilly", "brass_march", "hell_rif
 var favour := ""   # (1.94) the maker whose menu songs come up more often (your robot's main maker)
 
 
+## (1.95) A maker's jingle: a few seconds of its first menu song, then whatever was playing carries on.
+var _jingle_n := 0
+
+func jingle(maker: String) -> void:
+	var l: Array = MAKER_SONGS.get(maker, [])
+	if l.is_empty() or not GameData.settings.get("music", true):
+		return
+	var path := "res://music/%s.ogg" % str(l[0])
+	var s = load(path) if ResourceLoader.exists(path) else (AudioStreamOggVorbis.load_from_file(path) if FileAccess.file_exists(path) else null)
+	if s == null:
+		return
+	_jingle_n += 1
+	var my := _jingle_n
+	var prev_stream = music_player.stream
+	var prev_at := music_player.get_playback_position() if music_player.playing else 0.0
+	var was_playing := music_player.playing
+	if s is AudioStreamOggVorbis:
+		s.loop = false
+	music_player.stream = s
+	music_player.volume_db = MUSIC_DB
+	music_player.play(minf(8.0, maxf(0.0, s.get_length() - 8.0)))
+	await get_tree().create_timer(6.0).timeout
+	if my != _jingle_n:
+		return
+	var tw := create_tween()
+	tw.tween_property(music_player, "volume_db", -40.0, 0.6)
+	await tw.finished
+	if my != _jingle_n:
+		return
+	music_player.stream = prev_stream
+	if was_playing and prev_stream != null:
+		music_player.play(prev_at)
+		create_tween().tween_property(music_player, "volume_db", MUSIC_DB, 0.8)
+	else:
+		music_player.stop()
+
+
 ## A maker's fight song ("" when it has none).
 func maker_fight(maker: String) -> String:
 	var l: Array = MAKER_SONGS.get(maker, [])

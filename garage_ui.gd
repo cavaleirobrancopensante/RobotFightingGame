@@ -1125,6 +1125,8 @@ class PostPic extends Control:
 				GA.draw_trophy(self, Vector2(W * 0.5, H * 0.82), str(pic.get("t", "scrap")), int(pic.get("medal", 1)), H / 42.0)
 			"clip":
 				_clip_poster(W, H)
+			"mkad":
+				_maker_ad(W, H)
 			"part":
 				_room(W, H, Color(0.22, 0.17, 0.14), Color(1.0, 0.75, 0.45))
 				var PI_ = load("res://part_icon.gd")
@@ -1213,6 +1215,44 @@ class PostPic extends Control:
 		_caption(W, H, C.title(c), "")
 
 	## A plain backdrop with a cone of light from above and a floor.
+	## (1.95) A maker's advert: their colours, their logo, the part under a spotlight, a SALE ribbon,
+	## and a note to tap for the jingle.
+	func _maker_ad(W: float, H: float) -> void:
+		var M = load("res://makers.gd")
+		var m := str(pic.get("maker", ""))
+		var col: Color = M.color(m)
+		var ink := Color(str(M.info(m).get("ink", "#141414")))
+		draw_rect(Rect2(0, 0, W, H), ink.lerp(col, 0.25).darkened(0.2))
+		for k in 7:
+			var x := W * (0.1 + k * 0.16)
+			draw_colored_polygon(PackedVector2Array([Vector2(x, 0), Vector2(x + W * 0.06, 0), Vector2(x - W * 0.1, H), Vector2(x - W * 0.16, H)]), Color(col, 0.08))
+		draw_colored_polygon(PackedVector2Array([Vector2(W * 0.58, 0), Vector2(W * 0.7, 0), Vector2(W * 0.9, H * 0.92), Vector2(W * 0.38, H * 0.92)]), Color(1, 1, 1, 0.07))
+		var d: Dictionary = GameData.part_def(str(pic.get("id", "")))
+		if not d.is_empty():
+			var PI_ = load("res://part_icon.gd")
+			if str(d.get("kind", "")) in ["head", "torso", "arm", "leg"]:
+				PI_.draw_part_at(self, Vector2(W * 0.64, H * 0.54), H * 0.8, d, 1.0, 0.0)
+			else:
+				var bs := H * 0.66
+				PI_.draw_part(self, Rect2(Vector2(W * 0.64 - bs * 0.5, H * 0.88 - bs), Vector2(bs, bs)), d, 1.0)
+		var r := H * 0.17
+		load("res://logos.gd").draw_logo(self, M.logo(m), Vector2(r + 12.0, r + 12.0), r)
+		var font: Font = load("res://garage_ui.gd").headb()
+		var fs: int = UI.px(18)
+		draw_string(font, Vector2(14, H - 16), str(M.info(m).get("name", "")).to_upper(), HORIZONTAL_ALIGNMENT_LEFT, W * 0.5, fs, col.lightened(0.4))
+		var sale := int(pic.get("sale", 0))
+		if sale > 0:
+			var rw := W * 0.36
+			draw_colored_polygon(PackedVector2Array([Vector2(W - rw, 0), Vector2(W, 0), Vector2(W, rw * 0.5), Vector2(W - rw * 0.5, 0)]), Color(1.0, 0.85, 0.2))
+			draw_rect(Rect2(W - rw - 4, 12, rw - 8, fs + 10), Color(1.0, 0.85, 0.2))
+			draw_string(font, Vector2(W - rw + 2, 12 + fs + 2), tr("SALE -%d%%") % sale, HORIZONTAL_ALIGNMENT_LEFT, rw - 12, fs, Color(0.1, 0.08, 0.05))
+		# the jingle: tap to hear it
+		var nc := Vector2(W - 30, H - 30)
+		draw_circle(nc, 18, Color(0, 0, 0, 0.5))
+		draw_circle(nc + Vector2(-4, 6), 5, Color(1, 1, 1, 0.9))
+		draw_line(nc + Vector2(0, 6), nc + Vector2(0, -10), Color(1, 1, 1, 0.9), 2.5)
+		draw_line(nc + Vector2(0, -10), nc + Vector2(7, -6), Color(1, 1, 1, 0.9), 2.5)
+
 	func _room(W: float, H: float, wall: Color, lamp: Color) -> void:
 		draw_rect(Rect2(0, 0, W, H), wall)
 		draw_rect(Rect2(0, H * 0.84, W, H * 0.16), wall.darkened(0.45))

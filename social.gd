@@ -72,10 +72,24 @@ static func account(key: String) -> Dictionary:
 	if key.begins_with("fan:"):
 		var n: String = FANS[int(key.substr(4)) % FANS.size()]
 		return {"name": n, "handle": n, "fol": 40 + absi(hash(n)) % 900, "fan": true}
+	if key.begins_with("sp:mk:"):
+		return account(key.substr(3))   # a maker's contract talks from the maker's own account
 	if key.begins_with("sp:"):
-		var sp: Dictionary = GameData.Contracts.SPONSORS.get(key.substr(3), {})
+		var sp: Dictionary = GameData.Contracts.sp(key.substr(3))
 		return {"name": str(sp.get("name", "?")), "handle": str(sp.get("handle", "?")), "fol": int(sp.get("fol", 5000)),
 				"verified": true, "logo": key.substr(3)}
+	if key.begins_with("mk:"):
+		# (1.95) a maker's account
+		var m := key.substr(3)
+		var M = GameData.Makers
+		return {"name": str(M.info(m).get("name", "?")), "handle": M.handle(m), "fol": int(M.FOLLOWERS.get(m, 20000)),
+				"verified": true, "logo": M.logo(m), "maker": m}
+	if key.begins_with("mf:"):
+		# (1.95) a fan loyal to one maker: "mf:<maker>:<n>"
+		var bits := key.split(":")
+		var fl: Array = GameData.Makers.FANS.get(bits[1], ["fan"])
+		var nm := str(fl[int(bits[2]) % fl.size()]) if bits.size() > 2 else str(fl[0])
+		return {"name": nm, "handle": nm, "fol": 60 + absi(hash(nm)) % 2400, "fan": true, "maker": bits[1]}
 	return {"name": key, "handle": key, "fol": 0}
 
 
@@ -189,7 +203,7 @@ static func feed(kind: String, n: int = 60) -> Array:
 		var ok := false
 		match kind:
 			"home":
-				ok = by == "me" or follows(by) or p.get("mention", false)
+				ok = by == "me" or follows(by) or p.get("mention", false) or (by.begins_with("mk:") and str(p.get("ctx", "")) == "maker_ad" and (p.get("card", {}) as Dictionary).get("kind", "") == "mkad")   # (1.95) maker adverts show up like sponsored posts
 			"all":
 				ok = true
 			_:
@@ -370,6 +384,12 @@ static func world_fight(rng: RandomNumberGenerator, winner: Dictionary, loser: D
 	if winner.is_empty() or loser.is_empty():
 		return
 	var ripped := rng.randi_range(0, 2)
+	# (1.95) a win in one maker's parts: the maker (or one of its fans) says so now and then
+	var wm: String = GameData.Makers.main_of(winner.get("bot", {}).get("parts", {}).values())
+	if wm != "" and stage != "pickup" and rng.randf() < 0.08:
+		post("mk:" + wm, GameData.Makers.SHOUT[rng.randi() % GameData.Makers.SHOUT.size()], [GameData.Makers.label(wm), winner["name"]], {}, [], false, "maker_ad")
+	elif wm != "" and stage != "pickup" and rng.randf() < 0.06:
+		post(mfan(wm, rng), GameData.Makers.FAN_CHEER[rng.randi() % GameData.Makers.FAN_CHEER.size()], [winner["name"], GameData.Makers.label(wm)], {}, [], false, "fan_top")
 	winner["fol"] = fol_change(pilot_fol(winner), true, ripped, 0, 0, str(winner.get("tier", stage)))
 	loser["fol"] = fol_change(pilot_fol(loser), false, 0, 0, ripped, str(loser.get("tier", stage)))
 	# an upset: two Read dots or more below, and won anyway
@@ -428,6 +448,7 @@ static func my_fight(o: Dictionary, won: bool, destroyed: int, intact: int, own_
 		oddp["likes"] = int(oddp["likes"]) * 3 + 20   # people love a mess
 		if won:
 			post("gus", ["It's not pretty, but it won. That's engineering.", "Don't tell anyone how we bolted that together."][rng.randi() % 2], [], {}, [], false, "gus_win")
+	maker_after_fight(won, rng)   # (1.95)
 	# your own post: three drafts to pick from on BotMedia
 	s["draft"] = {"opp": opp_name, "wid": wid, "won": won, "tag": tag, "at": now_t()}
 	if int(s["followers"]) != before:
@@ -596,6 +617,8 @@ const CTX_REPLIES := {
 	"shop_ad": [["shill", "Save me something good.", 0.0], ["mock", "Last week's stock fell apart in a week.", 0.0]],
 	"sponsor_welcome": [["shill", "Proud to wear your colours.", 0.0], ["hype", "Let's win some together.", 0.0]],
 	"ad": [["shill", "Good stuff. I'd know.", 0.0], ["mock", "Nobody asked, %s.", 0.0]],
+	"maker_ad": [["shill", "Running your parts. No complaints.", 0.0], ["agree", "Best in Port Ferrum, %s.", 0.0], ["mock", "Overpriced and you know it, %s.", 0.0]],
+	"fan_maker": [["agree", "Couldn't agree more, %s.", 0.0], ["joke", "Maker wars again? Get a hobby, %s.", 0.0], ["doubt", "It's the pilot, not the parts, %s.", 0.0]],
 	"gus_win": [["thanks", "Couldn't do it without you, Gus.", 0.0], ["joke", "Gus, put the phone down and fix my arm.", 0.0],
 			["hype", "Next week we go bigger.", 0.0]],
 	"gus": [["friendly", "Best boss in Port Ferrum.", 0.0], ["joke", "Gus, put the phone down and fix my arm.", 0.0]],
@@ -651,9 +674,9 @@ const ANSWER_COOL := ["We'll see.", "Noted."]
 static func kind_of(key: String) -> String:
 	if key.begins_with("w:"):
 		return "pilot"
-	if key.begins_with("fan:"):
+	if key.begins_with("fan:") or key.begins_with("mf:"):
 		return "fan"
-	if key.begins_with("sp:") or key in ["kane", "partsrus", "rustybolt"]:
+	if key.begins_with("sp:") or key.begins_with("mk:") or key in ["kane", "partsrus", "rustybolt"]:
 		return "ad"
 	if key == "gus":
 		return "gus"
@@ -989,6 +1012,7 @@ static func daily() -> void:
 	dm_daily()
 	var rng := RandomNumberGenerator.new()
 	rng.seed = GameData.year * 4099 + GameData.week * 31 + GameData.day_index()
+	maker_daily(rng)
 	var day: String = GameData.day
 	if day == "sat":
 		var hm: Dictionary = GameData.headline_match()
@@ -1015,6 +1039,77 @@ static func daily() -> void:
 		var ids: Array = GameData.Contracts.SPONSORS.keys().filter(func(k): return k != "kane" and k != "rustybolt")
 		var sp: String = ids[rng.randi() % ids.size()]
 		post("w:%d" % int(p2["wid"]), "Proud to fight in %s colours this season.", [GameData.Contracts.SPONSORS[sp]["name"]], {"kind": "logo", "logo": sp}, [str(GameData.Contracts.SPONSORS[sp]["tag"])], false, "pilot_sponsor")
+
+
+# ---------------------------------------------------------------- the makers on BotMedia (1.95)
+
+## A maker's fan account ("mf:<maker>:<n>").
+static func mfan(m: String, rng: RandomNumberGenerator) -> String:
+	return "mf:%s:%d" % [m, rng.randi() % 2]
+
+
+## Fill a template with as many args as it has %s / %d.
+static func _fit(line: String, args: Array) -> Array:
+	var n := line.count("%s") + line.count("%d")
+	return args.slice(0, n)
+
+
+## Every day: an advert most days (with a part in their colours), a sale on Mondays now and then,
+## a maker sniping at its rival, and fans of two makers going at it.
+static func maker_daily(rng: RandomNumberGenerator) -> void:
+	var M = GameData.Makers
+	var s := st()
+	if not s.has("sales"):
+		s["sales"] = {}
+	var aw: int = GameData.abs_week()
+	var g: int = GameData.my_grade()
+	if GameData.day == "mon" and rng.randf() < 0.3:
+		var m: String = M.ORDER[rng.randi() % M.ORDER.size()]
+		var pct: int = [10, 15, 20, 25][rng.randi() % 4]
+		s["sales"][m] = [aw, pct]
+		var pid: String = M.part_at(m, g, rng)
+		post("mk:" + m, M.SALE[rng.randi() % M.SALE.size()], [M.label(m).to_upper(), pct, M.label(m)],
+				{"kind": "mkad", "maker": m, "id": pid, "sale": pct}, [str(M.info(m)["label"]).replace(" ", "") + "Sale"], false, "maker_ad")
+	if rng.randf() < 0.75:
+		var m2: String = M.ORDER[(GameData.day_index() + GameData.week * 3 + rng.randi() % 3) % M.ORDER.size()]
+		var pid2: String = M.part_at(m2, g, rng)
+		if pid2 != "":
+			var lines: Array = M.ADS[m2]
+			post("mk:" + m2, lines[rng.randi() % lines.size()], [M.ad_name(GameData.part_def(pid2))],
+					{"kind": "mkad", "maker": m2, "id": pid2, "sale": GameData.sale_pct(m2)}, [str(M.info(m2)["label"]).replace(" ", "")], false, "maker_ad")
+	if rng.randf() < 0.12:
+		var m3: String = M.ORDER[rng.randi() % M.ORDER.size()]
+		var snipes: Array = M.SNIPES[m3]
+		var line: String = snipes[rng.randi() % snipes.size()]
+		post("mk:" + m3, line, _fit(line, [M.label(str(M.RIVAL[m3]))]), {}, [], false, "maker_ad")
+	if rng.randf() < 0.25:
+		var a: String = M.ORDER[rng.randi() % M.ORDER.size()]
+		var b: String = str(M.RIVAL[a])
+		post(mfan(a, rng), M.FAN_ARGUE[rng.randi() % M.FAN_ARGUE.size()], [M.label(b)], {}, ["MakerWars"], false, "fan_maker")
+		post(mfan(b, rng), M.FAN_ANSWER[rng.randi() % M.FAN_ANSWER.size()], [M.label(a)], {}, ["MakerWars"], false, "fan_maker")
+
+
+## After your fight: your main maker's fans cheer or sulk, the maker shouts you out on a win, a rival
+## maker's fan has a dig, and the old maker's fans notice when you switch.
+static func maker_after_fight(won: bool, rng: RandomNumberGenerator) -> void:
+	var M = GameData.Makers
+	var s := st()
+	var mm: String = M.main_of(GameData.equipped_ids().values())
+	var prev := str(s.get("my_maker", ""))
+	if prev != "" and mm != "" and prev != mm:
+		post(mfan(prev, rng), M.FAN_SWITCH[rng.randi() % M.FAN_SWITCH.size()], [M.label(mm), GameData.pilot_name], {}, ["MakerWars"], true, "fan_maker")
+	s["my_maker"] = mm
+	if mm == "":
+		return
+	var held: bool = not GameData.Contracts.maker_contract(mm).is_empty()
+	if won:
+		post(mfan(mm, rng), M.FAN_CHEER[rng.randi() % M.FAN_CHEER.size()], [GameData.pilot_name, M.label(mm)], {}, [], true, "fan_me_win")
+		if held or rng.randf() < 0.4:
+			post("mk:" + mm, M.SHOUT[rng.randi() % M.SHOUT.size()], [M.label(mm), GameData.pilot_name], {"kind": "logo", "logo": "mk:" + mm}, [], true, "maker_ad")
+		if rng.randf() < 0.35:
+			post(mfan(str(M.RIVAL[mm]), rng), M.FAN_RIVAL_WIN[rng.randi() % M.FAN_RIVAL_WIN.size()], [GameData.pilot_name, M.label(mm)], {}, ["MakerWars"], true, "fan_doubt")
+	elif rng.randf() < 0.5:
+		post(mfan(mm, rng), M.FAN_SULK[rng.randi() % M.FAN_SULK.size()], [GameData.pilot_name, M.label(mm)], {}, [], true, "fan_me_loss")
 
 
 # ---------------------------------------------------------------- posting any time (1.68)

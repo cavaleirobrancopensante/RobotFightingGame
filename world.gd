@@ -86,7 +86,9 @@ static func new_pilot(rng: RandomNumberGenerator, tier: String, value: float, sk
 			"retired": false, "bot": {}, "wear": {}}
 	p["talent"] = roll_talent(rng, skill)
 	p["peak"] = skill
+	loyal = loyal_of(wid)
 	p["bot"] = build_bot(rng, value, skill)
+	loyal = ""
 	wd["pilots"][str(wid)] = p
 	p["look"] = make_look(wid, str(p["name"]))
 	return p
@@ -147,6 +149,19 @@ static func by_kind(kind: String) -> Array:
 ## A robot worth about `budget` dollars of parts. The money is shared out over the slots, each
 ## slot gets the best grade its share buys (most robots are mostly one grade); some pilots blow
 ## a big piece of it on one part a grade up (that's what Gus warns you about).
+## (1.95) Loyal to a maker: about half the pilots in Port Ferrum stick to one maker's parts when they
+## can. Seeded by the pilot, so it never changes. "" = buys whatever.
+static var loyal := ""
+
+static func loyal_of(wid: int) -> String:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = wid * 7919 + 1951
+	if rng.randf() > 0.55:
+		return ""
+	var M = GameData.Makers
+	return str(M.ORDER[rng.randi() % M.ORDER.size()])
+
+
 static func build_bot(rng: RandomNumberGenerator, budget: float, skill: float) -> Dictionary:
 	var bot: Dictionary = GameData.random_bot(rng, 0.0, skill * 3.6)
 	var parts: Dictionary = {}
@@ -201,6 +216,11 @@ static func pick_for(rng: RandomNumberGenerator, kind: String, money: float, max
 			if int(d.get("grade", 0)) == g and d["shop"] and float(d["cost"]) <= money:
 				opts.append(id)
 		if opts.size() >= 2 or (g == 1 and not opts.is_empty()):
+			# a loyal pilot takes their maker's part when one fits the money (most of the time)
+			if loyal != "" and rng.randf() < 0.75:
+				var mine: Array = opts.filter(func(i): return str(GameData.PARTS[i].get("maker", "")) == loyal)
+				if not mine.is_empty():
+					return mine[rng.randi() % mine.size()]
 			# favour the better half of what fits
 			return opts[rng.randi_range(opts.size() / 2, opts.size() - 1)]
 	return ""
@@ -687,7 +707,9 @@ static func month_passed(rng: RandomNumberGenerator, busy: Dictionary) -> void:
 				# a whole new robot: the old one is sold off
 				var budget := minf(value * 0.4 + spare * 0.8, cap)
 				var old_name: String = p["bot"]["name"]
+				loyal = loyal_of(int(p["wid"]))
 				var nb := build_bot(rng, budget, float(p["skill"]))
+				loyal = ""
 				p["cash"] = int(p["cash"]) - int(spare * 0.8)
 				p["bot"] = nb
 				p["wear"] = {}

@@ -1542,7 +1542,7 @@ func build_detail() -> void:
 	if inv and not GameData.UNDAMAGEABLE.has(kind):
 		names.add_child(hp_widget(p))
 	elif not inv:
-		names.add_child(GUI.readout("$%d" % int(d["cost"]), 22, GUI.AMBER))
+		names.add_child(price_label(d, 22))
 	# (1.90) what it's compared against: the fitted part's picture beside this one
 	var cmp_slots := slots_for(kind)
 	var shown_cmp := 0
@@ -1681,7 +1681,7 @@ func build_detail() -> void:
 		if fitted_slot == "":
 			add_btn.call(tr("Sell $%d") % GameData.sell_value(p), _on_sell.bind(int(p["uid"])), true)
 	else:
-		var cost := int(d["cost"])
+		var cost := GameData.price_of(str(d["id"]))   # (1.95) sales and maker contracts come off
 		for sl in slots:
 			add_btn.call(tr("Buy & fit: %s · %s") % [tr(GameData.SLOT_NAMES[sl]), GameData.hours_text(GameData.swap_hours(d))], _on_buy_fit.bind(str(d["id"]), sl), GameData.money >= cost, GUI.YELLOW)
 		add_btn.call(tr("Buy to storage $%d") % cost, _on_buy_keep.bind(str(d["id"])), GameData.money >= cost)
@@ -1696,7 +1696,13 @@ func makers_line(ids: Array) -> String:
 	var c: Dictionary = M.counts(ids)
 	var bits: Array = []
 	for m in M.ORDER:
-		if int(c.get(m, 0)) > 0:
+		var need := 0
+		for r in GameData.Contracts.maker_contract(m).get("reqs", []):
+			if str(r["kind"]) == "maker_parts":
+				need = int(r["n"])
+		if need > 0:
+			bits.append(tr("%s %d of %d") % [M.label(m).to_upper(), int(c.get(m, 0)), need])   # (1.95) a maker contract's count
+		elif int(c.get(m, 0)) > 0:
 			bits.append("%s %d" % [M.label(m), int(c[m])])
 	if bits.is_empty():
 		return ""
@@ -2110,6 +2116,25 @@ func part_filter_bar(screen: String, items: Array, extra_kinds: Array = [], pare
 	return bar
 
 
+## (1.95) A shop part's price: today's price, and what it was when a sale or a maker contract cuts it.
+func price_label(d: Dictionary, size: int) -> Control:
+	var now := GameData.price_of(str(d["id"]))
+	if now >= int(d["cost"]):
+		return GUI.readout("$%d" % now, size, GUI.AMBER)
+	var h := HBoxContainer.new()
+	h.add_theme_constant_override("separation", 6)
+	h.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	h.add_child(GUI.readout("$%d" % now, size, GUI.GREEN))
+	var old := GUI.readout("$%d" % int(d["cost"]), int(size * 0.7), GUI.MUTED)
+	old.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	h.add_child(old)
+	var why := tr("SALE") if GameData.sale_pct(str(d.get("maker", ""))) > 0 else tr("CONTRACT")
+	var w := GUI.text(why, 10, GUI.YELLOW, "headb")
+	w.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	h.add_child(w)
+	return h
+
+
 ## (1.93) The technique on a limb as a chip ([] when it throws its plain hit).
 func tech_chip(slot: String) -> Array:
 	var t := GameData.tech_in(slot)
@@ -2233,7 +2258,7 @@ func part_entry(d: Dictionary, p: Dictionary, title: String, tag: String, cb: Ca
 	if not p.is_empty() and GameData.is_wreck(p):
 		names.add_child(GUI.text(tr("WRECKED"), 11, GUI.RED, "headb"))
 	elif p.is_empty():
-		names.add_child(GUI.readout("$%d" % int(d["cost"]), 18, GUI.AMBER))
+		names.add_child(price_label(d, 18))
 	if hurt:
 		var hb := GUI.SegBar.new()
 		var hp := float(d["hp"]) if p.is_empty() else float(p["hp"])
@@ -3044,11 +3069,19 @@ class Avatar extends Control:
 			draw_circle(c + Vector2(r * 0.2, 0), r * 0.07, Color(0.1, 0.1, 0.1))
 		else:
 			var h := absi(hash(key))
-			draw_circle(c, r, Color.from_hsv(float(h % 360) / 360.0, 0.45, 0.55))
+			var fc := Color.from_hsv(float(h % 360) / 360.0, 0.45, 0.55)
+			if acc.has("maker"):
+				fc = load("res://makers.gd").color(str(acc["maker"])).darkened(0.15)   # (1.95) a maker's fan wears its colour
+			draw_circle(c, r, fc)
 			var f: Font = GUI.headb()
 			var ch := str(acc.get("name", "?")).substr(0, 1).to_upper()
 			var fsz := int(r * 1.1)
 			draw_string(f, Vector2(0, c.y + fsz * 0.36), ch, HORIZONTAL_ALIGNMENT_CENTER, size.x, fsz, Color.WHITE)
+			if acc.has("maker"):
+				# and its badge
+				var br := r * 0.36
+				draw_circle(c + Vector2(r * 0.66, r * 0.66), br * 1.1, Color(0.94, 0.93, 0.9))
+				load("res://logos.gd").draw_logo(self, load("res://makers.gd").logo(str(acc["maker"])), c + Vector2(r * 0.66, r * 0.66), br)
 
 
 ## Small drawn icons (the fonts have no hearts): "like", "liked", "repost", "reply", "check".
@@ -3264,12 +3297,30 @@ func post_card(card: Dictionary, parent: Control) -> void:
 	var h := HBoxContainer.new()
 	h.add_theme_constant_override("separation", 10)
 	panel.add_child(h)
-	if str(card.get("kind", "")) in ["still", "shot", "trophy", "part", "clip"]:
+	if str(card.get("kind", "")) in ["still", "shot", "trophy", "part", "clip", "mkad"]:
 		# (1.70) a picture, drawn live from its recipe; (1.74) a clip's poster plays it when tapped
 		panel.add_theme_stylebox_override("panel", GUI.box(GUI.BG, 8, 0))
 		var pp := GUI.PostPic.new(card)
 		h.add_child(pp)
 		pp.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		if str(card.get("kind", "")) == "mkad":
+			# (1.95) a maker's advert: as wide as its 16:9 picture, like a clip (room beside it to swipe);
+			# a tap plays its jingle (a swipe only scrolls)
+			pp.size_flags_horizontal = Control.SIZE_FILL
+			pp.custom_minimum_size.x = roundf(pp.custom_minimum_size.y * 16.0 / 9.0)
+			panel.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+			panel.mouse_filter = Control.MOUSE_FILTER_PASS
+			panel.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+			var mk := str(card.get("maker", ""))
+			var down0 := [Vector2.INF]
+			panel.gui_input.connect(func(e):
+				if (e is InputEventMouseButton and e.button_index == MOUSE_BUTTON_LEFT) or e is InputEventScreenTouch:
+					if e.pressed:
+						down0[0] = e.position
+					elif down0[0] != Vector2.INF:
+						if (e.position as Vector2).distance_to(down0[0]) < 14.0:
+							Sfx.jingle(mk)
+						down0[0] = Vector2.INF)
 		if str(card.get("kind", "")) == "clip":
 			# (1.87) a clip is only as wide as its picture (16:9), so there's room beside it to swipe
 			pp.size_flags_horizontal = Control.SIZE_FILL
@@ -4010,6 +4061,8 @@ func req_ok(r: Dictionary) -> bool:
 			return GameData.robot_hp_ratio() * 100.0 >= float(r["pct"])
 		"wins":
 			return int(r.get("played", 0)) - int(r.get("won", 0)) <= int(r["m"]) - int(r["n"])
+		"maker_parts":
+			return GameData.Contracts.maker_count(str(r["maker"])) >= int(r["n"])
 	return true
 
 
@@ -4346,7 +4399,7 @@ func build_slot(slot: String) -> void:
 			var id := str(d["id"])
 			var row := part_entry(d, {}, str(d["name"]), "", _on_detail.bind({"src": "shop", "id": id}), is_detail("shop", id),
 					delta_chips(d, slot), tr("vs fitted:") if not cards_on() else "")
-			row_button(row, tr("Buy & fit $%d · %s") % [d["cost"], GameData.hours_text(GameData.swap_hours(d))], _on_buy_fit.bind(id, slot), GameData.money >= d["cost"], 180)
+			row_button(row, tr("Buy & fit $%d · %s") % [GameData.price_of(id), GameData.hours_text(GameData.swap_hours(d))], _on_buy_fit.bind(id, slot), GameData.money >= GameData.price_of(id), 180)
 	var more := flow_bar()
 	if GameData.unlocked("shop"):
 		row_button(more, "Dealer's stock", _on_go_shop.bind(kind), true, 200)
@@ -4875,9 +4928,9 @@ func build_dealer() -> void:
 				_on_detail.bind({"src": "shop", "id": id}), is_detail("shop", id), part_chips(d, cards_on()))
 		var target := best_slot(str(d["kind"]))
 		if target != "":
-			row_button(row, tr("Buy & fit $%d · %s") % [d["cost"], GameData.hours_text(GameData.swap_hours(d))], _on_buy_fit.bind(id, target), GameData.money >= d["cost"], 180)
+			row_button(row, tr("Buy & fit $%d · %s") % [GameData.price_of(id), GameData.hours_text(GameData.swap_hours(d))], _on_buy_fit.bind(id, target), GameData.money >= GameData.price_of(id), 180)
 		else:
-			row_button(row, tr("Buy $%d") % d["cost"], _on_buy.bind(id), GameData.money >= d["cost"], 150)
+			row_button(row, tr("Buy $%d") % GameData.price_of(id), _on_buy.bind(id), GameData.money >= GameData.price_of(id), 150)
 	if (f == "all" or f == "chip") and not chips.is_empty():
 		section("TRAINING CHIPS: each one teaches your robot a special move.")
 		for id in chips.duplicate():
@@ -5900,6 +5953,15 @@ func open_pilot(wid: int) -> void:
 	brow.add_child(bi)
 	bi.add_child(GUI.text(str(bot.get("name", "?")), 16, GUI.TEXT, "headb"))
 	bi.add_child(GUI.text(tr("Parts worth $%d") % int(W.bot_value(p.get("bot", {}))), 14, GUI.MUTED))
+	# (1.95) whose parts they run, and whether they stick to one maker
+	var pmk: String = GameData.Makers.main_of(p.get("bot", {}).get("parts", {}).values())
+	if pmk != "":
+		var mrow := HBoxContainer.new()
+		mrow.add_theme_constant_override("separation", 6)
+		bi.add_child(mrow)
+		mrow.add_child(Logos.LogoIcon.new(GameData.Makers.logo(pmk), 26))
+		var loyal_t := tr("Loyal to %s") if W.loyal_of(wid) == pmk else tr("Mostly %s parts")
+		mrow.add_child(GUI.text(loyal_t % GameData.Makers.label(pmk), 13, GameData.Makers.color(pmk).lightened(0.3), "headb"))
 	# (1.76) their highlights: filmed fights they were in
 	var hl: Array = GameData.clips_of_pilot(wid, 3)
 	if not hl.is_empty():
@@ -7787,7 +7849,7 @@ func open_fight_popup() -> void:
 	# sponsors check their rules at the bell
 	for c in GameData.Contracts.st()["active"]:
 		for r in c["reqs"]:
-			if str(r["kind"]) in ["paint", "controller", "repaired"] and not req_ok(r):
+			if str(r["kind"]) in ["paint", "controller", "repaired", "maker_parts"] and not req_ok(r):
 				var sl := GUI.text(tr("%s wants: %s") % [GameData.Contracts.sp_name(c), GameData.Contracts.req_text(r)], 14, GUI.AMBER)
 				sl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 				col.add_child(sl)

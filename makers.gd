@@ -105,6 +105,102 @@ static func motion(m: String) -> Dictionary:
 	return MOTION.get(m, MOTION_PLAIN)
 
 
+# ---------------------------------------------------------------- the makers out in the world (1.95)
+
+## BotMedia: handles, followers, paint preset (index in GameData.PAINTS, from PAINT_AT), price lean.
+const HANDLE := {"scrapworks": "scrapworks", "oldiron": "oldironfoundry", "brassworks": "brassworks_sons", "hellfire": "hellfireheavy",
+		"volta": "voltamotor", "nimbus": "nimbusaerial", "kane": "kanedynamics_parts", "tenryu": "tenryumecha", "menagerie": "menagerie"}
+const FOLLOWERS := {"scrapworks": 6400, "oldiron": 41000, "brassworks": 23000, "hellfire": 52000, "volta": 88000, "nimbus": 61000,
+		"kane": 1200000, "tenryu": 74000, "menagerie": 19000}
+const PAINT_AT := 8   # GameData.PAINTS: the makers' colours follow the eight house paints, in ORDER
+const MULT := {"scrapworks": 0.6, "oldiron": 0.9, "brassworks": 1.0, "hellfire": 1.0, "volta": 1.0, "nimbus": 1.05, "kane": 1.6, "tenryu": 1.15, "menagerie": 1.0}
+## Who they snipe at.
+const RIVAL := {"volta": "nimbus", "nimbus": "volta", "oldiron": "kane", "kane": "oldiron", "tenryu": "kane", "hellfire": "brassworks",
+		"brassworks": "hellfire", "scrapworks": "kane", "menagerie": "tenryu"}
+
+## Their adverts, in their own voice (%s = one of their parts).
+const ADS := {
+	"scrapworks": ["Found it, fixed it, priced it to move. The %s.", "Why pay more to lose anyway? Scrapworks %s.", "Held together with pride. And tape. The %s."],
+	"oldiron": ["Cast in 1951. Still standing. The %s.", "Big bolts. No nonsense. The Old Iron %s.", "They don't make them like this any more. We do. The %s."],
+	"brassworks": ["Hand built in Old Town by the same family for three generations. The %s.", "Patience, brass and a little steam. The %s.", "Polished by hand. Tested by fire. The %s."],
+	"hellfire": ["If it isn't on fire, it isn't trying. The %s.", "Demolition grade. Ring tested. The %s.", "Bring a fire extinguisher. The Hellfire %s."],
+	"volta": ["Chrome, neon and a charge in every punch. The %s.", "Built for the night drive. The Volta %s.", "Feel the current. The %s."],
+	"nimbus": ["Lighter than the wind. Harder to hit. The %s.", "Engineered at altitude. The Nimbus %s.", "They can't hit what they can't catch. The %s."],
+	"kane": ["The future, delivered. The %s.", "Precision is not a luxury. It is a standard. The %s.", "For those who can afford to win. The Kane %s."],
+	"tenryu": ["Strike a pose. Call your move. The %s!", "From across the sea, a hero machine. The Tenryu %s.", "Combine your spirit with the %s!"],
+	"menagerie": ["Roll up, roll up! Behold the %s!", "The crowd goes wild for the %s.", "Nature built it first. We built it louder. The %s."],
+}
+## Snipes at their rival (%s = the rival's name).
+const SNIPES := {
+	"volta": ["Some of us like our robots with a pulse. Not naming names, %s.", "Fast is good. Fast and bright is better. Sorry, %s."],
+	"nimbus": ["Lightweight beats loud every time. Right, %s?", "Neon doesn't help you dodge, %s."],
+	"oldiron": ["We were building robots when %s was a spreadsheet.", "Cast iron doesn't need a software update, %s."],
+	"kane": ["Nostalgia is not an engineering principle.", "We welcome all competition. Even the charming kind."],
+	"tenryu": ["A machine without a soul is just a machine, %s.", "We challenge %s to a fair fight. Pilots, not programs."],
+	"hellfire": ["Steam is for kettles, %s.", "Our parts don't need polishing. They need a fire brigade."],
+	"brassworks": ["Anyone can set things on fire, %s. We build things that last.", "Craft over chaos. Always, %s."],
+	"scrapworks": ["Same parts as %s. A tenth of the price. Mostly.", "%s charges you for the logo. We charge you for the bolts."],
+	"menagerie": ["Robots that pose? We have robots that roar, %s.", "Heroes are boring. Animals are forever."],
+}
+## Loyal fans of each maker: their handles.
+const FANS := {
+	"scrapworks": ["TapeAndHope", "ScrapKing_Ray"], "oldiron": ["IronForever", "BigBolt_Bev"], "brassworks": ["BrassBaron", "SteamQueen_Mo"],
+	"hellfire": ["BurnItDown_Kai", "HellfireHank"], "volta": ["VoltaVolta88", "NeonNights_Jo"], "nimbus": ["CloudChaser", "AirSpeed_Ana"],
+	"kane": ["KaneOrNothing", "FutureIsNow_Lu"], "tenryu": ["TenryuOh_Fan", "SpiritCombine"], "menagerie": ["CircusKid", "BeastMode_Bo"],
+}
+## Fan and maker lines. Every line in a group takes the same arguments, in the same order.
+const FAN_CHEER := ["%s wins in %s parts. Told you.", "Well fought, %s. That's what %s parts do.", "%s plus %s gear equals a win. Simple maths."]   # pilot, maker
+const FAN_SULK := ["Not the parts' fault, %s. %s parts deserved better.", "Rough night, %s. %s fans will be fine. Probably."]   # pilot, maker
+const FAN_RIVAL_WIN := ["%s won in %s parts. Lucky night.", "Imagine what %s could do without %s parts."]   # pilot, their maker
+const FAN_ARGUE := ["%s parts are overrated and everyone knows it.", "Name one title %s ever won. I'll wait.", "%s fans when their robot loses: it was the pilot."]   # the other maker
+const FAN_ANSWER := ["Says the %s fan. Cute.", "Come back when %s wins something.", "Ratio. %s fans are seething."]   # the other maker
+const FAN_SWITCH := ["Sold out to %s, huh, %s?", "%s parts now? Really, %s?", "Traitor alert: %s parts on %s's robot."]   # new maker, pilot
+const SHOUT := ["Another win in %s parts for %s. Proud.", "%s parts, %s's night.", "Built by %s, won by %s. Congratulations."]   # maker, pilot
+const SALE := ["%s WEEK: %d%% off every %s part at Parts-R-Us. This week only.", "Sale on at %s! %d%% off %s parts all week."]   # MAKER, pct, maker
+
+
+static func handle(m: String) -> String:
+	return str(HANDLE.get(m, m))
+
+
+static func paint_of(m: String) -> int:
+	return PAINT_AT + maxi(0, ORDER.find(m))
+
+
+## Which maker a robot's part ids mostly come from, 2 parts or more ("" otherwise): the one people talk about.
+static func main_of(ids: Array) -> String:
+	var c := counts(ids)
+	var best := ""
+	var n := 1
+	for m in ORDER:
+		if int(c.get(m, 0)) > n:
+			n = int(c[m])
+			best = m
+	return best
+
+
+## A part's name for an advert: no grade in front and no maker's name (the advert says who made it).
+static func ad_name(d: Dictionary) -> String:
+	var n := str(d.get("name", ""))
+	for g in GameData.GRADES:
+		if n.begins_with(str(g) + " "):
+			n = n.substr(str(g).length() + 1)
+	var lab := label(str(d.get("maker", "")))
+	if lab != "":
+		n = n.replace(lab + " ", "")
+	return n.strip_edges()
+
+
+## One of a maker's shop parts at a grade, picked by rng ("" if it makes none).
+static func part_at(m: String, grade: int, rng: RandomNumberGenerator) -> String:
+	var opts: Array = []
+	for id in GameData.PARTS:
+		var d: Dictionary = GameData.PARTS[id]
+		if str(d.get("maker", "")) == m and int(d.get("grade", 0)) == grade and d.get("shop", false) and not d.has("variant_of"):
+			opts.append(id)
+	return "" if opts.is_empty() else str(opts[rng.randi() % opts.size()])
+
+
 ## Which maker built a part definition ("" = nameless junk).
 static func of_def(d: Dictionary) -> String:
 	if d.has("maker"):

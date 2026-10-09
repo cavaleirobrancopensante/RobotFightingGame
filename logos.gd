@@ -9,6 +9,8 @@ static func _bolt(c: Vector2, s: float) -> PackedVector2Array:
 
 ## sticker = true adds a backing disc so it reads on any paint.
 static func draw_logo(ci: CanvasItem, id: String, c: Vector2, r: float, sticker: bool = false) -> void:
+	if id.begins_with("mk:"):
+		id = load("res://makers.gd").logo(id.substr(3))   # (1.95) a maker contract's sticker: the maker's logo
 	var s := r / 20.0
 	var white := Color(0.97, 0.96, 0.92)
 	if sticker:

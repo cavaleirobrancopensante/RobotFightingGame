@@ -3,7 +3,7 @@ const PlayLog = preload("res://playlog.gd")   # (1.87) the playtest log
 
 # helper scripts, loaded by path so the game also runs without an editor scan
 ## The game's version, shown on the main menu. Bump it with every change (1.1, 1.2, ...).
-const VERSION := "1.94"
+const VERSION := "1.95"
 const Arena = preload("res://arena.gd")
 const I18n = preload("res://i18n.gd")
 const Catalog = preload("res://catalog.gd")
@@ -66,6 +66,12 @@ const PAINTS := [
 	{"name": "Fire", "color": "#ff5a2a"}, {"name": "Toxic", "color": "#7cf05a"},
 	{"name": "Ice", "color": "#6fd3ff"}, {"name": "Royal", "color": "#9a6bff"},
 	{"name": "Bubblegum", "color": "#ff7ac8"}, {"name": "Shadow", "color": "#3a3a46"},
+	# (1.95) the makers' colours (Makers.PAINT_AT + their place in Makers.ORDER)
+	{"name": "Scrapworks Rust", "color": "#a1887f"}, {"name": "Foundry Red", "color": "#c0392b"},
+	{"name": "Polished Brass", "color": "#c9a227"}, {"name": "Hellfire Orange", "color": "#e67e22"},
+	{"name": "Volta Blue", "color": "#00b7ff"}, {"name": "Nimbus Sky", "color": "#81ecec"},
+	{"name": "Kane Gold", "color": "#e0b84a"}, {"name": "Tenryu Red", "color": "#e63946"},
+	{"name": "Circus Red", "color": "#d63031"},
 ]
 
 # Part fields:
@@ -947,11 +953,29 @@ func hp_ratio(p: Dictionary) -> float:
 	return 1.0 if mx <= 0.0 else clampf(p["hp"] / mx, 0.0, 1.0)
 
 
+## (1.95) What a part costs you today: its maker's sale and your maker contract come off the price.
+func price_of(id: String) -> int:
+	var d := part_def(id)
+	var c := int(d.get("cost", 0))
+	var m := str(d.get("maker", ""))
+	if m == "" or c <= 0:
+		return c
+	var off := mini(60, sale_pct(m) + Contracts.maker_discount(m))
+	return int(round(c * (1.0 - off / 100.0)))
+
+
+## A maker's sale this week (percent off, 0 = none).
+func sale_pct(m: String) -> int:
+	var sl: Array = Social.st().get("sales", {}).get(m, [])
+	return int(sl[1]) if sl.size() == 2 and int(sl[0]) >= abs_week() else 0
+
+
 func buy(id: String) -> String:
 	var d := part_def(id)
-	if money < d["cost"]:
+	var cost := price_of(id)
+	if money < cost:
 		return "Not enough money."
-	book("parts", -(d["cost"]))
+	book("parts", -cost)
 	shop_stock.erase(id)
 	Contracts.on_buy()
 	var uid := add_part(id)
@@ -1006,6 +1030,8 @@ func repair_cost(p: Dictionary) -> int:
 	var discount := 0.6 if style == "mechanic" else 1.0   # mechanics fix things cheaper
 	if Makers.sets(equipped_ids().values()).has("scrapworks"):
 		discount *= 2.0 / 3.0   # (1.90) Scrapworks set: cheap to mend
+	if Contracts.works_for(str(d.get("maker", ""))):
+		discount *= 2.0 / 3.0   # (1.95) a Works driver's own maker mends its parts cheaper
 	if is_wreck(p):
 		return maxi(20, int(d["cost"] * WRECK_SHARE * discount))   # rebuilding a wreck
 	return maxi(1, ceili(missing * maxf(30.0, d["cost"] * REPAIR_SHARE) * discount))

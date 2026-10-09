@@ -62,7 +62,52 @@ static func st() -> Dictionary:
 
 
 static func sp(id: String) -> Dictionary:
+	if id.begins_with("mk:"):
+		return maker_sp(id.substr(3))
 	return SPONSORS.get(id, {})
+
+
+# ---------------------------------------------------------------- maker contracts (1.95)
+# A maker sponsors pilots who run its parts. Partner (a sticker): at least 2 of their parts at every
+# bell, 15% off their parts. Works driver (the title deal, from the Rust League): at least 4 of their
+# parts and their paint, 25% off and their parts mended a third cheaper. Ids are "mk:<maker>".
+
+const MAKER_PARTNER_N := 2
+const MAKER_WORKS_N := 4
+const MAKER_OFF := {"partner": 15, "title": 25}
+
+
+static func maker_sp(m: String) -> Dictionary:
+	var M = GameData.Makers
+	if not M.MAKERS.has(m):
+		return {}
+	var inf: Dictionary = M.info(m)
+	return {"name": str(inf["name"]), "handle": M.handle(m), "tag": str(inf["label"]).replace(" ", "") , "line": "maker:" + m,
+			"paint": M.paint_of(m), "mult": float(M.MULT.get(m, 1.0)), "min_fol": 150, "title": true, "asks": ["maker_parts"],
+			"fol": int(M.FOLLOWERS.get(m, 20000)), "colors": [str(inf["color"]), str(inf["ink"])], "maker": m}
+
+
+## The contract you hold with a maker ({} = none).
+static func maker_contract(m: String) -> Dictionary:
+	for c in st()["active"]:
+		if str(c["sp"]) == "mk:" + m:
+			return c
+	return {}
+
+
+static func works_for(m: String) -> bool:
+	return m != "" and str(maker_contract(m).get("role", "")) == "title"
+
+
+## Percent off a maker's parts from your contract with them.
+static func maker_discount(m: String) -> int:
+	var c := maker_contract(m)
+	return 0 if c.is_empty() else int(MAKER_OFF.get(str(c["role"]), 0))
+
+
+## How many of a maker's parts are fitted to your robot.
+static func maker_count(m: String) -> int:
+	return int(GameData.Makers.counts(GameData.equipped_ids().values()).get(m, 0))
 
 
 static func sp_name(c: Dictionary) -> String:
@@ -119,6 +164,15 @@ static func want_of(id: String) -> float:
 static func can_offer(id: String) -> bool:
 	var s := st()
 	var d := sp(id)
+	if d.is_empty():
+		return false
+	if id.begins_with("mk:"):
+		# a maker only calls a pilot who already runs its parts
+		if s["active"].any(func(c): return c["sp"] == id or c["sp"] == "kane") or s["offers"].any(func(o): return o["sp"] == id):
+			return false
+		if float(s["mood"].get(id, 0.0)) < -0.6:
+			return false
+		return maker_count(id.substr(3)) >= 1 and GameData.rank_index() >= 1
 	if s["active"].any(func(c): return c["sp"] == id) or s["offers"].any(func(o): return o["sp"] == id):
 		return false
 	if float(s["mood"].get(id, 0.0)) < -0.6:
@@ -139,6 +193,9 @@ static func make_offer(id: String) -> Dictionary:
 	var rng := RandomNumberGenerator.new()
 	rng.seed = int(s["next"]) * 7717 + GameData.year * 13 + GameData.week
 	var role := "title" if d["title"] and not title_held() else "partner"
+	if id.begins_with("mk:"):
+		# Works driver from the Rust League, and only for a pilot already running 3 of their parts
+		role = "title" if not title_held() and GameData.rank_index() >= 2 and maker_count(id.substr(3)) >= 3 else "partner"
 	if role == "partner" and partners_held() >= MAX_PARTNERS:
 		return {}
 	var want := want_of(id)
@@ -150,6 +207,10 @@ static func make_offer(id: String) -> Dictionary:
 		reqs.append({"kind": "paint", "paint": int(d["paint"])})
 	for a in d["asks"]:
 		reqs.append(make_req(str(a), rng))
+	if id.begins_with("mk:"):
+		reqs = [{"kind": "maker_parts", "maker": id.substr(3), "n": MAKER_WORKS_N if role == "title" else MAKER_PARTNER_N}]
+		if role == "title":
+			reqs.push_front({"kind": "paint", "paint": int(d["paint"])})
 	var o := {"id": int(s["next"]), "sp": id, "role": role, "slot": "torso" if role == "title" else (slots[rng.randi() % slots.size()] if not slots.is_empty() else "head"),
 			"fee": fee, "sign": int(fee * rng.randf_range(0.5, 1.2)), "win": int(fee * 0.15), "rip": int(fee * 0.05), "podium": fee * 3,
 			"weeks": [8, 12, 16, 26][rng.randi() % 4], "reqs": reqs, "strikes": 0, "want": want,
@@ -192,6 +253,10 @@ static func weekly_offers() -> void:
 	if rng.randf() > OFFER_CHANCE:
 		return
 	var pool: Array = SPONSORS.keys().filter(func(k): return can_offer(k))
+	# (1.95) the makers whose parts you run may call too
+	for m in GameData.Makers.ORDER:
+		if can_offer("mk:" + m):
+			pool.append("mk:" + m)
 	if pool.is_empty():
 		return
 	pool.sort_custom(func(a, b): return want_of(a) * float(sp(a)["mult"]) > want_of(b) * float(sp(b)["mult"]))
@@ -207,8 +272,10 @@ static func weekly_offers() -> void:
 
 ## What Gus says about an offer, in one line.
 static func gus_line(o: Dictionary) -> String:
-	if o["sp"] == "kane":
+	if o["sp"] == "kane" or o["sp"] == "mk:kane":
 		return I18n.t("Kane money. Over my dead body, kid. Your call.")
+	if str(o["sp"]).begins_with("mk:"):
+		return I18n.t("If you'd run their parts anyway, it's money for nothing. Just don't get stuck with them.")
 	var per_base := float(o["fee"]) / maxf(1.0, fee_base() * float(sp(o["sp"])["mult"]) * (2.0 if o["role"] == "title" else 1.0))
 	var hard: bool = o["reqs"].any(func(r): return r["kind"] in ["wins", "followers", "no_trash"])
 	if per_base >= 1.15:
@@ -393,6 +460,8 @@ static func req_text(r: Dictionary) -> String:
 			return I18n.t("Fight every week")
 		"exclusive":
 			return I18n.t("No other sponsors")
+		"maker_parts":
+			return I18n.t("At least %d %s parts on the robot at every bell (%d now)") % [int(r["n"]), GameData.Makers.label(str(r["maker"])), maker_count(str(r["maker"]))]
 	return str(r["kind"])
 
 
@@ -442,6 +511,9 @@ static func check_bell(hp_ratio: float) -> void:
 				"repaired":
 					if hp_ratio * 100.0 < float(r["pct"]):
 						strike(c, I18n.t("the robot went in a wreck"))
+				"maker_parts":
+					if maker_count(str(r["maker"])) < int(r["n"]):
+						strike(c, I18n.t("only %d of our parts on the robot") % maker_count(str(r["maker"])))
 
 
 ## After your fight: bonuses, win targets, forfeits.
