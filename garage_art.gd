@@ -10,7 +10,7 @@ const Light = preload("res://light.gd")
 
 ## Where the robot stands in each scene: [x as fraction of width, height as fraction of panel]
 const ROBOT_SPOT := {
-	"build": [0.55, 0.64], "shop": [0.8, 0.5], "brass": [0.8, 0.5], "hell": [0.8, 0.5], "workshop": [0.74, 0.56], "scrap": [0.8, 0.5],
+	"build": [0.55, 0.64], "shop": [0.8, 0.5], "brass": [0.8, 0.5], "hell": [0.8, 0.5], "volta": [0.78, 0.5], "workshop": [0.74, 0.56], "scrap": [0.8, 0.5],
 	"paint": [0.5, 0.72], "moves": [0.62, 0.7], "team": [0.64, 0.66], "cups": [0.68, 0.62],
 	"storage": [0.72, 0.5],
 }
@@ -49,6 +49,7 @@ const SCENE_COLORS := {
 	"shop": [Color(0.07, 0.12, 0.27), Color(0.09, 0.15, 0.32), Color(0.17, 0.19, 0.26)],       # the dealer's: shop-window blue
 	"pub": [Color(0.25, 0.06, 0.09), Color(0.29, 0.08, 0.11), Color(0.16, 0.08, 0.07)],        # The Rusty Bolt: wine red
 	"brass": [Color(0.2, 0.13, 0.08), Color(0.24, 0.16, 0.09), Color(0.17, 0.11, 0.07)],      # (1.98) Brassworks & Sons: dark wood panels
+	"volta": [Color(0.1, 0.06, 0.18), Color(0.13, 0.08, 0.22), Color(0.08, 0.06, 0.12)],      # (1.100) Volta Motor: night purple, neon
 	# (the scrapyard is outdoors: a sunset sky)
 }
 
@@ -88,6 +89,17 @@ static func _environment(ci: CanvasItem, screen: Vector2, floor_y: float, scene:
 		ci.draw_rect(Rect2(0, floor_y, screen.x, screen.y - floor_y), Color(0.24, 0.22, 0.22))   # concrete
 		for k in int(screen.x / 120.0) + 1:
 			ci.draw_line(Vector2(k * 120.0, floor_y), Vector2(k * 120.0 - 40.0, screen.y), Color(0.18, 0.17, 0.17), 2.0)
+	elif scene == "volta":
+		var vc: Array = SCENE_COLORS["volta"]
+		ci.draw_rect(Rect2(Vector2.ZERO, screen), vc[0])
+		ci.draw_rect(Rect2(0, floor_y, screen.x, screen.y - floor_y), vc[2])
+		# a neon grid floor running to the horizon
+		for k in 7:
+			var gy := floor_y + pow(k / 6.0, 1.8) * (screen.y - floor_y)
+			ci.draw_line(Vector2(0, gy), Vector2(screen.x, gy), Color(1.0, 0.3, 0.75, 0.35), 1.5)
+		for k in 21:
+			var gx := screen.x * 0.5 + (k - 10) * 60.0
+			ci.draw_line(Vector2(screen.x * 0.5 + (k - 10) * 18.0, floor_y), Vector2(screen.x * 0.5 + (gx - screen.x * 0.5) * 3.0, screen.y), Color(0.3, 0.9, 1.0, 0.3), 1.5)
 	elif scene == "phone":
 		# night, your room above the bay: dark walls, the city through the window
 		ci.draw_rect(Rect2(Vector2.ZERO, screen), Color(0.06, 0.06, 0.1))
@@ -174,6 +186,8 @@ static func _props_back(ci: CanvasItem, size: Vector2, scene: String, t: float, 
 			_brass_back(ci, size, floor_y, t)
 		"hell":
 			_hell_back(ci, size, floor_y, t)
+		"volta":
+			_volta_back(ci, size, floor_y, t)
 		"workshop":
 			_sign(ci, Vector2(size.x * 0.8, 30), I18n.t("CUSTOM ORDERS"), Color(0.6, 0.85, 1.0))
 			# shelves of parts
@@ -281,7 +295,7 @@ static func draw_front(ci: CanvasItem, stage: Rect2, scene: String, t: float, in
 ## The light the people in a scene stand in (1.60): Gus's building is the bay's work lamp, the places
 ## outside have their own.
 static func scene_light(scene: String) -> String:
-	return scene if scene in ["pub", "shop", "scrap", "phone", "brass", "hell"] else "bay"
+	return scene if scene in ["pub", "shop", "scrap", "phone", "brass", "hell", "volta"] else "bay"
 
 
 static func _front(ci: CanvasItem, size: Vector2, scene: String, t: float, info: Dictionary, robot_base: Vector2, robot_h: float) -> void:
@@ -343,6 +357,15 @@ static func _front(ci: CanvasItem, size: Vector2, scene: String, t: float, info:
 			ci.draw_line(gc, gc + Vector2(cos(na), sin(na)) * 5.5 * s, Color(0.6, 0.1, 0.08), 1.5)
 			PilotArt.draw_person(ci, Vector2(ct.end.x + 26 * s, floor_y), s, pilot, -1.0, "point", t + 0.5)
 			_head(info, "YOU", Vector2(ct.end.x + 26 * s, floor_y), s)
+		"volta":
+			# (1.100) Dex in his pastel jacket and shades sells you the future; you hold your controller and try to look calm
+			var dex := {"skin": "#e2b48c", "hair": "#c49a3c", "eyes": "#2e86de", "outfit": "#4ecdc4", "hat": "", "beard": "stubble",
+					"glasses": "shades", "long_hair": true}
+			var df := Vector2(size.x * 0.56, floor_y)
+			PilotArt.draw_person(ci, df, s, dex, 1.0, "clipboard", t)
+			_head(info, "DEX", df, s)
+			PilotArt.draw_person(ci, Vector2(size.x * 0.3, floor_y), s, pilot, 1.0, "hold", t + 0.5)
+			_head(info, "YOU", Vector2(size.x * 0.3, floor_y), s)
 		"hell":
 			# (1.99) Magda welds a crushed bale in her mask, sparks everywhere; you watch from a safe distance
 			var magda := {"skin": "#c8946e", "hair": "#2a1d14", "eyes": "#5b3a1e", "outfit": "#d35400", "hat": "headband", "beard": "none",
@@ -1027,6 +1050,59 @@ static func _brass_back(ci: CanvasItem, size: Vector2, floor_y: float, t: float)
 	_maker_plaque(ci, Rect2(size.x * 0.66, 70, size.x * 0.3, 36), "brassworks", I18n.t("BRASSWORKS & SONS"), I18n.t("EST. 1898 · BUILT BY HAND"))
 
 
+## (1.100) Volta Motor's showroom: a big window on Midtown at night, a neon sign, a grid floor, a palm, the turntable.
+static func _volta_back(ci: CanvasItem, size: Vector2, floor_y: float, t: float) -> void:
+	# the window: a sunset over the Midtown towers, striped sun and all
+	var win := Rect2(size.x * 0.04, 26, size.x * 0.5, floor_y - 92)
+	for k in 8:
+		ci.draw_rect(Rect2(win.position.x, win.position.y + k * win.size.y / 8.0, win.size.x, win.size.y / 8.0 + 1), Color(0.28, 0.08, 0.36).lerp(Color(1.0, 0.45, 0.4), k / 7.0))
+	var sun := Vector2(win.get_center().x, win.end.y - win.size.y * 0.5)
+	for k in 6:
+		var yy := sun.y - 34 + k * 7.0
+		var hw := sqrt(maxf(0.0, 36.0 * 36.0 - (yy - sun.y) * (yy - sun.y)))
+		ci.draw_rect(Rect2(sun.x - hw, yy, hw * 2.0, 4.0), Color(1.0, 0.85, 0.3).lerp(Color(1.0, 0.35, 0.55), k / 5.0))
+	for k in 9:
+		var bx := win.position.x + k * win.size.x / 9.0
+		var bh := win.size.y * (0.25 + 0.45 * fmod(k * 0.41, 1.0))
+		ci.draw_rect(Rect2(bx, win.end.y - bh, win.size.x / 9.0 - 3, bh), Color(0.1, 0.05, 0.16))
+		for j in 3:
+			if fmod(k * 5.0 + j * 3.0 + floor(t * 0.4), 4.0) < 1.5:
+				ci.draw_rect(Rect2(bx + 4, win.end.y - bh + 6 + j * 10, 3, 3), Color(1.0, 0.5, 0.85, 0.8))
+	_rc(ci, win, Color(0.75, 0.78, 0.85), false, 4.0)
+	ci.draw_line(Vector2(win.get_center().x, win.position.y), Vector2(win.get_center().x, win.end.y), Color(0.75, 0.78, 0.85), 3.0)
+	# the neon sign: VOLTA in pink tube, MOTOR in cyan, a lightning bolt, flickering now and then
+	var on := 0.25 if fmod(t * 0.7, 6.0) < 0.12 else 1.0
+	var f := ThemeDB.fallback_font
+	var sp := Vector2(size.x * 0.6, 58)
+	ci.draw_string(f, sp + Vector2(0, 2), I18n.t("VOLTA"), HORIZONTAL_ALIGNMENT_LEFT, -1, 30, Color(1.0, 0.25, 0.65, 0.3 * on))
+	ci.draw_string(f, sp, I18n.t("VOLTA"), HORIZONTAL_ALIGNMENT_LEFT, -1, 30, Color(1.0, 0.55, 0.85, on))
+	ci.draw_string(f, sp + Vector2(4, 22), I18n.t("MOTOR"), HORIZONTAL_ALIGNMENT_LEFT, -1, 16, Color(0.4, 0.95, 1.0, 0.95))
+	var bolt := sp + Vector2(f.get_string_size(I18n.t("VOLTA"), HORIZONTAL_ALIGNMENT_LEFT, -1, 30).x + 10, -22)
+	ci.draw_polyline(PackedVector2Array([bolt, bolt + Vector2(-8, 14), bolt + Vector2(0, 14), bolt + Vector2(-8, 30)]), Color(1.0, 0.95, 0.4, on), 3.0)
+	# a palm in a chrome pot by the window
+	var pp := Vector2(size.x * 0.48, floor_y)
+	_rc(ci, Rect2(pp.x - 10, pp.y - 22, 20, 22), Color(0.75, 0.78, 0.85))
+	_ln(ci, pp + Vector2(0, -22), pp + Vector2(4, -70), Color(0.45, 0.3, 0.18), 4.0)
+	for k in 5:
+		var a := -PI * 0.5 + (k - 2) * 0.55 + sin(t * 0.8 + k) * 0.05
+		var tip := pp + Vector2(4, -70) + Vector2(cos(a), sin(a) + 0.7) * 26.0
+		_ln(ci, pp + Vector2(4, -70), tip, Color(0.15, 0.55, 0.4), 4.0)
+	# the turntable the robot stands on, lights chasing round its rim
+	var tc := Vector2(size.x * float(ROBOT_SPOT["volta"][0]), floor_y + 2)
+	var ell := func(r: float) -> PackedVector2Array:
+		var pts := PackedVector2Array()
+		for k in 32:
+			pts.append(tc + Vector2(cos(k * TAU / 32.0) * r, sin(k * TAU / 32.0) * r * 0.22))
+		return pts
+	ci.draw_colored_polygon(ell.call(74.0), Color(0.06, 0.05, 0.08))
+	ci.draw_colored_polygon(ell.call(70.0), Color(0.72, 0.75, 0.82))
+	ci.draw_colored_polygon(ell.call(62.0), Color(0.5, 0.52, 0.6))
+	for k in 16:
+		var a2 := k * TAU / 16.0 + t * 0.8
+		var lit := int(t * 8.0 + k) % 4 == 0
+		ci.draw_circle(tc + Vector2(cos(a2) * 66.0, sin(a2) * 66.0 * 0.22), 3.0, Color(0.4, 0.95, 1.0) if lit else Color(1.0, 0.4, 0.75, 0.6))
+
+
 ## (1.99) Hellfire Heavy's breaker's yard: a container office, crushed bales, a drum fire, a wrecking ball on a crane.
 static func _hell_back(ci: CanvasItem, size: Vector2, floor_y: float, t: float) -> void:
 	# the jib of a yard crane across the top, a wrecking ball swinging slowly on its chain
@@ -1414,6 +1490,7 @@ const ROOM := {
 	"shop": {"tint": Color(0.0, 0.02, 0.06), "dim": 0.22, "pool": 0.08},
 	"brass": {"tint": Color(0.05, 0.02, 0.0), "dim": 0.26, "pool": 0.1},
 	"hell": {"tint": Color(0.06, 0.02, 0.04), "dim": 0.14, "pool": 0.09},
+	"volta": {"tint": Color(0.04, 0.0, 0.08), "dim": 0.2, "pool": 0.13},
 	"scrap": {"tint": Color(0.06, 0.02, 0.08), "dim": 0.12, "pool": 0.07},
 	"phone": {"tint": Color(0.0, 0.0, 0.03), "dim": 0.0, "pool": 0.0},
 }

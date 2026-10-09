@@ -11,7 +11,7 @@ extends RefCounted
 
 ## Makers whose parts come in one size only (no Light / Heavy copies). Scrapworks keeps loose sizes:
 ## odd, mismatched sizes are its character.
-const ONE_SIZE := ["oldiron", "brassworks", "hellfire"]
+const ONE_SIZE := ["oldiron", "brassworks", "hellfire", "volta"]
 
 const DEFS := [
 	# ---- Old Iron Foundry: cast iron, big hex bolts, most HP and armour, slow, heavy on power
@@ -104,6 +104,29 @@ const DEFS := [
 		"maker": "hellfire", "gimmick": "flame_dash"},
 	{"id": "torso_monster", "kind": "torso", "name": "Monster Chassis", "cost": 3900, "hp": 165, "armor": 14, "speed": -10, "draw": 7,
 		"shape": "monster", "color": "#c0392b", "mounts": ["head2", "arm_front2", "arm_back2"], "maker": "hellfire"},
+	# ---- Volta Motor (1.100): 80s retro future. Chrome, neon, arcs; fast and light, shocks and magnets
+	{"id": "volta_head_1", "kind": "head", "name": "Tesla Coil", "cost": 1000, "hp": 42, "armor": 5, "aim": 10, "draw": 3, "chips": 3,
+		"shape": "tesla", "color": "#2a2f3a", "size": 0.95, "maker": "volta", "trait": "stun", "trait_lv": 1},
+	{"id": "volta_head_2", "kind": "head", "name": "Racer Visor", "cost": 1200, "hp": 48, "armor": 8, "aim": 18, "draw": 3, "chips": 2,
+		"shape": "racer", "color": "#e8e8ee", "maker": "volta"},
+	{"id": "volta_torso_1", "kind": "torso", "name": "Chrome Coupe", "cost": 1300, "hp": 100, "armor": 6, "speed": 12, "draw": 3,
+		"shape": "coupe", "color": "#d6dbe2", "maker": "volta"},
+	{"id": "volta_torso_2", "kind": "torso", "name": "Dynamo", "cost": 1500, "hp": 110, "armor": 8, "speed": 4, "draw": 2, "output": 10,
+		"shape": "dynamo", "color": "#2a2f3a", "maker": "volta"},
+	{"id": "volta_arm_1", "kind": "arm", "name": "Arc Fist", "cost": 1300, "hp": 50, "armor": 6, "damage": 24, "speed": 14, "draw": 4,
+		"shape": "arcfist", "color": "#00b7ff", "size": 1.1, "maker": "volta", "trait": "stun", "trait_lv": 2},
+	{"id": "magnetica_arm_1", "kind": "arm", "name": "Mag Clamp", "cost": 1200, "hp": 46, "armor": 6, "damage": 14, "speed": 10, "draw": 4,
+		"shape": "magclamp", "color": "#e0457b", "size": 0.9, "maker": "volta", "trait": "magnet", "trait_lv": 1},
+	{"id": "leg_spring", "kind": "leg", "name": "Hot Rod Spring", "cost": 1100, "hp": 52, "armor": 5, "damage": 10, "speed": 32, "draw": 3,
+		"shape": "hotrod", "color": "#d6dbe2", "maker": "volta"},
+	{"id": "volta_leg_1", "kind": "leg", "name": "Mag-Lev Skid", "cost": 1300, "hp": 56, "armor": 8, "damage": 8, "speed": 24, "draw": 4,
+		"shape": "maglev", "color": "#2a2f3a", "maker": "volta", "trait": "hover", "trait_lv": 1},
+	{"id": "volta_reactor", "kind": "reactor", "name": "Coil Pack", "cost": 1400, "output": 30, "color": "#00e5ff", "maker": "volta",
+		"trait": "stun", "trait_lv": 1},
+	{"id": "magnetica_back", "kind": "back", "name": "Neon Spoiler", "cost": 1000, "draw": 2, "shape": "spoiler", "color": "#e0457b",
+		"maker": "volta", "gimmick": "sprint"},
+	{"id": "volta_twin", "kind": "torso", "name": "Twin Coil", "cost": 2000, "hp": 110, "armor": 6, "speed": 6, "draw": 4,
+		"shape": "twincoil", "color": "#d6dbe2", "mounts": ["head2"], "maker": "volta"},
 ]
 
 ## Old parts the new lines replace.
@@ -112,12 +135,14 @@ const RETIRED := ["torso_box", "torso_plate", "torso_tank", "arm_rod", "arm_bulk
 		"scrap_hydra", "torso_rib",
 		"head_cyclops", "torso_core", "arm_piston", "arm_grapple", "leg_piston", "reactor_cap", "reactor_regen",   # (1.98) Brassworks
 		"torso_hex", "torso_cannon", "arm_spike", "arm_hammer", "arm_saw", "leg_thick", "reactor_over", "back_spikes",   # (1.99) Hellfire
-		"pyro_head_2", "pyro_torso_2", "pyro_arm_2", "pyro_leg_2", "boom_head_2", "boom_torso_2", "boom_arm_2", "boom_leg_2", "pyro_reactor"]
+		"pyro_head_2", "pyro_torso_2", "pyro_arm_2", "pyro_leg_2", "boom_head_2", "boom_torso_2", "boom_arm_2", "boom_leg_2", "pyro_reactor",
+		"volta_arm_2", "volta_leg_2", "magnetica_head_1", "magnetica_head_2", "magnetica_torso_1", "magnetica_torso_2",   # (1.100) Volta
+		"magnetica_arm_2", "magnetica_leg_1", "magnetica_leg_2", "head_visor", "head_bulb", "head_tv", "leg_pogo", "reactor_arc"]
 
 ## The makers whose lines are in (their launch posts once on BotMedia).
-const LAUNCHED := ["oldiron", "scrapworks", "brassworks", "hellfire"]
+const LAUNCHED := ["oldiron", "scrapworks", "brassworks", "hellfire", "volta"]
 ## (1.98) Makers with their own shop in the city: Parts-R-Us stops stocking them.
-const OWN_SHOP := {"brassworks": "brassworks", "hellfire": "breakers"}
+const OWN_SHOP := {"brassworks": "brassworks", "hellfire": "breakers", "volta": "showroom"}
 
 
 ## The part list with the makers' lines in: same ids replaced whole, new ids added, old ones retired.

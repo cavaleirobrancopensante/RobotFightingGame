@@ -30,6 +30,8 @@ const SHAPE := {
 	"head:divingbell": ["Copper helmet, 12 bolts", "Built for the harbour floor"],
 	"head:welder": ["Welding mask, shade 12 glass", "Spits a flame with every hit"],
 	"head:beacon": ["Hazard beacon, always turning", "Hard to aim at a flashing light"],
+	"head:tesla": ["Tesla coil, 200,000 volts", "Don't stand under it in the rain"],
+	"head:racer": ["Racing helmet, tinted visor", "Locks on before you blink"],
 	# torsos
 	"torso:barrel": ["Oil drum, two hoops", "Still smells of diesel"],
 	"torso:box": ["Boxed steel frame", "Hatch for the battery"],
@@ -53,6 +55,9 @@ const SHAPE := {
 	"torso:clockwork": ["Gears wound by hand", "Every tick feeds the core"],
 	"torso:fueltank": ["Fuel tank, mostly full", "Do not puncture. They will"],
 	"torso:hull": ["Bulldozer hull, 4 cm plate", "Hazard stripes, earned"],
+	"torso:coupe": ["Chrome body, racing stripe", "Zero to sixty in a punch"],
+	"torso:dynamo": ["Dynamo windings, always turning", "Makes its own power as it fights"],
+	"torso:twincoil": ["Two necks, two coils", "Second head mount"],
 	# arms
 	"arm:rod": ["Steel pipe, ball fist", "Elbow is a door hinge"],
 	"arm:piston": ["Hydraulic piston, 2 t push", "Piston stroke 30 cm"],
@@ -75,6 +80,8 @@ const SHAPE := {
 	"arm:riveter": ["Pneumatic riveter, 9 a second", "Hose runs back to the boiler"],
 	"arm:wrecker": ["Wrecking ball, 2 t of iron", "Slow to swing, worse to catch"],
 	"arm:torch": ["Cutting torch, 3,000 °C", "Blue flame means it's ready"],
+	"arm:arcfist": ["Arc fist, sparks on contact", "Electrodes, polished for the camera"],
+	"arm:magclamp": ["Electromagnet clamp", "Pulls them in by the bolts"],
 	# legs
 	"leg:rod": ["Pipe leg, rubber foot", "Knee is a bike hub"],
 	"leg:piston": ["Piston knee, soft landing", "Hydraulic shock absorber"],
@@ -94,6 +101,8 @@ const SHAPE := {
 	"leg:tripod": ["Three toes, never tips", "Telescoping brass strut"],
 	"leg:excavator": ["Excavator track, 12 t rated", "Hydraulics hiss on every step"],
 	"leg:hydraulic": ["Hydraulic ram, lands like a press", "Jump, land, feel it in your teeth"],
+	"leg:hotrod": ["Coilover, hot red spring", "Built for the drag strip"],
+	"leg:maglev": ["Mag-lev skid, floats a hand high", "Sweeps go right under it"],
 	# back gear
 	"back:battery": ["Spare battery pack", "Hot-swappable cells"],
 	"back:spikes": ["Back spikes, no hugs", "Spikes face the grabber"],
@@ -106,6 +115,7 @@ const SHAPE := {
 	"back:tarp": ["Tarp hides what's broken", "Grommets, rope, hope"],
 	"back:smokestack": ["Chimney, swept weekly", "One pull and they can't see you"],
 	"back:exhaust": ["Truck stacks, straight pipe", "Lights up for a flame dash"],
+	"back:spoiler": ["Racing spoiler, neon edge", "Keep going and it pushes you faster"],
 }
 
 const KIND := {

@@ -188,6 +188,9 @@ class Fighter:
 	var boost_t := 0.0
 	var boost_hit := false
 	var boost_fire := false  # (1.99) Exhaust Stacks: the dash is a flame dash
+	var sprint_t := 0.0      # (1.100) Neon Spoiler: how long it has walked the same way
+	var sprint_dir := 0
+	var sting_cd := 0.0      # (1.100) Volta set: a spark on the floor stung it a moment ago
 	var jet_t := 0.0
 	var air_jumps := 0
 	var squash := 0.0        # landing squash timer (animation)
@@ -331,7 +334,8 @@ class Fighter:
 		var leg_factor: float = [0.35, 0.65, 1.0][clampi(n, 0, 2)]
 		if n == 0:
 			leg_factor = [0.22, 0.28, 0.35][clampi(arms(), 0, 2)]   # crawling on two arms, one, or rolling
-		return (1.0 + (s / maxf(1, n) + torso_speed()) / 100.0) * leg_factor * mod_speed() * (0.8 if hobble_t > 0.0 else 1.0) * (1.0 + ctrl.get("move", 0.0))
+		var sprint := 1.33 if sprint_t > 0.5 and has_gadget("sprint") else 1.0   # (1.100) Neon Spoiler
+		return (1.0 + (s / maxf(1, n) + torso_speed()) / 100.0) * leg_factor * mod_speed() * (0.8 if hobble_t > 0.0 else 1.0) * (1.0 + ctrl.get("move", 0.0)) * sprint
 
 	func attack_speed(limb: String) -> float:
 		var s: float = parts[limb]["speed"] if parts.has(limb) and alive(limb) else 0.0
@@ -523,6 +527,7 @@ var cheer := 0.0
 var sparks: Array = []
 var debris: Array = []
 var smoke: Array = []
+var volta_trail: Array = []   # (1.100) sparks a Volta set leaves on the floor: {x, t, f}
 var popups: Array = []
 var rings: Array = []
 var projectiles: Array = []
@@ -1957,6 +1962,7 @@ func _process(delta: float) -> void:
 			f.target = ""
 
 	update_effects(delta)
+	update_trail(delta)
 	update_pilots(delta)
 	if mode == "test":
 		for f in team_c:
@@ -1970,6 +1976,26 @@ func _process(delta: float) -> void:
 		arena_redraw_t = 1.0 / ARENA_FPS
 		arena_layer.refresh()
 	redraw_all()
+
+
+## (1.100) The Volta set's footsteps: each spark stays live a moment and stings an enemy that steps on it.
+func update_trail(delta: float) -> void:
+	for f in all_fighters():
+		f.sting_cd = maxf(0.0, f.sting_cd - delta)
+	for m in volta_trail:
+		m["t"] = float(m["t"]) - delta
+		if fmod(float(m["t"]), 0.3) < delta:
+			add_spark(Vector2(float(m["x"]), floor_y - 4.0), Color(0.45, 0.85, 1.0, 0.8), 8.0)
+		var own: Fighter = m["f"]
+		for e in enemies_of(own):
+			if e.on_ground and e.sting_cd <= 0.0 and e.state != "ko" and absf(e.pos.x - float(m["x"])) < 22.0 * e.scale:
+				var leg := "leg_front" if e.alive("leg_front") else ("leg_back" if e.alive("leg_back") else "torso")
+				damage_part(e, leg, 2.0 * own.gpow)
+				e.sting_cd = 0.8
+				add_spark(Vector2(e.pos.x, floor_y - 10.0), Color(0.6, 0.9, 1.0), 20.0)
+				Sfx.play("spark", 0.15, -8.0)
+				check_ko(own, e)
+	volta_trail = volta_trail.filter(func(m): return float(m["t"]) > 0.0)
 
 
 func update_effects(delta: float) -> void:
@@ -2931,6 +2957,14 @@ func update_fighter(f: Fighter, o: Fighter, i: Dictionary, delta: float) -> void
 			if f.boost_t <= 0.0:
 				f.vel.x = dir * WALK_SPEED * spd
 			f.state = "walk" if dir != 0 else "idle"
+			if dir != 0 and dir == f.sprint_dir:
+				var was := f.sprint_t
+				f.sprint_t += delta
+				if was <= 0.5 and f.sprint_t > 0.5 and f.has_gadget("sprint"):
+					add_spark(f.pos + Vector2(-dir * 30.0, -60.0) * f.scale, Color(1.0, 0.3, 0.6), 22.0 * f.scale)   # the spoiler lights up
+			else:
+				f.sprint_t = 0.0
+				f.sprint_dir = dir
 			if f.legs() == 0 and f.arms() == 0 and dir != 0:
 				f.roll_a += f.vel.x * delta / (18.0 * f.scale)   # rolling: the turn follows the ground covered
 			elif absf(f.roll_a) > 0.001:
@@ -3035,6 +3069,8 @@ func maker_step(f: Fighter) -> void:
 			if randf() < 0.35:
 				var g2 := RobotArt.geom(f.get_look())
 				smoke.append({"pos": to_world_point(f, Vector2(-float(g2["tw"]) * 0.5, (g2["torso"] as Rect2).position.y + 10.0)), "t": 0.0, "dark": true, "k": 0.5})
+	if f.sets.has("volta") and phase == "fight":
+		volta_trail.append({"x": foot.x, "t": 1.6, "f": f})   # (1.100) LIVE WIRE: a live spark left on the floor
 
 
 ## Which part a hit lands on. touched = the parts the striking limb actually reached (melee); then
@@ -3365,6 +3401,11 @@ func apply_hit(att: Fighter, d: Fighter, a: Dictionary, at: Vector2) -> void:
 			dmg *= 0.25
 			popup(tr("DEFLECTED"), hit_at + Vector2(0, -30), Color(0.7, 0.8, 1.0))
 			add_spark(hit_at, Color(0.7, 0.8, 1.0), 30.0)
+		if a.get("height", "mid") == "low":
+			# (1.100) Mag-Lev Skids float over sweeps and low jabs
+			var hov := maxf(limb_trait(d, "leg_front", "hover"), limb_trait(d, "leg_back", "hover"))
+			if hov > 0.0:
+				dmg *= 1.0 - hov / 100.0
 		var part_dmg := dmg * (HEAD_FACTOR if slot.begins_with("head") else 1.0)
 		damage_part(d, slot, part_dmg)
 		if slot != "torso" and d.alive("torso"):
@@ -4401,7 +4442,7 @@ func draw_fighter(f: Fighter, off: Vector2) -> void:
 		"flash": f.flash > 0.0, "rot": rot, "time": clock, "fist_out": fist_out,
 		"shield": f.shield_t > 0.0, "overcharge": f.over_t > 0.0, "stunned": f.stun_t > 0.0,
 		"jet": f.jet_t > 0.0 or (not f.on_ground and f.vel.y < -400.0 and f.has_gadget("double_jump")),
-		"boost": f.boost_t > 0.0, "sx": sx, "sy": sy,
+		"boost": f.boost_t > 0.0, "sprint": f.sprint_t > 0.5, "sx": sx, "sy": sy,
 		"dazed": f.vis_pose.get("dazed", false), "tuck": f.vis_pose.get("tuck", false),
 		"bob_l": idle_bits(f)[0], "bob_r": idle_bits(f)[1], "head_dx": idle_bits(f)[2],
 		# a core under a quarter: its eye flickers like a bad bulb

@@ -256,6 +256,14 @@ const SCENES := {
 		["MAGDA", "You're the one ripping arms off in the scrap ring. Good. I buy what's left."],
 		["MAGDA", "Everything here hits hard and some of it burns. Don't touch the barrels."],
 	]},
+	"volta_invite": {"place": "GUS'S BAY", "lines": [
+		["GUS", "Volta Motor's people saw your BotMedia. Six hundred followers and they think you're a poster."],
+		["GUS", "Their showroom in Midtown will let you in now. Don't buy anything just because it's shiny."],
+	]},
+	"volta_first": {"place": "VOLTA MOTOR", "lines": [
+		["DEX", "Welcome to the future, my friend. Feel that? That's static. That's Volta."],
+		["DEX", "Everything on the turntable, built in your grade. Fast, light, and it shocks people. Take a spin."],
+	]},
 	"unlock_season": {"place": "GUS'S BAY", "lines": [
 		["GUS", "The calendar. League nights every other Saturday, cups on Wednesdays, rent the last Sunday. The tables and the odds are in here too."],
 	]},

@@ -29,6 +29,8 @@ const TRAITS := {
 	# (1.99) Hellfire Heavy
 	"dazzle": {"name": "Dazzle", "desc": "A flashing beacon: enemies aim at you %d%% slower.", "values": [25, 40]},
 	"stomp": {"name": "Stomp", "desc": "Landing from a jump next to them hits their legs for %d and staggers them.", "values": [8, 13]},
+	# (1.100) Volta Motor
+	"hover": {"name": "Mag-Lev", "desc": "Floats just over the floor: low hits do %d%% less.", "values": [35, 55]},
 	"tarp": {"name": "Tarp", "desc": "The tarp hides your weak spot: the enemy's first scans find nothing (%d of them).", "values": [1, 2]},
 }
 

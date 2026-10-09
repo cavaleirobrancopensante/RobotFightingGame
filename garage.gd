@@ -37,9 +37,10 @@ var stats_box: VBoxContainer
 var stats_panel: PanelContainer
 ## The robot's stats panel only shows where the robot is being looked at, fixed or fitted - not
 ## at the pub, in the office, on the scrapyard pile or in the crew bay.
-const STATS_SCENES := ["build", "moves", "paint", "storage", "shop", "workshop", "brass", "hell"]
+const STATS_SCENES := ["build", "moves", "paint", "storage", "shop", "workshop", "brass", "hell", "volta"]
 ## (1.99) Makers' own shops: Parts seg -> [city place, maker, title]. The seg is also the scene's name.
-const MAKER_SHOPS := {"brass": ["brassworks", "brassworks", "BRASSWORKS & SONS"], "hell": ["breakers", "hellfire", "HELLFIRE HEAVY"]}
+const MAKER_SHOPS := {"brass": ["brassworks", "brassworks", "BRASSWORKS & SONS"], "hell": ["breakers", "hellfire", "HELLFIRE HEAVY"],
+		"volta": ["showroom", "volta", "VOLTA MOTOR"]}
 var list_box: VBoxContainer
 var scroll: ScrollContainer
 var tabs_box: HBoxContainer
@@ -540,6 +541,7 @@ func segs_of(t: String) -> Array:
 				out.append(["dealer", tr("Parts-R-Us"), "shop"])
 			out.append(["brass", tr("Brassworks & Sons"), ""])   # (1.98) a maker's own shop (walk there in the City)
 			out.append(["hell", tr("Hellfire Heavy"), ""])   # (1.99) the breaker's yard
+			out.append(["volta", tr("Volta Motor"), ""])   # (1.100) the showroom
 		"Season":
 			out.append(["calendar", tr("Calendar"), ""])
 			out.append(["table", tr("Standings"), ""])
@@ -1122,9 +1124,9 @@ func refresh() -> void:
 		tab = "Bay"
 	if away_from_bay() and HOME_TABS.has(tab):
 		# (1.79) out in the city: you stay where you are (the bay opens when you're back)
-		tab = {"pub": "Pub", "partsrus": "Parts", "scrapyard": "Parts", "brassworks": "Parts", "breakers": "Parts"}.get(GameData.pilot_at, "City")
+		tab = {"pub": "Pub", "partsrus": "Parts", "scrapyard": "Parts", "brassworks": "Parts", "breakers": "Parts", "showroom": "Parts"}.get(GameData.pilot_at, "City")
 		if tab == "Parts":
-			segs_on["Parts"] = {"partsrus": "dealer", "brassworks": "brass", "breakers": "hell"}.get(GameData.pilot_at, "scrap")
+			segs_on["Parts"] = {"partsrus": "dealer", "brassworks": "brass", "breakers": "hell", "showroom": "volta"}.get(GameData.pilot_at, "scrap")
 	set_seg(seg())
 	# (1.77) the City: the map takes the left side (wider), the panel on the right says what's where
 	var in_city := tab == "City"
@@ -1171,7 +1173,7 @@ func refresh() -> void:
 			match seg():
 				"dealer":
 					build_dealer()
-				"brass", "hell":
+				"brass", "hell", "volta":
 					build_maker_shop(str(MAKER_SHOPS[seg()][1]))
 				"order":
 					build_order()
@@ -4860,7 +4862,7 @@ func set_scene_for_tab() -> void:
 		"Storage":
 			scene = "storage"
 		"Parts":
-			scene = {"dealer": "shop", "order": "workshop", "brass": "brass", "hell": "hell"}.get(seg(), "scrap")
+			scene = {"dealer": "shop", "order": "workshop", "brass": "brass", "hell": "hell", "volta": "volta"}.get(seg(), "scrap")
 		"Season":
 			scene = {"cups": "cups"}.get(seg(), "office")
 		"Pub":
@@ -8367,7 +8369,7 @@ func place_of(t: String, key: String = "") -> String:
 		return "pub"
 	if t == "Parts":
 		var k := key if key != "" else str(segs_on.get("Parts", "scrap"))
-		return {"dealer": "partsrus", "brass": "brassworks", "hell": "breakers"}.get(k, "scrapyard")
+		return {"dealer": "partsrus", "brass": "brassworks", "hell": "breakers", "volta": "showroom"}.get(k, "scrapyard")
 	return ""
 
 
@@ -8441,6 +8443,7 @@ const PLACE_TEXT := {"home": "Gus's building: the bay, storage, the workshop and
 		"partsrus": "Parts-R-Us. New parts at your grade, a couple one grade up. New stock on Sundays.",
 		"brassworks": "Brassworks & Sons. Old Silas's family workshop. Every Brassworks part, built by hand, in your grade.",
 		"breakers": "Hellfire Heavy's breaker's yard on the docks. Magda tears robots apart and sells you the heavy stuff, in your grade.",
+		"showroom": "Volta Motor's showroom in Midtown. Chrome, neon and Dex. The whole Volta line on the turntable, in your grade.",
 		"scrapyard": "The Scrapyard. Mountains of dead robots. One dig a day, an hour of digging.",
 		"scrap_ring": "The scrap ring. Pickups and the Scrap League fight here.",
 		"sports_hall": "Ferrum Sports Hall. The Rust League's fight nights.",
@@ -8547,6 +8550,11 @@ func enter_place(place: String) -> void:
 			segs_on["Parts"] = "hell"
 			if not GameData.story_seen.has("hell_first"):
 				get_tree().create_timer(0.4).timeout.connect(func(): play_story(["hell_first"]))
+		"showroom":
+			tab = "Parts"
+			segs_on["Parts"] = "volta"
+			if not GameData.story_seen.has("volta_first"):
+				get_tree().create_timer(0.4).timeout.connect(func(): play_story(["volta_first"]))
 		"scrapyard":
 			tab = "Parts"
 			segs_on["Parts"] = "scrap"
@@ -8885,6 +8893,11 @@ func check_gus_cards() -> void:
 	if not GameData.story_seen.has("hell_invite") and int(GameData.career_stats.get("parts", 0)) >= 5 and GameData.tour < 0 \
 			and GameData.story_seen.has("first_garage") and GameData.rank_index() < 1:
 		play_story(["hell_invite"])
+		return
+	# (1.100) Volta Motor notices a pilot people follow (before the Rust League opens the showroom)
+	if not GameData.story_seen.has("volta_invite") and GameData.Social.followers() >= 600 and GameData.tour < 0 \
+			and GameData.story_seen.has("first_garage") and GameData.rank_index() < 2:
+		play_story(["volta_invite"])
 		return
 	if not GameData.gus_alerts.is_empty():
 		var al: Dictionary = GameData.gus_alerts.pop_front()

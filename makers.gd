@@ -21,7 +21,7 @@ const MAKERS := {
 		"perk": "Burns last twice as long, and exploding parts blast half again harder.", "perk_name": "FIREPROOF"},
 	"volta": {"label": "Volta", "name": "Volta Motor", "short": "VOLTA", "logo": "mk_volta", "color": "#00b7ff", "ink": "#101828",
 		"pitch": "Chrome, neon and a charge in every punch.",
-		"perk": "Every hit has a 6% extra chance to shock.", "perk_name": "LIVE WIRE"},
+		"perk": "Every hit has a 6% extra chance to shock, and its footsteps leave sparks that sting.", "perk_name": "LIVE WIRE"},
 	"nimbus": {"label": "Nimbus", "name": "Nimbus Aerial", "short": "NIMBUS", "logo": "mk_nimbus", "color": "#81ecec", "ink": "#16323a",
 		"pitch": "Aerospace engineering for the ring. Light, cool, hard to hit.",
 		"perk": "Falls slowly after a jump: a short glide.", "perk_name": "TAILWIND"},

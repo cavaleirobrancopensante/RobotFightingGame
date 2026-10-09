@@ -36,6 +36,7 @@ const SETS := {
 	"pub": {"key": Color(1.0, 0.76, 0.42), "from": -0.45, "rim": Color(1.0, 0.3, 0.45, 0.65), "amb": 0.36},
 	"shop": {"key": Color(0.88, 0.94, 1.0), "from": 0.0, "rim": Color(0.35, 0.65, 1.0, 0.6), "amb": 0.32},
 	"brass": {"key": Color(1.0, 0.78, 0.45), "from": -0.4, "rim": Color(0.5, 0.75, 0.9, 0.4), "amb": 0.36},   # (1.98) gaslight in the Brassworks shop
+	"volta": {"key": Color(0.95, 0.7, 1.0), "from": -0.35, "rim": Color(0.2, 0.9, 1.0, 0.65), "amb": 0.36},   # (1.100) the showroom's neon
 	"hell": {"key": Color(1.0, 0.58, 0.28), "from": -0.5, "rim": Color(0.55, 0.45, 0.95, 0.55), "amb": 0.38},   # (1.99) the breaker's yard: the drum fire and dusk
 	"scrap": {"key": Color(1.0, 0.7, 0.42), "from": 0.6, "rim": Color(0.62, 0.48, 0.95, 0.55), "amb": 0.36},
 	"phone": {"key": Color(0.72, 0.86, 1.0), "from": 0.25, "rim": Color(1.0, 0.75, 0.45, 0.45), "amb": 0.42},

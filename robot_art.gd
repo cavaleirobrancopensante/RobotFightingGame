@@ -29,7 +29,7 @@ const LEGS := {"rod": [60.0, 14.0], "piston": [62.0, 18.0], "spring": [66.0, 13.
 		"pogo": [68.0, 13.0], "wheel": [58.0, 16.0], "tread": [52.0, 25.0],
 		"blade": [64.0, 12.0], "hover": [50.0, 18.0], "spider": [62.0, 13.0],
 		"stomper": [56.0, 22.0], "pipe": [62.0, 14.0], "bellows": [60.0, 17.0], "tripod": [64.0, 13.0],
-		"excavator": [50.0, 22.0], "hydraulic": [64.0, 17.0]}
+		"excavator": [50.0, 22.0], "hydraulic": [64.0, 17.0], "hotrod": [66.0, 13.0], "maglev": [58.0, 15.0]}
 # [width, height]
 const TORSOS := {"barrel": [60.0, 70.0], "box": [56.0, 76.0], "vee": [70.0, 78.0],
 		"core": [60.0, 76.0], "tank": [84.0, 82.0], "slim": [42.0, 82.0],
@@ -37,13 +37,14 @@ const TORSOS := {"barrel": [60.0, 70.0], "box": [56.0, 76.0], "vee": [70.0, 78.0
 		"crate": [62.0, 66.0], "furnace": [64.0, 78.0], "orb": [70.0, 70.0],
 		"yoke": [82.0, 74.0], "quad": [74.0, 84.0], "monster": [92.0, 90.0],
 		"engine": [74.0, 74.0], "loco": [70.0, 80.0], "drum": [58.0, 72.0], "boiler": [62.0, 80.0], "clockwork": [62.0, 76.0],
-		"fueltank": [62.0, 78.0], "hull": [78.0, 80.0]}
+		"fueltank": [62.0, 78.0], "hull": [78.0, 80.0], "coupe": [58.0, 74.0], "dynamo": [62.0, 76.0], "twincoil": [80.0, 72.0]}
 const HEADS := {"bucket": [34.0, 32.0], "box": [38.0, 34.0], "dome": [42.0, 34.0], "cyclops": [40.0, 40.0],
 		"visor": [48.0, 28.0], "horned": [40.0, 34.0], "skull": [40.0, 42.0], "wedge": [44.0, 30.0],
 		"tall": [26.0, 52.0], "bulb": [44.0, 44.0], "tv": [46.0, 36.0], "dish": [40.0, 34.0], "laser": [38.0, 34.0],
 		"knight": [40.0, 42.0], "orb": [38.0, 38.0], "speaker": [44.0, 38.0],
 		"rivet": [38.0, 36.0], "grille": [50.0, 38.0], "peeper": [34.0, 32.0], "busted": [46.0, 36.0],
-		"periscope": [36.0, 34.0], "divingbell": [44.0, 42.0], "welder": [40.0, 40.0], "beacon": [36.0, 30.0]}
+		"periscope": [36.0, 34.0], "divingbell": [44.0, 42.0], "welder": [40.0, 40.0], "beacon": [36.0, 30.0],
+		"tesla": [34.0, 30.0], "racer": [42.0, 36.0]}
 const PUNCH_LEN := 84.0   # how far a punching hand reaches from the lead shoulder
 
 # [thickness, fist radius]
@@ -52,7 +53,7 @@ const ARMS := {"rod": [12.0, 10.0], "piston": [15.0, 12.0], "claw": [14.0, 7.0],
 		"rocket": [16.0, 14.0], "grapple": [14.0, 7.0], "saw": [14.0, 7.0],
 		"blade": [13.0, 7.0], "flame": [16.0, 7.0], "magnet": [15.0, 7.0],
 		"anvil": [18.0, 9.0], "crane": [13.0, 7.0], "wrench": [12.0, 7.0], "grabber": [11.0, 6.0],
-		"gauntlet": [15.0, 13.0], "riveter": [12.0, 7.0], "wrecker": [15.0, 13.0], "torch": [13.0, 7.0]}
+		"gauntlet": [15.0, 13.0], "riveter": [12.0, 7.0], "wrecker": [15.0, 13.0], "torch": [13.0, 7.0], "arcfist": [14.0, 13.0], "magclamp": [12.0, 7.0]}
 
 
 ## (1.93) Normal hits by limb, techniques included, and the arm poses that reach as far as a punch
@@ -1097,6 +1098,8 @@ static func arm_tip_extra(look: Dictionary, slot: String, pose: String) -> Vecto
 		"riveter": ext = 24.0 * sz
 		"wrecker": ext = 30.0 * sz + fr if REACH_POSES.has(pose) or LEG_HITS.has(pose) else fr + 8.0
 		"torch": ext = 60.0 if pose == "punch" or pose == "low_punch" else 22.0 * sz
+		"arcfist": ext = fr + 8.0 * sz
+		"magclamp": ext = 8.0 + 15.0 * sz
 	if pose == "elbow" or pose == "shove":
 		ext = 6.0   # the elbow (or a flat palm) does the hitting, not the weapon
 	return Vector2(ext, maxf(fr, th * 0.5))
@@ -1386,6 +1389,32 @@ static func _draw_arm(ci: CanvasItem, look: Dictionary, slot: String, s: Vector2
 			_round(ci, ball, fr, Color(0.22, 0.22, 0.24) if not flash else Color.WHITE)
 			ci.draw_arc(ball, fr * 0.7, -2.4, -1.2, 8, Color(1, 1, 1, 0.18), 2.0)
 			_joint(ci, ball - (ball - h).normalized() * fr, 3.0 * sz, c.darkened(0.2))
+		"arcfist":
+			# (1.100) Volta: a chrome fist with two electrode prongs and an arc jumping between them
+			_limb(ci, e.lerp(h, 0.35), h - dir * 3.0, Color(0.85, 0.88, 0.92), th * 1.15)
+			ci.draw_line(e.lerp(h, 0.4) + perp * th * 0.3, h - dir * 5.0 + perp * th * 0.3, Color(0.0, 0.85, 1.0, 0.9), 2.0)   # neon tube
+			_round(ci, h, fr, tc)
+			var p1 := h + dir * (fr + 7.0 * sz) + perp * fr * 0.55
+			var p2 := h + dir * (fr + 7.0 * sz) - perp * fr * 0.55
+			_ln(ci, h + dir * fr * 0.5 + perp * fr * 0.55, p1, Color(0.8, 0.55, 0.25), 3.0)
+			_ln(ci, h + dir * fr * 0.5 - perp * fr * 0.55, p2, Color(0.8, 0.55, 0.25), 3.0)
+			if fmod(t * 7.0, 1.0) < 0.6 or REACH_POSES.has(pose):
+				var zz := PackedVector2Array([p1])
+				for k in 4:
+					zz.append(p1.lerp(p2, (k + 1) / 5.0) + dir * (4.0 if (k + int(t * 20.0)) % 2 == 0 else -2.0))
+				zz.append(p2)
+				ci.draw_polyline(zz, Color(0.6, 0.95, 1.0), 2.0)
+				ci.draw_circle(p1.lerp(p2, 0.5), 5.0, Color(0.5, 0.9, 1.0, 0.25))
+		"magclamp":
+			# (1.100) Volta: an electromagnet clamp, a horseshoe in hot pink with its poles glowing
+			var mc2 := h + dir * 7.0 * sz
+			var rr2 := 11.0 * sz
+			_arc(ci, mc2, rr2, dir.angle() + PI * 0.5, dir.angle() + PI * 1.5, 12, tc if flash else c, 8.0 * sz)
+			for sgn in [1.0, -1.0]:
+				var pole: Vector2 = mc2 + perp * rr2 * float(sgn)
+				_ln(ci, pole, pole + dir * 9.0 * sz, Color(0.85, 0.87, 0.9), 8.0 * sz)
+				ci.draw_circle(pole + dir * 9.0 * sz, 3.0 * sz, Color(0.5, 0.85, 1.0, 0.5 + 0.4 * sin(t * 8.0)))
+			_joint(ci, h, th * 0.55, c.darkened(0.3))
 		"torch":
 			# (1.99) Hellfire: a cutting torch, a gas bottle on the forearm, a blue pilot flame; a punch is a jet of fire
 			_plate(ci, PackedVector2Array([e.lerp(h, 0.25) + perp * th * 0.5, e.lerp(h, 0.7) + perp * th * 0.5, e.lerp(h, 0.7) + perp * th * 1.2, e.lerp(h, 0.25) + perp * th * 1.2]), Color(0.75, 0.55, 0.12))
@@ -1506,6 +1535,18 @@ static func _draw_back(ci: CanvasItem, look: Dictionary, g: Dictionary, pose: Di
 			for k in 3:
 				var ph := fmod(t * 0.7 + k * 0.33, 1.0)
 				ci.draw_circle(Vector2(sk.get_center().x - ph * 14.0, sk.position.y - 8.0 - ph * 30.0), 4.0 + ph * 8.0, Color(0.92, 0.93, 0.95, 0.45 * (1.0 - ph)))
+		"spoiler":
+			# (1.100) Volta: a racing spoiler on two struts, its edge a neon tube that blazes on a sprint
+			var th3: float = g["th"]
+			var wy := top - 6.0
+			_ln(ci, Vector2(bx + 2, top + th3 * 0.3), Vector2(bx - 14, wy), Color(0.2, 0.22, 0.26), 4.0)
+			_ln(ci, Vector2(bx + 2, top + th3 * 0.5), Vector2(bx - 22, wy + 4), Color(0.2, 0.22, 0.26), 4.0)
+			var wing := PackedVector2Array([Vector2(bx - 40, wy - 6), Vector2(bx - 4, wy - 10), Vector2(bx - 2, wy - 4), Vector2(bx - 38, wy + 4)])
+			_plate(ci, wing, c)
+			var glow := 1.0 if pose.get("sprint", false) else 0.55 + 0.25 * sin(t * 5.0)
+			ci.draw_line(Vector2(bx - 40, wy - 7), Vector2(bx - 4, wy - 11), Color(0.0, 0.9, 1.0, glow), 2.5)
+			ci.draw_line(Vector2(bx - 38, wy + 5), Vector2(bx - 2, wy - 3), Color(1.0, 0.3, 0.7, glow), 2.0)
+			_plate(ci, PackedVector2Array([Vector2(bx - 42, wy - 10), Vector2(bx - 36, wy - 10), Vector2(bx - 36, wy + 8), Vector2(bx - 42, wy + 6)]), c.darkened(0.25))
 		"exhaust":
 			# (1.99) Hellfire: two truck exhaust stacks; they belch smoke, and fire on a flame dash
 			for k in 2:
@@ -1644,6 +1685,26 @@ static func _draw_leg(ci: CanvasItem, look: Dictionary, slot: String, hip: Vecto
 			_limb(ci, knee, foot + Vector2(0, -4), c.lightened(0.15), th * 0.7)
 			_ln(ci, knee.lerp(foot, 0.3) - perp * th * 0.5, knee.lerp(foot, 0.3) + perp * th * 0.5, c.darkened(0.35), 3.0)
 			_joint(ci, knee, th * 0.6, c.darkened(0.25))
+		"hotrod":
+			# (1.100) Volta: a chrome coilover, a hot red spring round the shock
+			_limb(ci, hip, knee, c, th)
+			var sh_end := foot + Vector2(0, -8)
+			_limb(ci, knee, sh_end, Color(0.82, 0.85, 0.9), th * 0.42)
+			var pts2 := PackedVector2Array()
+			for k in 11:
+				var f5 := k / 10.0
+				var q5 := knee.lerp(sh_end, 0.08 + f5 * 0.78)
+				pts2.append(q5 + perp * th * (0.62 if k % 2 == 0 else -0.62))
+			ci.draw_polyline(pts2, OUTLINE, 5.0)
+			ci.draw_polyline(pts2, Color(0.9, 0.15, 0.2), 3.0)
+			ci.draw_line(hip.lerp(knee, 0.2), hip.lerp(knee, 0.85), Color(0.0, 0.85, 1.0, 0.85), 2.0)   # racing stripe
+			_joint(ci, knee, th * 0.55, c.darkened(0.3))
+		"maglev":
+			# (1.100) Volta: a sleek leg on a magnetic skid that floats over the floor
+			_limb(ci, hip, knee, c, th)
+			_limb(ci, knee, foot + Vector2(0, -16), c.lightened(0.2), th * 0.75)
+			ci.draw_line(hip.lerp(knee, 0.15), knee.lerp(foot, 0.7), Color(1.0, 0.3, 0.7, 0.8), 2.0)
+			_joint(ci, knee, th * 0.55, c.darkened(0.3))
 		"excavator":
 			# (1.99) Hellfire: an excavator's boom for a thigh, a hydraulic ram along it, and a track unit for a foot
 			_limb(ci, hip, knee, c, th)
@@ -1701,6 +1762,17 @@ static func _draw_leg(ci: CanvasItem, look: Dictionary, slot: String, hip: Vecto
 		for dx in [-12.0, 2.0, 16.0]:
 			_ln(ci, foot + Vector2(2, -5), foot + Vector2(dx, 0), tc, 3.5)
 		_joint(ci, foot + Vector2(2, -5), 4.0, tc.darkened(0.2))
+	elif p["shape"] == "maglev":
+		# the skid hovers a hand over the floor, magnet light under it
+		var lift := 6.0 + 2.0 * sin(Time.get_ticks_msec() * 0.006 + foot.x * 0.1)
+		var sk2 := PackedVector2Array([foot + Vector2(-16, -14 - lift + 6), foot + Vector2(22, -14 - lift + 6), foot + Vector2(28, -6 - lift + 6), foot + Vector2(-14, -4 - lift + 6)])
+		_plate(ci, sk2, Color(0.82, 0.85, 0.9) if not flash else Color.WHITE)
+		ci.draw_line(foot + Vector2(-12, -6 - lift + 6), foot + Vector2(24, -6 - lift + 6), Color(0.0, 0.9, 1.0), 2.0)
+		for k in 3:
+			ci.draw_line(foot + Vector2(-8 + k * 12, -3 - lift + 6), foot + Vector2(-8 + k * 12, 2), Color(0.3, 0.85, 1.0, 0.35), 3.0)
+	elif p["shape"] == "hotrod":
+		_plate(ci, _chamfer(Rect2(foot.x - 10.0, foot.y - 8.0, 26.0, 8.0), 3.0), Color(0.15, 0.15, 0.17))
+		ci.draw_line(Vector2(foot.x - 8, foot.y - 2), Vector2(foot.x + 14, foot.y - 2), Color(0.95, 0.95, 0.95, 0.7), 2.0)
 	elif p["shape"] == "excavator":
 		# a yellow-framed track unit: black links, rollers, a hazard edge
 		var er := Rect2(foot.x - 24.0, foot.y - 22.0, 52.0, 22.0)
@@ -1939,6 +2011,47 @@ static func _draw_torso(ci: CanvasItem, look: Dictionary, g: Dictionary, flash: 
 				_ln(ci, Vector2(bxk, y0 + 3), Vector2(bxk, y1 - 3), c, 3.5)
 			_plate(ci, _chamfer(Rect2(x0 - 3, y0 - 2, w + 6, 9), 2.0), trim)
 			_plate(ci, _chamfer(Rect2(x0 - 3, y1 - 8, w + 6, 9), 2.0), trim)
+		"coupe":
+			# (1.100) Volta: a chrome body shaped like a sports car's nose: a raked front, fins, a racing stripe, neon edge
+			var cp2 := PackedVector2Array([Vector2(x0 + w * 0.08, y0), Vector2(x1 - w * 0.25, y0), Vector2(x1, y0 + r.size.y * 0.35),
+					Vector2(x1 - w * 0.06, y1), Vector2(x0 + w * 0.12, y1), Vector2(x0, y0 + r.size.y * 0.45)])
+			if front:
+				cp2 = PackedVector2Array([Vector2(x0 + w * 0.14, y0), Vector2(x1 - w * 0.14, y0), Vector2(x1, y0 + r.size.y * 0.4),
+						Vector2(x1 - w * 0.1, y1), Vector2(x0 + w * 0.1, y1), Vector2(x0, y0 + r.size.y * 0.4)])
+			_plate(ci, cp2, c)
+			var sx3 := r.get_center().x + (0.0 if front else w * 0.05)
+			ci.draw_colored_polygon(PackedVector2Array([Vector2(sx3 - 5, y0 + 1), Vector2(sx3 + 5, y0 + 1), Vector2(sx3 + 5, y1 - 1), Vector2(sx3 - 5, y1 - 1)]), Color(0.9, 0.15, 0.25))
+			ci.draw_line(Vector2(sx3 - 8, y0 + 1), Vector2(sx3 - 8, y1 - 1), Color(0.95, 0.95, 0.98), 2.0)
+			var nc := Color(0.0, 0.9, 1.0, 0.75 + 0.25 * sin(t * 6.0))
+			ci.draw_line(Vector2(x0 + w * 0.12, y1 - 3), Vector2(x1 - w * 0.06, y1 - 3), nc, 2.5)
+			if not front:
+				_plate(ci, PackedVector2Array([Vector2(x0 + 2, y0 + 4), Vector2(x0 + 12, y0 + 2), Vector2(x0 - 8, y0 - 12)]), c.darkened(0.15))   # a tail fin
+			ci.draw_line(Vector2(x0 + w * 0.2, y0 + 5), Vector2(x0 + w * 0.5, y0 + 5), Color(1, 1, 1, 0.55), 2.0)   # chrome glint
+		"dynamo":
+			# (1.100) Volta: a dynamo, copper windings turning in a dark frame, terminals sparking (extra power)
+			_plate(ci, plate, c)
+			var dw := Rect2(x0 + w * 0.14, y0 + r.size.y * 0.16, w * 0.72, r.size.y * 0.6)
+			_plate(ci, _rounded(dw, dw.size.x * 0.3), Color(0.7, 0.4, 0.18))
+			var roll := fmod(t * 3.0, 1.0)
+			for k in 7:
+				var yy := dw.position.y + 4.0 + fmod(k / 7.0 + roll / 7.0, 1.0) * (dw.size.y - 8.0)
+				ci.draw_line(Vector2(dw.position.x + 4, yy), Vector2(dw.end.x - 4, yy), Color(0.45, 0.24, 0.1), 2.0)
+			ci.draw_line(Vector2(dw.position.x + 6, dw.position.y + 6), Vector2(dw.position.x + 6, dw.end.y - 6), Color(1, 0.85, 0.6, 0.4), 2.0)
+			for k in 2:
+				var tp := Vector2(x0 + w * (0.28 + k * 0.44), y0 - 2.0)
+				_plate(ci, _chamfer(Rect2(tp.x - 4, tp.y - 6, 8, 8), 1.5), Color(0.85, 0.85, 0.9))
+			if fmod(t * 2.0, 1.0) < 0.3:
+				ci.draw_polyline(PackedVector2Array([Vector2(x0 + w * 0.28, y0 - 8), Vector2(x0 + w * 0.42, y0 - 14), Vector2(x0 + w * 0.56, y0 - 7), Vector2(x0 + w * 0.72, y0 - 9)]), Color(0.6, 0.95, 1.0), 2.0)
+			ci.draw_line(Vector2(x0 + 4, y1 - 6), Vector2(x1 - 4, y1 - 6), Color(1.0, 0.3, 0.7, 0.8), 2.0)
+		"twincoil":
+			# (1.100) Volta: a wide chrome yoke, a tesla coil insulator under each neck
+			_plate(ci, _rounded(r, 12.0), c)
+			ci.draw_colored_polygon(PackedVector2Array([Vector2(x0 + w * 0.47, y0 + 1), Vector2(x0 + w * 0.53, y0 + 1), Vector2(x0 + w * 0.53, y1 - 1), Vector2(x0 + w * 0.47, y1 - 1)]), Color(0.9, 0.15, 0.25))
+			for k in 2:
+				var ix := x0 + w * (0.28 + k * 0.44)
+				for j in 3:
+					_disc(ci, Vector2(ix, y0 + 6 + j * 6.0), 6.0 - j, Color(0.92, 0.9, 0.85))
+			ci.draw_line(Vector2(x0 + 6, y1 - 4), Vector2(x1 - 6, y1 - 4), Color(0.0, 0.9, 1.0, 0.8), 2.5)
 		"fueltank":
 			# (1.99) Hellfire: an upright fuel tank, red, two straps, a valve on top and the flame diamond
 			_plate(ci, _rounded(r, w * 0.36), c)
@@ -2227,6 +2340,30 @@ static func _draw_head(ci: CanvasItem, look: Dictionary, g: Dictionary, flash: b
 				ci.draw_line(pc2 + Vector2(off2, -pr2), pc2 + Vector2(off2, pr2), Color(0.8, 0.64, 0.2), 2.0)
 			if not front:
 				_disc(ci, hc2 + Vector2(-w * 0.22, -h * 0.05), h * 0.1, Color(0.8, 0.64, 0.2))
+		"tesla":
+			# (1.100) Volta: a small chrome head with a tesla coil on top, a ball that crackles
+			_plate(ci, _rounded(Rect2(x0, y0 + h * 0.25, w, h * 0.75), 6.0), c)
+			ci.draw_rect(Rect2(cen.x - (w * 0.3 if front else -w * 0.02), y0 + h * 0.48, w * (0.6 if front else 0.44), h * 0.18), eye)
+			var cx2 := cen.x - (0.0 if front else w * 0.08)
+			for j in 4:
+				_disc(ci, Vector2(cx2, y0 + h * 0.2 - j * 5.0), 5.5 - j * 0.6, Color(0.75, 0.45, 0.2) if j % 2 == 0 else Color(0.92, 0.9, 0.85))
+			var tb := Vector2(cx2, y0 - 16.0)
+			_disc(ci, tb, 6.0, Color(0.85, 0.87, 0.9))
+			for k in 3:
+				if fmod(t * 5.0 + k * 0.37, 1.0) < 0.5:
+					var a3 := -PI * 0.5 + (k - 1) * 0.9 + sin(t * 13.0 + k) * 0.3
+					var tip3 := tb + Vector2(cos(a3), sin(a3)) * 16.0
+					ci.draw_polyline(PackedVector2Array([tb, tb.lerp(tip3, 0.4) + Vector2(3, 0).rotated(a3 + 1.0), tb.lerp(tip3, 0.7) - Vector2(3, 0).rotated(a3 + 1.0), tip3]), Color(0.6, 0.95, 1.0), 1.5)
+		"racer":
+			# (1.100) Volta: a white racing helmet, a wide tinted visor with the eye behind it, a stripe over the top
+			var hc3 := Vector2(cen.x, y0 + h * 0.5)
+			_round(ci, hc3, minf(w, h) * 0.5, c)
+			ci.draw_colored_polygon(PackedVector2Array([hc3 + Vector2(-3, -h * 0.5), hc3 + Vector2(3, -h * 0.5), hc3 + Vector2(3, h * 0.1), hc3 + Vector2(-3, h * 0.1)]), Color(0.9, 0.15, 0.25))
+			var vis := Rect2(cen.x - w * 0.36, y0 + h * 0.38, w * 0.72, h * 0.26) if front else Rect2(cen.x - w * 0.02, y0 + h * 0.36, w * 0.5, h * 0.28)
+			_plate(ci, _rounded(vis, vis.size.y * 0.45), Color(0.08, 0.1, 0.16))
+			ci.draw_rect(Rect2(vis.position.x + vis.size.x * 0.25, vis.get_center().y - 2, vis.size.x * 0.5, 4), eye)
+			ci.draw_line(vis.position + Vector2(4, 3), vis.position + Vector2(vis.size.x * 0.4, 3), Color(1.0, 0.4, 0.8, 0.6), 2.0)
+			_plate(ci, _chamfer(Rect2(x0 + w * 0.15, y0 + h * 0.86, w * 0.7, h * 0.14), 2.0), c.darkened(0.25))
 		"welder":
 			# (1.99) Hellfire: a welding mask, the dark glass glowing with the eye behind it, straps and a hinge
 			var mk := PackedVector2Array([Vector2(x0 + w * 0.12, y0), Vector2(x0 + w * 0.88, y0), Vector2(x0 + w, y0 + h * 0.4),
