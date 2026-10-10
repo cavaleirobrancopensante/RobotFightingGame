@@ -320,7 +320,7 @@ const SCENES := {
 		["GUS", "Want a part nobody sells? Tell me the shape and what it should do, and I'll build it. Made to order, under Get Parts."],
 	]},
 	"unlock_pilot": {"place": "GUS'S BAY", "lines": [
-		["GUS", "People know your face now. Fix your look on BotMedia, and the dealer sells controllers too, under Gear."],
+		["GUS", "People know your face now. Fix your look on BotMedia. Your controllers live in Crew now, under Gear."],
 	]},
 	"unlock_paint": {"place": "GUS'S BAY", "lines": [
 		["GUS", "The crowd cheers for robots they can spot from the cheap seats. Paint's in the Bay, under Style & paint."],

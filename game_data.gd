@@ -3,7 +3,7 @@ const PlayLog = preload("res://playlog.gd")   # (1.87) the playtest log
 
 # helper scripts, loaded by path so the game also runs without an editor scan
 ## The game's version, shown on the main menu. Bump it with every change (1.1, 1.2, ...).
-const VERSION := "1.113"
+const VERSION := "1.114"
 const Arena = preload("res://arena.gd")
 const I18n = preload("res://i18n.gd")
 const Catalog = preload("res://catalog.gd")
@@ -4463,7 +4463,7 @@ func take_controller(id: String) -> String:
 		return ""
 	spare_controllers.erase(id)
 	owned_controllers.append(id)
-	return tr("The %s is on your gear shelf (BotMedia > Gear).") % tr(PilotArt.CONTROLLER_NAMES.get(id, id))
+	return tr("The %s is on your gear shelf (Crew > Gear).") % tr(PilotArt.CONTROLLER_NAMES.get(id, id))
 
 
 func sell_spare_controller(id: String) -> String:

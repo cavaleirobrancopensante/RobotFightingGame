@@ -507,8 +507,8 @@ func tab_list() -> Array:
 	if GameData.unlocked("season"):
 		t.append("Season")
 	t += ["City", "Feed"]   # (1.77) the City holds the scrapyard, Parts-R-Us and the Rusty Bolt
-	if GameData.team_unlocked():
-		t.append("Crew")
+	if GameData.team_unlocked() or GameData.unlocked("pilot"):
+		t.append("Crew")   # (1.114) your corner: controllers (Gear) and backups
 	return t
 
 
@@ -519,7 +519,7 @@ const HOME_TABS := ["Bay", "Crew"]   # (1.79) Gus's bay and crew bay: only when 
 ## Where each feature lives now: [section, toggle]. Gus's unlock scene returns you there.
 const FEATURE_PLACE := {"scrapyard": ["Parts", "scrap"], "storage": ["Bay", "storage"], "style": ["Bay", "style"],
 		"shop": ["Parts", "dealer"], "season": ["Season", "calendar"], "scout": ["", "scout"], "moves": ["Bay", "chips"],
-		"cups": ["Season", "cups"], "team": ["Crew", "backups"], "workshop": ["Bay", "order"], "pilot": ["Feed", "gear"],
+		"cups": ["Season", "cups"], "team": ["Crew", "backups"], "workshop": ["Bay", "order"], "pilot": ["Crew", "gear"],
 		"paint": ["Bay", "style"], "setups": ["Bay", "setups"], "randomize": ["Bay", "robot"]}
 
 
@@ -555,9 +555,13 @@ func segs_of(t: String) -> Array:
 				out.append(["cups", tr("Cups"), "cups"])
 			out.append(["pilots", tr("Pilots"), ""])
 			out.append(["money", tr("Money"), ""])
+			# (1.114) sponsor and maker deals are money: they live beside it, not in your phone's profile
+			var nc: int = GameData.Contracts.st()["offers"].size()
+			out.append(["deals", tr("Deals %d") % nc if nc > 0 else tr("Deals"), ""])
 		"Feed":
-			# BotMedia: the feed, Explore, Alerts, your DMs and your profile (Looks, Gear and
-			# Contracts open from the profile; hidden = no button on the bar)
+			# BotMedia: the feed, Explore, People, Alerts, your DMs and your profile (Looks and Clips
+			# open from the profile; hidden = no button on the bar). (1.114) Gear went to Crew,
+			# Contracts to Season > Deals, Catalogues to Bay > Storage.
 			out.append(["home", tr("Home"), ""])
 			out.append(["explore", tr("Explore"), ""])
 			out.append(["people", tr("People"), ""])
@@ -566,16 +570,14 @@ func segs_of(t: String) -> Array:
 			out.append(["profile", tr("Profile"), ""])
 			out.append(["looks", tr("Looks"), "", true])
 			out.append(["clips", tr("Clips"), "", true])
-			if GameData.unlocked("pilot"):
-				out.append(["gear", tr("Gear"), "pilot", true])
-			out.append(["contracts", tr("Contracts"), "", true])
-			out.append(["catalogues", tr("Catalogues"), "", true])
 		"Pub":
 			# The Rusty Bolt: the scene stays the same pub while you switch between these
 			out.append(["bar", tr("Bar"), ""])
 			out.append(["bets", tr("Bets"), ""])
 			out.append(["jukebox", tr("Jukebox"), ""])
 		"Crew":
+			if GameData.unlocked("pilot"):
+				out.append(["gear", tr("Gear"), "pilot"])   # (1.114) controllers moved here from BotMedia
 			if GameData.team_unlocked():
 				out.append(["backups", tr("Backups"), "team"])
 
@@ -614,7 +616,7 @@ func section_new(t: String) -> bool:
 		"Storage":
 			return GameData.is_new("storage")
 		"Season":
-			if GameData.is_new("season"):
+			if GameData.is_new("season") or contracts_new():
 				return true
 		"Bay":
 			if (GameData.unlocked("setups") and GameData.is_new("setups")) or (GameData.unlocked("randomize") and GameData.is_new("randomize")):
@@ -689,10 +691,10 @@ func build_seg_bar() -> void:
 	for sg in list:
 		if sg.size() > 3 and sg[3]:
 			continue   # opens from somewhere else (BotMedia's profile)
-		var on: bool = sg[0] == seg() or (tab == "Feed" and sg[0] == "profile" and seg() in ["looks", "clips", "gear", "contracts", "catalogues"])
+		var on: bool = sg[0] == seg() or (tab == "Feed" and sg[0] == "profile" and seg() in ["looks", "clips"])
 		var b := UI.button(str(sg[1]), _on_seg.bind(sg[0]), 13, Vector2(0, 34))
 		GUI.mark_new(b, seg_new(sg[0], sg[2]) or (tab == "Feed" and sg[0] == "home" and not GameData.Social.drafts().is_empty())
-				or (tab == "Feed" and sg[0] == "profile" and (seg_new("gear", "pilot") and GameData.unlocked("pilot") or contracts_new())))
+				or (tab == "Season" and sg[0] == "deals" and contracts_new()))
 		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		# long names (big text, Portuguese) shrink instead of pushing the panel off the screen
 		b.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
@@ -1210,15 +1212,6 @@ func refresh() -> void:
 				"clips":
 					profile_bar()
 					build_my_clips()
-				"gear":
-					profile_bar()
-					build_controllers()
-				"contracts":
-					profile_bar()
-					build_contracts()
-				"catalogues":
-					profile_bar()
-					build_catalogue_shelf()
 				_:
 					build_feed()
 		"Pub":
@@ -1230,8 +1223,8 @@ func refresh() -> void:
 				_:
 					build_pub_cards()
 		"Crew":
-			if seg() == "pilot":
-				build_pilot_view()
+			if crew_view() == "gear":
+				build_controllers()
 			else:
 				build_team_tab()
 	build_detail()
@@ -2683,7 +2676,26 @@ func _on_sell_picked_confirmed() -> void:
 
 
 ## Jump to a section (and one of its toggles).
+## (1.114) Which Crew page shows: Gear (controllers) or Backups.
+func crew_view() -> String:
+	if not GameData.team_unlocked():
+		return "gear"
+	if not GameData.unlocked("pilot"):
+		return "backups"
+	return "gear" if str(segs_on.get("Crew", "")) == "gear" else "backups"
+
+
 func go_to(t: String, key: String = "", then: Callable = Callable()) -> void:
+	# (1.114) BotMedia's profile used to hold these: they live with the money, the crew and the parts now
+	if t == "Feed" and key == "contracts":
+		t = "Season"
+		key = "deals"
+	elif t == "Feed" and key == "gear":
+		t = "Crew"
+		key = "gear"
+	elif t == "Feed" and key == "catalogues":
+		go_to("Bay", "storage", open_catalogue_shelf)
+		return
 	if t == "Storage":
 		t = "Bay"
 		key = "storage"
@@ -3010,7 +3022,7 @@ func open_dm(key: String) -> void:
 		var b := UI.button(tr(str(o[1])) + ("\n" + str(o[2]) if str(o[2]) != "" else ""), _on_dm_send.bind(key, str(o[0])), 13, Vector2(0, 54))
 		col.add_child(b)
 	if key.begins_with("sp:"):
-		col.add_child(UI.button(tr("Contracts ›"), func(): close_popup(); go_to("Feed", "contracts"), 13, Vector2(0, 44)))
+		col.add_child(UI.button(tr("Contracts ›"), func(): close_popup(); go_to("Season", "deals"), 13, Vector2(0, 44)))
 	popup_footer.add_child(UI.button(tr("Close"), close_popup, 16, Vector2(0, 46)))
 	scroll_to_end(col)
 
@@ -3663,7 +3675,7 @@ func account_header(key: String) -> void:
 	if acc.has("wid"):
 		bx.add_child(UI.button(tr("Pilot card"), open_pilot.bind(int(acc["wid"])), 13, Vector2(120, 38)))
 	if key.begins_with("sp:"):
-		bx.add_child(UI.button(tr("Contracts"), go_to.bind("Feed", "contracts"), 13, Vector2(120, 38)))
+		bx.add_child(UI.button(tr("Contracts"), go_to.bind("Season", "deals"), 13, Vector2(120, 38)))
 
 
 func _on_follow(key: String, on: bool) -> void:
@@ -3682,7 +3694,7 @@ func build_alerts() -> void:
 	var fresh := alerts_fresh
 	var offers: Array = GameData.Contracts.st()["offers"]
 	if not offers.is_empty():
-		var row := make_tap_row(Logos.LogoIcon.new(str(offers[0]["sp"]), 52), tr("Sponsor offers waiting: %d") % offers.size(), tr("Read them before they run out."), go_to.bind("Feed", "contracts"))
+		var row := make_tap_row(Logos.LogoIcon.new(str(offers[0]["sp"]), 52), tr("Sponsor offers waiting: %d") % offers.size(), tr("Read them before they run out."), go_to.bind("Season", "deals"))
 		GUI.mark_new(row.get_parent(), true)
 	var notes: Array = S.st()["notes"]
 	if notes.is_empty():
@@ -3961,7 +3973,7 @@ func _on_thread_reply(id: int, tone: String, to: int) -> void:
 	open_thread(id, -1)
 
 
-## Your profile, on top of Posts / Looks / Gear / Contracts.
+## Your profile, on top of Posts / Clips / Looks.
 func profile_bar() -> void:
 	var S = GameData.Social
 	var panel := PanelContainer.new()
@@ -3983,11 +3995,6 @@ func profile_bar() -> void:
 	right.add_child(GUI.text(tr("FOLLOWERS"), 10, GUI.MUTED, "headb"))
 	var bar := flow_bar()
 	var subs := [["profile", tr("Posts")], ["clips", tr("Clips")], ["looks", tr("Looks")]]
-	if GameData.unlocked("pilot"):
-		subs.append(["gear", tr("Gear")])
-	var nc: int = GameData.Contracts.st()["offers"].size()
-	subs.append(["contracts", tr("Contracts %d") % nc if nc > 0 else tr("Contracts")])
-	subs.append(["catalogues", tr("Catalogues")])
 	for sb in subs:
 		var b := UI.button(str(sb[1]), go_to.bind("Feed", str(sb[0])), 13, Vector2(110, 36))
 		var st := GUI.seg_style(seg() == sb[0])
@@ -3995,7 +4002,6 @@ func profile_bar() -> void:
 			b.add_theme_stylebox_override(k, st[0])
 		for k in ["hover", "pressed", "hover_pressed"]:
 			b.add_theme_stylebox_override(k, st[1])
-		GUI.mark_new(b, (sb[0] == "gear" and seg_new("gear", "pilot")) or (sb[0] == "contracts" and contracts_new()))
 		bar.add_child(b)
 
 
@@ -4493,6 +4499,12 @@ func build_slot(slot: String) -> void:
 
 
 func build_storage() -> void:
+	# (1.114) the catalogues you've picked up sit on a shelf in the storeroom
+	var shelf := action_bar()
+	var nmag := 0
+	for mk in GameData.catalogues:
+		nmag += 1
+	row_button(shelf, tr("Catalogues on the shelf: %d ›") % nmag if nmag > 0 else tr("Catalogues ›"), open_catalogue_shelf, true, 0)
 	var list := GameData.spares()
 	var pads: Array = GameData.spare_controllers
 	if list.is_empty() and pads.is_empty():
@@ -4936,7 +4948,7 @@ func set_scene_for_tab() -> void:
 		"Feed":
 			scene = "phone"
 		"Crew":
-			scene = "team"
+			scene = "phone" if crew_view() == "gear" else "team"   # (1.114) the gear shelf is in your pilot's room
 	# (1.98) a maker's shop plays its music; leaving it brings the garage's back
 	var shop_songs := []
 	for ms in MAKER_SHOPS.values():
@@ -5075,7 +5087,7 @@ func build_maker_shop(m: String) -> void:
 
 
 ## (1.96) The catalogue rack at Parts-R-Us: this season's issue from every maker, free. Taking one
-## puts it on your shelf at home (BotMedia > Profile > Catalogues).
+## puts it on your shelf at home (1.114: Bay > Storage, Catalogues on the shelf).
 func catalogue_rack() -> void:
 	section(tr("CATALOGUES: free, one from every maker, a new issue every season (%s).") % GameData.issue_name(GameData.issue_now()))
 	var f := flow_bar()
@@ -5090,14 +5102,14 @@ func catalogue_rack() -> void:
 
 
 ## (1.96) Your shelf: the issues you've picked up, one stack per maker (newest on top).
-func build_catalogue_shelf() -> void:
+func build_catalogue_shelf(parent: Control = null) -> void:
 	if GameData.catalogues.is_empty():
 		var l := GUI.text(tr("No catalogues yet. Every maker leaves theirs on the rack at Parts-R-Us, free. New issues every season."), 15, GUI.MUTED)
 		l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		list_box.add_child(l)
+		(parent if parent else list_box).add_child(l)
 		return
-	section(tr("YOUR CATALOGUES: tap one to read it. Your parts are stamped OWNED."))
-	var f := flow_bar()
+	section(tr("YOUR CATALOGUES: tap one to read it. Your parts are stamped OWNED."), parent)
+	var f := flow_bar(parent)
 	for m in GameData.Makers.ORDER:
 		var got: Array = GameData.catalogues.get(m, [])
 		if got.is_empty():
@@ -5107,7 +5119,9 @@ func build_catalogue_shelf() -> void:
 		f.add_child(col)
 		var newest := str(got[-1])
 		var th := Catalogue.Thumb.new(m, newest, 110.0 * UI.SCALE)
-		th.pressed.connect(open_catalogue.bind(m, "", newest))
+		th.pressed.connect(func():
+			close_popup()
+			open_catalogue(m, "", newest))
 		col.add_child(th)
 		var lab := GUI.text(GameData.Makers.label(m) + " · " + GameData.issue_name(newest), 12, GUI.TEXT, "headb")
 		lab.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -5122,6 +5136,12 @@ func build_catalogue_shelf() -> void:
 
 
 var catalogue: Control = null
+
+
+## (1.114) The shelf as a window (Bay > Storage, and old links to BotMedia's Catalogues page).
+func open_catalogue_shelf() -> void:
+	var col := open_popup(tr("CATALOGUES"))
+	build_catalogue_shelf(col)
 
 ## Opens a maker's catalogue (this season's issue unless `key` says otherwise), on a part's page
 ## when `design` is a part id. Opening this season's issue puts it on your shelf.
@@ -5145,7 +5165,7 @@ func open_catalogue(m: String, design: String = "", key: String = "") -> void:
 		_on_test_drive("toaster", id, best_slot(str(GameData.part_def(id)["kind"])), "dealer"))
 	c.closed.connect(func():
 		catalogue = null
-		if tab == "Parts" or seg() == "catalogues":
+		if tab == "Parts" or (tab == "Bay" and seg() == "storage"):
 			refresh())
 
 
@@ -5597,6 +5617,8 @@ func build_season_tab() -> void:
 			build_cups_tab()
 		"money":
 			build_money_view()
+		"deals":
+			build_contracts()
 		_:
 			build_league_view()
 
@@ -6735,7 +6757,7 @@ func open_day_plan() -> void:
 		var ot := GUI.text(tr("Sponsor offers waiting: %d") % offers_n, 14, GUI.TEXT)
 		ot.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		r6.add_child(ot)
-		row_button(r6, tr("Contracts ›"), func(): close_popup(); go_to("Feed", "contracts"), true, 170)
+		row_button(r6, tr("Contracts ›"), func(): close_popup(); go_to("Season", "deals"), true, 170)
 	if not GameData.Social.drafts().is_empty():
 		var r7 := action_bar(todo)
 		var pt := GUI.text(tr("The fans are waiting for your post about the fight."), 14, GUI.TEXT)
@@ -7308,7 +7330,7 @@ func _on_tab(t: String) -> void:
 		return
 	var first: String = {"Storage": "storage", "Season": "season", "Parts": "scrapyard"}.get(t, "")
 	if t == "Crew":
-		first = "team" if GameData.team_unlocked() else "pilot"
+		first = "pilot" if crew_view() == "gear" else "team"
 	if first == "season" and GameData.is_new("season") and not GameData.story_seen.has("dad_trophies") and GameData.story_seen.has("first_garage"):
 		GameData.mark_story_seen("unlock_season")   # Gus's first words in his office are about your dad's trophies
 	if first == "scrapyard" and GameData.tour >= 0 and GameData.is_new("scrapyard"):
@@ -9028,7 +9050,7 @@ func check_gus_cards() -> void:
 			"table":
 				btns.append([tr("Standings ›"), func(): _on_tab("Season"); season_view = "table"; refresh(), false])
 			"contracts":
-				btns.append([tr("Contracts ›"), func(): go_to("Feed", "contracts"), false])
+				btns.append([tr("Contracts ›"), func(): go_to("Season", "deals"), false])
 		gus_card(str(al["title"]), str(al["text"]), btns)
 		return
 	# the drop zone: late in the season, once a year
