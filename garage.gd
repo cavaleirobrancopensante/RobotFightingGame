@@ -522,7 +522,7 @@ func tab_list() -> Array:
 const SECTION_LABELS := {"Bay": "Bay", "Storage": "Storage", "Parts": "Get Parts", "Pub": "Rusty Bolt", "Feed": "BotMedia", "Season": "Season", "Crew": "Crew", "City": "City"}
 const SECTION_ICONS := {"Bay": "bay", "Storage": "storage", "Parts": "parts", "Pub": "pub", "Feed": "feed", "Season": "season", "Crew": "crew", "City": "city"}
 const CITY_TABS := ["City", "Parts", "Pub"]
-const HOME_TABS := ["Bay", "Crew"]   # (1.79) Gus's bay and crew bay: only when you're there   # places out in the city: the rail lights City for all of them
+const HOME_TABS := []   # (1.116) none: the bay opens from anywhere (you're on the phone to Gus)   # (1.79) Gus's bay and crew bay: only when you're there   # places out in the city: the rail lights City for all of them
 ## Where each feature lives now: [section, toggle]. Gus's unlock scene returns you there.
 const FEATURE_PLACE := {"scrapyard": ["Parts", "scrap"], "storage": ["Bay", "storage"], "style": ["Bay", "style"],
 		"shop": ["Parts", "dealer"], "season": ["Season", "calendar"], "scout": ["", "scout"], "moves": ["Bay", "chips"],
@@ -562,6 +562,7 @@ func segs_of(t: String) -> Array:
 				out.append(["cups", tr("Cups"), "cups"])
 			out.append(["pilots", tr("Pilots"), ""])
 			out.append(["money", tr("Money"), ""])
+			out.append(["bets", tr("Bets"), ""])   # (1.116) the bookmaker's app on your phone: bet from anywhere
 			# (1.114) sponsor and maker deals are money: they live beside it, not in your phone's profile
 			var nc: int = GameData.Contracts.st()["offers"].size()
 			out.append(["deals", tr("Deals %d") % nc if nc > 0 else tr("Deals"), ""])
@@ -580,8 +581,7 @@ func segs_of(t: String) -> Array:
 		"Pub":
 			# The Rusty Bolt: the scene stays the same pub while you switch between these
 			out.append(["bar", tr("Bar"), ""])
-			out.append(["bets", tr("Bets"), ""])
-			out.append(["jukebox", tr("Jukebox"), ""])
+			out.append(["jukebox", tr("Jukebox"), ""])   # (1.116) Bets moved to the phone: Season > Bets
 		"Crew":
 			if GameData.unlocked("pilot"):
 				out.append(["gear", tr("Gear"), "pilot"])   # (1.114) controllers moved here from BotMedia
@@ -2726,6 +2726,8 @@ func go_to(t: String, key: String = "", then: Callable = Callable()) -> void:
 	if t == "Storage":
 		t = "Bay"
 		key = "storage"
+	if t == "Pub" and key == "bets":
+		t = "Season"   # (1.116) the bookmaker is an app now
 	# (1.77) a place out in the city: going there takes the pilot's time
 	var place := place_of(t, key)
 	var passed := 0
@@ -2851,7 +2853,9 @@ func job_line(robot: String, slot: String, p: Dictionary) -> String:
 	GameData.sync_swaps()
 	var out := ""
 	var sj := GameData.swap_job(robot, slot)
-	if not sj.is_empty():
+	if not sj.is_empty() and GameData.is_carried(int(sj["uid"])):
+		out += tr("IN YOUR BAG: Gus bolts it on when you're back.") + " "   # (1.116)
+	elif not sj.is_empty():
 		out += tr("BOLTING ON %d%%, %s left. ") % [int(GameData.fit_progress(robot, slot) * 100), GameData.hours_text((float(sj["total"]) - float(sj["done"])) / (2.0 if sj["rush"] else 1.0))]
 	var rj := GameData.repair_job(int(p["uid"]))
 	if not rj.is_empty():
@@ -4361,7 +4365,9 @@ func build_jobs_view() -> void:
 		var sub := tr("%s left of %s") % [GameData.hours_text(left), GameData.hours_text(float(j["total"]))]
 		if etas[i] != "":
 			sub += "  ·  " + tr("done %s") % etas[i]
-		if i < hands:
+		if j["kind"] != "repair" and GameData.is_carried(int(j["uid"])):
+			sub += "  ·  " + tr("in your bag till you're back")   # (1.116)
+		elif i < hands:
 			sub += "  ·  " + tr("being worked on")
 		if j["rush"]:
 			sub += "  ·  " + tr("RUSH")
@@ -4969,7 +4975,7 @@ func set_scene_for_tab() -> void:
 		"Parts":
 			scene = {"dealer": "shop", "order": "workshop", "brass": "brass", "hell": "hell", "volta": "volta", "nimbus": "nimbus", "kane": "kane", "tenryu": "tenryu", "circus": "circus"}.get(seg(), "scrap")
 		"Season":
-			scene = {"cups": "cups"}.get(seg(), "office")
+			scene = {"cups": "cups", "bets": "phone"}.get(seg(), "office")
 		"Pub":
 			scene = "pub"
 		"Feed":
@@ -5186,6 +5192,15 @@ func open_catalogue(m: String, design: String = "", key: String = "") -> void:
 	c.buy.connect(func(id: String):
 		_on_buy_keep(id)
 		GameData.save_game()
+		c.refresh())
+	c.order.connect(func(id: String):
+		var err: String = GameData.order_part(id)
+		if err != "":
+			note(tr(err), "error")
+		else:
+			Sfx.play("buy")
+			note(tr("Ordered %s. It comes tomorrow morning, to Storage.") % GameData.part_def(id)["name"])
+			GameData.save_game()
 		c.refresh())
 	c.test_drive.connect(func(id: String):
 		c._close()
@@ -6046,13 +6061,13 @@ func _on_cal_match(w: int, day: int, i: int, k: int) -> void:
 			info = tr("Parts worth $%d") % int(GameData.World.bot_value(o)) if o.has("parts") else ""
 		v.add_child(GUI.text(info, 14, GUI.MUTED))
 	if not bet:
-		col.add_child(GUI.text(tr("Betting opens on fight night, at the Rusty Bolt."), 14, GUI.MUTED))
+		col.add_child(GUI.text(tr("Betting opens on fight night."), 14, GUI.MUTED))
 	var foot := HBoxContainer.new()
 	foot.add_theme_constant_override("separation", 8)
 	popup_footer.add_child(foot)
 	foot.add_child(UI.button(tr("< Back"), _on_cal_day.bind(w, day), 15, Vector2(110, 44)))
 	if bet and w == GameData.week:
-		var bb := UI.button(tr("Bet at the Rusty Bolt ›"), func(): close_popup(); go_to("Pub", "bets"), 15, Vector2(0, 44))
+		var bb := UI.button(tr("Bet on it ›"), func(): close_popup(); go_to("Pub", "bets"), 15, Vector2(0, 44))
 		bb.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		foot.add_child(bb)
 	if bet and not pickup and a != 0 and GameData.can_watch(ev, a, b):
@@ -7348,6 +7363,8 @@ func _on_tab(t: String) -> void:
 	if t == "Storage":
 		go_to("Bay", "storage")   # (1.79) Storage lives in the Bay now
 		return
+	if away_from_bay() and (t == "Bay" or t == "Crew") and tab != "Bay" and tab != "Crew":
+		note(tr("On the phone to Gus. He does the work, you don't need to be there."))   # (1.116)
 	if away_from_bay() and HOME_TABS.has(t):
 		# (1.79) you're out in the city: the bay is where Gus is, not where you are
 		note(tr("You're at %s. The City map takes you back to the bay.") % tr(str(GameData.PLACES[GameData.pilot_at]["name"])), "error")
@@ -8486,6 +8503,11 @@ func hours_text(h: float) -> String:
 	return tr("%s h") % ("%.1f" % h).trim_suffix(".0")
 
 
+## (1.116) A walk's hours, or "free" (the walk home costs nothing).
+func trip_text(h: float) -> String:
+	return tr("free") if h <= 0.01 else hours_text(h)
+
+
 ## Which city place a section / view is (going there costs time), "" for Gus's building.
 func place_of(t: String, key: String = "") -> String:
 	if HOME_TABS.has(t) and away_from_bay():
@@ -8524,7 +8546,7 @@ func build_city() -> void:
 		if pl == GameData.pilot_at or not GameData.places_been.has(pl) or GameData.place_locked(pl) != "":
 			continue
 		var h := GameData.travel_hours(GameData.pilot_at, pl)
-		var qb := UI.button("%s ▸ %s%s" % [tr(str(GameData.PLACES[pl]["name"])), hours_text(h), dig_tag() if pl == "scrapyard" else ""], _on_city_quick.bind(pl), 13, Vector2(0, 40))
+		var qb := UI.button("%s ▸ %s%s" % [tr(str(GameData.PLACES[pl]["name"])), trip_text(h), dig_tag() if pl == "scrapyard" else ""], _on_city_quick.bind(pl), 13, Vector2(0, 40))
 		qb.add_theme_stylebox_override("normal", GUI.box(Color(0.04, 0.05, 0.07, 0.88), 8, 6))
 		city_quick.add_child(qb)
 		quick += 1
@@ -8564,7 +8586,7 @@ func _on_city_pick(place: String) -> void:
 
 
 const PLACE_TEXT := {"home": "Gus's building: the bay, storage, the workshop and the office. You have to be here to work on your robot.",
-		"pub": "The Rusty Bolt. Scrap and Rust pilots drinking. Pick a fight, place bets, play the jukebox.",
+		"pub": "The Rusty Bolt. Scrap and Rust pilots drinking. Pick a fight, watch the TV, play the jukebox.",
 		"partsrus": "Parts-R-Us. New parts at your grade, a couple one grade up. New stock on Sundays.",
 		"brassworks": "Brassworks & Sons. Old Silas's family workshop. Every Brassworks part, built by hand, in your grade.",
 		"breakers": "Hellfire Heavy's breaker's yard on the docks. Magda tears robots apart and sells you the heavy stuff, in your grade.",
@@ -8615,11 +8637,11 @@ func fill_city_card() -> void:
 	var after := GameData.pilot_left() - h
 	var when := tr("%s left this %s.") % [hours_text(after), tr(GameData.PHASE_NAMES[GameData.phase]).to_lower()] if after > 0.01 or GameData.phase == 2 \
 			else tr("You'd get there in the %s.") % tr(GameData.PHASE_NAMES[mini(2, GameData.phase + 1)]).to_lower()
-	var wl := GUI.text(tr("%s from here. %s") % [hours_text(h), when], 14, GUI.AMBER if after < 0.0 else GUI.TEXT)
+	var wl := GUI.text((tr("%s from here. %s") % [hours_text(h), when]) if h > 0.01 else tr("The walk home is free."), 14, GUI.AMBER if after < 0.0 else GUI.TEXT)
 	wl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	wl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	bar.add_child(wl)
-	bar.add_child(UI.button(tr("Go ▸ %s") % hours_text(h) + (dig_tag() if place == "scrapyard" else ""), _on_city_go.bind(place), 15, Vector2(0, 46)))
+	bar.add_child(UI.button(tr("Go ▸ %s") % trip_text(h) + (dig_tag() if place == "scrapyard" else ""), _on_city_go.bind(place), 15, Vector2(0, 46)))
 
 
 ## (1.87) " · FIND 45%" on every button that leads to a dig (" · DUG TODAY" once it's spent).
@@ -8639,7 +8661,10 @@ func _on_city_arrived(place: String) -> void:
 	var h := GameData.travel_hours(GameData.pilot_at, place)
 	time_begin()
 	var passed := GameData.travel_to(place)
-	note(tr("At %s. That took %s.") % [tr(str(GameData.PLACES[place]["name"])), hours_text(h)])
+	if h <= 0.01:
+		note(tr("Back at %s.") % tr(str(GameData.PLACES[place]["name"])))
+	else:
+		note(tr("At %s. That took %s.") % [tr(str(GameData.PLACES[place]["name"])), hours_text(h)])
 	city_pick = ""
 	enter_place(place)
 	var then: Callable = Callable()

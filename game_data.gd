@@ -3,7 +3,7 @@ const PlayLog = preload("res://playlog.gd")   # (1.87) the playtest log
 
 # helper scripts, loaded by path so the game also runs without an editor scan
 ## The game's version, shown on the main menu. Bump it with every change (1.1, 1.2, ...).
-const VERSION := "1.115"
+const VERSION := "1.116"
 const Arena = preload("res://arena.gd")
 const I18n = preload("res://i18n.gd")
 const Catalog = preload("res://catalog.gd")
@@ -645,6 +645,7 @@ func new_game() -> void:
 	ledger = []
 	bet_log = []
 	patched_week = -1
+	deliveries = []
 	loan = {}
 	gus_alerts = []
 	inbox_seen = 0
@@ -755,6 +756,62 @@ func add_part(id: String, hp_ratio: float = 1.0) -> int:
 	next_uid += 1
 	inventory.append({"uid": uid, "id": id, "hp": float(part_def(id)["hp"]) * hp_ratio})
 	return uid
+
+
+## (1.116) Ordering from a catalogue at home: the price plus a delivery fee, the part comes tomorrow.
+func delivery_fee(id: String) -> int:
+	return maxi(DELIVERY_MIN, roundi(price_of(id) * DELIVERY_SHARE))
+
+
+func order_part(id: String) -> String:
+	var d := part_def(id)
+	if d.is_empty():
+		return "That part is gone."
+	var no := maker_refuses(str(d.get("maker", "")))
+	if no != "":
+		return tr(no)
+	var cost := price_of(id)
+	var fee := delivery_fee(id)
+	if money < cost + fee:
+		return "Not enough money."
+	book("parts", -cost)
+	book("parts", -fee)
+	shop_stock.erase(id)
+	Contracts.on_buy()
+	deliveries.append(id)
+	PlayLog.add("order", "%s $%d + $%d delivery" % [d["name"], cost, fee])
+	return ""
+
+
+func deliver_orders() -> void:
+	for id in deliveries:
+		if PARTS.has(str(id)):
+			add_part(str(id))
+			log_day(tr("Delivered: %s (in Storage).") % part_def(str(id))["name"])
+	deliveries = []
+
+
+## (1.116) A part bought or dug while you're out in the City is in your bag until you're back at the
+## bay: Gus can't bolt it on before then (its swap job waits on the board).
+func carry(uid: int) -> void:
+	if pilot_at != "home":
+		var p := inst(uid)
+		if not p.is_empty():
+			p["carry"] = true
+
+
+func is_carried(uid: int) -> bool:
+	return inst(uid).get("carry", false)
+
+
+## Home again: everything you carried is on Gus's bench.
+func unpack_carried() -> int:
+	var n := 0
+	for p in inventory:
+		if p.get("carry", false):
+			p.erase("carry")
+			n += 1
+	return n
 
 
 func inst(uid: int) -> Dictionary:
@@ -1066,6 +1123,7 @@ func buy(id: String) -> String:
 	shop_stock.erase(id)
 	Contracts.on_buy()
 	var uid := add_part(id)
+	carry(uid)
 	for slot in SLOTS:
 		if SLOT_KIND[slot] == d["kind"] and equipped[slot] == -1 and slot_available(slot) and slot != "reactor2":
 			equipped[slot] = uid
@@ -1404,6 +1462,8 @@ func work(hours: float, apply: bool = true, board: Array = []) -> Array:
 				break
 			if float(j["done"]) >= float(j["total"]) - 0.001:
 				continue
+			if j["kind"] != "repair" and is_carried(int(j["uid"])):
+				continue   # (1.116) still in your bag out in the City
 			j["done"] = minf(float(j["total"]), float(j["done"]) + 0.25 * (2.0 if j["rush"] else 1.0))
 			n += 1
 	if apply:
@@ -2936,6 +2996,8 @@ func day_index() -> int:
 func next_day() -> void:
 	phase = 0
 	pilot_at = "home"   # (1.77) every day starts at Gus's
+	unpack_carried()
+	deliver_orders()
 	passive_repair()
 	# every day the pile settles a little more: the odds of finding something go up (a dig spends them)
 	dig_luck = minf(DIG_LUCK_MAX, dig_luck + DIG_LUCK_STEP)
@@ -2957,6 +3019,9 @@ func next_day() -> void:
 ## piece of junk from his bench. Once a week at most. It's ugly, but it fights.
 const PATCH_HP := 0.4
 var patched_week := -1
+var deliveries: Array = []   # (1.116) part ids ordered from a catalogue at home: in Storage tomorrow morning
+const DELIVERY_SHARE := 0.1   # the delivery fee: 10% of the price
+const DELIVERY_MIN := 15
 ## (1.82) Gus's big cards waiting for the garage: [{title, text, go}] (go: "money", "table", "contracts" or "")
 var gus_alerts: Array = []
 
@@ -4397,6 +4462,7 @@ func dig_scrap(kind: String = "") -> Dictionary:
 		if not lpool.is_empty():
 			var lid2: String = lpool[randi() % lpool.size()]
 			var luid := add_part(lid2, randf_range(0.2, 0.45))
+			carry(luid)
 			inst(luid)["dug"] = true
 			return {"text": tr("Lucky dig! A %s, a grade above anything the dealer sells you. Battered, but it's ours (in Storage).") % part_def(lid2)["name"], "part": lid2, "grade": "rare", "uid": luid}
 	var r := randf()
@@ -4421,6 +4487,7 @@ func dig_scrap(kind: String = "") -> Dictionary:
 				pool += STARTER_OPTIONS[k]
 	var id: String = pool[randi() % pool.size()]
 	var dug_uid := add_part(id, randf_range(0.12, 0.45))
+	carry(dug_uid)
 	inst(dug_uid)["dug"] = true   # shown on the Scrapyard screen; fight salvage only goes to Storage
 	var name: String = part_def(id)["name"]
 	match grade:
@@ -4451,6 +4518,7 @@ func dig_extras() -> Dictionary:
 				pool.append(id)
 	var id2: String = pool[randi() % pool.size()] if not pool.is_empty() else "junk_reactor"
 	var uid := add_part(id2, 1.0)
+	carry(uid)
 	inst(uid)["dug"] = true
 	if id2 == "junk_reactor":
 		return {"text": tr("A car battery, still holding a charge. Better than nothing (in Storage)."), "part": id2, "grade": "junk", "uid": uid}
@@ -5612,7 +5680,7 @@ func save_game(path: String = "") -> bool:
 		"owned_chips": owned_chips, "chips": chips, "circuit": circuit, "circuit_offers": circuit_offers,
 		"circuits_won": circuits_won, "pickup": pickup, "setups": setups, "custom_parts": custom_parts,
 		"year": year, "week": week, "day": day, "rank": rank, "event": {}, "leagues": leagues, "title_seeds": title_seeds, "trophies": trophies, "career_stats": career_stats,
-		"pecking_k": pecking_k(), "style": style, "style_locked": style_locked, "shop_stock": shop_stock, "chip_stock": chip_stock, "scout": scout, "wingmen": wingmen, "sending": sending, "pilot_look": pilot_look, "owned_controllers": owned_controllers, "spare_controllers": spare_controllers, "techs": techs, "tech_fit": tech_fit, "tips_seen": tips_seen, "tips_log": tips_log, "h2h": h2h, "rivals": rivals, "rel": rel, "nemeses": nemeses, "pending_talk": pending_talk, "inbox": inbox, "inbox_seen": inbox_seen, "social": social, "pilot_at": pilot_at, "places_been": places_been, "catalogues": catalogues, "pilot_used": pilot_used, "film_index": film_index, "film_pending": film_pending, "films_seen": films_seen, "contracts": contracts, "alerts_unseen": alerts_unseen, "day_log": day_log, "ledger": ledger, "bet_log": bet_log, "patched_week": patched_week, "loan": loan, "gus_alerts": gus_alerts, "tour": tour, "streak": streak, "pub_seen": pub_seen, "digs_left": digs_left, "dig_luck": dig_luck, "bills_note": bills_note, "fight_log": fight_log, "bets": bets, "world": world,
+		"pecking_k": pecking_k(), "style": style, "style_locked": style_locked, "shop_stock": shop_stock, "chip_stock": chip_stock, "scout": scout, "wingmen": wingmen, "sending": sending, "pilot_look": pilot_look, "owned_controllers": owned_controllers, "spare_controllers": spare_controllers, "techs": techs, "tech_fit": tech_fit, "tips_seen": tips_seen, "tips_log": tips_log, "h2h": h2h, "rivals": rivals, "rel": rel, "nemeses": nemeses, "pending_talk": pending_talk, "inbox": inbox, "inbox_seen": inbox_seen, "social": social, "pilot_at": pilot_at, "places_been": places_been, "catalogues": catalogues, "pilot_used": pilot_used, "film_index": film_index, "film_pending": film_pending, "films_seen": films_seen, "contracts": contracts, "alerts_unseen": alerts_unseen, "day_log": day_log, "ledger": ledger, "bet_log": bet_log, "patched_week": patched_week, "deliveries": deliveries, "loan": loan, "gus_alerts": gus_alerts, "tour": tour, "streak": streak, "pub_seen": pub_seen, "digs_left": digs_left, "dig_luck": dig_luck, "bills_note": bills_note, "fight_log": fight_log, "bets": bets, "world": world,
 	}
 	var f := FileAccess.open(slot_path(save_slot) if path == "" else path, FileAccess.WRITE)
 	if f == null:
@@ -5738,6 +5806,7 @@ func load_game(slot: int = -1, mine: bool = false) -> String:
 	ledger = data.get("ledger", [])
 	bet_log = data.get("bet_log", [])
 	patched_week = int(data.get("patched_week", -1))
+	deliveries = data.get("deliveries", [])
 	loan = data.get("loan", {})
 	gus_alerts = data.get("gus_alerts", [])
 	inbox = []
@@ -6537,6 +6606,8 @@ const DIG_HOURS := 1.0
 func travel_hours(from: String, to: String) -> float:
 	if from == to or not PLACES.has(from) or not PLACES.has(to):
 		return 0.0
+	if to == "home":
+		return 0.0   # (1.116) the walk home is free: a trip never costs two walks
 	var a := str(PLACES[from]["district"])
 	var b := str(PLACES[to]["district"])
 	if a == b:
@@ -6554,7 +6625,7 @@ func place_locked(place: String) -> String:
 	if pl.is_empty():
 		return "Nowhere."
 	if pl.has("venue"):
-		return "Fight nights only. Gus drives you."
+		return "A fight venue. Gus drives you here on fight night, so there's no walking in."
 	var f := str(pl.get("feature", ""))
 	if f != "" and not unlocked(f):
 		return "Opens after your second fight."
@@ -6607,6 +6678,8 @@ func travel_to(place: String) -> int:
 		return 0
 	var h := travel_hours(pilot_at, place)
 	pilot_at = place
+	if place == "home":
+		unpack_carried()
 	if not places_been.has(place):
 		places_been.append(place)   # (1.83) the City's quick buttons
 	var passed := spend_pilot(h)

@@ -563,10 +563,17 @@ func draw_static(c: CanvasItem) -> void:
 		var locked := GameData.place_locked(key) != "" and kind != "venue"
 		if locked:
 			col = Color(0.35, 0.35, 0.38)
-		var r := 10.0 if kind != "venue" else 8.0
-		cv.draw_circle(cp, r + 2.0, Color(0.03, 0.03, 0.04))
-		cv.draw_circle(cp, r, col)
-		_glyph(kind, cp, locked)
+		var r := 10.0 if kind != "venue" else 6.0
+		if kind == "venue":
+			# (1.116) the halls are landmarks, not places to walk to: a small marker, no pin (Gus drives you on fight night)
+			var sq := Rect2(cp - Vector2(r, r), Vector2(r, r) * 2.0)
+			cv.draw_rect(sq.grow(2.0), Color(0.03, 0.03, 0.04))
+			cv.draw_rect(sq, Color(0.62, 0.62, 0.7, 0.55))
+			cv.draw_rect(sq, Color(0.85, 0.85, 0.9), false, 1.5)
+		else:
+			cv.draw_circle(cp, r + 2.0, Color(0.03, 0.03, 0.04))
+			cv.draw_circle(cp, r, col)
+			_glyph(kind, cp, locked)
 		if kind == "venue" and key != selected and key != "kane_arena" and zoom < 2.0:
 			continue   # the halls are landmarks: named when you tap them (or zoom in)
 		var name := I18n.t(str(pl["name"]))
@@ -609,7 +616,7 @@ func draw_map(c: CanvasItem) -> void:
 			dash += L
 		var hrs := GameData.travel_hours(GameData.pilot_at, dest)
 		var mid: Vector2 = cpts[cpts.size() / 2]
-		var txt := I18n.t("%s h") % ("%.1f" % hrs).trim_suffix(".0")
+		var txt := I18n.t("%s h") % ("%.1f" % hrs).trim_suffix(".0") if hrs > 0.01 else I18n.t("free")
 		var tw := f.get_string_size(txt, HORIZONTAL_ALIGNMENT_LEFT, -1, UI.px(13)).x + 14.0
 		cv.draw_rect(Rect2(mid + Vector2(-tw * 0.5, -30), Vector2(tw, 22)), Color(0.05, 0.05, 0.07, 0.9))
 		cv.draw_rect(Rect2(mid + Vector2(-tw * 0.5, -30), Vector2(tw, 22)), Color(0.95, 0.76, 0.19), false, 1.5)

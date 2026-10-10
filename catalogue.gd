@@ -12,6 +12,7 @@ extends Control
 signal closed
 signal buy(id: String)
 signal test_drive(id: String)
+signal order(id: String)   # (1.116) from home: delivered tomorrow
 
 const GUI = preload("res://garage_ui.gd")
 const UI = preload("res://ui.gd")
@@ -171,6 +172,13 @@ func _build_bar() -> void:
 				bb.disabled = GameData.money < cost
 				bb.add_theme_color_override("font_color", GUI.YELLOW)
 				mid.add_child(bb)
+			elif GameData.pilot_at == "home" and GameData.place_locked(shop_place) == "" and GameData.maker_refuses(maker) == "":
+				# (1.116) order from home: the price plus a delivery fee, in Storage tomorrow morning
+				var fee: int = GameData.delivery_fee(sid)
+				var ob := UI.button(tr("Order $%d + $%d delivery · %s · tomorrow") % [cost, fee, gname], func(): order.emit(sid), 15, Vector2(0, 46))
+				ob.disabled = GameData.money < cost + fee
+				ob.add_theme_color_override("font_color", GUI.YELLOW)
+				mid.add_child(ob)
 			elif shop_place != "partsrus":
 				mid.add_child(GUI.text(tr("Built to order at %s, %s") % [tr(str(GameData.PLACES[shop_place]["name"])), tr(GameData.DISTRICTS[GameData.PLACES[shop_place]["district"]]).capitalize()], 13, GUI.GREEN))
 			else:
@@ -858,7 +866,7 @@ class Painter extends RefCounted:
 		tx(ci, "headb", Vector2(bx, by + fs), tr("BOLT ON %d") % M.SET_AT, fs, acc)
 		tx(ci, "headb", Vector2(bx, by + fs * 2.3), str(mi.get("perk_name", "")), int(fs * 1.4), ink)
 		var hh := para(ci, "body", Vector2(bx, by + fs * 3.0), tr(str(mi.get("perk", ""))), bw, fs, ink, 4)
-		para(ci, "ibody", Vector2(bx, by + fs * 3.6 + hh), tr("Ask at the counter at Parts-R-Us. Prices change with your grade and with our sales."), bw, int(fs * 0.85), Color(ink, 0.8), 5)
+		para(ci, "ibody", Vector2(bx, by + fs * 3.6 + hh), tr("Buy at the counter, or order from home for delivery tomorrow. Prices change with your grade and with our sales."), bw, int(fs * 0.85), Color(ink, 0.8), 5)
 		Logos.draw_logo(ci, M.logo(m), Vector2(bx + bw * 0.5, o.y + H - pad - H * 0.08), H * 0.06)
 		var owned := tr("● = you own one")
 		tx(ci, "body", Vector2(x, o.y + H - pad * 0.45), owned, maxi(5, int(fs * 0.8)), Color(ink if not light_text else ink, 0.7))
