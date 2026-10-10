@@ -297,6 +297,8 @@ static var grab_at := Vector2.ZERO
 
 
 static func draw_person(ci: CanvasItem, feet: Vector2, s: float, raw: Dictionary, dir: float, pose: String, t: float, tool_color: Color = Color(0.7, 0.7, 0.75)) -> void:
+	if raw.get("hidden", false):
+		return   # (1.118) you're out in the City: Gus's rooms show only Gus
 	var look := normalize(raw)
 	_begin()
 	var gus: bool = look.get("gus", false)

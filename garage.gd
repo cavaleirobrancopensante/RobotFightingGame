@@ -399,7 +399,8 @@ func _ready() -> void:
 	# SHOW_NEVER, not DISABLED: a row that's still too wide gets clipped at the panel's edge
 	# instead of pushing the whole screen wider than the phone
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_SHOW_NEVER
-	UI.drag_scroll(scroll, func(): return overlay != null and is_instance_valid(overlay) and overlay.visible)
+	UI.drag_scroll(scroll, func(): return (overlay != null and is_instance_valid(overlay) and overlay.visible) \
+			or (detail_panel != null and detail_panel.visible))   # (1.118) the part's page covers the list: it scrolls instead
 	right.add_child(scroll)
 	list_box = VBoxContainer.new()
 	list_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -433,6 +434,7 @@ func _ready() -> void:
 	dscroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	dscroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	dcol.add_child(dscroll)
+	UI.drag_scroll(dscroll, func(): return overlay != null and is_instance_valid(overlay) and overlay.visible)   # (1.118) swipe to scroll
 	detail_box = VBoxContainer.new()
 	detail_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	detail_box.add_theme_constant_override("separation", 6)
@@ -441,6 +443,7 @@ func _ready() -> void:
 	detail_btn_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	detail_btn_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	dcol.add_child(detail_btn_scroll)
+	UI.drag_scroll(detail_btn_scroll, func(): return overlay != null and is_instance_valid(overlay) and overlay.visible)
 	detail_footer = VBoxContainer.new()
 	detail_footer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	detail_footer.add_theme_constant_override("separation", 6)
@@ -4686,7 +4689,10 @@ func scene_info() -> Dictionary:
 		if GameData.wingman_ready(k):
 			backup = GameData.look_from_spec(GameData.player_spec(GameData.wingmen[k], GameData.wingman_name(k)))
 			break
-	return {"pilot": GameData.pilot_look, "paint": Color(GameData.PAINTS[GameData.paint]["color"]),
+	# (1.118) out in the City: Gus's rooms show Gus but not you, and your phone shows where you are
+	var away := away_from_bay()
+	var me: Dictionary = {"hidden": true} if away and GarageArt.scene_light(scene) == "bay" else GameData.pilot_look
+	return {"pilot": me, "at": GameData.pilot_at, "paint": Color(GameData.PAINTS[GameData.paint]["color"]),
 			"spark": now - spark_at, "dig": now - dig_at, "found": dig_found, "bet": now - bet_at, "juke": Sfx.jukebox_index() >= 0,
 			"medals": GameData.trophies, "wall": GameData.wall_trophies(), "gus_point": dad_talk and talk_story, "backup": backup, "stats": GameData.career_stats,
 			"wins": GameData.wins, "losses": GameData.losses, "champion": GameData.champion,
@@ -5676,7 +5682,6 @@ func build_calendar() -> void:
 		cal_seen_month = cur_month
 	var mode := GameData.fight_mode()
 	tonight_strip(mode)
-	week_strip()
 	var head := HBoxContainer.new()
 	head.add_theme_constant_override("separation", 8)
 	list_box.add_child(head)
@@ -5778,25 +5783,6 @@ class CalDay extends Button:
 			var m := Vector2(minf(size.x, size.y) * 0.18, minf(size.x, size.y) * 0.16)
 			draw_line(Vector2(m.x, m.y + 2), Vector2(size.x - m.x, size.y - m.y), red, 3.0, true)
 			draw_line(Vector2(size.x - m.x - 2, m.y), Vector2(m.x + 2, size.y - m.y - 1), red, 3.0, true)
-
-
-## (1.117) The next two weeks in one strip above the month: what's on each day, from today, so the
-## days between league nights read as a plan. Tap a day to see it (and go to it).
-func week_strip() -> void:
-	list_box.add_child(GUI.text(tr("THE NEXT TWO WEEKS"), 13, GUI.MUTED, "headb"))
-	var line := HBoxContainer.new()
-	line.add_theme_constant_override("separation", 2)
-	list_box.add_child(line)
-	for k in 14:
-		var di := GameData.day_index() + k
-		var w := GameData.week + di / 7
-		var d := di % 7
-		if w > 52:
-			break
-		var c := cal_cell(w, (w - 1) % GameData.MONTH_WEEKS, d)
-		c.dname = tr(DAY_NAMES[d]).substr(0, 2)
-		c.custom_minimum_size = Vector2(0, 54)
-		line.add_child(c)
 
 
 func cal_cell(w: int, row: int, day: int) -> Button:

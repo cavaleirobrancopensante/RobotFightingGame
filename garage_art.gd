@@ -23,7 +23,15 @@ static func robot_spot(scene: String) -> Array:
 ## info: {"pilot": look, "paint": Color, "spark": seconds since last spark burst, "dig": seconds since last dig,
 ##        "found": text of the last dig find, "trophies": int, "backup": look or {}}
 ## The whole-screen background for a scene. stage = where the robot panel is (people and props go there).
+## (1.118) Where your phone close-up stands when you're out in the City: that place's own room.
+const PLACE_SCENE := {"pub": "pub", "partsrus": "shop", "scrapyard": "scrap", "brassworks": "brass", "breakers": "hell",
+		"showroom": "volta", "hangar": "nimbus", "kanestore": "kane", "dojo": "tenryu", "ship": "circus"}
+
+
 static func draw_back(ci: CanvasItem, screen: Vector2, stage: Rect2, scene: String, t: float, info: Dictionary) -> void:
+	if scene == "phone" and PLACE_SCENE.has(str(info.get("at", "home"))):
+		draw_back(ci, screen, stage, str(PLACE_SCENE[str(info["at"])]), t, info)   # looking at your phone where you are
+		return
 	PilotArt.light = scene_light(scene)
 	var floor_screen := stage.end.y - 20.0
 	_environment(ci, screen, floor_screen, scene, t, info)
@@ -178,7 +186,8 @@ static func _props_back(ci: CanvasItem, size: Vector2, scene: String, t: float, 
 				_ln(ci, Vector2(lerpf(lx - rh * 0.07, lx, f), ry), Vector2(lerpf(lx + rh * 0.1, lx + rh * 0.02, f), ry), wood, 3.0)
 			var ps := clampf(size.y / 300.0, 0.6, 1.3)
 			PilotArt.draw_person(ci, Vector2(lx + 4.0, lerpf(floor_y, top_y, 0.68)), ps, info.get("pilot", {}), -1.0, "point", t + 1.3)
-			_head(info, "YOU", Vector2(lx + 4.0, lerpf(floor_y, top_y, 0.68)), ps)
+			if not info.get("pilot", {}).get("hidden", false):
+				_head(info, "YOU", Vector2(lx + 4.0, lerpf(floor_y, top_y, 0.68)), ps)
 			if info.has("gantry"):
 				_gantry(ci, info["gantry"], floor_y)
 			# lift platform
@@ -1000,7 +1009,8 @@ static func _gear_shelf(ci: CanvasItem, size: Vector2, t: float, info: Dictionar
 
 ## BotMedia: a close-up of your pilot from the front, face lit blue by the phone in both hands.
 static func _phone_closeup(ci: CanvasItem, size: Vector2, t: float, info: Dictionary) -> void:
-	_gear_shelf(ci, size, t, info)
+	if not PLACE_SCENE.has(str(info.get("at", "home"))):
+		_gear_shelf(ci, size, t, info)   # your shelf is in your room (out in the City, the place is behind you)
 	var look: Dictionary = PilotArt.normalize(info.get("pilot", {}))
 	var r := size.y * 0.19
 	var c := Vector2(size.x * 0.4, size.y * 0.4)
