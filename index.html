@@ -1,0 +1,12 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Robot Fighting 1.118</title>
+<meta http-equiv="refresh" content="0; url=v1.118/">
+<script>
+// the old builds lived here: drop their offline copy so the browser stops showing an old version
+if ('serviceWorker' in navigator) { navigator.serviceWorker.getRegistrations().then(function (rs) { rs.forEach(function (r) { if (!r.scope.includes('/v1.118/')) r.unregister(); }); }); }
+if (window.caches) { caches.keys().then(function (ks) { ks.forEach(function (k) { caches.delete(k); }); }); }
+location.replace('v1.118/');
+</script>
+<style>body{background:#111;color:#eee;font-family:sans-serif;text-align:center;padding-top:20vh}</style>
+</head><body>Robot Fighting 1.118 &middot; <a style="color:#f5c542" href="v1.118/">tap here if it doesn't open</a></body></html>
