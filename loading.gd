@@ -11,8 +11,9 @@ const SLOW := 0.2                 # seconds: anything slower than this gets the 
 const HEAVY := ["res://garage.tscn", "res://fight.tscn"]   # covered the first time, until we know better
 
 var took := {}                    # path -> seconds it took last time
-var cover: ColorRect
+var cover: Control
 var bar
+var title_label: Label
 var busy := false
 
 
@@ -25,31 +26,65 @@ func _ready() -> void:
 	base_size = get_tree().root.content_scale_size
 	get_tree().root.size_changed.connect(apply_edges)
 	apply_edges.call_deferred()
-	cover = ColorRect.new()
-	cover.color = Color(0.07, 0.07, 0.1, 0.97)
+	cover = Control.new()
 	cover.set_anchors_preset(Control.PRESET_FULL_RECT)
 	cover.mouse_filter = Control.MOUSE_FILTER_STOP
 	cover.visible = false
 	add_child(cover)
-	var title := UI.label(I18n.t("LOADING..."), 30, Color(1.0, 0.45, 0.2))
-	title.name = "Title"
-	title.anchor_left = 0.0
-	title.anchor_right = 1.0
-	title.anchor_top = 0.42
-	title.anchor_bottom = 0.42
+	var parts := build_screen(cover)
+	title_label = parts[0]
+	bar = parts[1]
+
+
+## (1.115) The loading screen, the same everywhere (the boot screen too): the splash picture, and
+## LOADING with a yellow block bar on a dark plate over its hazard band. Returns [title, bar].
+func build_screen(parent: Control) -> Array:
+	var GUI = load("res://garage_ui.gd")
+	var bg := ColorRect.new()
+	bg.color = Color(0.05, 0.06, 0.1)
+	bg.set_anchors_preset(Control.PRESET_FULL_RECT)
+	bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	parent.add_child(bg)
+	var pic := TextureRect.new()
+	pic.texture = load("res://store/splash.png")
+	pic.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	pic.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	pic.set_anchors_preset(Control.PRESET_FULL_RECT)
+	pic.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	parent.add_child(pic)
+	var plate := PanelContainer.new()
+	var ps: StyleBoxFlat = GUI.box(Color(0.04, 0.045, 0.06, 0.92), 12, 10)
+	ps.border_color = Color(0.25, 0.25, 0.3)
+	ps.set_border_width_all(2)
+	ps.content_margin_left = 18
+	ps.content_margin_right = 18
+	plate.add_theme_stylebox_override("panel", ps)
+	plate.anchor_left = 0.2
+	plate.anchor_right = 0.8
+	plate.anchor_top = 1.0
+	plate.anchor_bottom = 1.0
+	plate.offset_top = -100.0
+	plate.offset_bottom = -14.0
+	plate.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	parent.add_child(plate)
+	var col := VBoxContainer.new()
+	col.add_theme_constant_override("separation", 6)
+	col.alignment = BoxContainer.ALIGNMENT_CENTER
+	plate.add_child(col)
+	var title := Label.new()
+	title.text = I18n.t("LOADING...")
+	title.add_theme_font_override("font", GUI.stencil())
+	title.add_theme_font_size_override("font_size", UI.tsz(20))
+	title.add_theme_color_override("font_color", GUI.YELLOW)
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	cover.add_child(title)
-	bar = load("res://garage_ui.gd").BlockBar.new()   # loading fills up in blocks, like every other bar
-	bar.anchor_left = 0.08
-	bar.anchor_right = 0.92
-	bar.anchor_top = 1.0
-	bar.anchor_bottom = 1.0
-	bar.offset_top = -70.0 * UI.SCALE
-	bar.offset_bottom = -40.0 * UI.SCALE
-	bar.height = 24.0
-	bar.n = 25
-	bar.color = Color(1.0, 0.55, 0.2)
-	cover.add_child(bar)
+	col.add_child(title)
+	var b = GUI.BlockBar.new()   # loading fills up in blocks, like every other bar
+	b.custom_minimum_size = Vector2(0, 22)
+	b.height = 20.0
+	b.n = 25
+	b.color = GUI.YELLOW
+	col.add_child(b)
+	return [title, b]
 
 
 # ---------------------------------------------------------------- screen edges
@@ -80,7 +115,7 @@ func run(work: Callable) -> void:
 	if busy:
 		return
 	busy = true
-	(cover.get_node("Title") as Label).text = I18n.t("LOADING...")
+	title_label.text = I18n.t("LOADING...")
 	bar.set_fill(6.0)
 	cover.visible = true
 	await get_tree().process_frame
@@ -94,6 +129,7 @@ func run(work: Callable) -> void:
 
 func go(path: String) -> void:
 	PlayLog.add("scene", path.get_file())
+	PlayLog.flush()   # (1.115) on disk before the new scene, in case it never arrives
 	if busy:
 		return
 	var slow: bool = float(took.get(path, 1.0 if HEAVY.has(path) else 0.0)) > SLOW
@@ -105,7 +141,7 @@ func go(path: String) -> void:
 		took[path] = (Time.get_ticks_usec() - t0) / 1000000.0
 		return
 	busy = true
-	(cover.get_node("Title") as Label).text = I18n.t("LOADING...")
+	title_label.text = I18n.t("LOADING...")
 	bar.set_fill(0.0)
 	cover.visible = true
 	# let the cover draw before the heavy work starts

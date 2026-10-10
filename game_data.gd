@@ -3,7 +3,7 @@ const PlayLog = preload("res://playlog.gd")   # (1.87) the playtest log
 
 # helper scripts, loaded by path so the game also runs without an editor scan
 ## The game's version, shown on the main menu. Bump it with every change (1.1, 1.2, ...).
-const VERSION := "1.114"
+const VERSION := "1.115"
 const Arena = preload("res://arena.gd")
 const I18n = preload("res://i18n.gd")
 const Catalog = preload("res://catalog.gd")
@@ -614,7 +614,10 @@ func _ready() -> void:
 	apply_performance()
 	migrate_old_save()
 	get_tree().root.theme = UI.make_theme()
-	new_game()   # sensible defaults so any scene can run on its own
+	# sensible defaults so any scene can run on its own. (1.115) Starting the game normally, the boot
+	# screen builds the world on a worker thread under a LOADING bar instead (boot.gd).
+	if not booting():
+		new_game()
 
 
 # ---------------------------------------------------------------- inventory
@@ -653,8 +656,10 @@ func new_game() -> void:
 	film_index = {}
 	film_pending = []
 	films_seen = []
-	if get_tree() != null and get_node_or_null("/root/Film") != null:
-		get_node("/root/Film").clear()
+	if OS.get_thread_caller_id() != OS.get_main_thread_id():
+		_clear_film.call_deferred()   # (1.115) the boot screen builds the world on a worker thread
+	else:
+		_clear_film()
 	contracts = {}
 	alerts_unseen = 0
 	tour = 0
@@ -5568,6 +5573,22 @@ func slot_info(slot: int, mine: bool = false) -> Dictionary:
 	return {"pilot": data.get("pilot_name", "Rook"), "robot": data.get("robot_name", DEFAULT_ROBOT), "progress": progress,
 			"money": int(data.get("money", 0)), "saved": data.get("saved_at", ""),
 			"cups": int(data.get("circuits_won", 0))}
+
+
+func _clear_film() -> void:
+	if get_tree() != null and get_node_or_null("/root/Film") != null:
+		get_node("/root/Film").clear()
+
+
+## (1.115) True when the game starts at the boot screen (it builds the world itself), false when a
+## scene is run on its own from the editor or the main scene is something else.
+func booting() -> bool:
+	if str(ProjectSettings.get_setting("application/run/main_scene", "")) != "res://boot.tscn":
+		return false
+	for a in OS.get_cmdline_args():
+		if str(a).ends_with(".tscn") and not str(a).ends_with("boot.tscn"):
+			return false
+	return true
 
 
 ## Move a save from the old single-file version into slot 1.

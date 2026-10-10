@@ -126,6 +126,7 @@ var bell_button: Button
 var repair_all_btn: Button
 var dig_button: Button   # Scrapyard: Dig anywhere (the tour points at it)   # Bay > Robot: Repair all, at the top of the part list   # bottom left: how ready the robot will be tonight; opens the job board
 var left_col: VBoxContainer
+var mid_row: HBoxContainer   # (1.115) the scene and the list side by side; the detail pane covers all of it
 var bubble
 const GUI = preload("res://garage_ui.gd")
 const PartNotes = preload("res://part_notes.gd")
@@ -348,6 +349,7 @@ func _ready() -> void:
 	top.add_child(money_label)
 
 	var mid := HBoxContainer.new()
+	mid_row = mid
 	mid.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	mid.add_theme_constant_override("separation", 10)
 	root.add_child(mid)
@@ -414,30 +416,35 @@ func _ready() -> void:
 	add_child(bubble)
 	# the detail pane: covers the scene on the left with whatever you tapped in a list
 	detail_panel = PanelContainer.new()
-	var dps := GUI.box(Color(0.055, 0.055, 0.075, 0.95), 12, 12)
+	var dps := GUI.box(Color(0.055, 0.055, 0.075, 0.99), 12, 12)
 	dps.border_color = Color(0.227, 0.227, 0.282)
 	dps.set_border_width_all(2)
 	detail_panel.add_theme_stylebox_override("panel", dps)
 	detail_panel.visible = false
 	add_child(detail_panel)
 	move_child(detail_panel, bubble.get_index())
-	var dcol := VBoxContainer.new()
+	# (1.115) the part's page covers the middle of the screen: what it is and how it compares on the
+	# left (scrolls), its buttons in a column on the right (they never push the page down)
+	var dcol := HBoxContainer.new()
 	dcol.add_theme_constant_override("separation", 8)
 	detail_panel.add_child(dcol)
 	var dscroll := ScrollContainer.new()
 	dscroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	dscroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	dscroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	dcol.add_child(dscroll)
 	detail_box = VBoxContainer.new()
 	detail_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	detail_box.add_theme_constant_override("separation", 6)
 	dscroll.add_child(detail_box)
-	# the buttons stay put at the bottom, never scrolled away
-	detail_footer = GridContainer.new()
-	detail_footer.columns = 2
-	detail_footer.add_theme_constant_override("h_separation", 6)
-	detail_footer.add_theme_constant_override("v_separation", 6)
-	dcol.add_child(detail_footer)
+	detail_btn_scroll = ScrollContainer.new()
+	detail_btn_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	detail_btn_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	dcol.add_child(detail_btn_scroll)
+	detail_footer = VBoxContainer.new()
+	detail_footer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	detail_footer.add_theme_constant_override("separation", 6)
+	detail_btn_scroll.add_child(detail_footer)
 	msg_label = bubble.text_label
 
 	# bottom: repair, which robot goes in, the damage map and the FIGHT button
@@ -1048,9 +1055,10 @@ func _process(delta: float) -> void:
 		toast_t -= delta
 		toast.visible = toast_t > 0.0
 		_place_toast()
-	if detail_panel and detail_panel.visible and left_col:
-		detail_panel.position = left_col.global_position
-		detail_panel.size = left_col.size
+	if detail_panel and detail_panel.visible and mid_row:
+		# (1.115) the part's page covers the scene and the list: everything but the top strip, the rail and the bottom bar
+		detail_panel.position = mid_row.global_position
+		detail_panel.size = mid_row.size
 	if city_map != null and is_instance_valid(city_map) and city_map.visible and left_col:
 		city_map.position = left_col.global_position
 		city_map.size = left_col.size
@@ -1414,7 +1422,8 @@ var detail := {}          # what's open in the detail pane: {"src": "inv", "uid"
 var detail_ctx := ""      # where you were when you opened it (moving elsewhere closes it)
 var detail_panel: PanelContainer
 var detail_box: VBoxContainer
-var detail_footer: GridContainer
+var detail_footer: VBoxContainer
+var detail_btn_scroll: ScrollContainer
 
 const SHORT_SLOT := {"arm_front": "Left", "arm_back": "Right", "arm_front2": "Low L", "arm_back2": "Low R",
 		"leg_front": "Left", "leg_back": "Right"}
@@ -1602,37 +1611,56 @@ func build_detail() -> void:
 	var x := UI.button("×", _on_detail_close, 16, Vector2(40, 40))
 	x.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
 	head.add_child(x)
+	# (1.115) with the whole middle of the screen to use: what it is on the left, the comparison on the right
+	var wide_w := mid_row.size.x if mid_row else 0.0
+	var info: VBoxContainer = detail_box
+	var cmpcol: VBoxContainer = detail_box
+	var bw := clampf(UI.tsz(14) * 10.0, 190.0, wide_w * 0.28)   # the button column
+	detail_btn_scroll.custom_minimum_size.x = bw
+	# two columns only while the text leaves them room (Huge text stacks them)
+	if wide_w - bw >= 430.0 * UI.tsz(14) / 14.0:
+		var body := HBoxContainer.new()
+		body.add_theme_constant_override("separation", 12)
+		detail_box.add_child(body)
+		info = VBoxContainer.new()
+		info.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		info.add_theme_constant_override("separation", 6)
+		body.add_child(info)
+		cmpcol = VBoxContainer.new()
+		cmpcol.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		cmpcol.add_theme_constant_override("separation", 6)
+		body.add_child(cmpcol)
 	# (1.90) who made it, and how close the robot is to that maker's set
-	maker_strip(d, inv, detail_box)
+	maker_strip(d, inv, info)
 	if d.has("proto_of"):
 		var ptl := GUI.text(tr("PROTOTYPE: only their factory team pilot has one. It goes back if you leave the team, and it can't be sold."), 14, GUI.CYAN, "headb")
 		ptl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		detail_box.add_child(ptl)
+		info.add_child(ptl)
 	# (1.91) every stat at a glance as icons (tap one for its name)
-	detail_box.add_child(StatIcons.chips(GameData.part_stats(d), 15))
+	info.add_child(StatIcons.chips(GameData.part_stats(d), 15))
 	if kind == "arm" or kind == "leg":
 		var tk: Array = GameData.techs_for(d)
 		var tl := GUI.text(tr("TECHNIQUES IT TAKES: %s") % (", ".join(tk.map(func(t): return GameData.tech_name(t))) if not tk.is_empty() else tr("only its plain hit")), 12, GUI.CYAN, "headb")
 		tl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		detail_box.add_child(tl)
+		info.add_child(tl)
 	# notes and extras (traits, gadgets)
 	for n in PartNotes.notes(d, kind, health, str(p.get("uid", d["id"]))):
 		var warn := str(n).begins_with("!")
-		detail_box.add_child(GUI.text(tr(str(n).trim_prefix("!")), 12, GUI.RED if warn else GUI.MUTED))
+		info.add_child(GUI.text(tr(str(n).trim_prefix("!")), 12, GUI.RED if warn else GUI.MUTED))
 	var extra: Array = GameData.part_stat_text(d).split("  |  ")
 	for k in range(1, extra.size()):
 		var el := GUI.text(str(extra[k]), 12, GUI.CYAN)
 		el.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		detail_box.add_child(el)
+		info.add_child(el)
 	# compare with each slot it could go in
 	var slots := slots_for(kind)
 	var stats: Array = COMPARE_STATS.get(kind, [])
 	if not slots.is_empty() and not stats.is_empty():
 		var grid := GridContainer.new()
 		grid.columns = 2 + slots.size()
-		grid.add_theme_constant_override("h_separation", 14)
+		grid.add_theme_constant_override("h_separation", 10)
 		grid.add_theme_constant_override("v_separation", 2)
-		detail_box.add_child(grid)
+		cmpcol.add_child(grid)
 		grid.add_child(GUI.text("", 11, GUI.MUTED))
 		grid.add_child(GUI.text(tr("This"), 11, GUI.MUTED, "headb"))
 		for sl in slots:
@@ -1681,7 +1709,7 @@ func build_detail() -> void:
 	for sl in slots:
 		var cur := GameData.equipped_inst(sl)
 		var what := tr("empty") if cur.is_empty() else str(GameData.part_def(cur["id"])["name"])
-		detail_box.add_child(GUI.text(tr("%s now: %s") % [tr(GameData.SLOT_NAMES[sl]), what], 11, GUI.MUTED))
+		cmpcol.add_child(GUI.text(tr("%s now: %s") % [tr(GameData.SLOT_NAMES[sl]), what], 11, GUI.MUTED))
 	# big buttons
 	var fitted_slot := ""
 	if inv:
@@ -1690,8 +1718,7 @@ func build_detail() -> void:
 				fitted_slot = sl
 	var btns := detail_footer
 	var add_btn := func(text: String, cb: Callable, enabled: bool, col: Color = GUI.TEXT) -> void:
-		var b := UI.button(text, cb, 14, Vector2(0, 46))
-		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		var b := UI.wrap_button(UI.button(text, cb, 14, Vector2(0, 46)))
 		b.disabled = not enabled
 		b.add_theme_color_override("font_color", col)
 		btns.add_child(b)
@@ -1704,7 +1731,7 @@ func build_detail() -> void:
 	if inv:
 		var wreck := GameData.is_wreck(p)
 		if fitted_slot != "":
-			detail_box.add_child(GUI.text(tr("Fitted to the %s.") % tr(GameData.SLOT_NAMES[fitted_slot]), 12, GUI.GREEN))
+			info.add_child(GUI.text(tr("Fitted to the %s.") % tr(GameData.SLOT_NAMES[fitted_slot]), 12, GUI.GREEN))
 		for sl in slots:
 			if sl != fitted_slot:
 				add_btn.call(tr("Fit: %s · %s") % [tr(GameData.SLOT_NAMES[sl]), GameData.hours_text(GameData.swap_hours(d))], _on_detail_fit.bind(int(p["uid"]), sl), not wreck, GUI.YELLOW)
@@ -1713,7 +1740,7 @@ func build_detail() -> void:
 		if not offs.is_empty():
 			var ol := GUI.text(tr("OFF-LABEL") + ": " + GameData.off_label_text(d, offs[0]), 12, GUI.AMBER)
 			ol.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-			detail_box.add_child(ol)
+			info.add_child(ol)
 			for sl in offs:
 				if sl != fitted_slot:
 					add_btn.call(tr("Off-label: %s · %s") % [tr(GameData.SLOT_NAMES[sl]), GameData.hours_text(GameData.swap_hours(d))], _on_detail_fit.bind(int(p["uid"]), sl), not wreck, GUI.AMBER)

@@ -1969,6 +1969,23 @@ func most_used_limb() -> String:
 
 # ---------------------------------------------------------------- game loop
 
+## (1.115) A crash on a phone leaves no error behind, so the playtest log keeps up with the fight:
+## every change of stage and a heartbeat every few seconds (memory, frame rate), written at once.
+var _beat_t := 0.0
+var _beat_last := ""
+func log_beat(delta: float) -> void:
+	_beat_t -= delta
+	var st := "%s/%s" % [phase, intro_step]
+	if st == _beat_last and _beat_t > 0.0:
+		return
+	_beat_t = 8.0
+	_beat_last = st
+	PlayLog.add("fight", "%s · %ds left · mem %d MB · video %d MB · %d fps" % [st, int(time_left),
+			int(Performance.get_monitor(Performance.MEMORY_STATIC) / 1048576.0),
+			int(Performance.get_monitor(Performance.RENDER_VIDEO_MEM_USED) / 1048576.0), int(Engine.get_frames_per_second())])
+	PlayLog.flush()
+
+
 func _process(delta: float) -> void:
 	if demo_move != "":
 		demo_process(delta)
@@ -1976,6 +1993,8 @@ func _process(delta: float) -> void:
 	if not replay.is_empty():
 		replay_process(delta)
 		return
+	if not simming and mode != "demo":
+		log_beat(delta)
 	layout()
 	if tut_pause:
 		redraw_all()
