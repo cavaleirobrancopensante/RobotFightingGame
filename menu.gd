@@ -274,6 +274,7 @@ func _ready() -> void:
 	ver.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_WIDE)
 	ver.offset_top = -24
 	ver.offset_bottom = -4
+	ver.grow_vertical = Control.GROW_DIRECTION_BEGIN   # (1.113) big text grows it upward, not off the bottom
 	ver.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(ver)
 	add_child(msg)

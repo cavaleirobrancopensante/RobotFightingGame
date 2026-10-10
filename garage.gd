@@ -695,7 +695,7 @@ func build_seg_bar() -> void:
 				or (tab == "Feed" and sg[0] == "profile" and (seg_new("gear", "pilot") and GameData.unlocked("pilot") or contracts_new())))
 		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		# long names (big text, Portuguese) shrink instead of pushing the panel off the screen
-		b.clip_text = true
+		b.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 		b.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 		b.tooltip_text = str(sg[1])
 		var st := GUI.seg_style(on)
@@ -1335,7 +1335,7 @@ func row_text(title: String, subtitle: String, tag: String, wrap: bool, extra: C
 		tg.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 		line.add_child(tg)
 	var t := GUI.text(title, 15, GUI.TEXT, "bold")
-	t.clip_text = true
+	t.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	t.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	line.add_child(t)
 	info.add_child(line)
@@ -1358,7 +1358,7 @@ func row_text(title: String, subtitle: String, tag: String, wrap: bool, extra: C
 		if wrap:
 			sl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		else:
-			sl.clip_text = true
+			sl.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 		info.add_child(sl)
 	if extra != null:
 		info.add_child(extra)   # (1.91) stat chips under the name
@@ -2313,7 +2313,7 @@ func part_entry(d: Dictionary, p: Dictionary, title: String, tag: String, cb: Ca
 	top.add_child(names)
 	if tag != "":
 		var tg := GUI.text(tag.strip_edges().to_upper(), 10, GUI.MUTED, "headb")
-		tg.clip_text = true
+		tg.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 		names.add_child(tg)
 	var nl := GUI.text(title.strip_edges(), 14, GUI.TEXT, "bold")
 	nl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -3250,7 +3250,7 @@ func post_row(p: Dictionary, parent: Control = null) -> void:
 		g.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 		head.add_child(g)
 	var hl := GUI.text("@%s · %s" % [acc["handle"], S.when_text(p)], 11, GUI.MUTED)
-	hl.clip_text = true
+	hl.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	hl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	hl.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	head.add_child(hl)
@@ -4785,7 +4785,7 @@ func build_pilot_looks() -> void:
 			var v := UI.label(l[2], vs, Color(l[3]).lightened(0.3) if l[3] != "" else Color(0.85, 0.85, 0.9))
 			v.custom_minimum_size = Vector2(112, 0)
 			v.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-			v.clip_text = true
+			v.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 			bar.add_child(v)
 		row_button(bar, ">", _on_pilot_change.bind(l[1], 1), true, 44)
 	var last := action_bar(col)
@@ -5630,7 +5630,7 @@ func build_calendar() -> void:
 		var l := GUI.text(tr(dn), 11, GUI.YELLOW if k == 5 else (Color(0.78, 0.6, 1.0) if k == 2 else GUI.MUTED), "headb")
 		l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		l.clip_text = true
+		l.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 		hdr.add_child(l)
 	for row in GameData.MONTH_WEEKS:
 		var w: int = cal_month * GameData.MONTH_WEEKS + row + 1
@@ -5896,7 +5896,7 @@ func _on_cal_day(w: int, day: int) -> void:
 			var m: Dictionary = e["matches"][k]
 			var b := UI.button(match_label(m), _on_cal_match.bind(w, day, i, k), 14, Vector2(0, 40))
 			b.alignment = HORIZONTAL_ALIGNMENT_LEFT
-			b.clip_text = true
+			b.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 			v.add_child(b)
 		for rr in e.get("results", []):
 			# WINNER beat LOSER, and Watch (filmed fights first, marked FILMED)
@@ -5909,7 +5909,7 @@ func _on_cal_day(w: int, day: int) -> void:
 			v.add_child(rrow)
 			var rl := GUI.text(tr("%s beat %s") % [who(rev2, wid2), who(rev2, lid2)] + ((" · " + tr("FILMED")) if rr["filmed"] else ""), 13, GUI.TEXT)
 			rl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-			rl.clip_text = true
+			rl.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 			rrow.add_child(rl)
 			rrow.add_child(UI.button(tr("Watch ▸"), watch_past.bind(sp), 13, Vector2(96, 36)))
 	# a later day: you can jump straight to it (it stops at a night with your own fight)
@@ -6176,7 +6176,7 @@ func open_pilot(wid: int) -> void:
 		for c in hl:
 			var cb := UI.button("▶ " + GameData.Clips.kind_name(c) + ": " + GameData.Clips.title(c), open_clip.bind(str(c["id"])), 13, Vector2(0, 38))
 			cb.alignment = HORIZONTAL_ALIGNMENT_LEFT
-			cb.clip_text = true
+			cb.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 			col.add_child(cb)
 	# BotMedia: follow them, or read what they've been posting
 	var sbar := HBoxContainer.new()
@@ -6249,7 +6249,7 @@ func build_pub_cards() -> void:
 		var tbar := action_bar()
 		var tl := GUI.text(tr("ON THE TV: %s") % tr("BEST OF THE WEEK") + "   " + tr("%d clips") % week_clips.size(), 14, GUI.AMBER, "bold")
 		tl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		tl.clip_text = true
+		tl.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 		tbar.add_child(tl)
 		row_button(tbar, tr("Watch ▸"), func():
 			var cid := str(tv_player.clip["id"]) if tv_player != null and is_instance_valid(tv_player) and not (tv_player.clip as Dictionary).is_empty() else str(week_clips[0]["id"])
@@ -6259,7 +6259,7 @@ func build_pub_cards() -> void:
 		var bar := action_bar()
 		var l := GUI.text(tr("ON THE TV: %s") % str(tv["title"]) + "   " + str(tv["a"]) + ("  vs  " + str(tv["b"]) if str(tv["b"]) != "" else ""), 14, GUI.AMBER, "bold")
 		l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		l.clip_text = true
+		l.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 		bar.add_child(l)
 		if not hm.is_empty():
 			row_button(bar, "Watch", _on_watch.bind(int(hm["a"]), int(hm["b"]), str(hm["on"])), GameData.can_watch(hm["ev"], int(hm["a"]), int(hm["b"])), 100)
@@ -6354,7 +6354,7 @@ func bet_side(row: HBoxContainer, ev: Dictionary, id: int, other: int, on: Strin
 	var odds := Career.odds(ev, id, other)
 	var l := UI.label(tr("%s\n%d-%d   %.2fx") % [who(ev, id), t[0], t[1], odds], 13, Color(1.0, 0.85, 0.3) if id == 0 else Color(0.9, 0.9, 0.95))
 	l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	l.clip_text = true
+	l.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	box.add_child(l)
 	if other != 0:
 		row_button(box, "Bet", _on_bet_on.bind(on, id, other), GameData.money >= bet_stake, 64)
@@ -7020,7 +7020,7 @@ func table_row(cells: Array, widths: Array, col: Color, bg: Color, wid: int = -1
 	var grow := float(UI.tsz(15)) / (15.0 * UI.SCALE)   # the columns widen with the text size
 	for k in cells.size():
 		var l := UI.label(str(cells[k]), 15, col)
-		l.clip_text = true
+		l.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 		var host: Control = l
 		if k == rel_cell and wid >= 0 and GameData.rel_text(wid) != "":
 			# name, then the number right after it in its own colour

@@ -24,12 +24,10 @@ func _ready() -> void:
 	Sfx.music("menu")
 	mode = GameData.slot_mode
 	UI.background(self)
-	var m := UI.margin(self, 24)
-	var center := CenterContainer.new()
-	m.add_child(center)
+	var center := UI.fit_screen(self, 24)   # (1.113) scrolls when the page is taller than the screen
 	col = VBoxContainer.new()
 	col.add_theme_constant_override("separation", 10)
-	col.custom_minimum_size = Vector2(900, 0)
+	col.custom_minimum_size = Vector2(minf(900.0, get_viewport_rect().size.x - 48.0 - 60.0), 0)
 	center.add_child(col)
 	show_slots()
 
@@ -52,7 +50,7 @@ func show_slots() -> void:
 	# eight slots: they scroll
 	var scroll := ScrollContainer.new()
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-	scroll.custom_minimum_size = Vector2(900, minf(get_viewport_rect().size.y - 190.0 * UI.SCALE, 8 * 74.0 * UI.SCALE))
+	scroll.custom_minimum_size = Vector2(col.custom_minimum_size.x, minf(get_viewport_rect().size.y - 190.0 * UI.SCALE, 8 * 74.0 * UI.SCALE))
 	col.add_child(scroll)
 	var list := VBoxContainer.new()
 	list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -75,7 +73,9 @@ func show_slots() -> void:
 		else:
 			text.add_child(UI.label(tr("Slot %d: %s & %s") % [slot, info["pilot"], info["robot"]], 20))
 			var cups := tr(", %d cups") % info["cups"] if info["cups"] > 0 else ""
-			text.add_child(UI.label(tr("AUTOSAVE: %s%s  ·  %s  ·  %s") % [info["progress"], cups, GameData.money_text(info["money"]), info["saved"]], 14, Color(0.72, 0.72, 0.78)))
+			var al := UI.label(tr("AUTOSAVE: %s%s  ·  %s  ·  %s") % [info["progress"], cups, GameData.money_text(info["money"]), info["saved"]], 14, Color(0.72, 0.72, 0.78))
+			al.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART   # (1.113) wraps on a narrow screen or with big text
+			text.add_child(al)
 			var mi := GameData.slot_info(slot, true)
 			if not mi.is_empty() and not mi.get("broken", false) and mode != "new":
 				var mrow := HBoxContainer.new()
@@ -162,9 +162,7 @@ func _on_open_difficulty() -> void:
 	diff_cover.mouse_filter = Control.MOUSE_FILTER_STOP
 	diff_cover.set_anchors_preset(Control.PRESET_FULL_RECT)
 	add_child(diff_cover)
-	var center := CenterContainer.new()
-	center.set_anchors_preset(Control.PRESET_FULL_RECT)
-	diff_cover.add_child(center)
+	var center := UI.fit_screen(diff_cover, 16)   # (1.113) scrolls when it's taller than the screen
 	var box := VBoxContainer.new()
 	box.add_theme_constant_override("separation", 8)
 	box.custom_minimum_size = Vector2(560, 0)
@@ -266,7 +264,7 @@ func choice_row(parent: Control, label: String, value: String, cb_prev: Callable
 		v.custom_minimum_size = Vector2(110, 0)
 		v.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		v.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		v.clip_text = true
+		v.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS   # (1.113) "…" rather than cut at both ends
 		bar.add_child(v)
 	bar.add_child(UI.button(">", cb_next, 16, Vector2(40, 32)))
 
@@ -274,7 +272,7 @@ func choice_row(parent: Control, label: String, value: String, cb_prev: Callable
 ## Shrink a label's font until the text fits the box (long values like "Long hair + scar").
 func fitting_size(text: String, size: int, width: float) -> int:
 	var f := ThemeDB.fallback_font
-	while size > 9 and f.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, int(size * UI.SCALE)).x > width:
+	while size > 8 and f.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, UI.tsz(size)).x > width:   # (1.113) measured at the real text size
 		size -= 1
 	return size
 

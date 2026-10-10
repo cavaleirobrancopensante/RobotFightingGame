@@ -53,6 +53,27 @@ static func button(text: String, callback: Callable, size: int = 26, min_size: V
 	return b
 
 
+## (1.113) A whole screen's column that always fits: centred while it fits, scrolls when it's taller
+## than the screen (big text, long translations). Returns the CenterContainer to put the column in.
+static func fit_screen(parent: Control, px: int = 24) -> CenterContainer:
+	var m := margin(parent, px)
+	var sc := ScrollContainer.new()
+	sc.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	m.add_child(sc)
+	var c := CenterContainer.new()
+	c.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	c.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	sc.add_child(c)
+	return c
+
+
+## (1.113) A button whose words wrap onto a second line instead of making it wider than its room.
+static func wrap_button(b: Button) -> Button:
+	b.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	return b
+
+
 static func background(parent: Control) -> void:
 	var bg := ColorRect.new()
 	bg.color = Color(0.07, 0.07, 0.1)

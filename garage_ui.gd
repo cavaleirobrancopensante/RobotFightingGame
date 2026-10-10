@@ -1000,7 +1000,7 @@ class DraftCard extends PanelContainer:
 			if wrap:
 				hl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 			else:
-				hl.clip_text = true
+				hl.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 			v.add_child(hl)
 			var dt := RichTextLabel.new()
 			dt.bbcode_enabled = true

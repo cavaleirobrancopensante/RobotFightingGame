@@ -67,16 +67,21 @@ class Flag extends Button:
 			draw_rect(Rect2(Vector2(2, 2), size - Vector2(4, 4)), Color(1.0, 0.85, 0.3), false, 3.0)
 
 
+var bw := 470.0   # (1.113) a grid button's width, from the screen
+
+
 func _ready() -> void:
 	Sfx.music("menu")
 	UI.background(self)
-	var m := UI.margin(self, 24)
-	var center := CenterContainer.new()
-	m.add_child(center)
+	var center := UI.fit_screen(self, 24)   # (1.113) scrolls when it doesn't fit (Portuguese ran off the screen)
 	var col := VBoxContainer.new()
 	col.add_theme_constant_override("separation", 6)
-	col.custom_minimum_size = Vector2(520, 0)
+	# two columns as wide as the screen allows (a scroll bar's room kept on the right)
+	var avail := get_viewport_rect().size.x - 48.0 - 60.0
+	var colw := minf(avail, (470.0 * 2 + 10) * UI.SCALE)
+	col.custom_minimum_size = Vector2(colw, 0)
 	center.add_child(col)
+	bw = (colw - 10.0) / 2.0
 
 	var head := HBoxContainer.new()
 	head.add_theme_constant_override("separation", 8)
@@ -101,26 +106,27 @@ func _ready() -> void:
 	grid.add_theme_constant_override("h_separation", 10)
 	grid.add_theme_constant_override("v_separation", 8)
 	col.add_child(grid)
-	sound_button = UI.button("", _on_sound, 19, Vector2(470, 50))
-	music_button = UI.button("", _on_music, 19, Vector2(470, 50))
-	shake_button = UI.button("", _on_shake, 19, Vector2(470, 50))
-	size_button = UI.button("", _on_size, 19, Vector2(470, 50))
-	delete_button = UI.button("", _on_walkin, 19, Vector2(470, 50))   # (save files live under Load Game)
-	team_button = UI.button("", _on_team, 19, Vector2(470, 50))
-	battery_button = UI.button("", _on_battery, 19, Vector2(470, 50))
-	fastfight_button = UI.button("", _on_fast_fights, 19, Vector2(470, 50))
-	errors_button = UI.button("", _on_errors, 19, Vector2(470, 50))
-	reset_button = UI.button("", _on_reset, 19, Vector2(470, 50))
-	edges_button = UI.button("", _on_edges, 19, Vector2(470, 50))
+	sound_button = UI.button("", _on_sound, 19, Vector2(bw / UI.SCALE, 50))
+	music_button = UI.button("", _on_music, 19, Vector2(bw / UI.SCALE, 50))
+	shake_button = UI.button("", _on_shake, 19, Vector2(bw / UI.SCALE, 50))
+	size_button = UI.button("", _on_size, 19, Vector2(bw / UI.SCALE, 50))
+	delete_button = UI.button("", _on_walkin, 19, Vector2(bw / UI.SCALE, 50))   # (save files live under Load Game)
+	team_button = UI.button("", _on_team, 19, Vector2(bw / UI.SCALE, 50))
+	battery_button = UI.button("", _on_battery, 19, Vector2(bw / UI.SCALE, 50))
+	fastfight_button = UI.button("", _on_fast_fights, 19, Vector2(bw / UI.SCALE, 50))
+	errors_button = UI.button("", _on_errors, 19, Vector2(bw / UI.SCALE, 50))
+	reset_button = UI.button("", _on_reset, 19, Vector2(bw / UI.SCALE, 50))
+	edges_button = UI.button("", _on_edges, 19, Vector2(bw / UI.SCALE, 50))
 	# text size: smaller / bigger, the whole game follows (the screen rebuilds so you see it at once)
 	var text_row := HBoxContainer.new()
-	text_row.custom_minimum_size = Vector2(470, 50) * UI.SCALE
+	text_row.custom_minimum_size = Vector2(bw, 50 * UI.SCALE)
 	text_row.add_theme_constant_override("separation", 6)
 	var minus := UI.button("A−", _on_text.bind(-1), 19, Vector2(70, 50))
 	text_label = UI.label("", 19)
 	text_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	text_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	text_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	text_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART   # (1.113) "Tamanho do texto: Grande" wraps instead of widening the row
 	var plus := UI.button("A+", _on_text.bind(1), 19, Vector2(70, 50))
 	var lv := int(GameData.settings.get("text", UI.TEXT_DEFAULT))
 	minus.disabled = lv <= 0
@@ -128,11 +134,14 @@ func _ready() -> void:
 	for c in [minus, text_label, plus]:
 		text_row.add_child(c)
 	for b in [text_row, sound_button, music_button, shake_button, battery_button, fastfight_button, size_button, edges_button,
-			UI.button("Edit controls (move & resize)", _on_controls, 19, Vector2(470, 50)), team_button,
-			UI.button("Difficulty...", _on_difficulty, 19, Vector2(470, 50)), delete_button, errors_button, reset_button,
-			UI.button("Copy playtest log", _on_copy_log, 19, Vector2(470, 50))]:
+			UI.button("Edit controls (move & resize)", _on_controls, 19, Vector2(bw / UI.SCALE, 50)), team_button,
+			UI.button("Difficulty...", _on_difficulty, 19, Vector2(bw / UI.SCALE, 50)), delete_button, errors_button, reset_button,
+			UI.button("Copy playtest log", _on_copy_log, 19, Vector2(bw / UI.SCALE, 50))]:
 		grid.add_child(b)
-	grid.add_child(UI.button("Back", _on_back, 19, Vector2(470, 50)))
+	grid.add_child(UI.button("Back", _on_back, 19, Vector2(bw / UI.SCALE, 50)))
+	for b in grid.get_children():
+		if b is Button:
+			UI.wrap_button(b)
 	refresh()
 
 
@@ -199,9 +208,7 @@ func _on_difficulty() -> void:
 	diff_overlay.mouse_filter = Control.MOUSE_FILTER_STOP
 	diff_overlay.set_anchors_preset(Control.PRESET_FULL_RECT)
 	add_child(diff_overlay)
-	var center := CenterContainer.new()
-	center.set_anchors_preset(Control.PRESET_FULL_RECT)
-	diff_overlay.add_child(center)
+	var center := UI.fit_screen(diff_overlay, 16)   # (1.113) scrolls when it's taller than the screen
 	var col := VBoxContainer.new()
 	col.add_theme_constant_override("separation", 8)
 	center.add_child(col)
