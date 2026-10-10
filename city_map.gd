@@ -57,6 +57,7 @@ var selected := ""
 var walk_t := -1.0          # 0..1 while the figure walks
 var walk_route: Array = []
 var walk_to := ""
+var by_taxi := false   # (1.117) the trip is a BotTaxi ride: quicker, a little yellow car
 var t := 0.0
 var zoom := 1.0
 var cam := Vector2(VW * 0.5, VH * 0.5)   # the map point in the middle of the screen
@@ -117,7 +118,7 @@ class StaticPainter extends Node2D:
 func _process(delta: float) -> void:
 	t += delta
 	if walk_t >= 0.0:
-		walk_t += delta / 1.6
+		walk_t += delta / (0.9 if by_taxi else 1.6)
 		if zoom > 1.15:
 			cam = cam.lerp(_along(walk_route, walk_t), minf(1.0, delta * 4.0))   # follow the walk
 		if walk_t >= 1.0:
@@ -230,7 +231,8 @@ func route(from: String, to: String) -> Array:
 	return pts
 
 
-func go(place: String) -> void:
+func go(place: String, taxi: bool = false) -> void:
+	by_taxi = taxi
 	walk_route = route(GameData.pilot_at, place)
 	walk_to = place
 	walk_t = 0.0
@@ -616,7 +618,7 @@ func draw_map(c: CanvasItem) -> void:
 			dash += L
 		var hrs := GameData.travel_hours(GameData.pilot_at, dest)
 		var mid: Vector2 = cpts[cpts.size() / 2]
-		var txt := I18n.t("%s h") % ("%.1f" % hrs).trim_suffix(".0") if hrs > 0.01 else I18n.t("free")
+		var txt := (I18n.t("%d min") % roundi(hrs * 60.0)) if hrs < 0.99 else I18n.t("%s h") % ("%.1f" % hrs).trim_suffix(".0")
 		var tw := f.get_string_size(txt, HORIZONTAL_ALIGNMENT_LEFT, -1, UI.px(13)).x + 14.0
 		cv.draw_rect(Rect2(mid + Vector2(-tw * 0.5, -30), Vector2(tw, 22)), Color(0.05, 0.05, 0.07, 0.9))
 		cv.draw_rect(Rect2(mid + Vector2(-tw * 0.5, -30), Vector2(tw, 22)), Color(0.95, 0.76, 0.19), false, 1.5)
@@ -626,7 +628,11 @@ func draw_map(c: CanvasItem) -> void:
 	var walking := walk_t >= 0.0
 	if walking:
 		me = _along(walk_route.map(func(q): return mv(q)), walk_t) + Vector2(0, -14)
-	_walker(me, walking)
+	if walking and by_taxi:
+		var ahead := _along(walk_route.map(func(q): return mv(q)), minf(1.0, walk_t + 0.02)) + Vector2(0, -14)
+		_taxi(me, ahead.x >= me.x)
+	else:
+		_walker(me, walking)
 	# the corner buttons: zoom in, zoom out, back to you
 	var so := _screen().position
 	for bt in _buttons():
@@ -987,6 +993,24 @@ func _walker(p: Vector2, walking: bool) -> void:
 	cv.draw_line(p + Vector2(0, 4), p + Vector2(3 - sw * 0.5, 11), c, 2.0)
 	cv.draw_line(p + Vector2(0, -2), p + Vector2(-4 - sw * 0.4, 3), c, 2.0)
 	cv.draw_line(p + Vector2(0, -2), p + Vector2(4 + sw * 0.4, 3), c, 2.0)
+
+
+## (1.117) A BotTaxi from above-ish: a yellow cab with a checker stripe and a roof light.
+func _taxi(p: Vector2, right: bool) -> void:
+	var dx := 1.0 if right else -1.0
+	cv.draw_circle(p + Vector2(0, 4), 14.0, Color(0, 0, 0, 0.5))
+	var body := Rect2(p + Vector2(-13, -6), Vector2(26, 11))
+	cv.draw_rect(body.grow(1.5), Color(0.05, 0.05, 0.06))
+	cv.draw_rect(body, Color(0.98, 0.8, 0.15))
+	cv.draw_rect(Rect2(p + Vector2(-7, -12), Vector2(14, 7)), Color(0.05, 0.05, 0.06))
+	cv.draw_rect(Rect2(p + Vector2(-6, -11), Vector2(12, 6)), Color(0.98, 0.8, 0.15))
+	cv.draw_rect(Rect2(p + Vector2(-5 + dx * 1.5, -10), Vector2(4, 4)), Color(0.55, 0.75, 0.9))
+	for k in 6:
+		cv.draw_rect(Rect2(p + Vector2(-12 + k * 4, -1), Vector2(2, 2)), Color(0.05, 0.05, 0.06) if k % 2 == 0 else Color(1, 1, 1))
+	cv.draw_rect(Rect2(p + Vector2(-2, -15), Vector2(4, 3)), Color(1.0, 0.95, 0.6) if fmod(t, 0.6) < 0.3 else Color(0.9, 0.6, 0.1))
+	cv.draw_circle(p + Vector2(-8, 5), 3.0, Color(0.05, 0.05, 0.06))
+	cv.draw_circle(p + Vector2(8, 5), 3.0, Color(0.05, 0.05, 0.06))
+	cv.draw_circle(p + Vector2(13 * dx, -2), 1.6, Color(1.0, 1.0, 0.8))
 
 
 func _glyph(kind: String, c: Vector2, locked: bool) -> void:

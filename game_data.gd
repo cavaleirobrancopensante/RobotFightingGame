@@ -3,7 +3,7 @@ const PlayLog = preload("res://playlog.gd")   # (1.87) the playtest log
 
 # helper scripts, loaded by path so the game also runs without an editor scan
 ## The game's version, shown on the main menu. Bump it with every change (1.1, 1.2, ...).
-const VERSION := "1.116"
+const VERSION := "1.117"
 const Arena = preload("res://arena.gd")
 const I18n = preload("res://i18n.gd")
 const Catalog = preload("res://catalog.gd")
@@ -646,6 +646,7 @@ func new_game() -> void:
 	bet_log = []
 	patched_week = -1
 	deliveries = []
+	morning_seen = ""
 	loan = {}
 	gus_alerts = []
 	inbox_seen = 0
@@ -2524,6 +2525,20 @@ func pilot_standing(wid: int) -> String:
 
 
 ## (1.87) "#12 in the Rust League" (shown where Read used to be), "Unranked, in the gutter".
+## (1.117) How a world pilot is fighting right now, as a word: "sharp" / "steady" / "rusty" / "rattled"
+## ("" for nobody). FORM_WORD / FORM_TEXT say it; the Read number stays hidden.
+const FORM_WORD := {"sharp": "SHARP", "steady": "STEADY", "rusty": "RUSTY", "rattled": "RATTLED"}
+const FORM_TEXT := {"sharp": "Sharp: fighting at their best right now.", "steady": "Steady: fighting about as well as they usually do.",
+		"rusty": "Rusty: out of practice, below their best.", "rattled": "Rattled: a bad run has got to them. They're off their game for now."}
+const FORM_COLOR := {"sharp": Color(1.0, 0.55, 0.35), "steady": Color(0.8, 0.82, 0.86), "rusty": Color(0.85, 0.6, 0.3), "rattled": Color(0.6, 0.85, 1.0)}
+
+
+func pilot_form(wid: int) -> String:
+	if wid < 0:
+		return ""
+	return World.form_of(World.pilot(wid))
+
+
 func pilot_rank(wid: int) -> String:
 	for stage in leagues:
 		var ev: Dictionary = leagues[stage]
@@ -3019,6 +3034,7 @@ func next_day() -> void:
 ## piece of junk from his bench. Once a week at most. It's ugly, but it fights.
 const PATCH_HP := 0.4
 var patched_week := -1
+var morning_seen := ""   # (1.117) the day key of the last morning card you saw
 var deliveries: Array = []   # (1.116) part ids ordered from a catalogue at home: in Storage tomorrow morning
 const DELIVERY_SHARE := 0.1   # the delivery fee: 10% of the price
 const DELIVERY_MIN := 15
@@ -3150,16 +3166,29 @@ func next_fight_before(w: int, idx: int) -> String:
 
 ## Jump ahead to a later day (this week or any later week this year), letting the free days in
 ## between go. Stops early at a night with your own fight on it.
-func skip_to_day(idx: int, w: int = -1) -> String:
+var skip_stopped := ""   # (1.117) why the last skip stopped early ("" = it didn't)
+
+
+func skip_to_day(idx: int, w: int = -1, stop_early: bool = false) -> String:
 	if w < 0:
 		w = week
 	refund_self_bets()
 	pickup = {}
 	var y0 := year
 	var guard := 0
+	skip_stopped = ""
+	var offers0: int = Contracts.st()["offers"].size()
+	var alerts0 := gus_alerts.size()
 	while year == y0 and (week < w or (week == w and day_index() < idx)) and can_pass_day() and guard < 400:
 		pass_rest_of_day()
 		guard += 1
+		# (1.117) something that needs you stops the skip: a sponsor's offer, one of Gus's cards
+		if stop_early and Contracts.st()["offers"].size() > offers0:
+			skip_stopped = "An offer came in. The skip stops here."
+			break
+		if stop_early and gus_alerts.size() > alerts0:
+			skip_stopped = "Gus needs a word. The skip stops here."
+			break
 	save_game()
 	return tr("It's %s.") % tr(DAY_FULL[day_index()])
 
@@ -3278,10 +3307,10 @@ func loan_seize() -> String:
 ## (1.79) The money book: every dollar in or out, with what it was for. ledger = [[y, w, d, cat, amount]],
 ## the last LEDGER_WEEKS weeks kept (Season > Money reads it back). Same day + same cat are merged.
 const LEDGER_WEEKS := 16
-const LEDGER_CATS := ["fights", "prizes", "salvage", "sponsors", "sales", "bets", "loan", "parts", "repairs", "bay", "bills", "scout", "other"]
+const LEDGER_CATS := ["fights", "prizes", "salvage", "sponsors", "sales", "bets", "loan", "parts", "repairs", "bay", "bills", "scout", "taxi", "other"]
 const LEDGER_NAMES := {"fights": "Purses", "prizes": "Prizes", "salvage": "Salvage bonus", "sponsors": "Sponsors",
 		"sales": "Parts sold", "bets": "Bets", "parts": "Parts bought", "repairs": "Repairs & bay work",
-		"bay": "Bay upgrades", "bills": "Rent & running costs", "scout": "Scouting", "loan": "Loan", "other": "Other"}
+		"bay": "Bay upgrades", "bills": "Rent & running costs", "scout": "Scouting", "taxi": "BotTaxi", "loan": "Loan", "other": "Other"}
 var ledger: Array = []
 ## (1.87) Every bet once it's settled, newest last (the last BET_LOG_KEEP): {y, w, d, what, pick, vs,
 ## stake, odds, won, pay, spec (a fight you can watch again: see watch_past), live}.
@@ -5680,7 +5709,7 @@ func save_game(path: String = "") -> bool:
 		"owned_chips": owned_chips, "chips": chips, "circuit": circuit, "circuit_offers": circuit_offers,
 		"circuits_won": circuits_won, "pickup": pickup, "setups": setups, "custom_parts": custom_parts,
 		"year": year, "week": week, "day": day, "rank": rank, "event": {}, "leagues": leagues, "title_seeds": title_seeds, "trophies": trophies, "career_stats": career_stats,
-		"pecking_k": pecking_k(), "style": style, "style_locked": style_locked, "shop_stock": shop_stock, "chip_stock": chip_stock, "scout": scout, "wingmen": wingmen, "sending": sending, "pilot_look": pilot_look, "owned_controllers": owned_controllers, "spare_controllers": spare_controllers, "techs": techs, "tech_fit": tech_fit, "tips_seen": tips_seen, "tips_log": tips_log, "h2h": h2h, "rivals": rivals, "rel": rel, "nemeses": nemeses, "pending_talk": pending_talk, "inbox": inbox, "inbox_seen": inbox_seen, "social": social, "pilot_at": pilot_at, "places_been": places_been, "catalogues": catalogues, "pilot_used": pilot_used, "film_index": film_index, "film_pending": film_pending, "films_seen": films_seen, "contracts": contracts, "alerts_unseen": alerts_unseen, "day_log": day_log, "ledger": ledger, "bet_log": bet_log, "patched_week": patched_week, "deliveries": deliveries, "loan": loan, "gus_alerts": gus_alerts, "tour": tour, "streak": streak, "pub_seen": pub_seen, "digs_left": digs_left, "dig_luck": dig_luck, "bills_note": bills_note, "fight_log": fight_log, "bets": bets, "world": world,
+		"pecking_k": pecking_k(), "style": style, "style_locked": style_locked, "shop_stock": shop_stock, "chip_stock": chip_stock, "scout": scout, "wingmen": wingmen, "sending": sending, "pilot_look": pilot_look, "owned_controllers": owned_controllers, "spare_controllers": spare_controllers, "techs": techs, "tech_fit": tech_fit, "tips_seen": tips_seen, "tips_log": tips_log, "h2h": h2h, "rivals": rivals, "rel": rel, "nemeses": nemeses, "pending_talk": pending_talk, "inbox": inbox, "inbox_seen": inbox_seen, "social": social, "pilot_at": pilot_at, "places_been": places_been, "catalogues": catalogues, "pilot_used": pilot_used, "film_index": film_index, "film_pending": film_pending, "films_seen": films_seen, "contracts": contracts, "alerts_unseen": alerts_unseen, "day_log": day_log, "ledger": ledger, "bet_log": bet_log, "patched_week": patched_week, "deliveries": deliveries, "morning_seen": morning_seen, "loan": loan, "gus_alerts": gus_alerts, "tour": tour, "streak": streak, "pub_seen": pub_seen, "digs_left": digs_left, "dig_luck": dig_luck, "bills_note": bills_note, "fight_log": fight_log, "bets": bets, "world": world,
 	}
 	var f := FileAccess.open(slot_path(save_slot) if path == "" else path, FileAccess.WRITE)
 	if f == null:
@@ -5807,6 +5836,7 @@ func load_game(slot: int = -1, mine: bool = false) -> String:
 	bet_log = data.get("bet_log", [])
 	patched_week = int(data.get("patched_week", -1))
 	deliveries = data.get("deliveries", [])
+	morning_seen = str(data.get("morning_seen", ""))
 	loan = data.get("loan", {})
 	gus_alerts = data.get("gus_alerts", [])
 	inbox = []
@@ -6606,8 +6636,6 @@ const DIG_HOURS := 1.0
 func travel_hours(from: String, to: String) -> float:
 	if from == to or not PLACES.has(from) or not PLACES.has(to):
 		return 0.0
-	if to == "home":
-		return 0.0   # (1.116) the walk home is free: a trip never costs two walks
 	var a := str(PLACES[from]["district"])
 	var b := str(PLACES[to]["district"])
 	if a == b:
@@ -6672,11 +6700,34 @@ func spend_pilot(h: float) -> int:
 	return passed
 
 
-## Go somewhere: the hours it takes are spent. Returns the parts of the day that went by.
-func travel_to(place: String) -> int:
+## (1.117) BotTaxi: a quarter of the walk (never under 15 minutes), for a fare: $15 plus $10 for
+## every hour of walking, times your league's running costs (never less than the Scrap League's).
+const TAXI_SHARE := 0.25
+const TAXI_MIN := 0.25
+const TAXI_BASE := 15.0
+const TAXI_PER_H := 10.0
+
+
+func taxi_hours(from: String, to: String) -> float:
+	return maxf(TAXI_MIN, travel_hours(from, to) * TAXI_SHARE)
+
+
+func taxi_fare(from: String, to: String) -> int:
+	return roundi((TAXI_BASE + TAXI_PER_H * travel_hours(from, to)) * maxf(1.0, float(RUNNING.get(rank, 1.0))))
+
+
+## Go somewhere: the hours it takes are spent (walking, or by BotTaxi for a fare). Returns the
+## parts of the day that went by.
+func travel_to(place: String, taxi: bool = false) -> int:
 	if place == pilot_at or not PLACES.has(place):
 		return 0
 	var h := travel_hours(pilot_at, place)
+	if taxi:
+		var fare := taxi_fare(pilot_at, place)
+		if money >= fare:
+			book("taxi", -fare)
+			h = taxi_hours(pilot_at, place)
+			PlayLog.add("taxi", "%s -> %s $%d" % [pilot_at, place, fare])
 	pilot_at = place
 	if place == "home":
 		unpack_carried()

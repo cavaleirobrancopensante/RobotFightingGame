@@ -142,6 +142,7 @@ class Fighter:
 	var ai_level := 3        # CPU pilots: 1 rookie .. 5 champion
 	var ai_rattled := false  # a bad run has got to the pilot (their Read is down for now)
 	var rank_text := ""      # (1.87) "#12 in the Rust League", on the walk-in card
+	var form := ""           # (1.117) the pilot's form word key (sharp / steady / rusty / rattled)
 	var aim_acc := 0.0       # extra share of hits that go to the aimed part (aim level)
 	var stance_swap := false # switched stance: the right side leads
 	var daze_t := 0.0        # guard smashed open: arms flung wide, wobbling
@@ -654,6 +655,7 @@ func _ready() -> void:
 		f.ai_rattled = bool(opp.get("rattled", false))
 		if int(opp.get("wid", -1)) >= 0:
 			f.rank_text = GameData.pilot_rank(int(opp["wid"]))
+			f.form = GameData.pilot_form(int(opp["wid"]))
 		ai_load(f)
 		ai_build_kit()
 		ai_save(f)
@@ -671,6 +673,7 @@ func _ready() -> void:
 			f.pilot_name = str(src.get("pilot", ""))
 			if int(src.get("wid", -1)) >= 0:
 				f.rank_text = GameData.pilot_rank(int(src["wid"]))
+				f.form = GameData.pilot_form(int(src["wid"]))
 			f.foe = team_c[0]
 			ai_load(f)
 			ai_build_kit()
@@ -680,6 +683,7 @@ func _ready() -> void:
 		for k in mini(foes.size(), team_c.size()):
 			team_c[k].pilot_name = str(GameData.World.pilot(int(foes[k])).get("name", ""))
 			team_c[k].rank_text = GameData.pilot_rank(int(foes[k]))
+			team_c[k].form = GameData.pilot_form(int(foes[k]))
 	if mode == "test":
 		# Gus's Junkers: each one has a silly habit instead of a brain, and there's no clock
 		for f in team_c:
@@ -705,6 +709,7 @@ func _ready() -> void:
 			f.ai_rattled = bool(left_o.get("rattled", false))
 			if int(left_o.get("wid", -1)) >= 0:
 				f.rank_text = GameData.pilot_rank(int(left_o["wid"]))
+				f.form = GameData.pilot_form(int(left_o["wid"]))
 			ai_load(f)
 			ai_build_kit()
 			ai_save(f)
@@ -7007,8 +7012,9 @@ func draw_robot_card(ci: CanvasItem, f: Fighter, left: bool, w: float, h: float,
 	ci.draw_string(font, Vector2(x, y), tr("PARTS"), HORIZONTAL_ALIGNMENT_LEFT, -1, fs(12), gold)
 	if f.team == 1 or mode == "watch" or f.rank_text != "":
 		# (1.87) the pilot's place in the rankings (and RATTLED after a bad run), right of the PARTS header
-		var rd := f.rank_text.to_upper() + ("  " + tr("RATTLED") if f.ai_rattled else "")
-		ci.draw_string(font, Vector2(x, y), rd, HORIZONTAL_ALIGNMENT_RIGHT, cw, fs(13), Color(1.0, 0.5, 0.4, a) if f.ai_rattled else Color(0.6, 0.85, 1.0, a))
+		var fm := f.form if f.form != "" else ("rattled" if f.ai_rattled else "")
+		var rd := f.rank_text.to_upper() + (("  ·  " + tr(GameData.FORM_WORD[fm])) if fm != "" else "")
+		ci.draw_string(font, Vector2(x, y), rd, HORIZONTAL_ALIGNMENT_RIGHT, cw, fs(13), Color(GameData.FORM_COLOR.get(fm, Color(0.6, 0.85, 1.0)), a))
 	for slot in GameData.SLOTS:
 		var pr: Dictionary = f.parts.get(slot, {})
 		if pr.is_empty():

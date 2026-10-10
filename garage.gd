@@ -2767,10 +2767,9 @@ func walk_there(place: String, t: String, key: String, then: Callable) -> void:
 	tab = "City"
 	city_pick = place
 	refresh()
+	# (1.117) the map opens with the place picked: walk or take a BotTaxi from its card
 	(func():
-		if city_map != null and is_instance_valid(city_map):
-			city_map.go(place)
-		else:
+		if city_map == null or not is_instance_valid(city_map):
 			_on_city_arrived(place)).call_deferred()
 
 
@@ -3695,9 +3694,10 @@ func account_header(key: String) -> void:
 	col.add_child(GUI.readout(tr("%s FOLLOWERS") % S.fol_text(int(acc["fol"])), 20, GUI.GREEN))
 	if acc.has("wid"):
 		var line := GameData.pilot_rank(int(acc["wid"]))
-		if acc.get("rattled", false):
-			line += "  " + tr("RATTLED")
-		col.add_child(GUI.text(line, 13, GUI.RED if acc.get("rattled", false) else GUI.TEXT))
+		var afm := GameData.pilot_form(int(acc["wid"]))
+		if afm != "":
+			line += "  ·  " + tr(GameData.FORM_WORD[afm])
+		col.add_child(GUI.text(line, 13, GUI.TEXT))
 	var bx := VBoxContainer.new()
 	bx.add_theme_constant_override("separation", 6)
 	row.add_child(bx)
@@ -5676,6 +5676,7 @@ func build_calendar() -> void:
 		cal_seen_month = cur_month
 	var mode := GameData.fight_mode()
 	tonight_strip(mode)
+	week_strip()
 	var head := HBoxContainer.new()
 	head.add_theme_constant_override("separation", 8)
 	list_box.add_child(head)
@@ -5728,6 +5729,7 @@ class CalDay extends Button:
 	var this_week := false
 	var past := false
 	var fight_night := ""      # "wed" / "sat" / ""
+	var dname := ""            # (1.117) the week strip names each day under it
 
 	func _init() -> void:
 		focus_mode = Control.FOCUS_NONE
@@ -5766,7 +5768,9 @@ class CalDay extends Button:
 			var x0 := size.x * 0.5 - gap * (n - 1) * 0.5
 			for k in n:
 				GUI.draw_event_icon(self, str(icons[k][0]), Vector2(x0 + gap * k, size.y * 0.6), rad, bool(icons[k][1]))
-		if tonight:
+		if dname != "":
+			draw_string(GUI.headb(), Vector2(0, size.y - 4), dname, HORIZONTAL_ALIGNMENT_CENTER, size.x, UI.px(9), GUI.YELLOW if tonight else Color(GUI.MUTED, a))
+		elif tonight:
 			draw_string(GUI.headb(), Vector2(0, size.y - 4), tr("TONIGHT"), HORIZONTAL_ALIGNMENT_CENTER, size.x, UI.px(9), GUI.YELLOW)
 		if past:
 			# crossed off with a red marker, like the calendar on Gus's wall
@@ -5774,6 +5778,25 @@ class CalDay extends Button:
 			var m := Vector2(minf(size.x, size.y) * 0.18, minf(size.x, size.y) * 0.16)
 			draw_line(Vector2(m.x, m.y + 2), Vector2(size.x - m.x, size.y - m.y), red, 3.0, true)
 			draw_line(Vector2(size.x - m.x - 2, m.y), Vector2(m.x + 2, size.y - m.y - 1), red, 3.0, true)
+
+
+## (1.117) The next two weeks in one strip above the month: what's on each day, from today, so the
+## days between league nights read as a plan. Tap a day to see it (and go to it).
+func week_strip() -> void:
+	list_box.add_child(GUI.text(tr("THE NEXT TWO WEEKS"), 13, GUI.MUTED, "headb"))
+	var line := HBoxContainer.new()
+	line.add_theme_constant_override("separation", 2)
+	list_box.add_child(line)
+	for k in 14:
+		var di := GameData.day_index() + k
+		var w := GameData.week + di / 7
+		var d := di % 7
+		if w > 52:
+			break
+		var c := cal_cell(w, (w - 1) % GameData.MONTH_WEEKS, d)
+		c.dname = tr(DAY_NAMES[d]).substr(0, 2)
+		c.custom_minimum_size = Vector2(0, 54)
+		line.add_child(c)
 
 
 func cal_cell(w: int, row: int, day: int) -> Button:
@@ -6191,9 +6214,11 @@ func open_pilot(wid: int) -> void:
 	row.add_child(info)
 	info.add_child(GUI.text(GameData.pilot_rank(wid), 16, GUI.YELLOW, "headb"))
 	info.add_child(GUI.text(tr("Career record %d-%d · this season %d-%d") % [int(p.get("w", 0)), int(p.get("l", 0)), int(p.get("sw", 0)), int(p.get("sl", 0))], 14, GUI.TEXT))
-	var wo: Dictionary = W.robot(wid)
-	if wo.get("rattled", false):
-		info.add_child(GUI.text(tr("RATTLED: off their game after a bad run."), 14, GUI.RED))
+	var fm := GameData.pilot_form(wid)   # (1.117) form, in a word
+	if fm != "":
+		var fl := GUI.text(tr(GameData.FORM_TEXT[fm]), 14, GameData.FORM_COLOR[fm])
+		fl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		info.add_child(fl)
 	info.add_child(GUI.text(tr("%s followers on BotMedia") % GameData.Social.fol_text(GameData.Social.pilot_fol(p)), 14, GUI.CYAN))
 	var h: Array = GameData.h2h.get(str(wid), [0, 0])
 	if int(h[0]) + int(h[1]) > 0:
@@ -6608,12 +6633,41 @@ func tonight_name() -> String:
 	return tr("%s NIGHT") % tr(GameData.DAY_FULL[GameData.day_index()]).to_upper()
 
 
-func _on_go_to_day(idx: int, w: int = -1) -> void:
+func _on_go_to_day(idx: int, w: int = -1, stop_early: bool = false) -> void:
 	close_popup()
 	time_begin()
-	GameData.skip_to_day(idx, w)
+	GameData.skip_to_day(idx, w, stop_early)
 	refresh()
 	time_end()
+	if GameData.skip_stopped != "":
+		note(tr(GameData.skip_stopped))
+
+
+## (1.117) The next thing worth skipping to, after today: your next fight (league, Trials, cup or a
+## booked pickup), rent day, Sunday's new stock, Monday's sponsor offers, a delivery.
+## {} = nothing this year. Else {w, d, what}.
+func next_thing() -> Dictionary:
+	if not GameData.can_pass_day():
+		return {}
+	var offers_ok: bool = GameData.wins >= GameData.Contracts.OFFER_MIN_WINS
+	for k in range(1, 60):
+		var di := GameData.day_index() + k
+		var w := GameData.week + di / 7
+		var d := di % 7
+		if w > 52:
+			break
+		if k == 1 and not GameData.deliveries.is_empty():
+			return {"w": w, "d": d, "what": tr("your delivery arrives")}
+		for e in day_events(w, d):
+			if e.has("playoff") or str(e.get("icon", "")) == "pickup":
+				return {"w": w, "d": d, "what": tr("your fight: %s") % str(e.get("title", "")).capitalize()}
+			if str(e.get("icon", "")) == "rent":
+				return {"w": w, "d": d, "what": tr("rent day")}
+			if str(e.get("icon", "")) == "stock" and GameData.unlocked("shop"):
+				return {"w": w, "d": d, "what": tr("new stock at Parts-R-Us")}
+		if d == 0 and offers_ok:
+			return {"w": w, "d": d, "what": tr("sponsor offers come in on Mondays")}
+	return {}
 
 
 
@@ -6844,6 +6898,16 @@ func open_day_plan() -> void:
 			var sl := GUI.text(str(line), 13, GUI.TEXT)
 			sl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 			col.add_child(sl)
+	var nt := next_thing()
+	if not nt.is_empty() and not (int(nt["w"]) == GameData.week and int(nt["d"]) == GameData.day_index() + 1 and evening):
+		# (1.117) one tap to whatever comes next; the bay works the days in between
+		col.add_child(GUI.HazardStrip.new())
+		var r8 := action_bar(col)
+		var nl := GUI.text(tr("NEXT: %s, %s.") % [tr(DAY_FULL_UP[int(nt["d"])]), str(nt["what"])], 15, GUI.YELLOW, "headb")
+		nl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		nl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		r8.add_child(nl)
+		GUI.mark_new(row_button(r8, tr("Skip to it ▸"), func(): _on_go_to_day(int(nt["d"]), int(nt["w"]), true), true, 190), false)
 	if GameData.can_pass_day():
 		# days or weeks ahead: pick the day on the calendar
 		var r7 := action_bar(col)
@@ -7363,6 +7427,8 @@ func _on_tab(t: String) -> void:
 	if t == "Storage":
 		go_to("Bay", "storage")   # (1.79) Storage lives in the Bay now
 		return
+	if t != "City":
+		arrive_next = {}   # (1.117) a shortcut's errand is dropped once you leave the map
 	if away_from_bay() and (t == "Bay" or t == "Crew") and tab != "Bay" and tab != "Crew":
 		note(tr("On the phone to Gus. He does the work, you don't need to be there."))   # (1.116)
 	if away_from_bay() and HOME_TABS.has(t):
@@ -8047,7 +8113,83 @@ func _on_fight() -> void:
 ## The bell chip: straight to the job board.
 func _on_bell() -> void:
 	Sfx.play("click")
-	go_to("Bay", "jobs")
+	open_morning_card()   # (1.117) the day at a glance; the job board is one tap from it
+
+
+## (1.117) The morning card: the day at a glance (money after the next bill, the robot at the next
+## bell, the job board, offers, the loan, the dig, what's next). Opens by itself the first time you
+## look at the bay each day; the Bell chip opens it again. The Bell Check for days without a fight.
+func open_morning_card() -> void:
+	GameData.morning_seen = GameData.day_key(GameData.year, GameData.week, GameData.day_index())
+	var col := open_popup(tr("%s %s") % [tr(DAY_FULL_UP[GameData.day_index()]), tr(GameData.PHASE_NAMES[GameData.phase])])
+	col.custom_minimum_size = Vector2(minf(720.0, get_viewport_rect().size.x - 80.0), 0)
+	var line := func(head: String, text: String, c: Color, btn: String = "", cb: Callable = Callable()) -> void:
+		var r := action_bar(col)
+		var v := VBoxContainer.new()
+		v.add_theme_constant_override("separation", 0)
+		v.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		r.add_child(v)
+		v.add_child(GUI.text(head, 12, GUI.MUTED, "headb"))
+		var t := GUI.text(text, 15, c)
+		t.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		v.add_child(t)
+		if btn != "":
+			row_button(r, btn, func(): close_popup(); cb.call(), true, 160)
+	# money: cash now, and after the next bill
+	var wtb := GameData.weeks_to_bills()
+	var days := (wtb - 1) * 7 + (6 - GameData.day_index())
+	var bill := GameData.living_cost()
+	var after := GameData.money - bill
+	var when := tr("today") if days == 0 else (tr("on Sunday") if days < 7 else tr("in %d days") % days)
+	var mt := tr("%s now. The next bill, $%d, is %s, leaving %s.") % [GameData.money_text(GameData.money), bill, when, GameData.money_text(after)]
+	line.call(tr("MONEY"), mt, GUI.GREEN if after >= 0 else GUI.RED, tr("Money ›"), func(): _on_tab("Season"); season_view = "money"; refresh())
+	if not GameData.loan.is_empty():
+		var due := int(GameData.loan.get("due", 0)) - GameData.abs_week()
+		line.call(tr("LOAN"), tr("You owe %s %s. %s") % [GameData.LENDER, GameData.money_text(int(GameData.loan.get("owed", 0))),
+				tr("It's late.") if due < 0 else (tr("Due in %d weeks.") % due)], GUI.RED if due < 1 else GUI.AMBER)
+	# the robot: at tonight's bell, or now and after today's work
+	var o := GameData.current_opponent()
+	if not o.is_empty() and GameData.fight_mode() != "open":
+		var br := bell_readiness()
+		line.call(tr("TONIGHT"), tr("%s against %s. The robot will be %d%% ready at the bell.") % [GameData.fight_title(), str(o.get("name", "?")), roundi(br * 100)],
+				GUI.GREEN if br >= 0.9 else (GUI.AMBER if br >= 0.6 else GUI.RED), tr("Bell Check ›"), open_fight_popup)
+	else:
+		var now := bell_readiness(0.0)
+		var later := bell_readiness(GameData.hours_to_bell())
+		line.call(tr("THE ROBOT"), tr("%d%% now, %d%% after today's work.") % [roundi(now * 100), roundi(later * 100)],
+				GUI.GREEN if later >= 0.9 else (GUI.AMBER if later >= 0.6 else GUI.RED))
+	# the job board
+	GameData.sync_swaps()
+	var left := 0.0
+	var bag := 0
+	for j in GameData.jobs:
+		left += float(j["total"]) - float(j["done"])
+		if j["kind"] != "repair" and GameData.is_carried(int(j["uid"])):
+			bag += 1
+	var jt := tr("Nothing on the board.") if GameData.jobs.is_empty() else tr("%d jobs, %s of work left.") % [GameData.jobs.size(), GameData.hours_text(left)]
+	if bag > 0:
+		jt += " " + tr("%d parts in your bag wait till you're back.") % bag
+	line.call(tr("THE JOB BOARD"), jt, GUI.TEXT, tr("Job board ›"), func(): go_to("Bay", "jobs"))
+	var offers_n: int = GameData.Contracts.st()["offers"].size()
+	if offers_n > 0:
+		line.call(tr("OFFERS"), tr("Sponsor offers waiting: %d") % offers_n, GUI.YELLOW, tr("Deals ›"), func(): go_to("Season", "deals"))
+	var unread := GameData.inbox.size() - GameData.inbox_seen
+	if unread > 0:
+		line.call(tr("MESSAGES"), tr("%d messages you haven't read.") % unread, GUI.TEXT, tr("Read them ›"), func(): go_to("Feed", "all"))
+	if GameData.digs_left > 0:
+		line.call(tr("THE SCRAPYARD"), tr("Today's dig: %d%% chance of finding something.") % roundi(GameData.dig_luck * 100), GUI.TEXT)
+	if not GameData.deliveries.is_empty():
+		line.call(tr("DELIVERY"), tr("%d parts arrive tomorrow morning.") % GameData.deliveries.size(), GUI.TEXT)
+	var nt := next_thing()
+	if not nt.is_empty():
+		line.call(tr("NEXT"), tr("%s: %s.") % [tr(DAY_FULL_UP[int(nt["d"])]).capitalize(), str(nt["what"])], GUI.CYAN)
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 10)
+	popup_footer.add_child(row)
+	var ok := UI.button(tr("Got it"), close_popup, 17, Vector2(0, 50))
+	ok.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.add_child(ok)
+	GameData.request_save()
 
 
 ## How fit to fight the robot going in tonight will be at the bell, 0..1: each body part's HP by
@@ -8105,8 +8247,11 @@ func open_fight_popup() -> void:
 	if who_p != "" or o.has("wid"):
 		if o.has("wid") and int(o["wid"]) >= 0:
 			col.add_child(GUI.text(tr("Ranked: %s") % GameData.pilot_rank(int(o["wid"])), 14, GUI.TEXT))
-		if o.get("rattled", false):
-			col.add_child(GUI.text(tr("RATTLED: a bad run has got to them. They're off their game for now."), 14, GUI.GREEN))
+		var fm := GameData.pilot_form(int(o.get("wid", -1)))   # (1.117) their form, in a word
+		if fm != "":
+			var fl := GUI.text(tr("Form: %s") % tr(GameData.FORM_TEXT[fm]), 14, GUI.GREEN if fm in ["rusty", "rattled"] else (GUI.AMBER if fm == "sharp" else GUI.TEXT))
+			fl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+			col.add_child(fl)
 	if GameData.is_tag():
 		# your tag partner, and what a tag team means for your robot
 		var ally := int(GameData.pickup.get("ally", -1))
@@ -8503,9 +8648,11 @@ func hours_text(h: float) -> String:
 	return tr("%s h") % ("%.1f" % h).trim_suffix(".0")
 
 
-## (1.116) A walk's hours, or "free" (the walk home costs nothing).
+## (1.117) A trip's time: minutes under an hour ("30 min"), else hours.
 func trip_text(h: float) -> String:
-	return tr("free") if h <= 0.01 else hours_text(h)
+	if h < 0.99:
+		return tr("%d min") % roundi(h * 60.0)
+	return hours_text(h)
 
 
 ## Which city place a section / view is (going there costs time), "" for Gus's building.
@@ -8546,7 +8693,7 @@ func build_city() -> void:
 		if pl == GameData.pilot_at or not GameData.places_been.has(pl) or GameData.place_locked(pl) != "":
 			continue
 		var h := GameData.travel_hours(GameData.pilot_at, pl)
-		var qb := UI.button("%s ▸ %s%s" % [tr(str(GameData.PLACES[pl]["name"])), trip_text(h), dig_tag() if pl == "scrapyard" else ""], _on_city_quick.bind(pl), 13, Vector2(0, 40))
+		var qb := UI.button("%s › %s%s" % [tr(str(GameData.PLACES[pl]["name"])), trip_text(h), dig_tag() if pl == "scrapyard" else ""], _on_city_quick.bind(pl), 13, Vector2(0, 40))
 		qb.add_theme_stylebox_override("normal", GUI.box(Color(0.04, 0.05, 0.07, 0.88), 8, 6))
 		city_quick.add_child(qb)
 		quick += 1
@@ -8576,8 +8723,7 @@ func _on_city_quick(place: String) -> void:
 	city_pick = place
 	if city_map != null and is_instance_valid(city_map):
 		city_map.selected = place
-	fill_city_card()
-	_on_city_go(place)
+	fill_city_card()   # (1.117) the card has Walk and BotTaxi
 
 
 func _on_city_pick(place: String) -> void:
@@ -8585,7 +8731,7 @@ func _on_city_pick(place: String) -> void:
 	fill_city_card()
 
 
-const PLACE_TEXT := {"home": "Gus's building: the bay, storage, the workshop and the office. You have to be here to work on your robot.",
+const PLACE_TEXT := {"home": "Gus's building: the bay, storage, the workshop and the office. Gus works on your robot whether you're here or not.",
 		"pub": "The Rusty Bolt. Scrap and Rust pilots drinking. Pick a fight, watch the TV, play the jukebox.",
 		"partsrus": "Parts-R-Us. New parts at your grade, a couple one grade up. New stock on Sundays.",
 		"brassworks": "Brassworks & Sons. Old Silas's family workshop. Every Brassworks part, built by hand, in your grade.",
@@ -8621,11 +8767,11 @@ func fill_city_card() -> void:
 	city_card.add_child(GUI.text(tr(GameData.DISTRICTS[pl["district"]]), 12, GUI.MUTED, "headb"))
 	var d := GUI.text(tr(PLACE_TEXT.get(place, "")), 14, GUI.TEXT)
 	d.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	city_card.add_child(d)
 	var lock := GameData.place_locked(place)
 	var bar := VBoxContainer.new()
 	bar.add_theme_constant_override("separation", 8)
 	city_card.add_child(bar)
+	city_card.add_child(d)   # (1.117) how to get there first, what it is under it
 	if place == GameData.pilot_at:
 		bar.add_child(GUI.text(tr("You're here."), 14, GUI.GREEN, "headb"))
 		bar.add_child(UI.button(tr("Go in ▸") + (dig_tag() if place == "scrapyard" else ""), enter_place.bind(place), 15, Vector2(0, 46)))
@@ -8637,11 +8783,25 @@ func fill_city_card() -> void:
 	var after := GameData.pilot_left() - h
 	var when := tr("%s left this %s.") % [hours_text(after), tr(GameData.PHASE_NAMES[GameData.phase]).to_lower()] if after > 0.01 or GameData.phase == 2 \
 			else tr("You'd get there in the %s.") % tr(GameData.PHASE_NAMES[mini(2, GameData.phase + 1)]).to_lower()
-	var wl := GUI.text((tr("%s from here. %s") % [hours_text(h), when]) if h > 0.01 else tr("The walk home is free."), 14, GUI.AMBER if after < 0.0 else GUI.TEXT)
+	var wl := GUI.text(tr("%s on foot. %s") % [trip_text(h), when], 14, GUI.AMBER if after < 0.0 else GUI.TEXT)
 	wl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	wl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	bar.add_child(wl)
-	bar.add_child(UI.button(tr("Go ▸ %s") % trip_text(h) + (dig_tag() if place == "scrapyard" else ""), _on_city_go.bind(place), 15, Vector2(0, 46)))
+	# (1.117) on foot, or a BotTaxi: a quarter of the time, for a fare
+	var ways := HFlowContainer.new()
+	ways.add_theme_constant_override("h_separation", 8)
+	ways.add_theme_constant_override("v_separation", 8)
+	bar.add_child(ways)
+	var wb := UI.button(tr("Walk ▸ %s") % trip_text(h) + (dig_tag() if place == "scrapyard" else ""), _on_city_go.bind(place), 15, Vector2(0, 46))
+	wb.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	ways.add_child(wb)
+	var fare := GameData.taxi_fare(GameData.pilot_at, place)
+	var tb := UI.button(tr("BotTaxi ▸ %s · $%d") % [trip_text(GameData.taxi_hours(GameData.pilot_at, place)), fare], _on_city_go.bind(place, true), 15, Vector2(0, 46))
+	tb.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	tb.disabled = GameData.money < fare
+	tb.add_theme_color_override("font_color", GUI.YELLOW)
+	tb.tooltip_text = tr("A BotTaxi gets you there in a quarter of the time.")
+	ways.add_child(tb)
 
 
 ## (1.87) " · FIND 45%" on every button that leads to a dig (" · DUG TODAY" once it's spent).
@@ -8651,20 +8811,27 @@ func dig_tag() -> String:
 	return " · " + tr("FIND %d%%") % roundi(GameData.dig_luck * 100)
 
 
-func _on_city_go(place: String) -> void:
+var going_taxi := false   # (1.117) the trip on its way is a BotTaxi ride
+
+
+func _on_city_go(place: String, taxi: bool = false) -> void:
 	if city_map != null and is_instance_valid(city_map):
 		Sfx.play("click")
-		city_map.go(place)   # the little figure walks there, then _on_city_arrived
+		going_taxi = taxi
+		city_map.go(place, taxi)   # the little figure walks there (or the cab drives), then _on_city_arrived
 
 
 func _on_city_arrived(place: String) -> void:
-	var h := GameData.travel_hours(GameData.pilot_at, place)
+	var taxi := going_taxi and GameData.money >= GameData.taxi_fare(GameData.pilot_at, place)
+	going_taxi = false
+	var h := GameData.taxi_hours(GameData.pilot_at, place) if taxi else GameData.travel_hours(GameData.pilot_at, place)
+	var fare := GameData.taxi_fare(GameData.pilot_at, place)
 	time_begin()
-	var passed := GameData.travel_to(place)
-	if h <= 0.01:
-		note(tr("Back at %s.") % tr(str(GameData.PLACES[place]["name"])))
+	var passed := GameData.travel_to(place, taxi)
+	if taxi:
+		note(tr("At %s by BotTaxi: %s, $%d.") % [tr(str(GameData.PLACES[place]["name"])), trip_text(h), fare])
 	else:
-		note(tr("At %s. That took %s.") % [tr(str(GameData.PLACES[place]["name"])), hours_text(h)])
+		note(tr("At %s. That took %s.") % [tr(str(GameData.PLACES[place]["name"])), trip_text(h)])
 	city_pick = ""
 	enter_place(place)
 	var then: Callable = Callable()
@@ -9138,6 +9305,11 @@ func check_gus_cards() -> void:
 					tr("Your dad never went to him. But we might have to."),
 					[[tr("See Varga ›"), func(): _on_tab("Season"); season_view = "money"; refresh(), true], [tr("Not yet"), Callable(), false]])
 			return
+	# (1.117) the first look at the bay each day: the morning card
+	if tab == "Bay" and GameData.tour < 0 and GameData.story_seen.has("first_garage") \
+			and GameData.morning_seen != GameData.day_key(GameData.year, GameData.week, GameData.day_index()):
+		open_morning_card()
+		return
 	var month := (GameData.week - 1) / GameData.MONTH_WEEKS
 	var key := "gus_rent:%d:%d" % [GameData.year, month]
 	if GameData.weeks_to_bills() <= 1 and GameData.money < GameData.living_cost() and GameData.living_cost() > 0 and not GameData.story_seen.has(key):

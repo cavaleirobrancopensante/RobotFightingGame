@@ -980,6 +980,25 @@ static func read_of(p: Dictionary) -> float:
 	return clampf(r, 0.0, 100.0)
 
 
+## (1.117) A word for how a pilot is fighting right now (the number stays hidden): rattled after a
+## bad run, rusty when out of practice or well below their best, sharp at their best, fighting
+## regularly, no losing run and winning more than losing this season, else steady.
+static func form_of(p: Dictionary) -> String:
+	if p.is_empty():
+		return ""
+	ensure_read(p)
+	if int(p.get("rattled", 0)) > 0:
+		return "rattled"
+	var idle := abs_week() - int(p.get("last_fw", abs_week()))
+	var skill := float(p.get("skill", 0.3))
+	var peak := maxf(0.01, float(p.get("peak", skill)))
+	if idle > RUST_AFTER or skill < peak * 0.85:
+		return "rusty"
+	if skill >= peak * 0.97 and idle <= 2 and int(p.get("lstreak", 0)) == 0 and int(p.get("sw", 0)) >= int(p.get("sl", 0)) + 2:
+		return "sharp"
+	return "steady"
+
+
 static func read_dots(r: float) -> int:
 	return clampi(1 + int(r / 20.0), 1, 5)
 
