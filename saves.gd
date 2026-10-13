@@ -261,7 +261,7 @@ func choice_row(parent: Control, label: String, value: String, cb_prev: Callable
 		sw.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 		bar.add_child(sw)
 	else:
-		var v := UI.label(value, fitting_size(value, 13, 104.0), Color(0.85, 0.85, 0.9))
+		var v := UI.label(value, fitting_size(value, 13, 104.0), GUI.HEAD)
 		v.custom_minimum_size = Vector2(110, 0)
 		v.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		v.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -272,7 +272,7 @@ func choice_row(parent: Control, label: String, value: String, cb_prev: Callable
 
 ## Shrink a label's font until the text fits the box (long values like "Long hair + scar").
 func fitting_size(text: String, size: int, width: float) -> int:
-	var f := ThemeDB.fallback_font
+	var f := GUI.body()
 	while size > 8 and f.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, UI.tsz(size)).x > width:   # (1.113) measured at the real text size
 		size -= 1
 	return size
@@ -482,7 +482,7 @@ func _on_load(slot: int, mine: bool = false) -> void:
 	bar.n = 25
 	bar.color = Color(1.0, 0.55, 0.2)
 	cover.add_child(bar)
-	var pct := UI.label("0%", 20, Color(0.9, 0.9, 0.95))
+	var pct := UI.label("0%", 20, GUI.TEXT)
 	pct.anchor_left = 0.0
 	pct.anchor_right = 1.0
 	pct.anchor_top = 1.0
@@ -502,7 +502,7 @@ func _on_load(slot: int, mine: bool = false) -> void:
 	var err := GameData.load_game(slot, mine)
 	if err != "":
 		cover.queue_free()
-		var l := UI.label(err, 16, Color(1.0, 0.6, 0.4))
+		var l := UI.label(err, 16, GUI.RED)
 		l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		col.add_child(l)
 		Sfx.play("error")

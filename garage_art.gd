@@ -6,6 +6,7 @@ extends RefCounted
 const I18n = preload("res://i18n.gd")
 const PilotArt = preload("res://pilot_art.gd")
 const RobotArt = preload("res://robot_art.gd")
+const GUI = preload("res://garage_ui.gd")
 const Light = preload("res://light.gd")
 
 ## Where the robot stands in each scene: [x as fraction of width, height as fraction of panel]
@@ -279,7 +280,7 @@ static func _props_back(ci: CanvasItem, size: Vector2, scene: String, t: float, 
 			var b := Rect2(12, 22, size.x * 0.5, size.y * 0.3)
 			_rc(ci, b, Color(0.1, 0.22, 0.15))
 			_rc(ci, b, Color(0.5, 0.35, 0.2), false, 4.0)
-			var f := ThemeDB.fallback_font
+			var f := GUI.world("board")
 			ci.draw_string(f, b.position + Vector2(8, 24), I18n.t("↓ → P"), HORIZONTAL_ALIGNMENT_LEFT, -1, 18, Color(0.9, 0.9, 0.85))
 			ci.draw_string(f, b.position + Vector2(8, 48), I18n.t("← → K"), HORIZONTAL_ALIGNMENT_LEFT, -1, 18, Color(0.9, 0.9, 0.85, 0.8))
 			_rc(ci, Rect2(size.x * 0.45, floor_y - 6, size.x * 0.4, 6), Color(0.3, 0.3, 0.35))   # practice mat
@@ -313,7 +314,7 @@ static func _props_back(ci: CanvasItem, size: Vector2, scene: String, t: float, 
 			for k in 2:
 				var p := Rect2(16 + k * 70, 90, 56, 70)
 				_rc(ci, p, Color.from_hsv(0.05 + k * 0.5, 0.5, 0.45))
-				ci.draw_string(ThemeDB.fallback_font, p.position + Vector2(4, 20), I18n.t("CUP"), HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Color(1, 1, 1, 0.8))
+				ci.draw_string(GUI.world("sign"), p.position + Vector2(4, 20), I18n.t("CUP"), HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Color(1, 1, 1, 0.8))
 		_:
 			pass
 
@@ -361,7 +362,7 @@ static func _front(ci: CanvasItem, size: Vector2, scene: String, t: float, info:
 			var scr := mon.grow(-4)
 			_rc(ci, scr, Color(0.9, 0.93, 0.97))
 			_rc(ci, Rect2(scr.position, Vector2(scr.size.x, 9 * s)), Color(0.9, 0.45, 0.2))
-			ci.draw_string(ThemeDB.fallback_font, scr.position + Vector2(3, 8 * s), I18n.t("PARTS-R-US"), HORIZONTAL_ALIGNMENT_LEFT, -1, int(8 * s), Color.WHITE)
+			ci.draw_string(GUI.world("sign"), scr.position + Vector2(3, 8 * s), I18n.t("PARTS-R-US"), HORIZONTAL_ALIGNMENT_LEFT, -1, int(8 * s), Color.WHITE)
 			var scroll := fmod(t * 6.0, 14.0 * s)
 			for k in 6:
 				var tile := Rect2(scr.position.x + 4 + (k % 3) * scr.size.x / 3.0, scr.position.y + 12 * s + int(k / 3.0) * 20 * s - scroll + 14 * s,
@@ -492,7 +493,7 @@ static func _front(ci: CanvasItem, size: Vector2, scene: String, t: float, info:
 					_cr(ci, Vector2(pile_x + 30 * s, floor_y - 10) + Vector2(cos(a), sin(a)) * r, 3.0 * (1.2 - dig_age), Color(0.5, 0.42, 0.3, 1.0 - dig_age / 1.2))
 				var found: String = info.get("found", "")
 				if found != "":
-					var f := ThemeDB.fallback_font
+					var f := GUI.world("board")
 					var y := floor_y - 90 * s - dig_age * 20.0
 					ci.draw_string(f, Vector2(4, y), found, HORIZONTAL_ALIGNMENT_CENTER, size.x - 8, 15, Color(1.0, 0.9, 0.5, 1.0 - dig_age / 1.2))
 		"paint":
@@ -526,7 +527,7 @@ static func _front(ci: CanvasItem, size: Vector2, scene: String, t: float, info:
 			if backup.is_empty():
 				# an empty stand waiting for a backup robot
 				_rc(ci, Rect2(14, floor_y - 6, 70, 6), Color(0.45, 0.45, 0.5))
-				ci.draw_string(ThemeDB.fallback_font, Vector2(10, floor_y - 14), "backup?", HORIZONTAL_ALIGNMENT_LEFT, 80, 13, Color(1, 1, 1, 0.4))
+				ci.draw_string(GUI.body(), Vector2(10, floor_y - 14), "backup?", HORIZONTAL_ALIGNMENT_LEFT, 80, 13, Color(1, 1, 1, 0.4))
 			PilotArt.draw_person(ci, Vector2(size.x * 0.84, floor_y), s * 0.9, pilot, -1.0, "cheer" if not backup.is_empty() else "idle", t)
 			_head(info, "YOU", Vector2(size.x * 0.84, floor_y), s * 0.9)
 			PilotArt.draw_person(ci, Vector2(size.x * 0.42, floor_y), s * 0.95, gus, 1.0, "clipboard", t + 0.5)
@@ -677,7 +678,7 @@ static func _office_back(ci: CanvasItem, size: Vector2, floor_y: float, t: float
 ## tables scrolling, your record and a blinking prompt. A cable runs down to the keyboard on his desk.
 static func _office_terminal(ci: CanvasItem, size: Vector2, floor_y: float, t: float, info: Dictionary) -> void:
 	var scr := Rect2(size.x * 0.05, size.y * 0.4, size.x * 0.5, size.y * 0.3)
-	var font := ThemeDB.fallback_font
+	var font := GUI.world("digits")
 	var green := Color(0.35, 1.0, 0.5)
 	# bezel, wall mount and the screen glow
 	ci.draw_rect(Rect2(scr.get_center().x - 10, scr.position.y - 14, 20, 14), Color(0.2, 0.2, 0.22))
@@ -747,7 +748,7 @@ static func _pub_back(ci: CanvasItem, size: Vector2, floor_y: float, t: float, i
 	_ln(ci, Vector2(tv.position.x + tv.size.x * 0.7, tv.position.y - 4), Vector2(tv.position.x + tv.size.x * 0.7, 0), Color(0.2, 0.2, 0.22), 3.0)
 	_rc(ci, tv.grow(6), Color(0.1, 0.1, 0.11))
 	ci.draw_rect(tv, Color(0.04, 0.07, 0.1))
-	var lf := ThemeDB.fallback_font
+	var lf := GUI.world("digits")
 	var lfs := int(clampf(tv.size.y / 9.0, 10, 22))
 	ci.draw_string(lf, Vector2(tv.position.x, tv.get_center().y), "PORT FERRUM", HORIZONTAL_ALIGNMENT_CENTER, tv.size.x, lfs, Color(0.55, 1.0, 0.65, 0.7))
 	ci.draw_string(lf, Vector2(tv.position.x, tv.get_center().y + lfs * 1.2), "FIGHT NET", HORIZONTAL_ALIGNMENT_CENTER, tv.size.x, lfs, Color(0.95, 0.76, 0.19, 0.7))
@@ -764,7 +765,7 @@ static func _pub_back(ci: CanvasItem, size: Vector2, floor_y: float, t: float, i
 		var band := Rect2(tv.position.x - 6, tv.end.y + 6, tv.size.x + 12, 26 * s)
 		_rc(ci, band, Color(0.05, 0.05, 0.08))
 		_rc(ci, Rect2(band.position, Vector2(4, band.size.y)), Color(1.0, 0.8, 0.2))
-		var f := ThemeDB.fallback_font
+		var f := GUI.world("board")
 		var fs := int(10 * s)
 		var ttl := str(tvi.get("title", ""))
 		if tvi.get("live", false):
@@ -781,7 +782,7 @@ static func _pub_back(ci: CanvasItem, size: Vector2, floor_y: float, t: float, i
 	_rc(ci, sign_r.grow(6), Color(neon.r, neon.g, neon.b, 0.12 if on else 0.0))
 	_rc(ci, sign_r, Color(0.08, 0.05, 0.05))
 	_rc(ci, sign_r, neon, false, 2.0)
-	ci.draw_string(ThemeDB.fallback_font, sign_r.position + Vector2(0, sign_r.size.y * 0.72), I18n.t("THE RUSTY BOLT"),
+	ci.draw_string(GUI.world("sign"), sign_r.position + Vector2(0, sign_r.size.y * 0.72), I18n.t("THE RUSTY BOLT"),
 			HORIZONTAL_ALIGNMENT_CENTER, sign_r.size.x, int(14 * s), neon)
 	# shelves of bottles behind the bar
 	var cx := _pub_counter_x(size)
@@ -966,7 +967,7 @@ static func _turned(ci: CanvasItem, info: Dictionary, at: Vector2, rot: float) -
 
 ## Snoring: little z's drifting up from a sleeper's head.
 static func _zzz(ci: CanvasItem, at: Vector2, s: float, t: float) -> void:
-	var f := ThemeDB.fallback_font
+	var f := GUI.world("board")
 	for k in 3:
 		var ph := fmod(t * 0.45 + k / 3.0, 1.0)
 		var pos := at + Vector2(ph * 16 * s + sin(t * 2.0 + k) * 2 * s, -ph * 34 * s)
@@ -1284,7 +1285,7 @@ static func _kane_back(ci: CanvasItem, size: Vector2, floor_y: float, t: float) 
 	ci.draw_rect(sc, Color(0.02, 0.02, 0.03))
 	ci.draw_rect(sc, Color(gold, 0.6), false, 1.5)
 	load("res://logos.gd").draw_logo(ci, "kane", sc.get_center() + Vector2(0, -6), 18.0)
-	var f := ThemeDB.fallback_font
+	var f := GUI.world("board")
 	ci.draw_string(f, Vector2(sc.position.x, sc.end.y - 6), I18n.t("KANE DYNAMICS"), HORIZONTAL_ALIGNMENT_CENTER, sc.size.x, 11, gold)
 	# a glass case on a plinth with an arm in it, lit from below
 	var cs := Rect2(size.x * 0.42, floor_y - 120, 46, 120)
@@ -1389,7 +1390,7 @@ static func _volta_back(ci: CanvasItem, size: Vector2, floor_y: float, t: float)
 	ci.draw_line(Vector2(win.get_center().x, win.position.y), Vector2(win.get_center().x, win.end.y), Color(0.75, 0.78, 0.85), 3.0)
 	# the neon sign: VOLTA in pink tube, MOTOR in cyan, a lightning bolt, flickering now and then
 	var on := 0.25 if fmod(t * 0.7, 6.0) < 0.12 else 1.0
-	var f := ThemeDB.fallback_font
+	var f := GUI.world("board")
 	var sp := Vector2(size.x * 0.6, 58)
 	ci.draw_string(f, sp + Vector2(0, 2), I18n.t("VOLTA"), HORIZONTAL_ALIGNMENT_LEFT, -1, 30, Color(1.0, 0.25, 0.65, 0.3 * on))
 	ci.draw_string(f, sp, I18n.t("VOLTA"), HORIZONTAL_ALIGNMENT_LEFT, -1, 30, Color(1.0, 0.55, 0.85, on))
@@ -1493,7 +1494,7 @@ static func _crushed(ci: CanvasItem, r: Rect2, seed: int) -> void:
 
 ## (1.97) A maker's sign in its shop: enamel for Old Iron, a painted plank for Scrapworks.
 static func _maker_plaque(ci: CanvasItem, r: Rect2, m: String, title: String, sub: String) -> void:
-	var f := ThemeDB.fallback_font
+	var f := GUI.world("sign")
 	var col: Color = load("res://makers.gd").color(m)
 	var room := r.size.x - (8.0 if m == "scrapworks" else r.size.y + 4.0)
 	var tsz := mini(13, int(13.0 * room / maxf(1.0, f.get_string_size(title, HORIZONTAL_ALIGNMENT_LEFT, -1, 13).x)))
@@ -1522,7 +1523,7 @@ static func _maker_plaque(ci: CanvasItem, r: Rect2, m: String, title: String, su
 
 
 static func _sign(ci: CanvasItem, center: Vector2, text: String, c: Color) -> void:
-	var f := ThemeDB.fallback_font
+	var f := GUI.world("sign")
 	var w := f.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, 15).x + 16.0
 	_rc(ci, Rect2(center.x - w * 0.5, center.y - 14, w, 22), Color(0.08, 0.08, 0.1))
 	_rc(ci, Rect2(center.x - w * 0.5, center.y - 14, w, 22), c, false, 2.0)
@@ -1619,7 +1620,7 @@ static func _trophy_wall(ci: CanvasItem, size: Vector2, info: Dictionary) -> voi
 		for bx in [x0 + 10.0, x0 + w - 16.0]:
 			_pg(ci, PackedVector2Array([Vector2(bx, y + 6), Vector2(bx + 6, y + 6), Vector2(bx, y + 18)]), Color(0.3, 0.3, 0.32))
 	if list.is_empty():
-		ci.draw_string(ThemeDB.fallback_font, Vector2(x0, size.y * 0.17 - 8), I18n.t("(room for trophies)"), HORIZONTAL_ALIGNMENT_CENTER, w, 12, Color(0.6, 0.6, 0.6, 0.6))
+		ci.draw_string(GUI.body(), Vector2(x0, size.y * 0.17 - 8), I18n.t("(room for trophies)"), HORIZONTAL_ALIGNMENT_CENTER, w, 12, Color(0.6, 0.6, 0.6, 0.6))
 	for s in trophy_spots(size, list.size()):
 		var tr: Dictionary = list[s[0]]
 		draw_trophy(ci, s[1], str(tr.get("kind", "cup")), int(tr.get("medal", 1)), TROPHY_SCALE)
@@ -1636,7 +1637,7 @@ static func _trophy_wall(ci: CanvasItem, size: Vector2, info: Dictionary) -> voi
 		var pr := Rect2(x0 + 8.0, size.y * 0.17 + 1, step * dads, 9)
 		_rc(ci, pr, Color(0.62, 0.5, 0.25))
 		_rc(ci, pr, Color(0.35, 0.27, 0.12), false, 1.0)
-		ci.draw_string(ThemeDB.fallback_font, Vector2(pr.position.x, pr.end.y - 1), I18n.t("DAD"), HORIZONTAL_ALIGNMENT_CENTER, pr.size.x, 9, Color(0.2, 0.14, 0.06))
+		ci.draw_string(GUI.world("sign"), Vector2(pr.position.x, pr.end.y - 1), I18n.t("DAD"), HORIZONTAL_ALIGNMENT_CENTER, pr.size.x, 9, Color(0.2, 0.14, 0.06))
 	# the championship belt hangs on the wall beside the shelves
 	if info.get("champion", false):
 		var gold: Color = MEDAL_COLORS[1]
@@ -1735,7 +1736,7 @@ static func _scoreboard(ci: CanvasItem, r: Rect2, info: Dictionary) -> void:
 	var st: Dictionary = info.get("stats", {})
 	ci.draw_rect(r.grow(3), Color(0.25, 0.25, 0.28))
 	ci.draw_rect(r, Color(0.03, 0.03, 0.04))
-	var f := ThemeDB.fallback_font
+	var f := GUI.world("digits")
 	var fs := clampi(int(r.size.x / 11.5), 8, 13)
 	var lines := [
 		[I18n.t("WINS %d") % int(info.get("wins", 0)), I18n.t("LOSSES %d") % int(info.get("losses", 0)), Color(0.3, 1.0, 0.4), Color(1.0, 0.35, 0.25)],

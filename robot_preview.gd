@@ -91,7 +91,7 @@ func _draw() -> void:
 		# top-right corner of the scene, clear of signs, the scoreboard and the people
 		draw_body_map(Vector2(size.x - 36.0 * k, 40.0), k)
 	if interactive and spot.is_empty():   # (the garage says it in its message line instead)
-		draw_string(ThemeDB.fallback_font, Vector2(6, 22), tr("Tap a part"), HORIZONTAL_ALIGNMENT_LEFT, -1, preload("res://ui.gd").px(16), Color(1, 1, 1, 0.45))
+		draw_string(load("res://garage_ui.gd").body(), Vector2(6, 22), tr("Tap a part"), HORIZONTAL_ALIGNMENT_LEFT, -1, preload("res://ui.gd").px(16), Color(1, 1, 1, 0.45))
 
 
 func _regions() -> Array:
@@ -194,7 +194,7 @@ func _perimeter_line(corners: Array, lengths: Array, from: float, to: float, c: 
 
 ## Diagnostic callouts: a line from the part, an elbow, and a little dark label with the notes.
 func _draw_callouts(part: Rect2) -> void:
-	var font: Font = callout_font if callout_font else ThemeDB.fallback_font
+	var font: Font = callout_font if callout_font else load("res://garage_ui.gd").body()
 	var fs := preload("res://ui.gd").px(13)
 	var lh := fs + 4.0
 	var w := 0.0

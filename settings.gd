@@ -219,7 +219,7 @@ func _on_difficulty() -> void:
 	var t := GUI.heading("DIFFICULTY", 28)
 	t.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	col.add_child(t)
-	var note := UI.label("Fighting and money are separate: make the fights easy and the money hard, or the other way round.", 14, Color(0.7, 0.7, 0.78))
+	var note := UI.label("Fighting and money are separate: make the fights easy and the money hard, or the other way round.", 14, GUI.MUTED)
 	note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	note.custom_minimum_size = Vector2(560, 0)
 	col.add_child(note)
@@ -231,7 +231,7 @@ func _on_difficulty() -> void:
 	aim_button = UI.button("", _on_auto_aim, 19, Vector2(560, 52))
 	for b in [diff_button, aim_button, coach_button, start_money_button, living_button, pecking_button]:
 		col.add_child(b)
-	var pnote := UI.label("Pecking Order: how much tougher and harder hitting each part grade is. Underdog lets a good pilot punch above their grade; Brutal means a robot two grades up flattens you in seconds.", 13, Color(0.65, 0.65, 0.72))
+	var pnote := UI.label("Pecking Order: how much tougher and harder hitting each part grade is. Underdog lets a good pilot punch above their grade; Brutal means a robot two grades up flattens you in seconds.", 13, GUI.MUTED)
 	pnote.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	pnote.custom_minimum_size = Vector2(560, 0)
 	col.add_child(pnote)
@@ -293,7 +293,7 @@ func _on_copy_log() -> void:
 	col.add_theme_constant_override("separation", 12)
 	col.custom_minimum_size = Vector2(560, 0)
 	c.add_child(col)
-	var l := UI.label(tr("Copied the playtest log: %d lines. Paste it into your message to Claude.") % n, 20, Color(0.6, 1.0, 0.6))
+	var l := UI.label(tr("Copied the playtest log: %d lines. Paste it into your message to Claude.") % n, 20, GUI.GREEN)
 	l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	col.add_child(l)
 	var row := HBoxContainer.new()

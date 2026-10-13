@@ -5,6 +5,7 @@ const PilotArt = preload("res://pilot_art.gd")
 const RobotArt = preload("res://robot_art.gd")
 const Story = preload("res://story_data.gd")
 const UI = preload("res://ui.gd")
+const GUI = preload("res://garage_ui.gd")
 const GarageArt = preload("res://garage_art.gd")
 ## Story screen: shows the scene in GameData.story_key line by line, then goes to GameData.story_return.
 ## Tap to reveal / advance. "Skip" jumps to the end.
@@ -144,7 +145,7 @@ class Portrait extends Control:
 			_:
 				var face: Dictionary = Story.SPEAKERS.get(who, {}).get("face", face_look)
 				if face.is_empty():
-					draw_string(ThemeDB.fallback_font, Vector2(0, c.y + 20), "...", HORIZONTAL_ALIGNMENT_CENTER, size.x, 60, Color(0.5, 0.5, 0.55))
+					draw_string(load("res://garage_ui.gd").body(), Vector2(0, c.y + 20), "...", HORIZONTAL_ALIGNMENT_CENTER, size.x, 60, Color(0.5, 0.5, 0.55))
 				else:
 					draw_face(face, c, r, mouth)
 
@@ -209,7 +210,7 @@ func _ready() -> void:
 	trophy_view.visible = false
 	box.add_child(trophy_view)
 
-	hint_label = UI.label("Tap to continue", 20, Color(0.6, 0.6, 0.65))
+	hint_label = UI.label("Tap to continue", 20, GUI.MUTED)
 	hint_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	col.add_child(hint_label)
 
@@ -260,7 +261,7 @@ func show_line() -> void:
 			if str(t.get("kind", "")) == trophy_view.kind:
 				trophy_view.medal = int(t.get("medal", 1))
 		trophy_view.queue_redraw()
-	text_label.add_theme_color_override("font_color", Color(0.75, 0.75, 0.8) if who == "NARRATOR" else Color.WHITE)
+	text_label.add_theme_color_override("font_color", GUI.HEAD if who == "NARRATOR" else Color.WHITE)
 	text_label.visible_characters = 0
 	shown = 0.0
 	portrait.who = who

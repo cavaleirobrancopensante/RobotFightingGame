@@ -12,6 +12,7 @@ signal picked(place: String)
 signal arrived(place: String)
 
 const UI = preload("res://ui.gd")
+const GUI = preload("res://garage_ui.gd")
 const I18n = preload("res://i18n.gd")
 const VW := 1000.0
 const VH := 560.0
@@ -530,7 +531,7 @@ func _draw() -> void:
 	var W := size.x
 	if W < 40.0:
 		return
-	var f := ThemeDB.fallback_font
+	var f := GUI.bold()
 	# the tablet: a dark rounded body with a thin bezel, a status bar along the top
 	var body := StyleBoxFlat.new()
 	body.bg_color = Color(0.05, 0.05, 0.06)
@@ -549,7 +550,7 @@ func _draw() -> void:
 ## The still layer (painted into the SubViewport): ground, streets, rooftops, names, pins.
 func draw_static(c: CanvasItem) -> void:
 	cv = c
-	var f := ThemeDB.fallback_font
+	var f := GUI.bold()
 	var x := _xf()
 	var k: float = x[0]
 	cv.draw_set_transform(x[1], 0.0, Vector2(k, k))
@@ -589,7 +590,7 @@ func draw_static(c: CanvasItem) -> void:
 ## layer's texture, then the moving bits live.
 func draw_map(c: CanvasItem) -> void:
 	cv = c
-	var f := ThemeDB.fallback_font
+	var f := GUI.bold()
 	cv.draw_texture(sv.get_texture(), Vector2.ZERO)
 	var x := _xf()
 	var k: float = x[0]
@@ -875,7 +876,7 @@ func _poly_vis(poly: PackedVector2Array, vis: Rect2) -> bool:
 
 ## Names on the map, drawn at screen size: districts (far out), the avenue, streets and plazas (closer in).
 func _labels(k: float) -> void:
-	var f := ThemeDB.fallback_font
+	var f := GUI.bold()
 	var vis := _vis()
 	if zoom < 2.6:
 		var spots := {"docks": Vector2(110, 380), "oldtown": Vector2(270, 190), "midtown": Vector2(530, 242), "heights": Vector2(730, 54)}
@@ -927,7 +928,7 @@ func _near_pin(p: Vector2) -> bool:
 
 
 func _street_label(a: Vector2, b: Vector2, text: String, fsz: int, col: Color) -> void:
-	var f := ThemeDB.fallback_font
+	var f := GUI.bold()
 	var pa := mv(a)
 	var pb := mv(b)
 	if _near_pin(pa.lerp(pb, 0.5)):

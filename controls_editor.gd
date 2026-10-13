@@ -34,7 +34,7 @@ var flash_t := 0.0
 
 
 func _ready() -> void:
-	font = ThemeDB.fallback_font
+	font = load("res://garage_ui.gd").body()
 	touch_device = DisplayServer.is_touchscreen_available()
 	Sfx.music("garage")
 	player_look = GameData.player_look()

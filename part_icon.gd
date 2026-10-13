@@ -29,7 +29,7 @@ static func draw_grade(ci: CanvasItem, box: Rect2, part: Dictionary) -> void:
 	var r := Rect2(box.end - Vector2(w + 2.0, fs + 4.0), Vector2(w, fs + 2.0))
 	ci.draw_rect(r, col)
 	ci.draw_rect(r, col.darkened(0.5), false, 1.0)
-	ci.draw_string(ThemeDB.fallback_font, Vector2(r.position.x, r.end.y - fs * 0.22), GRADE_TAGS[g], HORIZONTAL_ALIGNMENT_CENTER, w, fs, Color(0.08, 0.08, 0.1))
+	ci.draw_string(load("res://garage_ui.gd").headb(), Vector2(r.position.x, r.end.y - fs * 0.22), GRADE_TAGS[g], HORIZONTAL_ALIGNMENT_CENTER, w, fs, Color(0.08, 0.08, 0.1))
 
 
 ## (1.90) The maker's logo in the icon's top-left corner (opposite the grade chip).

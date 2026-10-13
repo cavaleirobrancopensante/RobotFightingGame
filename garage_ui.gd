@@ -37,7 +37,7 @@ static func _file(path: String) -> Font:
 		if raw.load_dynamic_font(path) == OK:
 			f = raw
 	if f is FontFile:
-		(f as FontFile).fallbacks = [ThemeDB.fallback_font]   # ★ ▾ → and other symbols come from the default font
+		(f as FontFile).fallbacks = [ThemeDB.fallback_font]   # ★ ▾ → and other symbols come from the default font  (style-ok)
 	return f
 
 
@@ -67,7 +67,7 @@ static func _font(key: String) -> Font:
 			hv.spacing_glyph = 1
 			f = hv
 	if f == null:
-		f = ThemeDB.fallback_font
+		f = ThemeDB.fallback_font   # (style-ok: only when a font file is missing)
 	_fonts[key] = f
 	return f
 
@@ -91,6 +91,8 @@ static func world(kind: String = "sign") -> Font:
 			return num()
 	return stencil()
 
+const CUP := Color(0.78, 0.6, 1.0)     # (1.125) cups (Wednesdays, cup trophies)
+const INK := Color(0.08, 0.08, 0.1)    # (1.125) dark words on yellow or paper
 const HEAD := Color(0.84, 0.85, 0.9)   # (1.121) the one heading colour (yellow is for things to do)
 
 
@@ -613,7 +615,7 @@ class RailButton extends Button:
 	var on := false
 	var off := false   # (1.79) greyed out: you're not there
 	var star := false
-	var font: Font = ThemeDB.fallback_font
+	var font: Font = load("res://garage_ui.gd").head()   # (1.125) rail labels in Chakra Petch
 
 	func _init() -> void:
 		flat = true
@@ -755,7 +757,7 @@ class TalkBox extends PanelContainer:
 			"bubble":
 				_style.bg_color = Color(0.957, 0.945, 0.902)
 				_style.set_corner_radius_all(14)
-				text_label.add_theme_color_override("font_color", Color(0.125, 0.125, 0.153))
+				text_label.add_theme_color_override("font_color", INK)
 				name_label.add_theme_color_override("font_color", accent.darkened(0.45))
 				bar.color = Color(0.3, 0.3, 0.33, 0.5)
 			"call":
@@ -763,7 +765,7 @@ class TalkBox extends PanelContainer:
 				_style.set_corner_radius_all(12)
 				_style.border_color = accent
 				_style.set_border_width_all(3)
-				text_label.add_theme_color_override("font_color", Color(0.93, 0.93, 0.95))
+				text_label.add_theme_color_override("font_color", TEXT)
 				name_label.add_theme_color_override("font_color", accent)
 				bar.color = accent
 			_:
@@ -843,7 +845,7 @@ class CheckMark extends Button:
 		if count > 0:
 			var r := Rect2(Vector2(size.x - 24, size.y * 0.5 - 10), Vector2(20, 20))
 			draw_circle(r.get_center(), 10.0, Color(0.95, 0.76, 0.19))
-			draw_string(ThemeDB.fallback_font, Vector2(r.position.x, r.end.y - 5), str(mini(count, 99)), HORIZONTAL_ALIGNMENT_CENTER, 20, 12 if count < 10 else 10, Color(0.08, 0.08, 0.1))
+			draw_string(load("res://garage_ui.gd").headb(), Vector2(r.position.x, r.end.y - 5), str(mini(count, 99)), HORIZONTAL_ALIGNMENT_CENTER, 20, 12 if count < 10 else 10, Color(0.08, 0.08, 0.1))
 
 
 ## How long a line stays up: a thin bar that runs down.
@@ -1034,7 +1036,7 @@ static func confirm_post(host: Node, text_bb: String, hint: String, media: Strin
 	row.add_child(back)
 	var yes := UI.button(I18n.t("Post it"), func(): layer.queue_free(); on_yes.call(), 18, Vector2(0, 56))
 	yes.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	yes.add_theme_color_override("font_color", Color(0.08, 0.08, 0.08))
+	yes.add_theme_color_override("font_color", INK)
 	yes.add_theme_color_override("font_hover_color", Color(0.08, 0.08, 0.08))
 	for st in ["normal", "hover", "pressed"]:
 		yes.add_theme_stylebox_override(st, G.box(YELLOW if st != "hover" else YELLOW.lightened(0.15), 10, 8))

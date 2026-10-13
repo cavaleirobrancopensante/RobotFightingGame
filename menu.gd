@@ -262,7 +262,7 @@ func _ready() -> void:
 	col.add_child(themed("Settings", "plate", _on_settings))
 	col.add_child(themed("Quit Game", "scrap", _on_quit))
 
-	msg = UI.label("", 20, Color(1.0, 0.8, 0.4))
+	msg = UI.label("", 20, GUI.AMBER)
 	msg.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	msg.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_WIDE)
 	msg.offset_top = -54
@@ -270,7 +270,7 @@ func _ready() -> void:
 	msg.mouse_filter = Control.MOUSE_FILTER_IGNORE
 
 	# the version sits at the very bottom of the screen
-	var ver := GUI.text("Salgadoido's version " + GameData.VERSION, 14, Color(0.75, 0.75, 0.82), "body")
+	var ver := GUI.text("Salgadoido's version " + GameData.VERSION, 14, GUI.HEAD, "body")
 	ver.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	ver.auto_translate_mode = Node.AUTO_TRANSLATE_MODE_DISABLED
 	ver.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.8))

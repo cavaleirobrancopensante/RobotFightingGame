@@ -808,12 +808,12 @@ func note(text: String, sound: String = "") -> void:
 		st.content_margin_right = 14
 		toast.add_theme_stylebox_override("panel", st)
 		toast.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		toast_label = UI.label("", 15, Color(0.95, 0.93, 0.85))
+		toast_label = UI.label("", 15, GUI.TEXT)
 		toast_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		toast_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		toast.add_child(toast_label)
 		add_child(toast)
-	toast_label.add_theme_color_override("font_color", Color(1.0, 0.6, 0.55) if sound == "error" else Color(0.95, 0.93, 0.85))
+	toast_label.add_theme_color_override("font_color", GUI.RED if sound == "error" else GUI.TEXT)
 	toast_label.text = text
 	toast_t = clampf(2.4 + text.length() * 0.04, 2.4, 8.0)
 	toast.visible = true
@@ -1354,11 +1354,11 @@ func row_text(title: String, subtitle: String, tag: String, wrap: bool, extra: C
 		rl.add_theme_font_override("bold_font", GUI.headb())
 		rl.add_theme_font_size_override("bold_font_size", UI.px(11))
 		rl.add_theme_font_size_override("normal_font_size", UI.px(11))
-		rl.add_theme_color_override("default_color", Color(0.68, 0.68, 0.75))
+		rl.add_theme_color_override("default_color", GUI.MUTED)
 		rl.text = subtitle
 		info.add_child(rl)
 	elif subtitle != "":
-		var sl := GUI.text(subtitle, 11, Color(0.68, 0.68, 0.75))
+		var sl := GUI.text(subtitle, 11, GUI.MUTED)
 		if wrap:
 			sl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		else:
@@ -2041,7 +2041,7 @@ func category_dropdown(entries: Array, current: String, cb: Callable, bar: HBoxC
 		current = "all"
 	if bar == null:
 		bar = action_bar()
-	var l := UI.label(tr(label), 16, Color(0.8, 0.8, 0.85))
+	var l := UI.label(tr(label), 16, GUI.HEAD)
 	l.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	bar.add_child(l)
 	var ob := OptionButton.new()
@@ -2432,11 +2432,11 @@ func part_entry(d: Dictionary, p: Dictionary, title: String, tag: String, cb: Ca
 			rl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 			rl.add_theme_font_override("normal_font", GUI.body())
 			rl.add_theme_font_size_override("normal_font_size", UI.px(11))
-			rl.add_theme_color_override("default_color", Color(0.68, 0.68, 0.75))
+			rl.add_theme_color_override("default_color", GUI.MUTED)
 			rl.text = line
 			ll = rl
 		else:
-			var lb := GUI.text(line, 11, Color(0.68, 0.68, 0.75))
+			var lb := GUI.text(line, 11, GUI.MUTED)
 			lb.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 			ll = lb
 		ll.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -4890,9 +4890,9 @@ func build_pilot_looks() -> void:
 			bar.add_child(sw)
 		else:
 			var vs := 13
-			while vs > 9 and ThemeDB.fallback_font.get_string_size(l[2], HORIZONTAL_ALIGNMENT_LEFT, -1, int(vs * UI.SCALE)).x > 108.0:
+			while vs > 9 and GUI.body().get_string_size(l[2], HORIZONTAL_ALIGNMENT_LEFT, -1, int(vs * UI.SCALE)).x > 108.0:
 				vs -= 1
-			var v := UI.label(l[2], vs, Color(l[3]).lightened(0.3) if l[3] != "" else Color(0.85, 0.85, 0.9))
+			var v := UI.label(l[2], vs, Color(l[3]).lightened(0.3) if l[3] != "" else GUI.HEAD)
 			v.custom_minimum_size = Vector2(112, 0)
 			v.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 			v.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
@@ -5326,7 +5326,7 @@ func build_scrapyard_tab() -> void:
 		dig_button = row_button(bar, tr("Dig anywhere") + dig_tag(), _on_dig.bind(""), true, 200)
 		GUI.mark_new(dig_button, true)   # today's dig is waiting
 		var kinds := flow_bar()
-		kinds.add_child(UI.label(tr("Dig for:"), 16, Color(1.0, 0.8, 0.4)))
+		kinds.add_child(UI.label(tr("Dig for:"), 16, GUI.HEAD))
 		for k in ["head", "torso", "arm", "leg", "extras"]:
 			var b := row_button(kinds, tr({"head": "Head", "torso": "Torso", "arm": "Arm", "leg": "Leg", "extras": "Extras"}[k]), _on_dig.bind(k), true, 0)
 			b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -5448,7 +5448,7 @@ func build_workshop() -> void:
 	var left := grade_points() - GameData.custom_points_used(ws)
 	var head := make_row(part_icon(d), d["name"], GameData.part_stat_text(d))
 	var forge := row_button(head, tr("FORGE $%d") % d["cost"], _on_forge, GameData.money >= d["cost"], 150)
-	forge.add_theme_color_override("font_color", Color(1.0, 0.8, 0.3))
+	forge.add_theme_color_override("font_color", GUI.AMBER)
 
 	section("Part type")
 	var kinds := flow_bar()
@@ -5647,7 +5647,7 @@ func _on_tech_preview(id: String) -> void:
 	demo.custom_minimum_size = Vector2(480, 270)
 	demo.move = "tech:" + id
 	col.add_child(demo)
-	var l := UI.label("%s\n%s" % [tr(str(t["job"])), tr("Weakness: %s") % tr(str(t["weak"]))], 15, Color(0.5, 0.9, 1.0))
+	var l := UI.label("%s\n%s" % [tr(str(t["job"])), tr("Weakness: %s") % tr(str(t["weak"]))], 15, GUI.CYAN)
 	l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	col.add_child(l)
 	var fits: Array = []
@@ -5667,7 +5667,7 @@ func build_cups_tab() -> void:
 	var c := GameData.circuit
 	if not c.is_empty():
 		var bar := action_bar()
-		var l := UI.label(tr("%s %s · %s · gold $%d") % [c["name"], "★".repeat(int(c["tier"])), tr(Career.round_name(c)), int(c["prize"])], 16, Color(1.0, 0.8, 0.4))
+		var l := UI.label(tr("%s %s · %s · gold $%d") % [c["name"], "★".repeat(int(c["tier"])), tr(Career.round_name(c)), int(c["prize"])], 16, GUI.CUP)
 		l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		bar.add_child(l)
@@ -5746,7 +5746,7 @@ func build_calendar() -> void:
 	head.add_theme_constant_override("separation", 8)
 	list_box.add_child(head)
 	head.add_child(UI.button("<", _on_cal_month.bind(-1), 18, Vector2(56, 36)))
-	var t := UI.label(tr("%s  ·  YEAR %d") % [tr(MONTH_NAMES[cal_month]), GameData.year], 19, Color(1.0, 0.8, 0.4))
+	var t := GUI.heading(tr("%s  ·  YEAR %d") % [tr(MONTH_NAMES[cal_month]), GameData.year], 19)
 	t.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	t.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	head.add_child(t)
@@ -5757,7 +5757,7 @@ func build_calendar() -> void:
 	list_box.add_child(hdr)
 	for k in 7:
 		var dn: String = DAY_NAMES[k]
-		var l := GUI.text(tr(dn), 11, GUI.YELLOW if k == 5 else (Color(0.78, 0.6, 1.0) if k == 2 else GUI.MUTED), "headb")
+		var l := GUI.text(tr(dn), 11, GUI.YELLOW if k == 5 else (GUI.CUP if k == 2 else GUI.MUTED), "headb")
 		l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		l.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
@@ -6443,7 +6443,7 @@ func bet_card(on: String, ev: Dictionary) -> void:
 		row.add_theme_constant_override("separation", 6)
 		list_box.add_child(row)
 		bet_side(row, ev, a, b, on)
-		var vs := UI.label("vs", 15, Color(0.6, 0.6, 0.65))
+		var vs := UI.label("vs", 15, GUI.MUTED)
 		vs.custom_minimum_size = Vector2(28, 0)
 		vs.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		row.add_child(vs)
@@ -6487,7 +6487,7 @@ func bet_side(row: HBoxContainer, ev: Dictionary, id: int, other: int, on: Strin
 	row.add_child(box)
 	var t: Array = ev["table"].get(str(id), [0, 0, 0, 0])
 	var odds := Career.odds(ev, id, other)
-	var l := UI.label(tr("%s\n%d-%d   %.2fx") % [who(ev, id), t[0], t[1], odds], 13, Color(1.0, 0.85, 0.3) if id == 0 else Color(0.9, 0.9, 0.95))
+	var l := UI.label(tr("%s\n%d-%d   %.2fx") % [who(ev, id), t[0], t[1], odds], 13, GUI.YELLOW if id == 0 else GUI.TEXT)
 	l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	l.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	box.add_child(l)
@@ -6742,7 +6742,7 @@ class DayRuler extends Control:
 	func _draw() -> void:
 		var lw := 150.0
 		var sw := (size.x - lw - 6.0) / maxf(1.0, float(hours))
-		var f: Font = font if font else ThemeDB.fallback_font
+		var f: Font = font if font else GUI.body()
 		# the shifts along the top
 		for sh in shifts:
 			var x0: float = lw + float(sh[1]) * sw
@@ -7559,31 +7559,31 @@ func open_trophy(i: int) -> void:
 	if tr_.get("dad", false):
 		# (1.63) his run that season: the record, the fights people still talk about, Gus's memory
 		var run: Dictionary = GameData.DAD_RUNS[clampi(int(tr_.get("run", 0)), 0, GameData.DAD_RUNS.size() - 1)]
-		info.add_child(UI.label(tr("Your dad's. Season %d, piloting ECHO.") % int(run["season"]), 17, Color(1.0, 0.85, 0.4)))
-		info.add_child(UI.label(tr("Record: %d-%d") % [int(run["w"]), int(run["l"])], 17, Color(0.9, 0.9, 0.95)))
+		info.add_child(UI.label(tr("Your dad's. Season %d, piloting ECHO.") % int(run["season"]), 17, GUI.HEAD))
+		info.add_child(UI.label(tr("Record: %d-%d") % [int(run["w"]), int(run["l"])], 17, GUI.TEXT))
 		for f in run["fights"]:
 			var won: bool = f[1]
 			var l := UI.label(tr("Week %d: %s %s") % [int(f[0]), tr("beat") if won else tr("lost to"), tr("%s · %s") % [str(f[2]), str(f[3])]], 14,
 					Color(0.5, 1.0, 0.6) if won else Color(1.0, 0.55, 0.45))
 			l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 			info.add_child(l)
-			var nl := UI.label(tr(str(f[4])), 13, Color(0.68, 0.68, 0.74))
+			var nl := UI.label(tr(str(f[4])), 13, GUI.MUTED)
 			nl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 			info.add_child(nl)
-		var gus := UI.label(tr("Gus: %s") % tr(str(run["gus"])), 14, Color(0.95, 0.75, 0.45))
+		var gus := UI.label(tr("Gus: %s") % tr(str(run["gus"])), 14, GUI.TEXT)
 		gus.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		info.add_child(gus)
 		return
 	var when := tr("Won in year %d") % int(tr_.get("year", 1))
 	if tr_.has("week"):
 		when = tr("Won in year %d, week %d") % [int(tr_.get("year", 1)), int(tr_["week"])]
-	info.add_child(UI.label(when, 17, Color(1.0, 0.85, 0.4)))
+	info.add_child(UI.label(when, 17, GUI.HEAD))
 	var fights: Array = tr_.get("fights", [])
 	if fights.is_empty():
-		info.add_child(UI.label(tr("(The fight records from before this was kept are lost.)"), 13, Color(0.6, 0.6, 0.65)))
+		info.add_child(UI.label(tr("(The fight records from before this was kept are lost.)"), 13, GUI.MUTED))
 	else:
 		var w := fights.filter(func(f): return f["won"]).size()
-		info.add_child(UI.label(tr("Record: %d-%d") % [w, fights.size() - w], 17, Color(0.9, 0.9, 0.95)))
+		info.add_child(UI.label(tr("Record: %d-%d") % [w, fights.size() - w], 17, GUI.TEXT))
 		for f in fights:
 			var l := UI.label(tr("Week %d: %s %s") % [int(f["w"]), tr("beat") if f["won"] else tr("lost to"), str(f["opp"])], 14,
 					Color(0.5, 1.0, 0.6) if f["won"] else Color(1.0, 0.55, 0.45))
@@ -7667,7 +7667,7 @@ func build_style_view() -> void:
 		d.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		d.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		text.add_child(d)
-		text.add_child(UI.label(tr("Signature: %s  %s") % [tr(sig["name"]), Specials.seq_text(sig["seq"])], 12, Color(0.5, 0.9, 1.0)))
+		text.add_child(UI.label(tr("Signature: %s  %s") % [tr(sig["name"]), Specials.seq_text(sig["seq"])], 12, GUI.CYAN))
 		var btns := VBoxContainer.new()
 		row.add_child(btns)
 		row.add_child(InlineDemo.new(st["signature"]))   # (1.93) each style's signature move loops in its row
@@ -7743,7 +7743,7 @@ func _on_open_scout() -> void:
 	if msg == "":
 		msg = "Their crew spotted your scout! They'll swap something before the bell. One thing in this report won't be what shows up." if GameData.scout.get("spied_back", false) else "Clean scouting run. They never saw you."
 	msg = tr(msg)
-	var m := UI.label(msg, 15, Color(1.0, 0.5, 0.3) if GameData.scout.get("spied_back", false) else Color(0.5, 1.0, 0.6))
+	var m := UI.label(msg, 15, GUI.RED if GameData.scout.get("spied_back", false) else GUI.GREEN)
 	m.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	col.add_child(m)
 	var row := HBoxContainer.new()
@@ -7792,11 +7792,11 @@ func _on_open_scout() -> void:
 	for id in o["specials"]:
 		moves.append(tr(Specials.MOVES[id]["name"]))
 	moves.append(tr(Specials.MOVES[Catalog.STYLES[st]["signature"]]["name"]) + tr(" (signature)"))
-	var ml := UI.label("Moves: " + ", ".join(moves), 13, Color(0.5, 0.9, 1.0))
+	var ml := UI.label("Moves: " + ", ".join(moves), 13, GUI.CYAN)
 	ml.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	info.add_child(ml)
 	if weak != "":
-		info.add_child(UI.label(tr("Weak point: %s. Aim there!") % tr(GameData.SLOT_NAMES[weak]), 15, Color(1.0, 0.9, 0.3)))
+		info.add_child(UI.label(tr("Weak point: %s. Aim there!") % tr(GameData.SLOT_NAMES[weak]), 15, GUI.AMBER))
 	var nav := HBoxContainer.new()
 	nav.add_theme_constant_override("separation", 10)
 	col.add_child(nav)
@@ -7975,7 +7975,7 @@ func _on_chip_preview(id: String) -> void:
 	demo.custom_minimum_size = Vector2(480, 270)
 	demo.move = id
 	col.add_child(demo)
-	var l := UI.label(tr("%s   %s") % [Specials.seq_text(m["seq"]), tr(m["desc"])], 15, Color(0.5, 0.9, 1.0))
+	var l := UI.label(tr("%s   %s") % [Specials.seq_text(m["seq"]), tr(m["desc"])], 15, GUI.CYAN)
 	l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	col.add_child(l)
 
@@ -8673,7 +8673,7 @@ class PilotClock extends Control:
 		var left: float = GameData.pilot_left()
 		var r := Rect2(10, size.y * 0.5 - 8, size.x - 20, 16)
 		G.draw_blocks(self, r, 4, left, Color(0.55, 1.0, 0.65) if left > 1.0 else Color(1.0, 0.75, 0.3))
-		draw_string(ThemeDB.fallback_font, Vector2(10, size.y * 0.5 - 12), tr("YOUR TIME"), HORIZONTAL_ALIGNMENT_LEFT, -1, load("res://ui.gd").px(9), Color(0.6, 0.65, 0.7))
+		draw_string(GUI.headb(), Vector2(10, size.y * 0.5 - 12), tr("YOUR TIME"), HORIZONTAL_ALIGNMENT_LEFT, -1, load("res://ui.gd").px(9), Color(0.6, 0.65, 0.7))
 
 
 func hours_text(h: float) -> String:
@@ -9068,7 +9068,7 @@ class MoneyChart extends Control:
 
 	func _draw() -> void:
 		var U = load("res://ui.gd")
-		var f := ThemeDB.fallback_font
+		var f := GUI.headb()
 		var fs: int = U.px(11)
 		var top := float(fs) + 4.0
 		var bot := size.y - float(fs) - 6.0
@@ -9227,7 +9227,7 @@ func gus_card(title: String, text: String, buttons: Array) -> void:
 			if cb.is_valid():
 				cb.call(), 19, Vector2(maxf(220.0, vp.x * 0.2), 60))
 		if b.size() > 2 and b[2]:
-			btn.add_theme_color_override("font_color", Color(0.08, 0.08, 0.08))
+			btn.add_theme_color_override("font_color", GUI.INK)
 			btn.add_theme_color_override("font_hover_color", Color(0.08, 0.08, 0.08))
 			for st in ["normal", "hover", "pressed"]:
 				btn.add_theme_stylebox_override(st, GUI.box(GUI.YELLOW if st != "hover" else GUI.YELLOW.lightened(0.15), 10, 8))
