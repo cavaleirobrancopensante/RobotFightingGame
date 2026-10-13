@@ -17,6 +17,31 @@ static func set_text_level(lv: int) -> void:
 	text_boost = TEXT_LEVELS[clampi(lv, 0, TEXT_LEVELS.size() - 1)]
 
 
+## (1.120) Phones (the app, or a browser on a phone) get the lighter drawing by default.
+static func is_phone() -> bool:
+	return OS.has_feature("mobile") or OS.has_feature("web_android") or OS.has_feature("web_ios")
+
+
+## Settings > Smooth edges: pictures painted into textures (the arena, the menu, the opening)
+## are painted at twice the screen's pixels and shrunk, which smooths every edge (2x SSAA).
+static func smooth_edges() -> bool:
+	return bool(GameData.settings.get("smooth", not is_phone()))
+
+
+## How many texture pixels a painted picture needs per game unit so it isn't stretched:
+## the screen's own pixels per unit (a big window shows more pixels than the game's units),
+## times 2 with smooth edges, kept under `max_px` pixels wide.
+## Pictures inside a SubViewport (clips on the TV, the feed) are left at 1.
+static func paint_k(node: Node, base_w: float, smooth := true, max_px := 4096.0) -> float:
+	var vp := node.get_viewport() if node and node.is_inside_tree() else null
+	if vp == null or vp != node.get_tree().root:
+		return 1.0
+	var s := maxf(1.0, absf(vp.get_final_transform().x.x))
+	if smooth and smooth_edges():
+		s *= 2.0
+	return clampf(s, 1.0, maxf(1.0, max_px / maxf(base_w, 1.0)))
+
+
 ## A design size (as written in the code) at the player's text size, before SCALE.
 static func tk(size: float) -> float:
 	var s := maxf(size, 10.0 + 10.0 * text_boost)   # nothing smaller than this stays on screen
@@ -141,6 +166,10 @@ class DragScroll extends Node:
 		if ev is InputEventMouseButton and ev.button_index == MOUSE_BUTTON_LEFT:
 			if ev.pressed:
 				down = sc.get_global_rect().has_point(ev.position) and not (blocked.is_valid() and blocked.call())
+				# a press on the scroll bar itself is the bar's job (dragging both ways at once jumped)
+				for bar in [sc.get_v_scroll_bar(), sc.get_h_scroll_bar()]:
+					if bar.is_visible_in_tree() and bar.get_global_rect().grow(6).has_point(ev.position):
+						down = false
 				dragging = false
 				start = ev.position
 				last_y = ev.position.y

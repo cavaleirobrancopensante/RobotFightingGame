@@ -3373,6 +3373,7 @@ const T := {
 	"Form: %s": "Forma: %s",
 	"%s (%s), sold for scrap: $%d": "%s (%s), vendida como chatarra: $%d",
 	"Varga wants a breather. He lends again in %d weeks.": "Varga quiere un respiro. Vuelve a prestar en %d semanas.",
+	"Smooth edges: %s": "Bordes suaves: %s",
 	"Tap MOVES to see your special moves and how to do them.": "Toca GOLPES para ver tus golpes especiales y cómo hacerlos.",
 	"Burned out! Hang on...": "¡Apagón! Aguanta...",
 	"Watch your power! Back off!": "¡Ojo con la energía! ¡Retrocede!",

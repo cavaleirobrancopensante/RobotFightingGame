@@ -429,7 +429,7 @@ func redraw_all() -> void:
 	queue_redraw()
 	if hud_canvas:
 		# (1.87) while the fight runs the glass redraws 30 times a second, the ring 60
-		hud_skip = not hud_skip
+		hud_skip = not hud_skip and UIK.is_phone()
 		if phase != "fight" or paused or tut_pause or not hud_skip:
 			hud_canvas.queue_redraw()
 var hud_skip := false
@@ -2126,7 +2126,7 @@ func _process(delta: float) -> void:
 						f.look_dirty = true
 	arena_redraw_t -= delta
 	if arena_redraw_t <= 0.0 and arena_layer:
-		arena_redraw_t = 1.0 / ARENA_FPS
+		arena_redraw_t = 1.0 / arena_fps()
 		arena_layer.refresh()
 	redraw_all()
 
@@ -4448,21 +4448,27 @@ class ArenaLayer extends Node2D:
 
 	func _build() -> void:
 		var scr: Vector2 = fight.screen
+		# (1.120) painted at the screen's real pixels (x2 with smooth edges), so the arena is as
+		# sharp as the robots drawn over it; the crowd layer only gets the screen's own pixels
+		var full: Vector2 = scr + Vector2(PAD, PAD) * 2.0
 		for i in PARTS.size():
+			var k := UIK.paint_k(self, full.x, i != 1 or not UIK.is_phone())
 			var sv := SubViewport.new()
 			sv.disable_3d = true
 			sv.transparent_bg = i > 0
-			sv.size = Vector2i((scr + Vector2(PAD, PAD) * 2.0).ceil())
+			sv.size = Vector2i((full * k).ceil())
 			sv.render_target_update_mode = SubViewport.UPDATE_ONCE
 			var pt := ArenaPainter.new()
 			pt.fight = fight
 			pt.part = PARTS[i]
-			pt.position = Vector2(PAD, PAD)
+			pt.position = Vector2(PAD, PAD) * k
+			pt.scale = Vector2(k, k)
 			sv.add_child(pt)
 			add_child(sv)
 			var show := Sprite2D.new()
 			show.centered = false
 			show.position = -Vector2(PAD, PAD)
+			show.scale = Vector2(1.0 / k, 1.0 / k)
 			show.texture = sv.get_texture()
 			if i > 0:
 				var mat := CanvasItemMaterial.new()
@@ -4517,6 +4523,11 @@ var arena_layer: ArenaLayer
 var fast_view := false
 var arena_redraw_t := 0.0
 const ARENA_FPS := 15.0
+
+
+## (1.120) The crowd moves at ARENA_FPS on phones; computers 30 times a second.
+func arena_fps() -> float:
+	return ARENA_FPS if UIK.is_phone() else 30.0
 
 
 ## part: "" = everything, or one of the ArenaLayer's layers ("back", "crowd", "front").
@@ -6660,7 +6671,7 @@ func demo_process(delta: float) -> void:
 	update_effects(delta)
 	arena_redraw_t -= delta
 	if arena_redraw_t <= 0.0 and arena_layer:
-		arena_redraw_t = 1.0 / ARENA_FPS
+		arena_redraw_t = 1.0 / arena_fps()
 		arena_layer.refresh()
 	redraw_all()
 
@@ -7746,7 +7757,7 @@ func replay_process(delta: float) -> void:
 	update_camera(d)
 	arena_redraw_t -= delta
 	if arena_redraw_t <= 0.0 and arena_layer:
-		arena_redraw_t = 1.0 / ARENA_FPS
+		arena_redraw_t = 1.0 / arena_fps()
 		arena_layer.refresh()
 	redraw_all()
 

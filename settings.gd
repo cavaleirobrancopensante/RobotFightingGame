@@ -16,6 +16,7 @@ var delete_button: Button
 var team_button: Button
 var battery_button: Button
 var fastfight_button: Button
+var smooth_button: Button
 var errors_button: Button
 var log_overlay: Control
 var copy_button: Button
@@ -114,6 +115,7 @@ func _ready() -> void:
 	team_button = UI.button("", _on_team, 19, Vector2(bw / UI.SCALE, 50))
 	battery_button = UI.button("", _on_battery, 19, Vector2(bw / UI.SCALE, 50))
 	fastfight_button = UI.button("", _on_fast_fights, 19, Vector2(bw / UI.SCALE, 50))
+	smooth_button = UI.button("", _on_smooth, 19, Vector2(bw / UI.SCALE, 50))
 	errors_button = UI.button("", _on_errors, 19, Vector2(bw / UI.SCALE, 50))
 	reset_button = UI.button("", _on_reset, 19, Vector2(bw / UI.SCALE, 50))
 	edges_button = UI.button("", _on_edges, 19, Vector2(bw / UI.SCALE, 50))
@@ -133,7 +135,7 @@ func _ready() -> void:
 	plus.disabled = lv >= UI.TEXT_LEVELS.size() - 1
 	for c in [minus, text_label, plus]:
 		text_row.add_child(c)
-	for b in [text_row, sound_button, music_button, shake_button, battery_button, fastfight_button, size_button, edges_button,
+	for b in [text_row, sound_button, music_button, shake_button, battery_button, fastfight_button, smooth_button, size_button, edges_button,
 			UI.button("Edit controls (move & resize)", _on_controls, 19, Vector2(bw / UI.SCALE, 50)), team_button,
 			UI.button("Difficulty...", _on_difficulty, 19, Vector2(bw / UI.SCALE, 50)), delete_button, errors_button, reset_button,
 			UI.button("Copy playtest log", _on_copy_log, 19, Vector2(bw / UI.SCALE, 50))]:
@@ -155,6 +157,7 @@ func refresh() -> void:
 	edges_button.text = tr("Screen edges: %s") % tr(EDGE_NAMES[clampi(int(s.get("edges", 0)), 0, EDGE_NAMES.size() - 1)])
 	var n := GameData.error_count()
 	errors_button.text = tr("Error log (%d)") % n if n > 0 else tr("Error log (no errors)")
+	smooth_button.text = tr("Smooth edges: %s") % tr("ON" if UI.smooth_edges() else "OFF")
 	fastfight_button.text = tr("Fight graphics: %s") % tr("FAST (lower resolution)" if s.get("fast_fights", false) else "SHARP")
 	battery_button.text = tr("Battery saver: %s") % tr("ON (30 fps)" if s.get("battery_saver", false) else "OFF (60 fps)")
 	team_button.text = tr("Team controls: %s") % tr("SPLIT (a pad per robot)" if s.get("team_controls", "linked") == "split" else "LINKED (one pad for all)")
@@ -358,6 +361,14 @@ func _on_close_errors() -> void:
 		log_overlay.queue_free()
 		log_overlay = null
 	refresh()
+
+
+## (1.120) Smooth edges: the arena, the menu and the opening painted at twice the pixels.
+func _on_smooth() -> void:
+	GameData.settings["smooth"] = not UI.smooth_edges()
+	GameData.save_settings()
+	refresh()
+	Sfx.play("click")
 
 
 func _on_fast_fights() -> void:

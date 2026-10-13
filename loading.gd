@@ -17,6 +17,43 @@ var title_label: Label
 var busy := false
 
 
+## Mouse wheel anywhere over a list scrolls it. Buttons and panels stop mouse events,
+## so before this the wheel only worked over the scroll bar itself.
+func _input(ev: InputEvent) -> void:
+	if not (ev is InputEventMouseButton) or not ev.pressed:
+		return
+	var b: int = ev.button_index
+	if b != MOUSE_BUTTON_WHEEL_UP and b != MOUSE_BUTTON_WHEEL_DOWN \
+			and b != MOUSE_BUTTON_WHEEL_LEFT and b != MOUSE_BUTTON_WHEEL_RIGHT:
+		return
+	var c: Control = get_viewport().gui_get_hovered_control()
+	if c is Slider or c is SpinBox or c is TextEdit:
+		return   # these use the wheel themselves
+	var f: float = ev.factor
+	var step: float = 60.0 * (f if f > 0.0 else 1.0)
+	var sign: float = -1.0 if (b == MOUSE_BUTTON_WHEEL_UP or b == MOUSE_BUTTON_WHEEL_LEFT) else 1.0
+	var sideways: bool = b == MOUSE_BUTTON_WHEEL_LEFT or b == MOUSE_BUTTON_WHEEL_RIGHT or ev.shift_pressed
+	var n: Node = c
+	while n != null:
+		if n is ScrollContainer and (n as Control).is_visible_in_tree():
+			var sc := n as ScrollContainer
+			var vb := sc.get_v_scroll_bar()
+			var hb := sc.get_h_scroll_bar()
+			var v_ok := sc.vertical_scroll_mode != ScrollContainer.SCROLL_MODE_DISABLED \
+					and vb.max_value - vb.page > 1.0
+			var h_ok := sc.horizontal_scroll_mode != ScrollContainer.SCROLL_MODE_DISABLED \
+					and hb.max_value - hb.page > 1.0
+			if v_ok and not sideways:
+				sc.scroll_vertical = int(sc.scroll_vertical + sign * step)
+				get_viewport().set_input_as_handled()
+				return
+			if h_ok:
+				sc.scroll_horizontal = int(sc.scroll_horizontal + sign * step)
+				get_viewport().set_input_as_handled()
+				return
+		n = n.get_parent()
+
+
 func _ready() -> void:
 	layer = 120
 	process_mode = Node.PROCESS_MODE_ALWAYS

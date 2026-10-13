@@ -33,7 +33,7 @@ class ArenaBackdrop extends Control:
 		t += delta
 		_rt -= delta
 		if _rt <= 0.0:
-			_rt = 1.0 / 12.0
+			_rt = 1.0 / (12.0 if UI.is_phone() else 30.0)   # (1.120) computers get 30 a second
 			queue_redraw()
 			if sv:
 				sv.render_target_update_mode = SubViewport.UPDATE_ONCE
@@ -211,9 +211,12 @@ func _ready() -> void:
 	var vs := get_viewport_rect().size
 	var sv := SubViewport.new()
 	sv.disable_3d = true
-	sv.size = Vector2i(vs.ceil())
+	# (1.120) painted at the screen's real pixels (twice that with smooth edges), never stretched
+	var k := UI.paint_k(self, vs.x)
+	sv.size = Vector2i((vs * k).ceil())
 	sv.render_target_update_mode = SubViewport.UPDATE_ONCE
 	add_child(sv)
+	sv.canvas_transform = Transform2D().scaled(Vector2(k, k))   # (only once it's in the tree)
 	var bg := ArenaBackdrop.new()
 	bg.looks = [random_look(), random_look()]
 	bg.size = vs

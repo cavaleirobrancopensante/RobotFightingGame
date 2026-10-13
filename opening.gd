@@ -72,6 +72,10 @@ var you := {}
 var pike_look := {}
 
 
+var ss_view: SubViewport = null
+var ss_show: TextureRect = null
+
+
 func _ready() -> void:
 	set_anchors_preset(Control.PRESET_FULL_RECT)
 	mouse_filter = Control.MOUSE_FILTER_STOP
@@ -79,7 +83,22 @@ func _ready() -> void:
 	stage = Stage.new()
 	stage.op = self
 	stage.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	add_child(stage)
+	# (1.120) the shots are drawn in their own view: at the screen's real pixels (twice that
+	# with smooth edges, shrunk = 2x SSAA), and the camera isn't snapped to whole pixels there,
+	# so slow pans glide instead of stepping
+	ss_view = SubViewport.new()
+	ss_view.disable_3d = true
+	ss_view.gui_snap_controls_to_pixels = false
+	ss_view.render_target_update_mode = SubViewport.UPDATE_ALWAYS
+	add_child(ss_view)
+	ss_view.add_child(stage)
+	ss_show = TextureRect.new()
+	ss_show.texture = ss_view.get_texture()
+	ss_show.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	ss_show.stretch_mode = TextureRect.STRETCH_SCALE
+	ss_show.set_anchors_preset(Control.PRESET_FULL_RECT)
+	ss_show.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(ss_show)
 	overlay = Overlay.new()
 	overlay.op = self
 	overlay.set_anchors_preset(Control.PRESET_FULL_RECT)
@@ -233,6 +252,12 @@ func _camera() -> void:
 	stage.size = size
 	stage.scale = Vector2(z, z)
 	stage.position = size * 0.5 - c * z
+	if ss_view:
+		var kk := UI.paint_k(self, size.x)
+		var want := Vector2i((size * kk).ceil())
+		if ss_view.size != want:
+			ss_view.size = want
+		ss_view.canvas_transform = Transform2D().scaled(Vector2(kk, kk))
 
 
 func to_screen(p: Vector2) -> Vector2:
