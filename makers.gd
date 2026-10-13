@@ -36,6 +36,25 @@ const MAKERS := {
 		"perk": "The crowd loves it: followers grow faster from your wins.", "perk_name": "SHOWSTOPPER"},
 }
 
+## (1.119) What a maker's name is worth: [price x, stats x] on top of the grade. Cheap makers sell
+## plain parts cheap (Scrapworks, Old Iron); the late-game makers ask a lot more for parts that are
+## tougher and hit harder (their stats x lands on HP and on every hit, like a grade does).
+const QUALITY := {
+	"scrapworks": [0.6, 0.85], "oldiron": [1.0, 1.0],
+	"brassworks": [1.6, 1.1], "hellfire": [1.6, 1.1],
+	"volta": [2.4, 1.2], "tenryu": [2.4, 1.2], "menagerie": [2.4, 1.2],
+	"nimbus": [3.0, 1.25], "kane": [4.0, 1.35],
+}
+
+
+static func price_k(m: String) -> float:
+	return float(QUALITY.get(m, [1.0, 1.0])[0])
+
+
+static func stat_k(m: String) -> float:
+	return float(QUALITY.get(m, [1.0, 1.0])[1])
+
+
 const ORDER := ["scrapworks", "oldiron", "brassworks", "hellfire", "volta", "nimbus", "kane", "tenryu", "menagerie"]
 
 ## The old brands, each now made by one of the makers.

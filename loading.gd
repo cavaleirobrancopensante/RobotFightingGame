@@ -46,7 +46,7 @@ func build_screen(parent: Control) -> Array:
 	bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	parent.add_child(bg)
 	var pic := TextureRect.new()
-	pic.texture = load("res://store/splash.png")
+	pic.texture = load("res://store/loading_bg.png")   # (1.119) a copy: the boot splash file itself is exported raw and can't be loaded
 	pic.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	pic.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 	pic.set_anchors_preset(Control.PRESET_FULL_RECT)

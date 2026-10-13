@@ -3,7 +3,7 @@ const PlayLog = preload("res://playlog.gd")   # (1.87) the playtest log
 
 # helper scripts, loaded by path so the game also runs without an editor scan
 ## The game's version, shown on the main menu. Bump it with every change (1.1, 1.2, ...).
-const VERSION := "1.118"
+const VERSION := "1.119"
 const Arena = preload("res://arena.gd")
 const I18n = preload("res://i18n.gd")
 const Catalog = preload("res://catalog.gd")
@@ -19,7 +19,7 @@ const UI = preload("res://ui.gd")
 const OLD_SAVE_PATH := "user://savegame.json"   # single save from earlier versions -> becomes slot 1
 const SAVE_SLOTS := 8
 const SETTINGS_PATH := "user://settings.json"
-const SAVE_VERSION := 7   # 7: part HP x3 torso, x2 head/arms/legs. 6: part grades. 5: Scrap/Rust/Iron/Steel + the Championship cup (older saves are converted on load)
+const SAVE_VERSION := 8   # 8: makers' quality on part HP (Makers.QUALITY). 7: part HP x3 torso, x2 head/arms/legs. 6: part grades. 5: Scrap/Rust/Iron/Steel + the Championship cup (older saves are converted on load)
 const START_MONEY := -1000   # default: you start in debt (back rent to Gus) and climb out
 const MONTH_WEEKS := 4        # every 4 weeks...
 const LIVING_COST := 1000     # ...rent and food come out of your balance (default)
@@ -422,6 +422,7 @@ const SIZE_NAMES := {"S": "Small", "M": "Medium", "L": "Large"}
 const GRADES := ["Junk", "Scrap", "Rust", "Iron", "Steel", "Titanium"]
 const GRADE_COLORS := ["#8a8f98", "#9a6a4a", "#d0702c", "#7d8794", "#6fa8dc", "#e0c25a"]
 const GRADE_PRICE := 3.0
+const PRICE_K := 1.3   # (1.119) every part costs 30% more than it did (the world's pilots budget in the old money: World.part_cost)
 const PECKING := [{"name": "Underdog", "k": 1.4}, {"name": "Standard", "k": 1.5}, {"name": "Brutal", "k": 1.6}]
 ## A league's grade: the gutter and Scrap use Scrap grade, then one grade per league.
 const RANK_GRADE := {"open": 1, "scrap": 1, "rust": 2, "iron": 3, "steel": 4}
@@ -592,6 +593,9 @@ func _ready() -> void:
 			d["brand_name"] = Makers.label(str(d["maker"]))
 		d["cost_v5"] = int(d["cost"])   # the price before grades (old saves get their grade from it)
 		d["cost"] = grade_one_price(int(d["cost"]))
+		if str(d["maker"]) != "" and int(d["cost"]) > 0:
+			# (1.119) parts cost more all round, and a maker's name is worth more or less (Makers.QUALITY)
+			d["cost"] = maxi(10, int(round(int(d["cost"]) * PRICE_K * Makers.price_k(str(d["maker"])) / 10.0)) * 10)
 		PARTS[d["id"]] = d
 	# Mini and Heavy versions of every body part. (1.97) Makers whose parts come in one size and
 	# retired parts keep theirs only so old saves and robots stay valid: never sold.
@@ -648,6 +652,7 @@ func new_game() -> void:
 	deliveries = []
 	morning_seen = ""
 	loan = {}
+	loan_free_at = 0
 	gus_alerts = []
 	inbox_seen = 0
 	social = {}
@@ -1178,9 +1183,12 @@ func repair_cost(p: Dictionary) -> int:
 		discount *= 2.0 / 3.0   # (1.90) Scrapworks set: cheap to mend
 	if Contracts.works_for(str(d.get("maker", ""))):
 		discount *= 2.0 / 3.0   # (1.95) a Works driver's own maker mends its parts cheaper
+	# (1.119) prices doubled (PRICE_K) but the work didn't: repairs go by the old price (a maker's
+	# fancy parts still cost more to mend)
+	var base := float(d["cost"]) / (PRICE_K if str(d.get("maker", "")) != "" else 1.0)
 	if is_wreck(p):
-		return maxi(20, int(d["cost"] * WRECK_SHARE * discount))   # rebuilding a wreck
-	return maxi(1, ceili(missing * maxf(30.0, d["cost"] * REPAIR_SHARE) * discount))
+		return maxi(20, int(base * WRECK_SHARE * discount))   # rebuilding a wreck
+	return maxi(1, ceili(missing * maxf(30.0, base * REPAIR_SHARE) * discount))
 
 
 ## Fixing a part is paid up front and goes on Gus's job board: the bay works on it as time passes.
@@ -1235,7 +1243,12 @@ const SWAP_HOURS := {"head": 1.5, "arm": 1.5, "leg": 1.5, "torso": 6.0, "reactor
 ## part and selling it a money printer: parts sell for 40%). A wreck's rebuild costs WRECK_SHARE.
 const REPAIR_SHARE := 0.25
 const WRECK_SHARE := 0.6
-const SELL_SHARE := 0.25   # what a part sells for, at full health (1.53: was 0.4)
+const SELL_SHARE := 0.19   # what a part sells for, at full health (1.53: was 0.4; 1.119: 0.19 of the new price = a bit under the repair share of the old one, so fix-and-sell never pays)
+const SCRAP_SHARE := 0.05   # (1.119) a part shattered in a fight: Gus sells the pieces to the scrapyard for this share
+
+
+func scrap_value(id: String) -> int:
+	return int(round(float(part_def(id).get("cost", 0)) * SCRAP_SHARE))
 ## Passive repair (1.53): Gus tinkers in the quiet hours. Every part on your robots (and on the
 ## shelf) gets this share of its HP back each day, wrecks excepted. The bay upgrades (Bay > Job board)
 ## raise it a step at a time; each step puts the rent up.
@@ -3205,15 +3218,17 @@ const DAY_FULL := ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Satu
 ## early. It's due LOAN_WEEKS after you take it; after that what's owed grows LOAN_LATE a week, and
 ## from LOAN_SEIZE weeks late his people take a part a week (the best spare in storage, else a limb).
 ## loan = {owed, took (abs week), due (abs week), late (weeks late so far)}
-const LOAN_FEE := 0.4
+const LOAN_FEE := 1.0   # (1.119) you pay back double (was 40% more)
 const LOAN_MONTHS := 2.0
 const LOAN_WEEKS := 4
 const LOAN_LATE := 0.1
 const LOAN_SEIZE := 2
+const LOAN_REST := 4    # (1.119) weeks Varga won't lend again after a loan is paid off
 const LOAN_GARNISH := 0.5
 const GARNISH_CATS := ["fights", "prizes", "salvage", "sponsors"]
 const LENDER := "LUCKY VARGA"
 var loan := {}
+var loan_free_at := 0   # (1.119) the week Varga lends again after a loan is paid off
 
 
 func abs_week() -> int:
@@ -3230,6 +3245,8 @@ func loan_block() -> String:
 		return tr("Pay off the loan you've got first.")
 	if wins + losses < 1:
 		return tr("Varga lends to pilots, not to rookies. Fight once first.")
+	if abs_week() < loan_free_at:
+		return tr("Varga wants a breather. He lends again in %d weeks.") % (loan_free_at - abs_week())
 	return ""
 
 
@@ -3259,6 +3276,7 @@ func loan_pay_off(amount: int, taken: bool = false) -> void:
 	loan["owed"] = int(loan["owed"]) - amount
 	if int(loan["owed"]) <= 0:
 		loan = {}
+		loan_free_at = abs_week() + LOAN_REST
 		log_talk(LENDER, tr("Paid in full. Pleasure doing business. You know where I am."), "loan")
 		log_day(tr("The loan is paid off."), "good")
 
@@ -4942,7 +4960,11 @@ func record_result(won: bool, part_hp: Dictionary, destroyed: int, salvage_ids: 
 				wrecked.append(part_def(p["id"])["name"])
 				cards.append({"id": p["id"], "what": "wrecked", "health": 0.0})
 			else:
-				lost.append(tr("%s (%s)") % [part_def(p["id"])["name"], tr(SLOT_NAMES[slot])])
+				# (1.119) shattered: no rebuilding it, Gus sells the pieces to the scrapyard
+				var bits := scrap_value(str(p["id"]))
+				if bits > 0:
+					book("sales", bits)
+				lost.append(tr("%s (%s), sold for scrap: $%d") % [part_def(p["id"])["name"], tr(SLOT_NAMES[slot]), bits])
 				cards.append({"id": p["id"], "what": "lost", "health": 0.0})
 				inventory.erase(p)
 
@@ -5365,10 +5387,10 @@ func apply_pecking() -> void:
 		if g < 1:
 			continue
 		var base: Dictionary = PARTS[str(d.get("grade_base", id))]
+		var q := Makers.stat_k(str(d.get("maker", "")))   # (1.119) the maker's quality
 		var m := grade_mult(g)
-		d["gm"] = m
-		if g > 1:
-			d["hp"] = maxi(1, int(round(float(base["hp_base"]) * m)))
+		d["gm"] = m * q
+		d["hp"] = maxi(1, int(round(float(base.get("hp_base", d["hp"])) * m * q)))
 	for p in inventory:
 		if PARTS.has(p["id"]):
 			p["hp"] = float(part_def(p["id"])["hp"]) * float(ratios.get(p["uid"], 1.0))
@@ -5709,7 +5731,7 @@ func save_game(path: String = "") -> bool:
 		"owned_chips": owned_chips, "chips": chips, "circuit": circuit, "circuit_offers": circuit_offers,
 		"circuits_won": circuits_won, "pickup": pickup, "setups": setups, "custom_parts": custom_parts,
 		"year": year, "week": week, "day": day, "rank": rank, "event": {}, "leagues": leagues, "title_seeds": title_seeds, "trophies": trophies, "career_stats": career_stats,
-		"pecking_k": pecking_k(), "style": style, "style_locked": style_locked, "shop_stock": shop_stock, "chip_stock": chip_stock, "scout": scout, "wingmen": wingmen, "sending": sending, "pilot_look": pilot_look, "owned_controllers": owned_controllers, "spare_controllers": spare_controllers, "techs": techs, "tech_fit": tech_fit, "tips_seen": tips_seen, "tips_log": tips_log, "h2h": h2h, "rivals": rivals, "rel": rel, "nemeses": nemeses, "pending_talk": pending_talk, "inbox": inbox, "inbox_seen": inbox_seen, "social": social, "pilot_at": pilot_at, "places_been": places_been, "catalogues": catalogues, "pilot_used": pilot_used, "film_index": film_index, "film_pending": film_pending, "films_seen": films_seen, "contracts": contracts, "alerts_unseen": alerts_unseen, "day_log": day_log, "ledger": ledger, "bet_log": bet_log, "patched_week": patched_week, "deliveries": deliveries, "morning_seen": morning_seen, "loan": loan, "gus_alerts": gus_alerts, "tour": tour, "streak": streak, "pub_seen": pub_seen, "digs_left": digs_left, "dig_luck": dig_luck, "bills_note": bills_note, "fight_log": fight_log, "bets": bets, "world": world,
+		"pecking_k": pecking_k(), "style": style, "style_locked": style_locked, "shop_stock": shop_stock, "chip_stock": chip_stock, "scout": scout, "wingmen": wingmen, "sending": sending, "pilot_look": pilot_look, "owned_controllers": owned_controllers, "spare_controllers": spare_controllers, "techs": techs, "tech_fit": tech_fit, "tips_seen": tips_seen, "tips_log": tips_log, "h2h": h2h, "rivals": rivals, "rel": rel, "nemeses": nemeses, "pending_talk": pending_talk, "inbox": inbox, "inbox_seen": inbox_seen, "social": social, "pilot_at": pilot_at, "places_been": places_been, "catalogues": catalogues, "pilot_used": pilot_used, "film_index": film_index, "film_pending": film_pending, "films_seen": films_seen, "contracts": contracts, "alerts_unseen": alerts_unseen, "day_log": day_log, "ledger": ledger, "bet_log": bet_log, "patched_week": patched_week, "deliveries": deliveries, "morning_seen": morning_seen, "loan": loan, "loan_free_at": loan_free_at, "gus_alerts": gus_alerts, "tour": tour, "streak": streak, "pub_seen": pub_seen, "digs_left": digs_left, "dig_luck": dig_luck, "bills_note": bills_note, "fight_log": fight_log, "bets": bets, "world": world,
 	}
 	var f := FileAccess.open(slot_path(save_slot) if path == "" else path, FileAccess.WRITE)
 	if f == null:
@@ -5763,7 +5785,13 @@ func load_game(slot: int = -1, mine: bool = false) -> String:
 			inventory.append({"uid": int(p["uid"]), "id": str(p["id"]), "hp": float(p["hp"])})
 			if bool(p.get("dug", false)):
 				inventory[inventory.size() - 1]["dug"] = true
+			if bool(p.get("carry", false)):
+				inventory[inventory.size() - 1]["carry"] = true   # (1.119) still in your bag after a reload
 	var save_v := int(data.get("version", 1))
+	if save_v < 8:
+		# 1.119: makers' quality on HP (Makers.QUALITY); every part keeps its health ratio
+		for p in inventory:
+			p["hp"] = float(p["hp"]) * Makers.stat_k(str(part_def(str(p["id"])).get("maker", "")))
 	if save_v < 7:
 		# 1.41: parts got tougher (torso x3, head/arms/legs x2); every part keeps its health ratio
 		for p in inventory:
@@ -5838,6 +5866,7 @@ func load_game(slot: int = -1, mine: bool = false) -> String:
 	deliveries = data.get("deliveries", [])
 	morning_seen = str(data.get("morning_seen", ""))
 	loan = data.get("loan", {})
+	loan_free_at = int(data.get("loan_free_at", 0))
 	gus_alerts = data.get("gus_alerts", [])
 	inbox = []
 	for e in data.get("inbox", []):

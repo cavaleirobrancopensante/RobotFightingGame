@@ -4132,7 +4132,7 @@ func rip_off(f: Fighter, slot: String, overkill: float = 0.0) -> void:
 		if e.target == slot and e.foe == f:
 			aimed = true
 	var boom: float = (limb_trait(f, slot, "explosive") + f.gtraits.get("explosive", 0.0)) * float(p.get("gm", f.gpow)) * (1.5 if f.sets.has("hellfire") else 1.0)
-	var keep := 0.75 if aimed else 0.5
+	var keep := 0.6 if aimed else 0.35   # (1.119) parts shatter more often (was 0.75 / 0.5)
 	if overkill > 0.6:
 		keep *= 0.4
 	if boom > 0.0:

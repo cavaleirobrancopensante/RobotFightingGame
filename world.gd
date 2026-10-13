@@ -143,7 +143,7 @@ static func by_kind(kind: String) -> Array:
 				_kinds[k] = []
 			_kinds[k].append(id)
 		for k in _kinds:
-			_kinds[k].sort_custom(func(a, b): return GameData.PARTS[a]["cost"] < GameData.PARTS[b]["cost"])
+			_kinds[k].sort_custom(func(a, b): return part_cost(a) < part_cost(b))
 	return _kinds.get(kind, [])
 
 ## A robot worth about `budget` dollars of parts. The money is shared out over the slots, each
@@ -213,7 +213,7 @@ static func pick_for(rng: RandomNumberGenerator, kind: String, money: float, max
 		var opts: Array = []
 		for id in by_kind(kind):
 			var d: Dictionary = GameData.PARTS[id]
-			if int(d.get("grade", 0)) == g and d["shop"] and float(d["cost"]) <= money:
+			if int(d.get("grade", 0)) == g and d["shop"] and part_cost(id) <= money:
 				opts.append(id)
 		if opts.size() >= 2 or (g == 1 and not opts.is_empty()):
 			# a loyal pilot takes their maker's part when one fits the money (most of the time)
@@ -249,7 +249,7 @@ static func upgrade_loop(rng: RandomNumberGenerator, bot: Dictionary, left: floa
 		var cur_cost := part_cost(cur)
 		var opts: Array = []
 		for id in by_kind(GameData.SLOT_KIND[slot]):
-			var c: float = GameData.PARTS[id]["cost"]
+			var c: float = part_cost(id)
 			if c - cur_cost > left:
 				break
 			if c > cur_cost and int(GameData.PARTS[id].get("grade", 0)) <= max_g and GameData.PARTS[id]["shop"]:
@@ -310,10 +310,10 @@ static func cheapest(rng: RandomNumberGenerator, kind: String) -> String:
 	var all := by_kind(kind)
 	if all.is_empty():
 		return ""
-	var low: float = GameData.PARTS[all[0]]["cost"]
+	var low: float = part_cost(all[0])
 	var opts: Array = []
 	for id in all:
-		if GameData.PARTS[id]["cost"] > low:
+		if part_cost(id) > low:
 			break
 		opts.append(id)
 	return opts[rng.randi() % opts.size()]
@@ -322,17 +322,24 @@ static func cheapest(rng: RandomNumberGenerator, kind: String) -> String:
 static func best_under(kind: String, money: float, _slot: String, max_g: int = 5) -> String:
 	var best := ""
 	for id in by_kind(kind):
-		if GameData.PARTS[id]["cost"] > money:
+		if part_cost(id) > money:
 			break
 		if int(GameData.PARTS[id].get("grade", 0)) <= max_g:
 			best = id
 	return best
 
 
+## What a part is worth to the world's pilots: its price before 1.119's rises (PRICE_K and the maker's
+## price x), so their budgets and robots stay where they were while you pay the new prices.
 static func part_cost(id: String) -> float:
 	if id == "":
 		return 0.0
-	return float(GameData.part_def(id).get("cost", 0))
+	var d: Dictionary = GameData.part_def(id)
+	var c := float(d.get("cost", 0))
+	var m := str(d.get("maker", ""))
+	if m != "" and c > 0.0:
+		c /= GameData.PRICE_K * GameData.Makers.price_k(m)
+	return c
 
 
 static func bot_value(bot: Dictionary) -> float:
