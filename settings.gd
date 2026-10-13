@@ -2,6 +2,7 @@ extends Control
 
 # helper scripts, loaded by path so the game also runs without an editor scan
 const UI = preload("res://ui.gd")
+const GUI = preload("res://garage_ui.gd")
 ## Settings: screen shake, touch button size, CPU difficulty, delete save.
 
 const SIZE_NAMES := ["Small", "Medium", "Large"]
@@ -87,7 +88,7 @@ func _ready() -> void:
 	var head := HBoxContainer.new()
 	head.add_theme_constant_override("separation", 8)
 	col.add_child(head)
-	var title := UI.label("SETTINGS", 30, Color(1.0, 0.45, 0.2))
+	var title := GUI.heading("SETTINGS", 30)
 	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	head.add_child(title)
 	# language flags (also on the main menu, where everyone sees them first)
@@ -117,7 +118,7 @@ func _ready() -> void:
 	fastfight_button = UI.button("", _on_fast_fights, 19, Vector2(bw / UI.SCALE, 50))
 	smooth_button = UI.button("", _on_smooth, 19, Vector2(bw / UI.SCALE, 50))
 	errors_button = UI.button("", _on_errors, 19, Vector2(bw / UI.SCALE, 50))
-	reset_button = UI.button("", _on_reset, 19, Vector2(bw / UI.SCALE, 50))
+	reset_button = GUI.danger(UI.button("", _on_reset, 19, Vector2(bw / UI.SCALE, 50)))
 	edges_button = UI.button("", _on_edges, 19, Vector2(bw / UI.SCALE, 50))
 	# text size: smaller / bigger, the whole game follows (the screen rebuilds so you see it at once)
 	var text_row := HBoxContainer.new()
@@ -215,7 +216,7 @@ func _on_difficulty() -> void:
 	var col := VBoxContainer.new()
 	col.add_theme_constant_override("separation", 8)
 	center.add_child(col)
-	var t := UI.label("DIFFICULTY", 28, Color(1.0, 0.45, 0.2))
+	var t := GUI.heading("DIFFICULTY", 28)
 	t.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	col.add_child(t)
 	var note := UI.label("Fighting and money are separate: make the fights easy and the money hard, or the other way round.", 14, Color(0.7, 0.7, 0.78))
@@ -323,7 +324,7 @@ func _on_errors() -> void:
 	var top := HBoxContainer.new()
 	top.add_theme_constant_override("separation", 8)
 	col.add_child(top)
-	var title := UI.label("ERROR LOG", 24, Color(1.0, 0.45, 0.2))
+	var title := GUI.heading("ERROR LOG", 24)
 	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	top.add_child(title)
 	copy_button = UI.button("Copy all", _on_copy_errors, 18, Vector2(150, 48))

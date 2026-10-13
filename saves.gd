@@ -2,6 +2,7 @@ extends Control
 
 # helper scripts, loaded by path so the game also runs without an editor scan
 const UI = preload("res://ui.gd")
+const GUI = preload("res://garage_ui.gd")
 const PilotArt = preload("res://pilot_art.gd")
 const RobotPreview = preload("res://robot_preview.gd")
 const StoryScript = preload("res://story.gd")
@@ -38,7 +39,7 @@ func clear() -> void:
 
 
 func title(text: String) -> void:
-	var t := UI.label(text, 32, Color(1.0, 0.45, 0.2))
+	var t := GUI.heading(text, 32)
 	t.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	col.add_child(t)
 
@@ -69,11 +70,11 @@ func show_slots() -> void:
 		if info.is_empty():
 			text.add_child(UI.label(tr("Slot %d: empty") % slot, 20))
 		elif info.get("broken", false):
-			text.add_child(UI.label(tr("Slot %d: damaged file") % slot, 20, Color(1.0, 0.5, 0.4)))
+			text.add_child(UI.label(tr("Slot %d: damaged file") % slot, 20, GUI.RED))
 		else:
 			text.add_child(UI.label(tr("Slot %d: %s & %s") % [slot, info["pilot"], info["robot"]], 20))
 			var cups := tr(", %d cups") % info["cups"] if info["cups"] > 0 else ""
-			var al := UI.label(tr("AUTOSAVE: %s%s  ·  %s  ·  %s") % [info["progress"], cups, GameData.money_text(info["money"]), info["saved"]], 14, Color(0.72, 0.72, 0.78))
+			var al := UI.label(tr("AUTOSAVE: %s%s  ·  %s  ·  %s") % [info["progress"], cups, GameData.money_text(info["money"]), info["saved"]], 14, GUI.MUTED)
 			al.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART   # (1.113) wraps on a narrow screen or with big text
 			text.add_child(al)
 			var mi := GameData.slot_info(slot, true)
@@ -81,7 +82,7 @@ func show_slots() -> void:
 				var mrow := HBoxContainer.new()
 				mrow.add_theme_constant_override("separation", 8)
 				text.add_child(mrow)
-				var ml := UI.label(tr("YOUR SAVE: %s  ·  %s  ·  %s") % [mi["progress"], GameData.money_text(mi["money"]), mi["saved"]], 14, Color(0.55, 1.0, 0.65))
+				var ml := UI.label(tr("YOUR SAVE: %s  ·  %s  ·  %s") % [mi["progress"], GameData.money_text(mi["money"]), mi["saved"]], 14, GUI.GREEN)
 				ml.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 				ml.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 				mrow.add_child(ml)
@@ -91,12 +92,12 @@ func show_slots() -> void:
 			if info.is_empty():
 				row.add_child(UI.button("Use", _on_pick.bind(slot), 18, Vector2(150, 52)))
 			else:
-				row.add_child(UI.button("Sure? Tap again" if waiting == "overwrite" else "Overwrite", _on_overwrite.bind(slot), 18, Vector2(190, 52)))
+				row.add_child(GUI.danger(UI.button("Sure? Tap again" if waiting == "overwrite" else "Overwrite", _on_overwrite.bind(slot), 18, Vector2(190, 52))))
 		else:
 			var load_b := UI.button("Load latest", _on_load.bind(slot), 18, Vector2(150, 52))
 			load_b.disabled = info.is_empty() or info.get("broken", false)
 			row.add_child(load_b)
-			var del := UI.button("Sure? Tap again" if waiting == "delete" else "Delete", _on_delete.bind(slot), 18, Vector2(190, 52))
+			var del := GUI.danger(UI.button("Sure? Tap again" if waiting == "delete" else "Delete", _on_delete.bind(slot), 18, Vector2(190, 52)))
 			del.disabled = info.is_empty()
 			row.add_child(del)
 	col.add_child(UI.button("Back", _on_back, 20, Vector2(0, 52)))
@@ -134,7 +135,7 @@ func show_names() -> void:
 	diff_button = UI.button("", _on_open_difficulty, 18, Vector2(330, 52))
 	row.add_child(diff_button)
 	update_diff_button()
-	var start := UI.button("START", _on_start, 24, Vector2(0, 52))
+	var start := GUI.primary(UI.button("START", _on_start, 24, Vector2(0, 52)))
 	start.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	row.add_child(start)
 
@@ -167,13 +168,13 @@ func _on_open_difficulty() -> void:
 	box.add_theme_constant_override("separation", 8)
 	box.custom_minimum_size = Vector2(560, 0)
 	center.add_child(box)
-	var t := UI.label(tr("DIFFICULTY"), 28, Color(1.0, 0.45, 0.2))
+	var t := GUI.heading(tr("DIFFICULTY"), 28)
 	t.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	box.add_child(t)
 	diff_box = VBoxContainer.new()
 	diff_box.add_theme_constant_override("separation", 8)
 	box.add_child(diff_box)
-	var note := UI.label(tr("Pecking Order: how much tougher and harder hitting each part grade is. Underdog lets a good pilot punch above their grade; Brutal means a robot two grades up flattens you in seconds.") + "\n" + tr("You can change all of this later in Settings > Difficulty."), 13, Color(0.65, 0.65, 0.72))
+	var note := UI.label(tr("Pecking Order: how much tougher and harder hitting each part grade is. Underdog lets a good pilot punch above their grade; Brutal means a robot two grades up flattens you in seconds.") + "\n" + tr("You can change all of this later in Settings > Difficulty."), 13, GUI.MUTED)
 	note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	box.add_child(note)
 	box.add_child(UI.button("Done", _on_close_difficulty, 19, Vector2(560, 52)))
@@ -392,7 +393,7 @@ func build_robot_editor() -> void:
 		var kind: String = r[1]
 		choice_row(rows, r[0], GameData.part_def(GameData.starter_id(kind))["name"], _on_robot_step.bind(kind, -1), _on_robot_step.bind(kind, 1))
 	choice_row(rows, "Paint", tr(GameData.PAINTS[GameData.paint]["name"]), _on_paint_step.bind(-1), _on_paint_step.bind(1), "")
-	var note := UI.label("All junk to start with. Every choice is just as weak. Better parts come from the scrapyard and the shop.", 12, Color(0.65, 0.65, 0.72))
+	var note := UI.label("All junk to start with. Every choice is just as weak. Better parts come from the scrapyard and the shop.", 12, GUI.MUTED)
 	note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	rows.add_child(note)
 	robot_box.add_child(UI.button("Random robot", _on_random_build, 16, Vector2(0, 40)))
@@ -463,7 +464,7 @@ func _on_load(slot: int, mine: bool = false) -> void:
 	cover.set_anchors_preset(Control.PRESET_FULL_RECT)
 	cover.mouse_filter = Control.MOUSE_FILTER_STOP
 	add_child(cover)
-	var title := UI.label(tr("LOADING..."), 30, Color(1.0, 0.45, 0.2))
+	var title := GUI.heading(tr("LOADING..."), 30)
 	title.anchor_left = 0.0
 	title.anchor_right = 1.0
 	title.anchor_top = 0.42

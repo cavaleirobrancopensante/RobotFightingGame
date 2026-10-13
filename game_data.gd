@@ -3,7 +3,7 @@ const PlayLog = preload("res://playlog.gd")   # (1.87) the playtest log
 
 # helper scripts, loaded by path so the game also runs without an editor scan
 ## The game's version, shown on the main menu. Bump it with every change (1.1, 1.2, ...).
-const VERSION := "1.120"
+const VERSION := "1.121"
 const Arena = preload("res://arena.gd")
 const I18n = preload("res://i18n.gd")
 const Catalog = preload("res://catalog.gd")
@@ -617,7 +617,7 @@ func _ready() -> void:
 	set_language(str(settings.get("lang", "en")))
 	apply_performance()
 	migrate_old_save()
-	get_tree().root.theme = UI.make_theme()
+	get_tree().root.theme = preload("res://garage_ui.gd").theme()   # (1.121) the garage look everywhere: Public Sans, Chakra Petch buttons
 	# sensible defaults so any scene can run on its own. (1.115) Starting the game normally, the boot
 	# screen builds the world on a worker thread under a LOADING bar instead (boot.gd).
 	if not booting():

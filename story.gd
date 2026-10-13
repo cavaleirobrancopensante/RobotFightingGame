@@ -178,7 +178,7 @@ func _ready() -> void:
 
 	var top := HBoxContainer.new()
 	col.add_child(top)
-	place_label = UI.label(scene["place"], 26, Color(1.0, 0.45, 0.2))
+	place_label = preload("res://garage_ui.gd").heading(scene["place"], 26)
 	place_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	top.add_child(place_label)
 	skip_button = UI.button("Skip", _finish, 22, Vector2(120, 50))

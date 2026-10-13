@@ -60,6 +60,12 @@ static func _font(key: String) -> Font:
 			f = _file("res://fonts/VT323-Regular.ttf")
 		"stencil":
 			f = _file("res://fonts/SairaStencilOne-Regular.ttf")
+		"heading":
+			# (1.121) headings: Chakra Petch Bold, letters spaced a touch
+			var hv := FontVariation.new()
+			hv.base_font = _file("res://fonts/ChakraPetch-Bold.ttf")
+			hv.spacing_glyph = 1
+			f = hv
 	if f == null:
 		f = ThemeDB.fallback_font
 	_fonts[key] = f
@@ -72,6 +78,54 @@ static func head() -> Font: return _font("head")
 static func headb() -> Font: return _font("headb")
 static func num() -> Font: return _font("num")
 static func stencil() -> Font: return _font("stencil")
+static func heading_font() -> Font: return _font("heading")
+
+const HEAD := Color(0.84, 0.85, 0.9)   # (1.121) the one heading colour (yellow is for things to do)
+
+
+## (1.121) The one heading style: Chakra Petch caps in light grey.
+static func heading(s: String, size: int = 22) -> Label:
+	var l := UI.label(TranslationServer.translate(s).to_upper(), size, HEAD)
+	l.add_theme_font_override("font", heading_font())
+	return l
+
+
+## (1.121) A button that destroys or costs (Delete, Forfeit, Sell several): red edge, red words.
+static func danger(b: Button) -> Button:
+	var n := box(BTN, 10, 6)
+	n.border_color = RED.darkened(0.25)
+	n.set_border_width_all(2)
+	n.content_margin_left = 12
+	n.content_margin_right = 12
+	var h := n.duplicate()
+	h.bg_color = BTN.lightened(0.06)
+	h.border_color = RED
+	var d := n.duplicate()
+	d.bg_color = Color(0.133, 0.133, 0.165)
+	d.border_color = Color(0.3, 0.19, 0.19)
+	for st in [["normal", n], ["hover", h], ["pressed", h], ["hover_pressed", h], ["disabled", d]]:
+		b.add_theme_stylebox_override(st[0], st[1])
+	b.add_theme_color_override("font_color", RED)
+	b.add_theme_color_override("font_hover_color", RED.lightened(0.2))
+	b.add_theme_color_override("font_pressed_color", RED.lightened(0.2))
+	return b
+
+
+## (1.121) The one main action on a screen: yellow with dark words.
+static func primary(b: Button) -> Button:
+	var n := box(YELLOW, 10, 6)
+	n.content_margin_left = 12
+	n.content_margin_right = 12
+	var h := n.duplicate()
+	h.bg_color = YELLOW.lightened(0.12)
+	var d := n.duplicate()
+	d.bg_color = YELLOW.darkened(0.5)
+	for st in [["normal", n], ["hover", h], ["pressed", h], ["hover_pressed", h], ["disabled", d]]:
+		b.add_theme_stylebox_override(st[0], st[1])
+	for c in ["font_color", "font_hover_color", "font_pressed_color", "font_hover_pressed_color"]:
+		b.add_theme_color_override(c, Color(0.08, 0.08, 0.1))
+	b.add_theme_font_override("font", headb())
+	return b
 
 
 static func box(color: Color, radius: float = 10.0, margin: float = 6.0) -> StyleBoxFlat:
