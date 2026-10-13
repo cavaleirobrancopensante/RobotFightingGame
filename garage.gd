@@ -4697,7 +4697,7 @@ func open_popup(title: String) -> VBoxContainer:
 	panel.add_child(outer)
 	var head := HBoxContainer.new()
 	outer.add_child(head)
-	var t := GUI.text(tr(title), 22, GUI.YELLOW, "headb")
+	var t := GUI.heading(tr(title), 22)   # (1.124) the one heading style
 	t.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	head.add_child(t)
 	head.add_child(UI.button("Close", close_popup, 16, Vector2(90, 44)))
@@ -6783,6 +6783,45 @@ var plan_open := false
 
 
 ## The big button: the day plan (in the evening with your fight booked, the Bell Check instead).
+## (1.124) A section that opens on a tap: heading + one-line summary, the rest folded under it.
+func fold(parent: Control, title: String, summary: String, open: bool = false) -> VBoxContainer:
+	var b := Button.new()
+	b.flat = true
+	b.focus_mode = Control.FOCUS_NONE
+	b.alignment = HORIZONTAL_ALIGNMENT_LEFT
+	b.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	b.add_theme_font_override("font", GUI.heading_font())
+	b.add_theme_font_size_override("font_size", UI.tsz(15))
+	b.add_theme_color_override("font_color", GUI.HEAD)
+	b.add_theme_color_override("font_hover_color", Color.WHITE)
+	parent.add_child(b)
+	var body := VBoxContainer.new()
+	body.add_theme_constant_override("separation", 6)
+	body.visible = open
+	parent.add_child(body)
+	var label := func(): b.text = ("▾ " if body.visible else "▸ ") + TranslationServer.translate(title).to_upper() + ("" if summary == "" else "  ·  " + summary)
+	label.call()
+	b.pressed.connect(func(): body.visible = not body.visible; label.call(); Sfx.play("click", 0.05))
+	return body
+
+
+## (1.124) One terse line in a window: a small heading, the value, and maybe a button.
+func info_line(parent: Control, head: String, text: String, c: Color, btn: String = "", cb: Callable = Callable(), enabled: bool = true) -> Button:
+	var r := action_bar(parent)
+	var h := GUI.text(TranslationServer.translate(head).to_upper(), 12, GUI.MUTED, "headb")
+	h.custom_minimum_size = Vector2(UI.tsz(12) * 8.5, 0)
+	h.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	r.add_child(h)
+	var t := GUI.text(text, 15, c)
+	t.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	t.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	t.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	r.add_child(t)
+	if btn != "":
+		return row_button(r, btn, cb, enabled, 160)
+	return null
+
+
 func open_day_plan() -> void:
 	var evening := GameData.phase == 2
 	if evening and not GameData.can_pass_day():
@@ -6797,7 +6836,7 @@ func open_day_plan() -> void:
 	var lead := tr("The bay puts in %d hours, then it's %s.") % [int(GameData.SHIFT_HOURS), tr(["the afternoon", "the evening", "tomorrow morning"][GameData.phase])]
 	if evening:
 		lead = tr("The day's done. The bay only works tonight if you pay for overtime.")
-	col.add_child(GUI.text(lead, 14, GUI.CYAN))
+	col.add_child(GUI.text(lead, 14, GUI.MUTED))
 	GameData.sync_swaps()
 	if GameData.jobs.is_empty():
 		col.add_child(GUI.text(tr("Nothing on the job board: the bay has nothing to do."), 14, GUI.MUTED))
@@ -6841,13 +6880,13 @@ func open_day_plan() -> void:
 		if o.is_empty():
 			var n := GameData.patrons_today().size()
 			var trow := action_bar(col)
-			var tl := GUI.text(tr("TONIGHT: nothing booked. %d pilots at the Rusty Bolt will take you on.") % n, 15, GUI.YELLOW, "headb")
+			var tl := GUI.text(tr("TONIGHT: nothing booked. %d pilots at the Rusty Bolt will take you on.") % n, 15, GUI.HEAD, "headb")
 			tl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 			tl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 			trow.add_child(tl)
 			row_button(trow, tr("Find a fight ›"), func(): close_popup(); go_to("Pub", "bar"), true, 150)
 		else:
-			col.add_child(GUI.text(tr("TONIGHT: %s · %s · purse $%d") % [GameData.fight_title(), str(o.get("name", "?")), GameData.current_reward()], 15, GUI.YELLOW, "headb"))
+			col.add_child(GUI.text(tr("TONIGHT: %s · %s · purse $%d") % [GameData.fight_title(), str(o.get("name", "?")), GameData.current_reward()], 15, GUI.HEAD, "headb"))
 			var now := bell_readiness(0.0)
 			var after := bell_readiness(GameData.SHIFT_HOURS)
 			var bell_r := bell_readiness()
@@ -6860,70 +6899,36 @@ func open_day_plan() -> void:
 		var bits: Array = []
 		for e in day_events(tw, tom):
 			bits.append(str(e.get("title", "")))
-		col.add_child(GUI.text(tr("TOMORROW: %s") % (", ".join(bits) if not bits.is_empty() else tr("nothing on")), 15, GUI.YELLOW, "headb"))
-	# 3. before you go: what you can still do, done right here
+		col.add_child(GUI.text(tr("TOMORROW: %s") % (", ".join(bits) if not bits.is_empty() else tr("nothing on")), 15, GUI.HEAD, "headb"))
+	# 3. before you go: what you can still do, done right here (1.124: one terse line each)
 	var todo := VBoxContainer.new()
 	todo.add_theme_constant_override("separation", 6)
 	var cost := GameData.repair_all_cost()
 	if cost > 0:
-		var r := action_bar(todo)
-		var rt := GUI.text(tr("The robot's damaged: fix it all for $%d, about %s of work.") % [cost, GameData.hours_text(GameData.repair_all_hours())], 14, GUI.TEXT)
-		rt.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		rt.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		r.add_child(rt)
-		GUI.mark_new(row_button(r, tr("Repair all $%d") % cost, _plan_do.bind("repair"), GameData.can_repair(cost), 170), GameData.can_repair(cost))
+		GUI.mark_new(info_line(todo, tr("Repairs"), tr("$%d, %s of work") % [cost, GameData.hours_text(GameData.repair_all_hours())], GUI.TEXT,
+				tr("Repair all $%d") % cost, _plan_do.bind("repair"), GameData.can_repair(cost)), GameData.can_repair(cost))
 	if not GameData.jobs.is_empty() and not GameData.overtime:
-		var r2 := action_bar(todo)
-		var ot := GUI.text(tr("Overtime: the crew works through tonight, 8 more hours for every pair of hands."), 14, GUI.TEXT)
-		ot.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		ot.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		r2.add_child(ot)
-		row_button(r2, tr("Overtime $%d") % GameData.overtime_cost(), _plan_do.bind("overtime"), GameData.money >= GameData.overtime_cost(), 170)
+		info_line(todo, tr("Overtime"), tr("8 more hours tonight"), GUI.TEXT, tr("Overtime $%d") % GameData.overtime_cost(), _plan_do.bind("overtime"), GameData.money >= GameData.overtime_cost())
 	if GameData.digs_left > 0:
-		var r3 := action_bar(todo)
-		var dt := GUI.text(tr("Today's dig at the scrapyard is still there. Chance of finding something: %d%%. Leave it and tomorrow it's %d%%.") % [roundi(GameData.dig_luck * 100), roundi(minf(GameData.DIG_LUCK_MAX, GameData.dig_luck + GameData.DIG_LUCK_STEP) * 100)], 14, GUI.TEXT)
-		dt.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		dt.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		r3.add_child(dt)
-		GUI.mark_new(row_button(r3, tr("Dig now") + dig_tag(), _plan_do.bind("dig"), true, 200), true)
+		GUI.mark_new(info_line(todo, tr("Dig"), tr("%d%% today, %d%% tomorrow") % [roundi(GameData.dig_luck * 100), roundi(minf(GameData.DIG_LUCK_MAX, GameData.dig_luck + GameData.DIG_LUCK_STEP) * 100)], GUI.TEXT,
+				tr("Dig now") + dig_tag(), _plan_do.bind("dig")), true)
 	var unread := GameData.inbox.size() - GameData.inbox_seen
 	if unread > 0:
-		var r4 := action_bar(todo)
-		var ut := GUI.text(tr("%d messages you haven't read.") % unread, 14, GUI.TEXT)
-		ut.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		r4.add_child(ut)
-		row_button(r4, tr("Read them ›"), func(): close_popup(); go_to("Feed", "all"), true, 170)
+		info_line(todo, tr("Messages"), tr("%d unread") % unread, GUI.TEXT, tr("Read them ›"), func(): close_popup(); go_to("Feed", "all"))
 	var offers_n: int = GameData.Contracts.st()["offers"].size()
 	if offers_n > 0:
-		var r6 := action_bar(todo)
-		var ot := GUI.text(tr("Sponsor offers waiting: %d") % offers_n, 14, GUI.TEXT)
-		ot.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		r6.add_child(ot)
-		row_button(r6, tr("Contracts ›"), func(): close_popup(); go_to("Season", "deals"), true, 170)
+		info_line(todo, tr("Offers"), tr("%d waiting") % offers_n, GUI.TEXT, tr("Deals ›"), func(): close_popup(); go_to("Season", "deals"))
 	if not GameData.Social.drafts().is_empty():
-		var r7 := action_bar(todo)
-		var pt := GUI.text(tr("The fans are waiting for your post about the fight."), 14, GUI.TEXT)
-		pt.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		pt.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		r7.add_child(pt)
-		row_button(r7, tr("Post ›"), func(): close_popup(); go_to("Feed", "home"), true, 170)
+		info_line(todo, tr("BotMedia"), tr("Your fight post is waiting"), GUI.TEXT, tr("Post ›"), func(): close_popup(); go_to("Feed", "home"))
 	if not GameData.league_night().is_empty() and not evening:
-		var r5 := action_bar(todo)
-		var bt := GUI.text(tr("League night: the bookies close when the bell rings."), 14, GUI.TEXT)
-		bt.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		r5.add_child(bt)
-		row_button(r5, tr("Bets ›"), func(): close_popup(); go_to("Pub", "bets"), true, 170)
+		info_line(todo, tr("Bets"), tr("Close at the bell"), GUI.TEXT, tr("Bets ›"), func(): close_popup(); go_to("Pub", "bets"))
 	if GameData.day_index() == 6:
-		var r6 := action_bar(todo)
-		var st := GUI.text(tr("The dealer restocks tomorrow: last chance for this week's stock."), 14, GUI.TEXT)
-		st.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		r6.add_child(st)
-		row_button(r6, tr("Dealer ›"), func(): close_popup(); go_to("Parts", "dealer"), GameData.unlocked("shop"), 170)
+		info_line(todo, tr("Dealer"), tr("Restocks tomorrow"), GUI.TEXT, tr("Dealer ›"), func(): close_popup(); go_to("Parts", "dealer"), GameData.unlocked("shop"))
 	if todo.get_child_count() > 0:
 		col.add_child(GUI.HazardStrip.new())
-		col.add_child(GUI.text(tr("BEFORE THE TIME GOES"), 15, GUI.YELLOW, "headb"))
+		col.add_child(GUI.head_row(tr("BEFORE THE TIME GOES"), "", 15))
 		col.add_child(todo)
-	# 4. coming up: the next three days in one line each
+	# 4. coming up: the next three days, folded
 	var soon: Array = []
 	for k in range(1, 4):
 		var di := GameData.day_index() + k
@@ -6937,31 +6942,22 @@ func open_day_plan() -> void:
 			bits2.append(t)
 		if not bits2.is_empty():
 			soon.append(tr(DAY_NAMES[d]) + ": " + ", ".join(bits2))
+	var nt := next_thing()
+	col.add_child(GUI.HazardStrip.new())
+	if not nt.is_empty() and not (int(nt["w"]) == GameData.week and int(nt["d"]) == GameData.day_index() + 1 and evening):
+		# (1.117) one tap to whatever comes next; the bay works the days in between
+		GUI.mark_new(info_line(col, tr("Next"), "%s, %s" % [tr(DAY_FULL_UP[int(nt["d"])]).capitalize(), str(nt["what"])], GUI.CYAN,
+				tr("Skip to it ▸"), func(): _on_go_to_day(int(nt["d"]), int(nt["w"]), true)), false)
 	if not soon.is_empty():
-		col.add_child(GUI.HazardStrip.new())
-		col.add_child(GUI.text(tr("COMING UP"), 15, GUI.YELLOW, "headb"))
+		var body := fold(col, tr("COMING UP"), tr("%d days") % soon.size())
 		for line in soon:
 			var sl := GUI.text(str(line), 13, GUI.TEXT)
 			sl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-			col.add_child(sl)
-	var nt := next_thing()
-	if not nt.is_empty() and not (int(nt["w"]) == GameData.week and int(nt["d"]) == GameData.day_index() + 1 and evening):
-		# (1.117) one tap to whatever comes next; the bay works the days in between
-		col.add_child(GUI.HazardStrip.new())
-		var r8 := action_bar(col)
-		var nl := GUI.text(tr("NEXT: %s, %s.") % [tr(DAY_FULL_UP[int(nt["d"])]), str(nt["what"])], 15, GUI.YELLOW, "headb")
-		nl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		nl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		r8.add_child(nl)
-		GUI.mark_new(row_button(r8, tr("Skip to it ▸"), func(): _on_go_to_day(int(nt["d"]), int(nt["w"]), true), true, 190), false)
-	if GameData.can_pass_day():
-		# days or weeks ahead: pick the day on the calendar
-		var r7 := action_bar(col)
-		var sk := GUI.text(tr("Skip days or weeks: tap a day on the calendar."), 13, GUI.MUTED)
-		sk.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		sk.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		r7.add_child(sk)
-		row_button(r7, tr("Calendar ›"), func(): close_popup(); go_to("Season", "calendar"), true, 170)
+			body.add_child(sl)
+		if GameData.can_pass_day():
+			# days or weeks ahead: pick the day on the calendar
+			var r7 := flow_bar(body)
+			row_button(r7, tr("Calendar ›"), func(): close_popup(); go_to("Season", "calendar"), true, 170)
 	# the decision
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 10)
@@ -8169,40 +8165,30 @@ func open_morning_card() -> void:
 	GameData.morning_seen = GameData.day_key(GameData.year, GameData.week, GameData.day_index())
 	var col := open_popup(tr("%s %s") % [tr(DAY_FULL_UP[GameData.day_index()]), tr(GameData.PHASE_NAMES[GameData.phase])])
 	col.custom_minimum_size = Vector2(minf(720.0, get_viewport_rect().size.x - 80.0), 0)
+	# (1.124) one terse line per thing: heading, value, a button where there's somewhere to go
 	var line := func(head: String, text: String, c: Color, btn: String = "", cb: Callable = Callable()) -> void:
-		var r := action_bar(col)
-		var v := VBoxContainer.new()
-		v.add_theme_constant_override("separation", 0)
-		v.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		r.add_child(v)
-		v.add_child(GUI.text(head, 12, GUI.MUTED, "headb"))
-		var t := GUI.text(text, 15, c)
-		t.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		v.add_child(t)
-		if btn != "":
-			row_button(r, btn, func(): close_popup(); cb.call(), true, 160)
+		info_line(col, head, text, c, btn, func(): close_popup(); cb.call())
 	# money: cash now, and after the next bill
 	var wtb := GameData.weeks_to_bills()
 	var days := (wtb - 1) * 7 + (6 - GameData.day_index())
 	var bill := GameData.living_cost()
 	var after := GameData.money - bill
 	var when := tr("today") if days == 0 else (tr("on Sunday") if days < 7 else tr("in %d days") % days)
-	var mt := tr("%s now. The next bill, $%d, is %s, leaving %s.") % [GameData.money_text(GameData.money), bill, when, GameData.money_text(after)]
-	line.call(tr("MONEY"), mt, GUI.GREEN if after >= 0 else GUI.RED, tr("Money ›"), func(): _on_tab("Season"); season_view = "money"; refresh())
+	line.call(tr("MONEY"), tr("%s · bill $%d %s · leaves %s") % [GameData.money_text(GameData.money), bill, when, GameData.money_text(after)],
+			GUI.GREEN if after >= 0 else GUI.RED, tr("Money ›"), func(): _on_tab("Season"); season_view = "money"; refresh())
 	if not GameData.loan.is_empty():
 		var due := int(GameData.loan.get("due", 0)) - GameData.abs_week()
-		line.call(tr("LOAN"), tr("You owe %s %s. %s") % [GameData.LENDER, GameData.money_text(int(GameData.loan.get("owed", 0))),
-				tr("It's late.") if due < 0 else (tr("Due in %d weeks.") % due)], GUI.RED if due < 1 else GUI.AMBER)
+		line.call(tr("LOAN"), tr("%s owed · %s") % [GameData.money_text(int(GameData.loan.get("owed", 0))), tr("late") if due < 0 else (tr("due in %d weeks") % due)], GUI.RED if due < 1 else GUI.AMBER)
 	# the robot: at tonight's bell, or now and after today's work
 	var o := GameData.current_opponent()
 	if not o.is_empty() and GameData.fight_mode() != "open":
 		var br := bell_readiness()
-		line.call(tr("TONIGHT"), tr("%s against %s. The robot will be %d%% ready at the bell.") % [GameData.fight_title(), str(o.get("name", "?")), roundi(br * 100)],
+		line.call(tr("TONIGHT"), tr("vs %s · %d%% ready at the bell") % [str(o.get("name", "?")), roundi(br * 100)],
 				GUI.GREEN if br >= 0.9 else (GUI.AMBER if br >= 0.6 else GUI.RED), tr("Bell Check ›"), open_fight_popup)
 	else:
 		var now := bell_readiness(0.0)
 		var later := bell_readiness(GameData.hours_to_bell())
-		line.call(tr("THE ROBOT"), tr("%d%% now, %d%% after today's work.") % [roundi(now * 100), roundi(later * 100)],
+		line.call(tr("THE ROBOT"), tr("%d%% now · %d%% tonight") % [roundi(now * 100), roundi(later * 100)],
 				GUI.GREEN if later >= 0.9 else (GUI.AMBER if later >= 0.6 else GUI.RED))
 	# the job board
 	GameData.sync_swaps()
@@ -8212,23 +8198,23 @@ func open_morning_card() -> void:
 		left += float(j["total"]) - float(j["done"])
 		if j["kind"] != "repair" and GameData.is_carried(int(j["uid"])):
 			bag += 1
-	var jt := tr("Nothing on the board.") if GameData.jobs.is_empty() else tr("%d jobs, %s of work left.") % [GameData.jobs.size(), GameData.hours_text(left)]
+	var jt := tr("empty") if GameData.jobs.is_empty() else tr("%d jobs · %s left") % [GameData.jobs.size(), GameData.hours_text(left)]
 	if bag > 0:
-		jt += " " + tr("%d parts in your bag wait till you're back.") % bag
+		jt += " · " + tr("%d in your bag") % bag
 	line.call(tr("THE JOB BOARD"), jt, GUI.TEXT, tr("Job board ›"), func(): go_to("Bay", "jobs"))
 	var offers_n: int = GameData.Contracts.st()["offers"].size()
 	if offers_n > 0:
-		line.call(tr("OFFERS"), tr("Sponsor offers waiting: %d") % offers_n, GUI.YELLOW, tr("Deals ›"), func(): go_to("Season", "deals"))
+		line.call(tr("OFFERS"), tr("%d waiting") % offers_n, GUI.YELLOW, tr("Deals ›"), func(): go_to("Season", "deals"))
 	var unread := GameData.inbox.size() - GameData.inbox_seen
 	if unread > 0:
-		line.call(tr("MESSAGES"), tr("%d messages you haven't read.") % unread, GUI.TEXT, tr("Read them ›"), func(): go_to("Feed", "all"))
+		line.call(tr("MESSAGES"), tr("%d unread") % unread, GUI.TEXT, tr("Read them ›"), func(): go_to("Feed", "all"))
 	if GameData.digs_left > 0:
-		line.call(tr("THE SCRAPYARD"), tr("Today's dig: %d%% chance of finding something.") % roundi(GameData.dig_luck * 100), GUI.TEXT)
+		line.call(tr("THE SCRAPYARD"), tr("dig %d%%") % roundi(GameData.dig_luck * 100), GUI.TEXT)
 	if not GameData.deliveries.is_empty():
-		line.call(tr("DELIVERY"), tr("%d parts arrive tomorrow morning.") % GameData.deliveries.size(), GUI.TEXT)
+		line.call(tr("DELIVERY"), tr("%d parts tomorrow") % GameData.deliveries.size(), GUI.TEXT)
 	var nt := next_thing()
 	if not nt.is_empty():
-		line.call(tr("NEXT"), tr("%s: %s.") % [tr(DAY_FULL_UP[int(nt["d"])]).capitalize(), str(nt["what"])], GUI.CYAN)
+		line.call(tr("NEXT"), "%s, %s" % [tr(DAY_FULL_UP[int(nt["d"])]).capitalize(), str(nt["what"])], GUI.CYAN)
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 10)
 	popup_footer.add_child(row)
@@ -9469,20 +9455,25 @@ func _on_music_step(step: int) -> void:
 # ---------------------------------------------------------------- (1.84) the loan, on the Money page
 
 func loan_box() -> void:
-	section(tr("LUCKY VARGA · LOANS DOWN AT THE DOCKS"))
+	# (1.124) folded unless you owe him: one line on the Money page until you need it
 	var L: Dictionary = GameData.loan
+	var box: Control = list_box
+	if L.is_empty():
+		box = fold(list_box, tr("LUCKY VARGA · LOANS DOWN AT THE DOCKS"), tr("up to $%d") % GameData.loan_max())
+	else:
+		section(tr("LUCKY VARGA · LOANS DOWN AT THE DOCKS"))
 	if not L.is_empty():
 		var weeks_left := int(L["due"]) - GameData.abs_week()
 		var owed := int(L["owed"])
 		var ol := GUI.readout(tr("OWED %s") % GameData.money_text(owed), 26, GUI.RED)
-		list_box.add_child(ol)
+		box.add_child(ol)
 		var dl := GUI.text(tr("Due in %d weeks.") % weeks_left if weeks_left > 0 else (tr("Due this week.") if weeks_left == 0 else tr("LATE %d weeks: it grows by a tenth every week, and his people take parts.") % int(L["late"])), 14, GUI.AMBER if weeks_left >= 0 else GUI.RED)
 		dl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		list_box.add_child(dl)
+		box.add_child(dl)
 		var gl := GUI.text(tr("Half of every purse, prize and sponsor fee goes to him until it's paid."), 13, GUI.MUTED)
 		gl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		list_box.add_child(gl)
-		var bar := flow_bar()
+		box.add_child(gl)
+		var bar := flow_bar(box)
 		row_button(bar, tr("Pay it all $%d") % owed, func(): _on_loan_pay(owed), GameData.money >= owed, 170)
 		var half := maxi(10, int(owed / 20) * 10)
 		row_button(bar, tr("Pay $%d") % half, func(): _on_loan_pay(half), GameData.money >= half and half < owed, 120)
@@ -9490,12 +9481,12 @@ func loan_box() -> void:
 	var mx := GameData.loan_max()
 	var tl := GUI.text(tr("Borrow up to $%d. You pay back %d%% more within %d weeks, and half of every purse goes to him first.") % [mx, int(GameData.LOAN_FEE * 100), GameData.LOAN_WEEKS], 14, GUI.TEXT)
 	tl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	list_box.add_child(tl)
+	box.add_child(tl)
 	var why := GameData.loan_block()
 	if why != "":
-		list_box.add_child(GUI.text(why, 13, GUI.MUTED))
+		box.add_child(GUI.text(why, 13, GUI.MUTED))
 		return
-	var bar2 := flow_bar()
+	var bar2 := flow_bar(box)
 	for share in [0.25, 0.5, 1.0]:
 		var amt := int(mx * share / 10.0) * 10
 		if amt <= 0:
