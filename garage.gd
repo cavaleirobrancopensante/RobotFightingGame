@@ -1969,10 +1969,52 @@ func row_button(row: Control, text: String, cb: Callable, enabled: bool = true, 
 	return b
 
 
-func section(text: String, parent: Control = null) -> void:
-	var l := UI.label(text, 15, Color(1.0, 0.8, 0.4))
-	l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	(parent if parent else list_box).add_child(l)
+## (1.123) A section line, by the consistency rules: "HEADING. explanation" / "HEADING: explanation"
+## becomes a heading (GUI.head_row) with the explanation behind a ? when it's long, or a grey line
+## under it when it's short or carries numbers; an all-caps line is a heading; anything else is a
+## grey note. Yellow is never used for words here (yellow means "do this").
+func section(text: String, parent: Control = null, help: String = "") -> void:
+	var box: Control = parent if parent else list_box
+	var head := ""
+	var rest := ""
+	var cut := -1
+	for sep in [". ", ": "]:
+		var k := text.find(sep)
+		if k > 1 and (cut < 0 or k < cut):
+			cut = k
+	if cut > 1 and cut <= 48:
+		var h := text.substr(0, cut)
+		if h == h.to_upper() and h.to_lower() != h:
+			head = h
+			rest = text.substr(cut + 2).strip_edges()
+	elif text == text.to_upper() and text.to_lower() != text and text.length() <= 60:
+		head = text.trim_suffix(".")
+	if head == "":
+		var l := GUI.text(text, 15, GUI.MUTED)
+		l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		box.add_child(l)
+		if help != "":
+			l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			var row := HBoxContainer.new()
+			row.add_theme_constant_override("separation", 10)
+			box.remove_child(l)
+			row.add_child(l)
+			row.add_child(GUI.HelpButton.new("", help))
+			box.add_child(row)
+		return
+	var keep := rest != "" and (rest.length() <= 70 or _has_digit(rest))
+	box.add_child(GUI.head_row(head, help if help != "" else ("" if keep else rest)))
+	if keep:
+		var r := GUI.text(rest, 14, GUI.MUTED)
+		r.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		box.add_child(r)
+
+
+func _has_digit(t: String) -> bool:
+	for ch in t:
+		if ch >= "0" and ch <= "9":
+			return true
+	return false
 
 
 ## A row of buttons that wraps onto a second line when it doesn't fit (big text, narrow screens).
@@ -2166,6 +2208,7 @@ func pf_drop(bar: Control, screen: String, field: String, entries: Array, prefix
 ## The one bar over a parts list: Show, Maker, Grade, Condition, Sort, and Cards / List.
 ## extra_kinds: more Show entries ([key, label, count]: chips, controllers).
 func part_filter_bar(screen: String, items: Array, extra_kinds: Array = [], parent: Control = null) -> HFlowContainer:
+	# (1.123) one row: Show, Sort, Filters (n on), View; Maker / Grade / Condition fold under Filters
 	var bar := flow_bar(parent)
 	if screen != "slot":
 		var kinds: Array = items.map(func(it): return str(it["d"]["kind"]))
@@ -2177,30 +2220,49 @@ func part_filter_bar(screen: String, items: Array, extra_kinds: Array = [], pare
 			ke.append([k, GameData.KIND_NAMES[k], kinds.count(k)])
 		ke.append_array(extra_kinds)
 		pf_drop(bar, screen, "kind", ke, "Show")
-	var me := maker_entries(items.map(func(it): return it["d"]["id"]))
-	me[0][1] = "All"
-	pf_drop(bar, screen, "maker", me, "Maker")
-	var ge := [["all", "All", items.size()]]
-	for g in GameData.GRADES.size():
-		ge.append([str(g), GameData.GRADES[g], items.filter(func(it): return int(it["d"].get("grade", 0)) == g).size()])
-	pf_drop(bar, screen, "grade", ge, "Grade")
 	var insts: Array = items.filter(func(it): return not it["p"].is_empty())
-	if not insts.is_empty():
-		var ce: Array = []
-		for c in PF_CONDS:
-			ce.append([c[0], c[1], insts.size() if c[0] == "all" else insts.filter(func(it): return cond_ok(c[0], it["d"], it["p"])).size()])
-		pf_drop(bar, screen, "cond", ce, "Condition")
 	var se: Array = []
 	for so in PF_SORTS:
 		if so[0] == "health" and insts.is_empty():
 			continue
 		se.append([so[0], so[1]])
 	pf_drop(bar, screen, "sort", se, "Sort")
+	var on := 0
+	for f in ["maker", "grade", "cond"]:
+		if pf_get(screen, f) != "all":
+			on += 1
+	var open := bool(pf_open.get(screen, false)) or on > 0 and pf_open.get(screen, null) == null
+	var fb := UI.button((tr("Filters (%d on)") % on if on > 0 else tr("Filters")) + (" ▴" if open else " ▾"), _on_pf_toggle.bind(screen, not open), 13, Vector2(0, 46))
+	if on > 0:
+		fb.add_theme_color_override("font_color", GUI.YELLOW)
+	bar.add_child(fb)
 	var vb := UI.button(tr("View: List") if cards_on() else tr("View: Cards"), _on_parts_view, 13, Vector2(0, 46))
 	vb.tooltip_text = tr("Cards or rows. Rows fit more on small screens and with big text.")
 	bar.add_child(vb)
+	if open:
+		var bar2 := flow_bar(parent)
+		var me := maker_entries(items.map(func(it): return it["d"]["id"]))
+		me[0][1] = "All"
+		pf_drop(bar2, screen, "maker", me, "Maker")
+		var ge := [["all", "All", items.size()]]
+		for g in GameData.GRADES.size():
+			ge.append([str(g), GameData.GRADES[g], items.filter(func(it): return int(it["d"].get("grade", 0)) == g).size()])
+		pf_drop(bar2, screen, "grade", ge, "Grade")
+		if not insts.is_empty():
+			var ce: Array = []
+			for c in PF_CONDS:
+				ce.append([c[0], c[1], insts.size() if c[0] == "all" else insts.filter(func(it): return cond_ok(c[0], it["d"], it["p"])).size()])
+			pf_drop(bar2, screen, "cond", ce, "Condition")
 	compare_tray(parent)
 	return bar
+
+
+var pf_open := {}   # (1.123) screens whose extra filters are unfolded (this session)
+
+
+func _on_pf_toggle(screen: String, open: bool) -> void:
+	pf_open[screen] = open
+	refresh()
 
 
 ## (1.95) A shop part's price: today's price, and what it was when a sale or a maker contract cuts it.
@@ -4107,7 +4169,7 @@ func contracts_new() -> bool:
 func build_contracts() -> void:
 	var C = GameData.Contracts
 	var s: Dictionary = C.st()
-	section(tr("SPONSORS pay to put their name on your robot: one title sponsor (their paint, their logo on the chest) and up to two stickers. Break their rules and you get a warning, then a fine, then the deal is off."))
+	section(tr("SPONSORS"), null, tr("SPONSORS pay to put their name on your robot: one title sponsor (their paint, their logo on the chest) and up to two stickers. Break their rules and you get a warning, then a fine, then the deal is off."))
 	if s["active"].is_empty():
 		section(tr("No sponsors yet."))
 	else:
@@ -4322,35 +4384,8 @@ func build_jobs_view() -> void:
 	GameData.sync_swaps()
 	var hands := GameData.hands()
 	section(tr("THE JOB BOARD. Repairs and new parts take hours, and whatever isn't done by the bell goes in as it is. Gus works one job at a time, each mechanic one more."))
-	# rows wrap onto a second line on narrow screens / big text (a wide row pushed the whole layout off screen)
-	var hl := GUI.text(tr("HANDS: %d (Gus + %d mechanic%s)") % [hands, GameData.mechanics, "" if GameData.mechanics == 1 else "s"], 15, GUI.YELLOW, "headb")
-	hl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	list_box.add_child(hl)
-	var bar := flow_bar()
-	row_button(bar, tr("Hire $%d/mo") % GameData.mechanic_wage(), _on_hire_mechanic, GameData.mechanics < GameData.max_mechanics(), 150)
-	row_button(bar, tr("Let one go"), _on_fire_mechanic, GameData.mechanics > 0, 130)
-	var ot := GUI.text(tr("Tonight the crew stays on: 8 more hours.") if GameData.overtime else tr("Overtime: work through tonight, 8 more hours for every pair of hands."), 13, GUI.MUTED)
-	ot.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	list_box.add_child(ot)
-	var bar2 := flow_bar()
-	row_button(bar2, tr("Overtime $%d") % GameData.overtime_cost() if not GameData.overtime else tr("Booked"), _on_overtime, not GameData.overtime and GameData.money >= GameData.overtime_cost(), 150)
-	# the bay itself: passive repair, and the upgrades that speed it up (each one puts the rent up)
-	var bl := GUI.text(tr("THE BAY: %s. Parts on your robots heal %d%% a day on their own.") % [tr(GameData.BAY_NAMES[GameData.bay_level]), int(round(GameData.passive_rate() * 100.0))], 15, GUI.YELLOW, "headb")
-	bl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	list_box.add_child(bl)
-	var lv := GUI.BlockBar.new()   # 1 block = 1% a day
-	lv.block_w = 22.0
-	lv.setup(GameData.passive_rate() * 100.0, 1.0, (GameData.PASSIVE_BASE + GameData.PASSIVE_STEP * GameData.BAY_LEVELS) * 100.0, GUI.GREEN)
-	list_box.add_child(lv)
-	if GameData.bay_level < GameData.BAY_LEVELS:
-		var up_l := GUI.text(tr("Next: %s. %d%% a day, rent +$%d a month.") % [tr(GameData.BAY_NAMES[GameData.bay_level + 1]), int(round((GameData.passive_rate() + GameData.PASSIVE_STEP) * 100.0)), GameData.bay_rent()], 13, GUI.MUTED)
-		up_l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		list_box.add_child(up_l)
-		var bar3 := flow_bar()
-		row_button(bar3, tr("Install $%d") % GameData.bay_price(), _on_bay_upgrade, GameData.money >= GameData.bay_price(), 150)
 	if GameData.jobs.is_empty():
 		section(tr("Nothing on the board. Everything's fixed and bolted on."))
-		return
 	var etas := job_etas()
 	for i in GameData.jobs.size():
 		var j: Dictionary = GameData.jobs[i]
@@ -4387,6 +4422,30 @@ func build_jobs_view() -> void:
 		row_button(line, tr("Up"), _on_job_up.bind(i), i > 0, 60)
 		if j["kind"] == "repair":
 			row_button(line, tr("Cancel +$%d") % GameData.job_refund(j), _on_cancel_job.bind(i), true, 120)
+	# rows wrap onto a second line on narrow screens / big text (a wide row pushed the whole layout off screen)
+	list_box.add_child(HSeparator.new())
+	list_box.add_child(GUI.head_row(tr("HANDS: %d (Gus + %d mechanic%s)") % [hands, GameData.mechanics, "" if GameData.mechanics == 1 else "s"]))
+	var bar := flow_bar()
+	row_button(bar, tr("Hire $%d/mo") % GameData.mechanic_wage(), _on_hire_mechanic, GameData.mechanics < GameData.max_mechanics(), 150)
+	row_button(bar, tr("Let one go"), _on_fire_mechanic, GameData.mechanics > 0, 130)
+	var ot := GUI.text(tr("Tonight the crew stays on: 8 more hours.") if GameData.overtime else tr("Overtime: work through tonight, 8 more hours for every pair of hands."), 13, GUI.MUTED)
+	ot.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	list_box.add_child(ot)
+	var bar2 := flow_bar()
+	row_button(bar2, tr("Overtime $%d") % GameData.overtime_cost() if not GameData.overtime else tr("Booked"), _on_overtime, not GameData.overtime and GameData.money >= GameData.overtime_cost(), 150)
+	# the bay itself: passive repair, and the upgrades that speed it up (each one puts the rent up)
+	list_box.add_child(HSeparator.new())
+	section(tr("THE BAY: %s. Parts on your robots heal %d%% a day on their own.") % [tr(GameData.BAY_NAMES[GameData.bay_level]), int(round(GameData.passive_rate() * 100.0))])
+	var lv := GUI.BlockBar.new()   # 1 block = 1% a day
+	lv.block_w = 22.0
+	lv.setup(GameData.passive_rate() * 100.0, 1.0, (GameData.PASSIVE_BASE + GameData.PASSIVE_STEP * GameData.BAY_LEVELS) * 100.0, GUI.GREEN)
+	list_box.add_child(lv)
+	if GameData.bay_level < GameData.BAY_LEVELS:
+		var up_l := GUI.text(tr("Next: %s. %d%% a day, rent +$%d a month.") % [tr(GameData.BAY_NAMES[GameData.bay_level + 1]), int(round((GameData.passive_rate() + GameData.PASSIVE_STEP) * 100.0)), GameData.bay_rent()], 13, GUI.MUTED)
+		up_l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		list_box.add_child(up_l)
+		var bar3 := flow_bar()
+		row_button(bar3, tr("Install $%d") % GameData.bay_price(), _on_bay_upgrade, GameData.money >= GameData.bay_price(), 150)
 
 
 func _on_bay_upgrade() -> void:
@@ -5621,7 +5680,8 @@ func build_cups_tab() -> void:
 	if not fits:
 		section("Too close to the end of the year for a three-week cup. New ones start in January.")
 	else:
-		section(tr("Cups: 8 pilots, a three-week knockout on Wednesday nights. Your Saturday league fights carry on as normal. Gold, silver and bronze go on the trophy wall in the office.") + " " + (tr("Enter tonight and your first round is tonight.") if GameData.day == "wed" else tr("Your first round is next Wednesday.")))
+		section(tr("CUPS"), null, tr("Cups: 8 pilots, a three-week knockout on Wednesday nights. Your Saturday league fights carry on as normal. Gold, silver and bronze go on the trophy wall in the office."))
+		section((tr("Enter tonight and your first round is tonight.") if GameData.day == "wed" else tr("Your first round is next Wednesday.")))
 	if GameData.circuit_offers.is_empty():
 		GameData.make_offers()
 	for k in GameData.circuit_offers.size():
@@ -5722,7 +5782,7 @@ func build_calendar() -> void:
 		key.add_child(it)
 	var info := tr("Record %d-%d.  Medals %d.") % [GameData.wins, GameData.losses, GameData.trophies.size()]
 	section(info)
-	section(tr("Tap a day to see what's on, or to go straight to it. Time moves with the big yellow button."))
+	section(tr("CALENDAR"), null, tr("Tap a day to see what's on, or to go straight to it. Time moves with the big yellow button."))
 
 
 ## One calendar day, all the same size: the date, a symbol for each thing on, W / L after your fight.
@@ -6367,7 +6427,7 @@ func _on_challenge(wid: int = -1, sure: bool = false) -> void:
 func bet_card(on: String, ev: Dictionary) -> void:
 	if ev.is_empty():
 		return
-	section(tr("%s · %s. Odds come from the table and the robots, so a pilot nobody rates pays big. Watch a fight and its result is the real one.") % [tr(str(ev["name"])), tr(Career.round_name(ev))])
+	list_box.add_child(GUI.head_row("%s · %s" % [tr(str(ev["name"])), tr(Career.round_name(ev))], tr("Odds come from the table and the robots, so a pilot nobody rates pays big. Watch a fight and its result is the real one.")))
 	if not GameData.watch_time(ev):
 		section(tr("The fights start in the evening. Come back then to watch."))
 	var bar := action_bar()
@@ -6554,7 +6614,7 @@ func _on_juke_stop() -> void:
 
 func build_pilots_view() -> void:
 	var World = GameData.World
-	section("Port Ferrum's pilots, ranked by the bookies. Tap a pilot for their card. The town's news is on BotMedia.")
+	section(tr("PILOTS"), null, tr("Port Ferrum's pilots, ranked by the bookies. Tap a pilot for their card. The town's news is on BotMedia."))
 	var pb := action_bar()
 	row_button(pb, tr("BotMedia People ›"), go_to.bind("Feed", "people"), true, 220)
 	var order: Array = [GameData.rank] + World.TIERS.filter(func(t): return t != GameData.rank)
@@ -7291,7 +7351,7 @@ func _on_rematch() -> void:
 
 
 func build_team_tab() -> void:
-	section(tr("Backups are built from your spare parts and keep their damage. Each one needs a gantry, and every gantry puts the rent up. Send puts one in when the main robot is too beat up."))
+	section(tr("BACKUPS"), null, tr("Backups are built from your spare parts and keep their damage. Each one needs a gantry, and every gantry puts the rent up. Send puts one in when the main robot is too beat up."))
 	var ms := GameData.stats()
 	section(tr("A team shares %d power: 2 robots get %d each, 3 get %d. Your robot alone: %s, %d power.")
 			% [int(GameData.TEAM_POWER), int(GameData.team_share(2)), int(GameData.team_share(3)), tr(GameData.weight_class(ms["power_used"])), ms["power_used"]])
@@ -7588,7 +7648,7 @@ func _on_reroll() -> void:
 ## Bay > Style & paint: pick a fighting style (watch each signature move first), and a paint job.
 func build_style_view() -> void:
 	var col := list_box
-	section(tr("FIGHTING STYLE") + " · " + tr("Your style changes how ECHO fights and gives it a free signature move.").replace("ECHO", GameData.robot_name), col)
+	section(tr("FIGHTING STYLE"), col, tr("Your style changes how ECHO fights and gives it a free signature move.").replace("ECHO", GameData.robot_name))
 	if GameData.style_locked:
 		section("You've already switched style since your last fight. One switch between fights. Fight with it first.", col)
 	var body := VBoxContainer.new()

@@ -101,6 +101,105 @@ static func heading(s: String, size: int = 22) -> Label:
 	return l
 
 
+## (1.123) A small round ? that opens a short explanation next to it; a tap anywhere closes it.
+## Explanations live here (and in Gus's first visit), not as paragraphs on top of the page.
+class HelpButton extends Button:
+	var title := ""
+	var body := ""
+	var layer: CanvasLayer = null
+
+	func _init(t: String = "", b: String = "") -> void:
+		var G = load("res://garage_ui.gd")   # (an inner class can't call the outer script's statics by name)
+		title = t
+		body = b
+		text = "?"
+		focus_mode = Control.FOCUS_NONE
+		var sz := float(UI.tsz(14)) * 1.9
+		custom_minimum_size = Vector2(sz, sz)
+		size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		add_theme_font_override("font", G._font("headb"))
+		add_theme_font_size_override("font_size", UI.tsz(14))
+		for st in ["normal", "hover", "pressed", "hover_pressed"]:
+			var bx := StyleBoxFlat.new()
+			bx.bg_color = G.BTN if st == "normal" else G.BTN.lightened(0.08)
+			bx.border_color = G.BTN_EDGE
+			bx.set_border_width_all(1)
+			bx.set_corner_radius_all(int(sz))
+			add_theme_stylebox_override(st, bx)
+		add_theme_color_override("font_color", G.MUTED)
+		pressed.connect(_show)
+
+	func _show() -> void:
+		var G = load("res://garage_ui.gd")
+		Sfx.play("click", 0.05)
+		UI.PlayLog.add("help", title)
+		layer = CanvasLayer.new()
+		layer.layer = 110
+		get_tree().root.add_child(layer)
+		var shade := Control.new()
+		shade.set_anchors_preset(Control.PRESET_FULL_RECT)
+		shade.mouse_filter = Control.MOUSE_FILTER_STOP
+		shade.gui_input.connect(func(ev):
+			if (ev is InputEventMouseButton or ev is InputEventScreenTouch) and ev.pressed:
+				_close())
+		layer.add_child(shade)
+		var vp := get_viewport_rect().size
+		var pc := PanelContainer.new()
+		var st: StyleBoxFlat = G.box(Color(0.08, 0.08, 0.105, 0.98), 10, 14)
+		st.border_color = G.BTN_EDGE
+		st.set_border_width_all(1)
+		pc.add_theme_stylebox_override("panel", st)
+		var w := minf(vp.x - 40.0, float(UI.tsz(14)) * 26.0)
+		pc.custom_minimum_size = Vector2(w, 0)
+		pc.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		var col := VBoxContainer.new()
+		col.add_theme_constant_override("separation", 6)
+		col.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		pc.add_child(col)
+		if title != "":
+			var h: Label = G.heading(title, 15)
+			h.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+			col.add_child(h)
+		var l: Label = G.text(body, 15)
+		l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		l.custom_minimum_size = Vector2(w - 30.0, 0)
+		col.add_child(l)
+		shade.add_child(pc)
+		# under the button, kept on screen
+		await get_tree().process_frame
+		if not is_instance_valid(pc):
+			return
+		var r := get_global_rect()
+		var pos := Vector2(r.position.x + r.size.x * 0.5 - pc.size.x * 0.5, r.end.y + 6.0)
+		if pos.y + pc.size.y > vp.y - 10.0:
+			pos.y = r.position.y - pc.size.y - 6.0
+		pos.x = clampf(pos.x, 10.0, vp.x - pc.size.x - 10.0)
+		pos.y = clampf(pos.y, 10.0, vp.y - pc.size.y - 10.0)
+		pc.position = pos
+
+	func _close() -> void:
+		if is_instance_valid(layer):
+			layer.queue_free()
+		layer = null
+
+	func _exit_tree() -> void:
+		_close()
+
+
+## (1.123) A heading with an optional ? beside it: the one way a section starts.
+static func head_row(title: String, help: String = "", size: int = 17) -> HBoxContainer:
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 10)
+	var h := heading(title, size)
+	h.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	h.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	h.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	row.add_child(h)
+	if help != "":
+		row.add_child(HelpButton.new(title, help))
+	return row
+
+
 ## (1.121) A button that destroys or costs (Delete, Forfeit, Sell several): red edge, red words.
 static func danger(b: Button) -> Button:
 	var n := box(BTN, 10, 6)
