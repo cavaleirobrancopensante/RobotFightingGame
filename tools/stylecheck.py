@@ -11,7 +11,7 @@ import pathlib, re, sys
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 # files still allowed the built-in font (to be emptied by 1.122 / 1.125), with how many uses
 ALLOW_FALLBACK = {
-	"fight.gd": 1, "arena.gd": 14, "city_map.gd": 5, "garage_art.gd": 17, "garage.gd": 4,
+	"city_map.gd": 5, "garage_art.gd": 17, "garage.gd": 4,
 	"garage_ui.gd": 4, "part_icon.gd": 1, "robot_preview.gd": 2, "saves.gd": 1, "story.gd": 1,
 	"controls_editor.gd": 1,
 }

@@ -434,7 +434,10 @@ func redraw_all() -> void:
 			hud_canvas.queue_redraw()
 var hud_skip := false
 var floor_y := 420.0
-var font: Font
+var font: Font        # (1.122) Public Sans: every sentence and label
+var font_head: Font   # Chakra Petch Bold: names, headings, shouts
+var font_num: Font    # VT323: clocks
+var font_big: Font    # Saira Stencil: the countdown, FIGHT!, K.O., big moments
 var clock := 0.0
 
 var touches := {}
@@ -568,7 +571,10 @@ func fs(size: float) -> int:
 
 
 func _ready() -> void:
-	font = ThemeDB.fallback_font
+	font = GUI.body()
+	font_head = GUI.headb()
+	font_num = GUI.num()
+	font_big = GUI.stencil()
 	if demo_move != "":
 		setup_demo()
 		return
@@ -4348,7 +4354,7 @@ func _draw() -> void:
 		var t: float = p["t"] / 1.4
 		var c: Color = p["color"]
 		c.a = 1.0 - t * t
-		ci.draw_string(font, p["pos"] + Vector2(-260, -40.0 - t * 50.0), p["text"], HORIZONTAL_ALIGNMENT_CENTER, 520, fs(26), c)
+		ci.draw_string(font_head, p["pos"] + Vector2(-260, -40.0 - t * 50.0), p["text"], HORIZONTAL_ALIGNMENT_CENTER, 520, fs(26), c)
 
 	if demo_move != "":
 		return   # the move showcase: just the robots
@@ -4998,8 +5004,8 @@ func draw_moment_caption() -> void:
 		var a := clampf(moment_t * 3.0, 0.0, 1.0)
 		var col := Color(1.0, 0.2, 0.1, a) if moment_kind == "ko" else Color(1.0, 0.85, 0.2, a)
 		var size := fs(84) if moment_kind == "ko" else fs(56)
-		ci.draw_string(font, Vector2(4, screen.y * 0.36 + 4), moment_name, HORIZONTAL_ALIGNMENT_CENTER, screen.x, size, Color(0, 0, 0, a * 0.7))
-		ci.draw_string(font, Vector2(0, screen.y * 0.36), moment_name, HORIZONTAL_ALIGNMENT_CENTER, screen.x, size, col)
+		ci.draw_string(font_big, Vector2(4, screen.y * 0.36 + 4), moment_name, HORIZONTAL_ALIGNMENT_CENTER, screen.x, size, Color(0, 0, 0, a * 0.7))
+		ci.draw_string(font_big, Vector2(0, screen.y * 0.36), moment_name, HORIZONTAL_ALIGNMENT_CENTER, screen.x, size, col)
 		if moment_kind == "ko":
 			ci.draw_string(font, Vector2(0, screen.y * 0.36 + 56), tr(ko_text) if ko_text != "TIME!" else "", HORIZONTAL_ALIGNMENT_CENTER, screen.x, fs(26), Color(1, 1, 1, a))
 	ci.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
@@ -5262,16 +5268,16 @@ func draw_hud() -> void:
 	var my_team := player.label
 	if team_p.size() > 1:
 		my_team = str(GameData.quick["player"]["name"]) if mode == "quick" else tr("TEAM %s") % GameData.robot_name
-	ci.draw_string(font, Vector2(px, y + bh + 28), my_team, HORIZONTAL_ALIGNMENT_LEFT, -1, fs(22), Color.WHITE)
-	ci.draw_string(font, Vector2(cx, y + bh + 28), cpu.label if team_c.size() == 1 else str(opp["name"]), HORIZONTAL_ALIGNMENT_RIGHT, w, fs(22), Color.WHITE)
+	ci.draw_string(font_head, Vector2(px, y + bh + 28), my_team, HORIZONTAL_ALIGNMENT_LEFT, -1, fs(22), Color.WHITE)
+	ci.draw_string(font_head, Vector2(cx, y + bh + 28), cpu.label if team_c.size() == 1 else str(opp["name"]), HORIZONTAL_ALIGNMENT_RIGHT, w, fs(22), Color.WHITE)
 	for f in ([player, cpu] if team_p.size() == 1 and team_c.size() == 1 else []):
 		if Catalog.STYLES.has(f.style):
 			var st: Dictionary = Catalog.STYLES[f.style]
-			var sw := font.get_string_size(f.label, HORIZONTAL_ALIGNMENT_LEFT, -1, fs(22)).x
+			var sw := font_head.get_string_size(f.label, HORIZONTAL_ALIGNMENT_LEFT, -1, fs(22)).x
 			if f == player:
-				ci.draw_string(font, Vector2(px + sw + 12, y + bh + 26), tr(st["name"]).to_upper(), HORIZONTAL_ALIGNMENT_LEFT, -1, fs(14), Color(st["color"]).lightened(0.35))
+				ci.draw_string(font, Vector2(px + sw + 12, y + bh + 26), tr(st["name"]).to_upper(), HORIZONTAL_ALIGNMENT_LEFT, -1, fs(14), GUI.MUTED)
 			else:
-				ci.draw_string(font, Vector2(cx, y + bh + 26), tr(st["name"]).to_upper(), HORIZONTAL_ALIGNMENT_RIGHT, w - sw - 12, fs(14), Color(st["color"]).lightened(0.35))
+				ci.draw_string(font, Vector2(cx, y + bh + 26), tr(st["name"]).to_upper(), HORIZONTAL_ALIGNMENT_RIGHT, w - sw - 12, fs(14), GUI.MUTED)
 	var status: Array = []
 	if player.eff < 1.0:
 		status.append(tr("OVERLOADED"))
@@ -5293,13 +5299,13 @@ func draw_hud() -> void:
 	var pl_y := y + bh + 28 + fs(17) + 2
 	var has_pilots := false
 	if team_p.size() == 1 and player.pilot_name != "":
-		ci.draw_string(font, Vector2(px, pl_y), tr("PILOT %s") % player.pilot_name.to_upper(), HORIZONTAL_ALIGNMENT_LEFT, -1, fs(15), Color(0.75, 0.85, 1.0))
+		ci.draw_string(font, Vector2(px, pl_y), tr("PILOT %s") % player.pilot_name.to_upper(), HORIZONTAL_ALIGNMENT_LEFT, -1, fs(15), GUI.MUTED)
 		has_pilots = true
 	if team_c.size() == 1 and cpu.pilot_name != "":
-		ci.draw_string(font, Vector2(cx, pl_y), tr("PILOT %s") % cpu.pilot_name.to_upper(), HORIZONTAL_ALIGNMENT_RIGHT, w, fs(15), Color(0.75, 0.85, 1.0))
+		ci.draw_string(font, Vector2(cx, pl_y), tr("PILOT %s") % cpu.pilot_name.to_upper(), HORIZONTAL_ALIGNMENT_RIGHT, w, fs(15), GUI.MUTED)
 		has_pilots = true
 	if not status.is_empty():
-		ci.draw_string(font, Vector2(px, (pl_y + fs(15) + 4) if has_pilots else (y + bh + 50)), "  ".join(status), HORIZONTAL_ALIGNMENT_LEFT, -1, fs(16), Color(1.0, 0.5, 0.2))
+		ci.draw_string(font, Vector2(px, (pl_y + fs(15) + 4) if has_pilots else (y + bh + 50)), "  ".join(status), HORIZONTAL_ALIGNMENT_LEFT, -1, fs(16), GUI.AMBER)
 	draw_part_maps(team_p, y, false)
 	draw_part_maps(team_c, y, true)
 	if phase == "fight" or phase == "intro":
@@ -5310,7 +5316,7 @@ func draw_hud() -> void:
 	for f in [player, cpu]:
 		if f.combo >= 2 and f.combo_show > 0.0:
 			var x := px if f == player else cx
-			ci.draw_string(font, Vector2(x, y + bh + 70), tr("%d HIT COMBO!") % f.combo, HORIZONTAL_ALIGNMENT_LEFT if f == player else HORIZONTAL_ALIGNMENT_RIGHT,
+			ci.draw_string(font_head, Vector2(x, y + bh + 70), tr("%d HIT COMBO!") % f.combo, HORIZONTAL_ALIGNMENT_LEFT if f == player else HORIZONTAL_ALIGNMENT_RIGHT,
 					w, fs(30), Color(1.0, 0.85, 0.2, minf(1.0, f.combo_show * 2.0)))
 
 	# the fight name and clock hang on a board between the health bars
@@ -5333,18 +5339,18 @@ func draw_hud() -> void:
 			if intro_step == "count":
 				var n := clampi(3 - int(count_t / COUNT_STEP), 1, 3)
 				var k := fmod(count_t, COUNT_STEP) / COUNT_STEP
-				ci.draw_string(font, Vector2(0, screen.y * 0.36), str(n), HORIZONTAL_ALIGNMENT_CENTER, screen.x, fs(110 - 30 * k), Color(1.0, 0.85, 0.2, 1.0 - k * 0.6))
+				ci.draw_string(font_big, Vector2(0, screen.y * 0.36), str(n), HORIZONTAL_ALIGNMENT_CENTER, screen.x, fs(110 - 30 * k), Color(1.0, 0.85, 0.2, 1.0 - k * 0.6))
 				ci.draw_string(font, Vector2(0, w2s(Vector2(0, floor_y + 44)).y), tr("You can move, but no hitting before the bell!"), HORIZONTAL_ALIGNMENT_CENTER, screen.x, fs(18), Color(0.9, 0.9, 0.95, 0.85))
 		"fight":
 			if fight_flash > 0.0:
-				ci.draw_string(font, Vector2(0, screen.y * 0.36), tr("FIGHT!"), HORIZONTAL_ALIGNMENT_CENTER, screen.x, fs(96), Color(1.0, 0.3, 0.2, minf(1.0, fight_flash * 2.0)))
+				ci.draw_string(font_big, Vector2(0, screen.y * 0.36), tr("FIGHT!"), HORIZONTAL_ALIGNMENT_CENTER, screen.x, fs(96), Color(1.0, 0.3, 0.2, minf(1.0, fight_flash * 2.0)))
 		"ko":
 			var big := tr("K.O.") if ko_text != "TIME!" else tr("TIME!")
-			ci.draw_string(font, Vector2(0, cy), big, HORIZONTAL_ALIGNMENT_CENTER, screen.x, fs(84), Color(1.0, 0.2, 0.1))
+			ci.draw_string(font_big, Vector2(0, cy), big, HORIZONTAL_ALIGNMENT_CENTER, screen.x, fs(84), Color(1.0, 0.2, 0.1))
 			var sub := tr(ko_text) if ko_text != "TIME!" else tr("Judges' decision")
 			ci.draw_string(font, Vector2(0, cy + 55), sub, HORIZONTAL_ALIGNMENT_CENTER, screen.x, fs(26), Color.WHITE)
 			var winner_name: String = (team_p[0].label if team_p.size() == 1 or mode == "watch" else tr("YOUR TEAM")) if won else str(opp["name"])
-			ci.draw_string(font, Vector2(0, cy + 100), tr("%s WINS") % winner_name, HORIZONTAL_ALIGNMENT_CENTER, screen.x, fs(32), Color(1.0, 0.85, 0.2))
+			ci.draw_string(font_head, Vector2(0, cy + 100), tr("%s WINS") % winner_name, HORIZONTAL_ALIGNMENT_CENTER, screen.x, fs(32), Color(1.0, 0.85, 0.2))
 			if phase_timer > 2.0:
 				ci.draw_string(font, Vector2(0, cy + 145), tr("Tap to continue"), HORIZONTAL_ALIGNMENT_CENTER, screen.x, fs(22), Color(0.8, 0.8, 0.8))
 		"results":
@@ -5372,9 +5378,9 @@ func draw_results() -> void:
 	if mode == "watch":
 		title = tr("%s WINS") % str(result.get("winner", "?"))
 	var tsz := fs(72 if mode != "watch" else 54)
-	while tsz > 20 and font.get_string_size(title, HORIZONTAL_ALIGNMENT_LEFT, -1, tsz).x > res_w - 30.0:
+	while tsz > 20 and font_head.get_string_size(title, HORIZONTAL_ALIGNMENT_LEFT, -1, tsz).x > res_w - 30.0:
 		tsz -= 2
-	ci.draw_string(font, Vector2(0, y), title, HORIZONTAL_ALIGNMENT_CENTER, res_w, tsz, Color(1.0, 0.85, 0.2) if won or mode == "watch" else Color(0.9, 0.3, 0.3))
+	ci.draw_string(font_head, Vector2(0, y), title, HORIZONTAL_ALIGNMENT_CENTER, res_w, tsz, Color(1.0, 0.85, 0.2) if won or mode == "watch" else Color(0.9, 0.3, 0.3))
 	y += 60.0
 	var lines: Array = []
 	if mode == "watch":
@@ -5516,7 +5522,7 @@ func draw_moves_list() -> void:
 	var x := screen.x * 0.08
 	var y := screen.y * 0.1
 	if quit_ask:
-		ci.draw_string(font, Vector2(0, y), tr("QUIT THIS FIGHT?"), HORIZONTAL_ALIGNMENT_CENTER, screen.x, fs(30), Color(1.0, 0.45, 0.2))
+		ci.draw_string(font_head, Vector2(0, y), tr("QUIT THIS FIGHT?"), HORIZONTAL_ALIGNMENT_CENTER, screen.x, fs(30), GUI.HEAD)
 		y += 50.0
 	else:
 		y = draw_pause_tabs(screen.y * 0.04) + 14.0
@@ -6487,7 +6493,7 @@ func draw_title_board(r: Rect2) -> void:
 		"chalk":
 			Scoreboard.draw_chalk(ci, Rect2(r.position + Vector2(r.size.x * 0.04, 12), r.size - Vector2(r.size.x * 0.08, 20)), title, time_left, hurry, clock, font)
 		"flip":
-			Scoreboard.draw_flip(ci, Rect2(r.position + Vector2(0, 10), r.size - Vector2(0, 10)), title, time_left, hurry, font, fs(17))
+			Scoreboard.draw_flip(ci, Rect2(r.position + Vector2(0, 10), r.size - Vector2(0, 10)), title, time_left, hurry, font_head, fs(17))
 		_:
 			Scoreboard.draw_dots(ci, r, title, time_left, hurry, clock)
 
@@ -6531,7 +6537,7 @@ func draw_coach() -> void:
 		var tail_x := clampf(gus_head.x, bx + 14.0, bx + w - 14.0)
 		ci.draw_colored_polygon(PackedVector2Array([Vector2(tail_x - 8, by + h), Vector2(tail_x + 8, by + h), Vector2(gus_head.x, by + h + 18)]), bg)
 		ci.draw_line(Vector2(gus_head.x, by + h + 18), gus_head + Vector2(0, -4), Color(1.0, 0.97, 0.9, 0.35 * a), 2.0)
-		ci.draw_string(font, Vector2(bx + 12, by + size + 4), tr("GUS"), HORIZONTAL_ALIGNMENT_LEFT, -1, int(size * 0.85), Color(0.85, 0.45, 0.1, a))
+		ci.draw_string(font_head, Vector2(bx + 12, by + size + 4), tr("GUS"), HORIZONTAL_ALIGNMENT_LEFT, -1, int(size * 0.85), Color(0.85, 0.45, 0.1, a))
 		ci.draw_multiline_string(font, Vector2(bx + 12, by + size * 2 + 8), coach_text, HORIZONTAL_ALIGNMENT_LEFT, maxw, size, -1, Color(0.1, 0.08, 0.06, a))
 		return
 	var size := fs(17)
@@ -7008,7 +7014,7 @@ func draw_robot_card(ci: CanvasItem, f: Fighter, left: bool, w: float, h: float,
 	ci.draw_rect(card, Color(0.04, 0.04, 0.07, 0.86 * a))
 	ci.draw_rect(Rect2(card.position, Vector2(card.size.x, 5)), gold)
 	var y := card.position.y + 8 + fs(28)
-	ci.draw_string(font, Vector2(x, y), f.label, HORIZONTAL_ALIGNMENT_LEFT, cw, fs(28), Color(1, 1, 1, a))
+	ci.draw_string(font_head, Vector2(x, y), f.label, HORIZONTAL_ALIGNMENT_LEFT, cw, fs(28), Color(1, 1, 1, a))
 	y += fs(14) + 8
 	var power := 0.0
 	for slot in f.parts:
@@ -7018,9 +7024,9 @@ func draw_robot_card(ci: CanvasItem, f: Fighter, left: bool, w: float, h: float,
 	if Catalog.STYLES.has(f.style):
 		sub += "  ·  " + tr(Catalog.STYLES[f.style]["name"]).to_upper()
 	sub += "  ·  " + tr("fight power %d") % int(f.power_max)
-	ci.draw_string(font, Vector2(x, y), sub, HORIZONTAL_ALIGNMENT_LEFT, cw, fs(14), Color(0.6, 0.85, 1.0, a))
+	ci.draw_string(font, Vector2(x, y), sub, HORIZONTAL_ALIGNMENT_LEFT, cw, fs(14), Color(GUI.MUTED, a))
 	y += fs(12) + 10
-	ci.draw_string(font, Vector2(x, y), tr("PARTS"), HORIZONTAL_ALIGNMENT_LEFT, -1, fs(12), gold)
+	ci.draw_string(font_head, Vector2(x, y), tr("PARTS"), HORIZONTAL_ALIGNMENT_LEFT, -1, fs(12), Color(GUI.HEAD, a))
 	if f.team == 1 or mode == "watch" or f.rank_text != "":
 		# (1.87) the pilot's place in the rankings (and RATTLED after a bad run), right of the PARTS header
 		var fm := f.form if f.form != "" else ("rattled" if f.ai_rattled else "")
@@ -7097,7 +7103,7 @@ func draw_robot_card(ci: CanvasItem, f: Fighter, left: bool, w: float, h: float,
 		y += l1
 		ci.draw_string(font, Vector2(x, y), "★ %s  ·  %s" % [tr(str(d["name"])), what], HORIZONTAL_ALIGNMENT_LEFT, cw, fs(13), gold)
 	y += fs(12) + 14
-	ci.draw_string(font, Vector2(x, y), tr("SPECIAL MOVES"), HORIZONTAL_ALIGNMENT_LEFT, -1, fs(12), gold)
+	ci.draw_string(font_head, Vector2(x, y), tr("SPECIAL MOVES"), HORIZONTAL_ALIGNMENT_LEFT, -1, fs(12), Color(GUI.HEAD, a))
 	y += fs(13) + 6
 	var moves: Array = []
 	for id in f.specials:
@@ -7892,8 +7898,8 @@ func draw_replay_hud() -> void:
 		ci.draw_rect(Rect2(0, k * screen.y * 0.03, screen.x, screen.y * 0.03 + 1), Color(0, 0, 0, 0.32 * (1.0 - k / 5.0)))
 	draw_team_bars(team_p, 30.0, y, w, 34.0, false)
 	draw_team_bars(team_c, screen.x - 30.0 - w, y, w, 34.0, true)
-	ci.draw_string(font, Vector2(30.0, y + 34.0 + fs(30)), player.label, HORIZONTAL_ALIGNMENT_LEFT, w, fs(30), Color.WHITE)
-	ci.draw_string(font, Vector2(screen.x - 30.0 - w, y + 34.0 + fs(30)), cpu.label, HORIZONTAL_ALIGNMENT_RIGHT, w, fs(30), Color.WHITE)
+	ci.draw_string(font_head, Vector2(30.0, y + 34.0 + fs(30)), player.label, HORIZONTAL_ALIGNMENT_LEFT, w, fs(30), Color.WHITE)
+	ci.draw_string(font_head, Vector2(screen.x - 30.0 - w, y + 34.0 + fs(30)), cpu.label, HORIZONTAL_ALIGNMENT_RIGHT, w, fs(30), Color.WHITE)
 	# REPLAY, with a blinking red dot, between the bars
 	var rx := screen.x * 0.5
 	if fmod(Time.get_ticks_msec() / 1000.0, 1.0) < 0.6:
@@ -7901,7 +7907,7 @@ func draw_replay_hud() -> void:
 	ci.draw_string(font, Vector2(rx - fs(34) * 1.6, y + 18.0 + fs(30) * 0.36), tr("REPLAY"), HORIZONTAL_ALIGNMENT_LEFT, -1, fs(30), Color(1, 1, 1, 0.9))
 	if str(replay.get("kind", "")) == "fight":
 		# a whole fight: its clock under REPLAY
-		ci.draw_string(font, Vector2(0, y + 34.0 + fs(30)), "%d" % ceili(maxf(0.0, time_left)), HORIZONTAL_ALIGNMENT_CENTER, screen.x, fs(34), Color(1.0, 0.85, 0.2))
+		ci.draw_string(font_num, Vector2(0, y + 34.0 + fs(30)), "%d" % ceili(maxf(0.0, time_left)), HORIZONTAL_ALIGNMENT_CENTER, screen.x, fs(34), Color(1.0, 0.85, 0.2))
 	var line := Clips.title(replay)
 	var bh := float(fs(30)) + 22.0
 	ci.draw_rect(Rect2(0, screen.y - bh, screen.x, bh), Color(0, 0, 0, 0.6))

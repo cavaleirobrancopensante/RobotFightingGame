@@ -368,6 +368,7 @@ func _on_close_errors() -> void:
 func _on_smooth() -> void:
 	GameData.settings["smooth"] = not UI.smooth_edges()
 	GameData.save_settings()
+	GameData.apply_look()
 	refresh()
 	Sfx.play("click")
 

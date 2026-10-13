@@ -80,6 +80,17 @@ static func num() -> Font: return _font("num")
 static func stencil() -> Font: return _font("stencil")
 static func heading_font() -> Font: return _font("heading")
 
+
+## (1.122) Lettering in the world: "sign" = painted signs and logos (stencil), "board" = boards and
+## banners (Chakra Petch Bold), "digits" = clocks and counters (VT323). Never Godot's built-in font.
+static func world(kind: String = "sign") -> Font:
+	match kind:
+		"board":
+			return headb()
+		"digits":
+			return num()
+	return stencil()
+
 const HEAD := Color(0.84, 0.85, 0.9)   # (1.121) the one heading colour (yellow is for things to do)
 
 

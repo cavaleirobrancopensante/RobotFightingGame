@@ -14,6 +14,7 @@ const Light = preload("res://light.gd")
 ## from the light), one dark outline, a light edge where the key light hits and a rim on the far side.
 ## classic = the old flat look (Settings > Classic look, only while the restyle is under way).
 static var classic := false
+static var aa := true   # (1.122) antialiased outlines (Settings > Smooth edges; GameData.apply_look)
 static var _L: Dictionary = {}       # the light set the robot being drawn stands in
 static var _from := -0.55            # where the key light comes from, in the part's own coordinates
 static var _flash := false           # hit flash: plain white, no shading
@@ -920,8 +921,8 @@ static func _plate(ci: CanvasItem, pts: PackedVector2Array, c: Color) -> void:
 	var n_pts := pts.size()
 	if bb.size.x < 7.0 and bb.size.y < 7.0:
 		# (1.83) tiny bits (rivets, trim ends): just the outline, the light can't show on them
-		ci.draw_polyline(pts, OUTLINE, 2.0)
-		ci.draw_line(pts[n_pts - 1], pts[0], OUTLINE, 2.0)
+		ci.draw_polyline(pts, OUTLINE, 2.0, aa)
+		ci.draw_line(pts[n_pts - 1], pts[0], OUTLINE, 2.0, aa)
 		return
 	var cut: PackedVector2Array
 	if absf(_from) < 0.2:
@@ -935,8 +936,8 @@ static func _plate(ci: CanvasItem, pts: PackedVector2Array, c: Color) -> void:
 	for poly in Geometry2D.intersect_polygons(pts, cut):
 		if (poly as PackedVector2Array).size() >= 3:
 			ci.draw_colored_polygon(poly, shade)
-	ci.draw_polyline(pts, OUTLINE, 2.5)
-	ci.draw_line(pts[n_pts - 1], pts[0], OUTLINE, 2.5)
+	ci.draw_polyline(pts, OUTLINE, 2.5, aa)
+	ci.draw_line(pts[n_pts - 1], pts[0], OUTLINE, 2.5, aa)
 	var cen := bb.get_center()
 	var rim_on := _rim.a > 0.0 and absf(_from) >= 0.2
 	var key := _key_col(0.95)
@@ -965,7 +966,7 @@ static func _round(ci: CanvasItem, cen: Vector2, r: float, c: Color) -> void:
 	if not _lit():
 		ci.draw_circle(cen, r, c)
 		return
-	ci.draw_circle(cen, r + 1.25, OUTLINE)
+	ci.draw_circle(cen, r + 1.25, OUTLINE, true, -1.0, aa)
 	ci.draw_circle(cen, r, _shadow_col(c))
 	var tw := _toward()
 	ci.draw_circle(cen + tw * r * 0.2, r * 0.8, c)
@@ -983,7 +984,7 @@ static func _limb(ci: CanvasItem, a: Vector2, b: Vector2, c: Color, w: float) ->
 	if not _lit():
 		ci.draw_line(a, b, c, w)
 		return
-	ci.draw_line(a, b, OUTLINE, w + 3.0)
+	ci.draw_line(a, b, OUTLINE, w + 3.0, aa)
 	ci.draw_line(a, b, c, w)
 	var d := b - a
 	if d.length() < 1.0 or w < 4.0:
@@ -1000,7 +1001,7 @@ static func _joint(ci: CanvasItem, at: Vector2, r: float, c: Color) -> void:
 	if not _lit():
 		ci.draw_circle(at, r, c)
 		return
-	ci.draw_circle(at, r + 1.2, OUTLINE)
+	ci.draw_circle(at, r + 1.2, OUTLINE, true, -1.0, aa)
 	ci.draw_circle(at, r, c)
 	if r >= 4.0:
 		ci.draw_circle(at + _toward() * r * 0.45, r * 0.22, _key_col(0.8))
@@ -1010,13 +1011,13 @@ static func _joint(ci: CanvasItem, at: Vector2, r: float, c: Color) -> void:
 ## one dark outline: a line, a polyline, a filled shape, a disc and an arc, each outlined when lit.
 static func _ln(ci: CanvasItem, a: Vector2, b: Vector2, c: Color, w: float) -> void:
 	if _lit():
-		ci.draw_line(a, b, OUTLINE, w + 2.5)
+		ci.draw_line(a, b, OUTLINE, w + 2.5, aa)
 	ci.draw_line(a, b, c, w)
 
 
 static func _pl(ci: CanvasItem, pts: PackedVector2Array, c: Color, w: float) -> void:
 	if _lit():
-		ci.draw_polyline(pts, OUTLINE, w + 2.5)
+		ci.draw_polyline(pts, OUTLINE, w + 2.5, aa)
 	ci.draw_polyline(pts, c, w)
 
 
@@ -1025,7 +1026,7 @@ static func _poly(ci: CanvasItem, pts: PackedVector2Array, c: Color) -> void:
 	if _lit() and pts.size() >= 3:
 		var closed := pts.duplicate()
 		closed.append(pts[0])
-		ci.draw_polyline(closed, OUTLINE, 2.2)
+		ci.draw_polyline(closed, OUTLINE, 2.2, aa)
 
 
 static func _box(ci: CanvasItem, r: Rect2, c: Color) -> void:
@@ -1034,13 +1035,13 @@ static func _box(ci: CanvasItem, r: Rect2, c: Color) -> void:
 
 static func _disc(ci: CanvasItem, at: Vector2, r: float, c: Color) -> void:
 	if _lit():
-		ci.draw_circle(at, r + 1.2, OUTLINE)
+		ci.draw_circle(at, r + 1.2, OUTLINE, true, -1.0, aa)
 	ci.draw_circle(at, r, c)
 
 
 static func _arc(ci: CanvasItem, at: Vector2, r: float, a0: float, a1: float, n: int, c: Color, w: float) -> void:
 	if _lit():
-		ci.draw_arc(at, r, a0, a1, n, OUTLINE, w + 2.5)
+		ci.draw_arc(at, r, a0, a1, n, OUTLINE, w + 2.5, aa)
 	ci.draw_arc(at, r, a0, a1, n, c, w)
 
 
@@ -1051,7 +1052,7 @@ static func _bolts(ci: CanvasItem, r: Rect2) -> void:
 	var k := minf(r.size.x, r.size.y) * 0.16
 	for q in [Vector2(r.position.x + k, r.position.y + k), Vector2(r.end.x - k, r.position.y + k),
 			Vector2(r.position.x + k, r.end.y - k), Vector2(r.end.x - k, r.end.y - k)]:
-		ci.draw_circle(q, 2.4, OUTLINE)
+		ci.draw_circle(q, 2.4, OUTLINE, true, -1.0, aa)
 		ci.draw_circle(q, 1.6, Color(0.62, 0.64, 0.7))
 
 
@@ -1633,7 +1634,7 @@ static func _draw_arm(ci: CanvasItem, look: Dictionary, slot: String, s: Vector2
 				var ld := (ch[k + 1] - ch[k]).normalized()
 				if k % 2 == 1:
 					ld = ld.orthogonal() * 0.55   # every other link turned edge on
-				ci.draw_line(lp - ld * 4.0 * sz, lp + ld * 4.0 * sz, OUTLINE, 5.0 * sz)
+				ci.draw_line(lp - ld * 4.0 * sz, lp + ld * 4.0 * sz, OUTLINE, 5.0 * sz, aa)
 				ci.draw_line(lp - ld * 3.2 * sz, lp + ld * 3.2 * sz, Color(0.55, 0.55, 0.58), 2.6 * sz)
 			_round(ci, ball, fr, Color(0.22, 0.22, 0.24) if not flash else Color.WHITE)
 			ci.draw_arc(ball, fr * 0.7, -2.4, -1.2, 8, Color(1, 1, 1, 0.18), 2.0)
@@ -1901,7 +1902,7 @@ static func _draw_back(ci: CanvasItem, look: Dictionary, g: Dictionary, pose: Di
 			var ring := PackedVector2Array()
 			for k in 17:
 				ring.append(rc + Vector2(cos(k * TAU / 16.0) * 12.0, sin(k * TAU / 16.0) * 4.0))
-			ci.draw_polyline(ring, OUTLINE, 4.0)
+			ci.draw_polyline(ring, OUTLINE, 4.0, aa)
 			ci.draw_polyline(ring, Color(0.88, 0.72, 0.29), 2.5)
 			ci.draw_arc(rc + Vector2(0, 20), 26.0, PI * 0.9, PI * 1.6, 12, Color(0.6, 0.85, 1.0, 0.12 + 0.08 * sin(t * 5.0)), 3.0)
 		"jetwings":
@@ -2148,7 +2149,7 @@ static func _draw_leg(ci: CanvasItem, look: Dictionary, slot: String, hip: Vecto
 				var f5 := k / 10.0
 				var q5 := knee.lerp(sh_end, 0.08 + f5 * 0.78)
 				pts2.append(q5 + perp * th * (0.62 if k % 2 == 0 else -0.62))
-			ci.draw_polyline(pts2, OUTLINE, 5.0)
+			ci.draw_polyline(pts2, OUTLINE, 5.0, aa)
 			ci.draw_polyline(pts2, Color(0.9, 0.15, 0.2), 3.0)
 			ci.draw_line(hip.lerp(knee, 0.2), hip.lerp(knee, 0.85), Color(0.0, 0.85, 1.0, 0.85), 2.0)   # racing stripe
 			_joint(ci, knee, th * 0.55, c.darkened(0.3))
@@ -2196,7 +2197,7 @@ static func _draw_leg(ci: CanvasItem, look: Dictionary, slot: String, hip: Vecto
 		fw = 36.0
 	if p["shape"] == "wheel":
 		var wc := foot + Vector2(0, -12)
-		ci.draw_circle(wc, 14.0 if _lit() else 13.0, OUTLINE if _lit() else Color(0.12, 0.12, 0.14))
+		ci.draw_circle(wc, 14.0 if _lit() else 13.0, OUTLINE if _lit() else Color(0.12, 0.12, 0.14), true, -1.0, aa)
 		ci.draw_circle(wc, 13.0, Color(0.12, 0.12, 0.14))
 		_round(ci, wc, 6.0, tc)
 		var a := -foot.x * 0.15
@@ -2227,7 +2228,7 @@ static func _draw_leg(ci: CanvasItem, look: Dictionary, slot: String, hip: Vecto
 		# a pair of small tyres on the axle
 		var ax := foot + Vector2(0, -9)
 		for wx in [-7.0, 7.0]:
-			ci.draw_circle(ax + Vector2(wx, 0), 9.5, OUTLINE)
+			ci.draw_circle(ax + Vector2(wx, 0), 9.5, OUTLINE, true, -1.0, aa)
 			ci.draw_circle(ax + Vector2(wx, 0), 8.5, Color(0.12, 0.12, 0.14))
 			ci.draw_circle(ax + Vector2(wx, 0), 3.5, Color(0.8, 0.82, 0.86))
 	elif p["shape"] == "ductfan":
@@ -2630,7 +2631,7 @@ static func _draw_torso(ci: CanvasItem, look: Dictionary, g: Dictionary, flash: 
 			ci.draw_colored_polygon(PackedVector2Array([Vector2(x0 + 2, cl), Vector2(x1 - 2, cl), Vector2(x1 - 3, cl + 6), Vector2(x0 + 3, cl + 6)]), Color(0.2, 0.45, 0.9))
 			for k in 3:
 				var pw := Vector2(x0 + w * (0.25 + k * 0.25) + (0.0 if front else w * 0.04), y0 + r.size.y * 0.38)
-				ci.draw_circle(pw, 4.2, OUTLINE)
+				ci.draw_circle(pw, 4.2, OUTLINE, true, -1.0, aa)
 				ci.draw_circle(pw, 3.4, Color(0.55, 0.75, 0.95))
 			for k in 2:
 				ci.draw_line(Vector2(x0 + 4, y0 + r.size.y * (0.2 + k * 0.6)), Vector2(x1 - 4, y0 + r.size.y * (0.2 + k * 0.6)), c.darkened(0.18), 1.5)
@@ -2712,7 +2713,7 @@ static func _draw_torso(ci: CanvasItem, look: Dictionary, g: Dictionary, flash: 
 			var dc := Vector2(r.get_center().x + (0.0 if front else w * 0.12), y0 + r.size.y * 0.5)
 			var dd := w * 0.17
 			ci.draw_colored_polygon(PackedVector2Array([dc + Vector2(0, -dd), dc + Vector2(dd, 0), dc + Vector2(0, dd), dc + Vector2(-dd, 0)]), Color(0.98, 0.8, 0.15))
-			ci.draw_polyline(PackedVector2Array([dc + Vector2(0, -dd), dc + Vector2(dd, 0), dc + Vector2(0, dd), dc + Vector2(-dd, 0), dc + Vector2(0, -dd)]), OUTLINE, 1.5)
+			ci.draw_polyline(PackedVector2Array([dc + Vector2(0, -dd), dc + Vector2(dd, 0), dc + Vector2(0, dd), dc + Vector2(-dd, 0), dc + Vector2(0, -dd)]), OUTLINE, 1.5, aa)
 			ci.draw_colored_polygon(PackedVector2Array([dc + Vector2(-dd * 0.32, dd * 0.42), dc + Vector2(dd * 0.32, dd * 0.42), dc + Vector2(dd * 0.18, -dd * 0.1),
 					dc + Vector2(0, -dd * 0.55), dc + Vector2(-dd * 0.1, -dd * 0.15), dc + Vector2(-dd * 0.25, 0)]), Color(0.1, 0.08, 0.08))
 		"hull":
@@ -2832,9 +2833,9 @@ static func _draw_head(ci: CanvasItem, look: Dictionary, g: Dictionary, flash: b
 			_plate(ci, plate, c)
 			ci.draw_rect(Rect2(x0 + 4, y0 + 8, w - 4, 6), eye)
 			if _lit():
-				ci.draw_line(Vector2(cen.x, y0), Vector2(cen.x, y0 - 22), OUTLINE, 5.5)
-				ci.draw_line(Vector2(cen.x - 10, y0 - 12), Vector2(cen.x + 10, y0 - 12), OUTLINE, 4.5)
-				ci.draw_line(Vector2(cen.x - 7, y0 - 18), Vector2(cen.x + 7, y0 - 18), OUTLINE, 4.5)
+				ci.draw_line(Vector2(cen.x, y0), Vector2(cen.x, y0 - 22), OUTLINE, 5.5, aa)
+				ci.draw_line(Vector2(cen.x - 10, y0 - 12), Vector2(cen.x + 10, y0 - 12), OUTLINE, 4.5, aa)
+				ci.draw_line(Vector2(cen.x - 7, y0 - 18), Vector2(cen.x + 7, y0 - 18), OUTLINE, 4.5, aa)
 			ci.draw_line(Vector2(cen.x, y0), Vector2(cen.x, y0 - 22), trim, 3.0)
 			ci.draw_line(Vector2(cen.x - 10, y0 - 12), Vector2(cen.x + 10, y0 - 12), trim, 2.0)
 			ci.draw_line(Vector2(cen.x - 7, y0 - 18), Vector2(cen.x + 7, y0 - 18), trim, 2.0)
@@ -3087,7 +3088,7 @@ static func _draw_head(ci: CanvasItem, look: Dictionary, g: Dictionary, flash: b
 				var a5 := PI + k * PI / 16.0
 				bub.append(cc + Vector2(cos(a5) * w * 0.44, sin(a5) * h * 0.62))
 			ci.draw_colored_polygon(bub, Color(0.25, 0.4, 0.55, 0.85))
-			ci.draw_polyline(bub, OUTLINE, 2.0)
+			ci.draw_polyline(bub, OUTLINE, 2.0, aa)
 			ci.draw_arc(cc, w * 0.3, PI * 1.15, PI * 1.45, 6, Color(1, 1, 1, 0.5), 2.0)
 			ci.draw_line(cc + Vector2(0, -h * 0.62), cc, Color(0.85, 0.87, 0.9), 2.0)
 			ci.draw_circle(cc + Vector2((0.0 if front else w * 0.12), -h * 0.24), 4.0, eye)
@@ -3155,7 +3156,7 @@ static func _draw_head(ci: CanvasItem, look: Dictionary, g: Dictionary, flash: b
 			var bc := Vector2(cen.x, y0 - 9.0)
 			_plate(ci, _chamfer(Rect2(bc.x - 9, y0 - 4, 18, 5), 1.5), Color(0.2, 0.2, 0.22))
 			var on := 0.5 + 0.5 * sin(t * 7.0)
-			ci.draw_circle(bc, 9.0, OUTLINE)
+			ci.draw_circle(bc, 9.0, OUTLINE, true, -1.0, aa)
 			ci.draw_circle(bc, 8.0, Color(1.0, 0.55 + 0.25 * on, 0.1))
 			ci.draw_circle(bc + Vector2(-2, -2), 3.0, Color(1.0, 0.95, 0.7, 0.8))
 			var ba := t * 5.0
