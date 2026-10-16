@@ -10,6 +10,7 @@ const Logos = preload("res://logos.gd")
 const RobotPreview = preload("res://robot_preview.gd")
 const Specials = preload("res://specials.gd")
 const UI = preload("res://ui.gd")
+const SaveFile = preload("res://savefile.gd")
 const MoveDemo = preload("res://move_demo.gd")
 const StatIcons = preload("res://stat_icons.gd")   # (1.91) stat glyphs, tap = name
 ## Garage, organised in sections:
@@ -8091,6 +8092,13 @@ func _on_menu() -> void:
 				Loading.run(func():
 					if GameData.load_game(GameData.save_slot, true) == "":
 						Loading.go("res://garage.tscn"))), 19, Vector2(0, 56)))
+	# (1.126) the save as a file you keep: download it, upload it on the Load Game screen
+	col.add_child(UI.button(tr("Download save file"), func():
+		GameData.save_game()
+		close_popup()
+		SaveFile.export_slot(self, GameData.save_slot, func(msg: String, ok: bool):
+			if msg != "":
+				note(msg, "" if ok else "error")), 19, Vector2(0, 56)))
 	col.add_child(UI.button(tr("Main menu"), func():
 		GameData.save_game()   # leaving always saves
 		close_popup()

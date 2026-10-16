@@ -3,6 +3,7 @@ extends Control
 # helper scripts, loaded by path so the game also runs without an editor scan
 const UI = preload("res://ui.gd")
 const GUI = preload("res://garage_ui.gd")
+const SaveFile = preload("res://savefile.gd")
 const PilotArt = preload("res://pilot_art.gd")
 const RobotPreview = preload("res://robot_preview.gd")
 const StoryScript = preload("res://story.gd")
@@ -13,6 +14,8 @@ const StoryScript = preload("res://story.gd")
 var mode := "load"
 var col: VBoxContainer
 var confirm := {}      # slot -> action waiting for a second tap
+var file_msg := ""     # (1.126) what the last download / upload did
+var file_ok := true
 var chosen_slot := 1
 var pilot_edit: LineEdit
 var robot_edit: LineEdit
@@ -48,6 +51,11 @@ func show_slots() -> void:
 	naming = false
 	clear()
 	title("NEW GAME: pick a save slot" if mode == "new" else "LOAD GAME")
+	if file_msg != "":
+		var fm := UI.label(file_msg, 15, GUI.GREEN if file_ok else GUI.RED)
+		fm.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		fm.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		col.add_child(fm)
 	# eight slots: they scroll
 	var scroll := ScrollContainer.new()
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
@@ -88,6 +96,17 @@ func show_slots() -> void:
 				mrow.add_child(ml)
 				mrow.add_child(UI.button("Load your save", _on_load.bind(slot, true), 15, Vector2(190, 44)))
 		var waiting: String = confirm.get(slot, "")
+		if mode != "new":
+			# (1.126) the save as a file: download it, or upload one into this slot
+			var fb := HFlowContainer.new()
+			fb.add_theme_constant_override("h_separation", 8)
+			text.add_child(fb)
+			if not info.is_empty() and not info.get("broken", false):
+				fb.add_child(UI.button("Download ⬇", _on_download.bind(slot), 14, Vector2(150, 42)))
+			var up := UI.button("Sure? Tap again" if waiting == "upload" else "Upload ⬆", _on_upload.bind(slot), 14, Vector2(150, 42))
+			if not info.is_empty():
+				GUI.danger(up)   # it replaces what's in the slot
+			fb.add_child(up)
 		if mode == "new":
 			if info.is_empty():
 				row.add_child(UI.button("Use", _on_pick.bind(slot), 18, Vector2(150, 52)))
@@ -96,9 +115,11 @@ func show_slots() -> void:
 		else:
 			var load_b := UI.button("Load latest", _on_load.bind(slot), 18, Vector2(150, 52))
 			load_b.disabled = info.is_empty() or info.get("broken", false)
+			load_b.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 			row.add_child(load_b)
 			var del := GUI.danger(UI.button("Sure? Tap again" if waiting == "delete" else "Delete", _on_delete.bind(slot), 18, Vector2(190, 52)))
 			del.disabled = info.is_empty()
+			del.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 			row.add_child(del)
 	col.add_child(UI.button("Back", _on_back, 20, Vector2(0, 52)))
 
@@ -525,6 +546,30 @@ func _on_load(slot: int, mine: bool = false) -> void:
 	await get_tree().process_frame
 	var packed: PackedScene = ResourceLoader.load_threaded_get(GARAGE)
 	get_tree().change_scene_to_packed(packed)
+
+
+func _on_download(slot: int) -> void:
+	confirm = {}
+	SaveFile.export_slot(self, slot, _on_file_done)
+
+
+func _on_upload(slot: int) -> void:
+	if not GameData.slot_info(slot).is_empty() and confirm.get(slot, "") != "upload":
+		confirm = {slot: "upload"}
+		Sfx.play("error")
+		show_slots()
+		return
+	confirm = {}
+	SaveFile.import_slot(self, slot, _on_file_done)
+
+
+func _on_file_done(msg: String, ok: bool) -> void:
+	if msg == "":
+		return   # cancelled
+	file_msg = msg
+	file_ok = ok
+	Sfx.play("buy" if ok else "error")
+	show_slots()
 
 
 func _on_delete(slot: int) -> void:
