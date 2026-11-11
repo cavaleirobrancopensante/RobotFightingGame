@@ -245,6 +245,27 @@ const SCENES := {
 	"unlock_shop": {"place": "GUS'S BAY", "lines": [
 		["GUS", "Parts-R-Us, over in the City. New stock every Sunday. Buy what you'll bolt on, rent comes first."],
 	]},
+	# (1.137) Our Lady of the Harbour, Old Town: Father Tomas
+	"church_first": {"place": "OUR LADY OF THE HARBOUR", "lines": [
+		["FR. TOMAS", "So you're his. I baptised you in that font. You cried the whole way through."],
+		["FR. TOMAS", "Your father lit a candle here before every big fight. The candles are by the door, whenever you like."],
+	]},
+	"mass_a": {"place": "OUR LADY OF THE HARBOUR", "lines": [
+		["FR. TOMAS", "Saint Paul says we run to win a crown that lasts. Not a belt. A crown."],
+		["FR. TOMAS", "Go in peace. The Mass is ended."],
+	]},
+	"mass_b": {"place": "OUR LADY OF THE HARBOUR", "lines": [
+		["FR. TOMAS", "Blessed are the meek. Strange words in a fighting town. Think about them anyway."],
+		["FR. TOMAS", "Go in peace. The Mass is ended."],
+	]},
+	"mass_c": {"place": "OUR LADY OF THE HARBOUR", "lines": [
+		["FR. TOMAS", "The Lord keeps no table of wins and losses. He goes after the one that's lost."],
+		["FR. TOMAS", "Go in peace. The Mass is ended."],
+	]},
+	"mass_d": {"place": "OUR LADY OF THE HARBOUR", "lines": [
+		["FR. TOMAS", "We are dust, and the robots are rust. Only love lasts. Be kind to someone this week."],
+		["FR. TOMAS", "Go in peace. The Mass is ended."],
+	]},
 	"brass_invite": {"place": "GUS'S BAY", "lines": [
 		["GUS", "Silas at Brassworks & Sons asked about you. He built half the gauges on your dad's robot."],
 		["GUS", "He'll open his door for you now. Old Town, past the Rusty Bolt. Mind the steam."],

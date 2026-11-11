@@ -26,7 +26,7 @@ static func robot_spot(scene: String) -> Array:
 ## The whole-screen background for a scene. stage = where the robot panel is (people and props go there).
 ## (1.118) Where your phone close-up stands when you're out in the City: that place's own room.
 const PLACE_SCENE := {"pub": "pub", "partsrus": "shop", "scrapyard": "scrap", "brassworks": "brass", "breakers": "hell",
-		"showroom": "volta", "hangar": "nimbus", "kanestore": "kane", "dojo": "tenryu", "ship": "circus"}
+		"showroom": "volta", "hangar": "nimbus", "kanestore": "kane", "dojo": "tenryu", "ship": "circus", "church": "church"}
 
 
 static func draw_back(ci: CanvasItem, screen: Vector2, stage: Rect2, scene: String, t: float, info: Dictionary) -> void:
@@ -63,6 +63,7 @@ const SCENE_COLORS := {
 	"kane": [Color(0.05, 0.05, 0.07), Color(0.07, 0.07, 0.09), Color(0.08, 0.08, 0.1)],        # (1.102) Kane Dynamics: black glass
 	"tenryu": [Color(0.3, 0.19, 0.12), Color(0.34, 0.22, 0.14), Color(0.42, 0.3, 0.18)],        # (1.103) Tenryu: a wooden dojo
 	"circus": [Color(0.06, 0.07, 0.16), Color(0.08, 0.09, 0.2), Color(0.36, 0.24, 0.15)],       # (1.109) the Menagerie: night harbour, a wooden deck
+	"church": [Color(0.27, 0.25, 0.25), Color(0.31, 0.29, 0.28), Color(0.3, 0.22, 0.16)],       # (1.137) Our Lady of the Harbour: old stone, a wooden floor
 	# (the scrapyard is outdoors: a sunset sky)
 }
 
@@ -118,6 +119,21 @@ static func _environment(ci: CanvasItem, screen: Vector2, floor_y: float, scene:
 		for k in 6:
 			var py := floor_y + pow((k + 1) / 7.0, 1.4) * (screen.y - floor_y)
 			ci.draw_line(Vector2(0, py), Vector2(screen.x, py), Color(0.26, 0.17, 0.1), 2.0)
+	elif scene == "church":
+		# (1.137) old stone blocks, a worn wooden floor
+		var cc: Array = SCENE_COLORS["church"]
+		ci.draw_rect(Rect2(Vector2.ZERO, screen), cc[0])
+		for row in int(floor_y / 26.0) + 1:
+			var yy := row * 26.0
+			ci.draw_line(Vector2(0, yy), Vector2(screen.x, yy), cc[0].darkened(0.25), 1.5)
+			for k in int(screen.x / 58.0) + 2:
+				var bx := k * 58.0 + (29.0 if row % 2 == 1 else 0.0)
+				ci.draw_line(Vector2(bx, yy), Vector2(bx, yy + 26.0), cc[0].darkened(0.25), 1.5)
+				if (k * 7 + row * 3) % 5 == 0:
+					ci.draw_rect(Rect2(bx + 3, yy + 3, 52, 20), cc[1])
+		ci.draw_rect(Rect2(0, floor_y, screen.x, screen.y - floor_y), cc[2])
+		for k in int(screen.x / 40.0) + 1:
+			ci.draw_line(Vector2(k * 40.0, floor_y), Vector2(k * 40.0 + (k * 40.0 - screen.x * 0.5) * 0.4, screen.y), cc[2].darkened(0.25), 1.5)
 	elif scene == "volta":
 		var vc: Array = SCENE_COLORS["volta"]
 		ci.draw_rect(Rect2(Vector2.ZERO, screen), vc[0])
@@ -230,6 +246,8 @@ static func _props_back(ci: CanvasItem, size: Vector2, scene: String, t: float, 
 			_tenryu_back(ci, size, floor_y, t)
 		"circus":
 			_circus_back(ci, size, floor_y, t)
+		"church":
+			_church_back(ci, size, floor_y, t, info)
 		"workshop":
 			_sign(ci, Vector2(size.x * 0.8, 30), I18n.t("CUSTOM ORDERS"), Color(0.6, 0.85, 1.0))
 			# shelves of parts
@@ -339,7 +357,7 @@ static func draw_front(ci: CanvasItem, stage: Rect2, scene: String, t: float, in
 ## The light the people in a scene stand in (1.60): Gus's building is the bay's work lamp, the places
 ## outside have their own.
 static func scene_light(scene: String) -> String:
-	return scene if scene in ["pub", "shop", "scrap", "phone", "brass", "hell", "volta", "nimbus", "kane", "tenryu", "circus"] else "bay"
+	return scene if scene in ["pub", "shop", "scrap", "phone", "brass", "hell", "volta", "nimbus", "kane", "tenryu", "circus", "church"] else "bay"
 
 
 static func _front(ci: CanvasItem, size: Vector2, scene: String, t: float, info: Dictionary, robot_base: Vector2, robot_h: float) -> void:
@@ -401,6 +419,8 @@ static func _front(ci: CanvasItem, size: Vector2, scene: String, t: float, info:
 			ci.draw_line(gc, gc + Vector2(cos(na), sin(na)) * 5.5 * s, Color(0.6, 0.1, 0.08), 1.5)
 			PilotArt.draw_person(ci, Vector2(ct.end.x + 26 * s, floor_y), s, pilot, -1.0, "point", t + 0.5)
 			_head(info, "YOU", Vector2(ct.end.x + 26 * s, floor_y), s)
+		"church":
+			_church_front(ci, size, floor_y, s, t, info, pilot)
 		"circus":
 			# (1.109) Ringmaster Esme in her red tailcoat and top hat presents the show; you with your controller
 			var esme := {"skin": "#c98a5e", "hair": "#1a1a1a", "eyes": "#6b3a1e", "outfit": "#b8282e", "hat": "tophat", "beard": "none",
@@ -1822,6 +1842,7 @@ const ROOM := {
 	"kane": {"tint": Color(0.0, 0.0, 0.02), "dim": 0.3, "pool": 0.2},
 	"tenryu": {"tint": Color(0.05, 0.01, 0.02), "dim": 0.2, "pool": 0.1},
 	"circus": {"tint": Color(0.02, 0.02, 0.06), "dim": 0.16, "pool": 0.12},
+	"church": {"tint": Color(0.02, 0.02, 0.05), "dim": 0.26, "pool": 0.1},
 	"scrap": {"tint": Color(0.06, 0.02, 0.08), "dim": 0.12, "pool": 0.07},
 	"phone": {"tint": Color(0.0, 0.0, 0.03), "dim": 0.0, "pool": 0.0},
 }
@@ -2011,3 +2032,105 @@ static func _shrine(ci: CanvasItem, base: Vector2, h: float, t: float) -> void:
 		var stem_top := Vector2(base.x + 8 + j * 3, base.y - 18 - j * 3)
 		ci.draw_line(Vector2(base.x + 9 + j * 2, base.y - 9), stem_top, Color(0.3, 0.5, 0.25), 1.2)
 		ci.draw_circle(stem_top, 2.0, [Color(0.95, 0.85, 0.3), Color(0.9, 0.9, 0.95), Color(0.85, 0.4, 0.5)][j])
+
+
+# ---------------------------------------------------------------- (1.137) Our Lady of the Harbour
+const CHURCH_ALTAR := 0.45   # the altar's x, as a share of the stage
+
+## The church: two tall pointed windows of stained glass with their light on the floor, the apse
+## (the crucifix high up, the red sanctuary lamp), Our Lady on a plinth, and the candle stand
+## (yours lit today). The altar and the pews are drawn in front of the people (_church_front).
+static func _church_back(ci: CanvasItem, size: Vector2, floor_y: float, t: float, info: Dictionary) -> void:
+	var stone := Color(0.42, 0.39, 0.37)
+	for wx in [size.x * 0.12, size.x * 0.86]:
+		var w := Rect2(wx - 26, 40, 52, floor_y * 0.5)
+		var poly := PackedVector2Array([Vector2(w.position.x, w.end.y)])
+		for k in 13:
+			var a := PI + k * PI / 12.0
+			poly.append(Vector2(w.get_center().x + cos(a) * w.size.x * 0.5, w.position.y + 26 + sin(a) * 30))
+		poly.append(w.end)
+		_pg(ci, poly, stone.darkened(0.3))
+		var glass := Rect2(w.position.x + 6, w.position.y + 14, w.size.x - 12, w.size.y - 18)
+		var cols := [Color(0.2, 0.35, 0.8), Color(0.75, 0.15, 0.18), Color(0.9, 0.7, 0.2), Color(0.25, 0.6, 0.4)]
+		var cell := 10.0
+		for gy in int(glass.size.y / cell):
+			for gx in int(glass.size.x / cell):
+				var c: Color = cols[(gx * 3 + gy * 5 + int(wx)) % cols.size()]
+				var glow := 0.75 + 0.1 * sin(t * 0.5 + gx + gy)
+				ci.draw_rect(Rect2(glass.position + Vector2(gx * cell, gy * cell), Vector2(cell - 1.5, cell - 1.5)), Color(c.r * glow, c.g * glow, c.b * glow))
+		ci.draw_rect(glass, Color(0.1, 0.09, 0.1), false, 2.0)
+		ci.draw_colored_polygon(PackedVector2Array([glass.position + Vector2(0, glass.size.y), glass.end,
+				Vector2(glass.end.x + 40, floor_y), Vector2(glass.position.x + 10, floor_y)]), Color(0.6, 0.6, 1.0, 0.06))
+	# the apse
+	var ax := size.x * CHURCH_ALTAR
+	var apse := PackedVector2Array([Vector2(ax - 96, floor_y)])
+	for k in 13:
+		var a := PI + k * PI / 12.0
+		apse.append(Vector2(ax + cos(a) * 96, 118 + sin(a) * 84))
+	apse.append(Vector2(ax + 96, floor_y))
+	_pg(ci, apse, stone.darkened(0.42))
+	_crucifix(ci, Vector2(ax, 50), 86.0)
+	var lamp := Vector2(ax + 74, 150)
+	_ln(ci, Vector2(lamp.x, 40), lamp + Vector2(0, -8), Color(0.6, 0.48, 0.2), 1.5)
+	ci.draw_circle(lamp, 16, Color(1.0, 0.3, 0.25, 0.1 + 0.03 * sin(t * 6.0)))
+	_rc(ci, Rect2(lamp.x - 5, lamp.y - 8, 10, 12), Color(0.78, 0.12, 0.14))
+	ci.draw_circle(lamp + Vector2(0, -9), 2.0, Color(1.0, 0.8, 0.4))
+	# Our Lady on a plinth: blue mantle, white veil, a ring of light
+	var mp := Vector2(size.x * 0.22, floor_y - 54)
+	_rc(ci, Rect2(mp.x - 14, mp.y, 28, 54), stone.lightened(0.05))
+	_pg(ci, PackedVector2Array([mp + Vector2(-13, 0), mp + Vector2(13, 0), mp + Vector2(6, -54), mp + Vector2(-6, -54)]), Color(0.3, 0.45, 0.78))
+	_pg(ci, PackedVector2Array([mp + Vector2(-5, -2), mp + Vector2(5, -2), mp + Vector2(3, -44), mp + Vector2(-3, -44)]), Color(0.93, 0.92, 0.9))
+	_cr(ci, mp + Vector2(0, -60), 7.5, Color(0.93, 0.92, 0.9))
+	ci.draw_circle(mp + Vector2(0, -59), 5.0, Color(0.86, 0.72, 0.6))
+	ci.draw_arc(mp + Vector2(0, -60), 12, 0, TAU, 20, Color(1.0, 0.85, 0.45, 0.6), 1.5)
+	# the candle stand, far left
+	var cs := Rect2(size.x * 0.02, floor_y - 44, size.x * 0.12, 8)
+	_rc(ci, cs, Color(0.35, 0.3, 0.26))
+	_rc(ci, Rect2(cs.get_center().x - 3, cs.end.y, 6, floor_y - cs.end.y), Color(0.3, 0.26, 0.22))
+	var n := maxi(5, int(cs.size.x / 9.0))
+	for k in n:
+		var cp := Vector2(cs.position.x + 5 + k * (cs.size.x - 10) / float(n - 1), cs.position.y - 2)
+		ci.draw_rect(Rect2(cp + Vector2(-2.5, -8), Vector2(5, 8)), Color(0.75, 0.15, 0.15, 0.85))
+		var lit: bool = (k % 3 != 1) or (k == 1 and info.get("candle", false))
+		if lit:
+			var fl2 := 0.7 + 0.3 * sin(t * 9.0 + k * 1.7)
+			ci.draw_circle(cp + Vector2(0, -10), 7, Color(1.0, 0.7, 0.35, 0.08 * fl2))
+			ci.draw_circle(cp + Vector2(0, -10), 1.6 * fl2, Color(1.0, 0.85, 0.45))
+
+
+## Father Tomas behind the altar, facing the pews (green vestments on Sunday morning, black and a
+## white collar otherwise); you kneeling in the front pew with your hands together.
+static func _church_front(ci: CanvasItem, size: Vector2, floor_y: float, s: float, t: float, info: Dictionary, pilot: Dictionary) -> void:
+	var mass: bool = info.get("mass", false)
+	var ax := size.x * CHURCH_ALTAR
+	var tomas := {"skin": "#c9a07c", "hair": "#cfcac2", "eyes": "#4a3a2a", "outfit": "#2f6b3e" if mass else "#1d1d22",
+			"hat": "bald", "beard": "none", "glasses": "round", "collar": true}
+	var tf := Vector2(ax, floor_y - 8 * s)   # on the altar step
+	PilotArt.draw_person(ci, tf, s, tomas, 1.0, "bless" if mass else "pray", t)
+	_head(info, "FR. TOMAS", tf, s)
+	# the altar in front of him: stone, a white cloth, two candles, the tabernacle
+	var stone := Color(0.42, 0.39, 0.37)
+	var alt := Rect2(ax - 56, floor_y - 44 * s, 112, 44 * s)
+	_rc(ci, Rect2(ax - 80, floor_y - 8 * s, 160, 8 * s), stone.darkened(0.15))   # the step
+	_rc(ci, alt, stone)
+	_rc(ci, Rect2(alt.position.x - 4, alt.position.y - 4, alt.size.x + 8, 8), Color(0.93, 0.92, 0.88))
+	_rc(ci, Rect2(alt.position.x + 14, alt.position.y + 4, 9, alt.size.y * 0.55), Color(0.93, 0.92, 0.88))
+	_rc(ci, Rect2(alt.end.x - 23, alt.position.y + 4, 9, alt.size.y * 0.55), Color(0.93, 0.92, 0.88))
+	ci.draw_line(Vector2(ax - 6, alt.position.y + 18), Vector2(ax + 6, alt.position.y + 18), Color(0.85, 0.66, 0.26), 2.0)
+	ci.draw_line(Vector2(ax, alt.position.y + 12), Vector2(ax, alt.position.y + 26), Color(0.85, 0.66, 0.26), 2.0)
+	for cx in [alt.position.x + 10, alt.end.x - 10]:
+		_rc(ci, Rect2(cx - 3, alt.position.y - 26, 6, 22), Color(0.95, 0.94, 0.88))
+		var fl := 0.8 + 0.2 * sin(t * 8.0 + cx)
+		ci.draw_circle(Vector2(cx, alt.position.y - 30), 14, Color(1.0, 0.8, 0.45, 0.08 * fl))
+		ci.draw_circle(Vector2(cx, alt.position.y - 30), 2.5 * fl, Color(1.0, 0.86, 0.5))
+	# you, in the front pew
+	var you := Vector2(size.x * 0.76, floor_y)
+	PilotArt.draw_person(ci, you, s, pilot, -1.0, "pray", t + 0.4)
+	_head(info, "YOU", you, s)
+	for row in 2:
+		var py := floor_y - (30 - row * 12) * s
+		var px := size.x * (0.66 + row * 0.04)
+		var pw := size.x * 0.34
+		_rc(ci, Rect2(px, py, pw, 7 * s), Color(0.34, 0.22, 0.13))
+		_rc(ci, Rect2(px, py + 7 * s, pw, 4 * s), Color(0.26, 0.16, 0.1))
+		_rc(ci, Rect2(px + 8, py + 11 * s, 5 * s, floor_y - py - 11 * s), Color(0.26, 0.16, 0.1))

@@ -328,6 +328,9 @@ static func draw_person(ci: CanvasItem, feet: Vector2, s: float, raw: Dictionary
 		_blk(ci, Rect2(hip + Vector2(-9 * s, -20 * s), Vector2(18 * s, 20 * s)), outfit)
 		_ln2(ci, hip + Vector2(-7 * s, -20 * s), neck + Vector2(-7 * s, 0), outfit, 2.5 * s)
 		_ln2(ci, hip + Vector2(7 * s, -20 * s), neck + Vector2(7 * s, 0), outfit, 2.5 * s)
+	if look.get("collar", false):
+		# (1.137) a priest's white collar
+		_rc(ci, Rect2(neck + Vector2(-3 * s, 0), Vector2(6 * s, 3 * s)), Color(0.96, 0.96, 0.94))
 	if look.get("cross", false):
 		# (1.134) a small gold crucifix on a chain, hanging below the beard
 		draw_cross(ci, neck + Vector2(0, 7 * s), 8 * s, neck + Vector2(-5 * s, 0), neck + Vector2(5 * s, 0))
@@ -400,6 +403,19 @@ static func draw_person(ci: CanvasItem, feet: Vector2, s: float, raw: Dictionary
 		"grab":
 			# (1.64) the front hand on something the scene draws (Gus's crane lever): grab_at
 			hf = grab_at
+		"pray":
+			# (1.137) hands together in front of the chest
+			hf = neck + Vector2(9 * s * dir, 13 * s)
+			hb = neck + Vector2(10 * s * dir, 14 * s)
+		"bless":
+			# (1.137) the priest: one hand raised in blessing, it moves down and across, slowly
+			var bt := fmod(t, 5.0)
+			hf = sh_f + Vector2(14 * s * dir, -10 * s)
+			if bt < 1.0:
+				hf += Vector2(0, bt * 14 * s)
+			elif bt < 2.0:
+				hf += Vector2((bt - 1.0) * -10 * s * dir, 7 * s)
+			hb = neck + Vector2(8 * s * dir, 14 * s)
 		"lift":
 			var up := sin(t * 1.5) * 2.0
 			hf = sh_f + Vector2(8 * s * dir, (-14 + up) * s)

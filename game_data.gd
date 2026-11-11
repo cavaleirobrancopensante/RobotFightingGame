@@ -3,7 +3,7 @@ const PlayLog = preload("res://playlog.gd")   # (1.87) the playtest log
 
 # helper scripts, loaded by path so the game also runs without an editor scan
 ## The game's version, shown on the main menu. Bump it with every change (1.1, 1.2, ...).
-const VERSION := "1.136"
+const VERSION := "1.137"
 const Arena = preload("res://arena.gd")
 const I18n = preload("res://i18n.gd")
 const Catalog = preload("res://catalog.gd")
@@ -651,6 +651,8 @@ func new_game() -> void:
 	patched_week = -1
 	deliveries = []
 	morning_seen = ""
+	candle_day = ""
+	mass_day = ""
 	guide_seen = {}
 	guide_backfill = false
 	loan = {}
@@ -3054,6 +3056,8 @@ func next_day() -> void:
 const PATCH_HP := 0.4
 var patched_week := -1
 var morning_seen := ""   # (1.117) the day key of the last morning card you saw
+var candle_day := ""   # (1.137) the day key you last lit a candle at Our Lady of the Harbour
+var mass_day := ""     # (1.137) the day key of the last Mass you went to
 var deliveries: Array = []   # (1.116) part ids ordered from a catalogue at home: in Storage tomorrow morning
 const DELIVERY_SHARE := 0.1   # the delivery fee: 10% of the price
 const DELIVERY_MIN := 15
@@ -5844,7 +5848,7 @@ func save_game(path: String = "") -> bool:
 		"owned_chips": owned_chips, "chips": chips, "circuit": circuit, "circuit_offers": circuit_offers,
 		"circuits_won": circuits_won, "pickup": pickup, "setups": setups, "custom_parts": custom_parts,
 		"year": year, "week": week, "day": day, "rank": rank, "event": {}, "leagues": leagues, "title_seeds": title_seeds, "trophies": trophies, "career_stats": career_stats,
-		"pecking_k": pecking_k(), "style": style, "style_locked": style_locked, "shop_stock": shop_stock, "chip_stock": chip_stock, "scout": scout, "wingmen": wingmen, "sending": sending, "pilot_look": pilot_look, "owned_controllers": owned_controllers, "spare_controllers": spare_controllers, "techs": techs, "tech_fit": tech_fit, "tips_seen": tips_seen, "tips_log": tips_log, "h2h": h2h, "rivals": rivals, "rel": rel, "nemeses": nemeses, "pending_talk": pending_talk, "inbox": inbox, "inbox_seen": inbox_seen, "social": social, "pilot_at": pilot_at, "places_been": places_been, "catalogues": catalogues, "pilot_used": pilot_used, "film_index": film_index, "film_pending": film_pending, "films_seen": films_seen, "contracts": contracts, "alerts_unseen": alerts_unseen, "day_log": day_log, "ledger": ledger, "bet_log": bet_log, "patched_week": patched_week, "deliveries": deliveries, "morning_seen": morning_seen, "guide_seen": guide_seen, "guide_mode": guide_mode, "loan": loan, "loan_free_at": loan_free_at, "gus_alerts": gus_alerts, "tour": tour, "streak": streak, "pub_seen": pub_seen, "digs_left": digs_left, "dig_luck": dig_luck, "bills_note": bills_note, "fight_log": fight_log, "bets": bets, "world": world,
+		"pecking_k": pecking_k(), "style": style, "style_locked": style_locked, "shop_stock": shop_stock, "chip_stock": chip_stock, "scout": scout, "wingmen": wingmen, "sending": sending, "pilot_look": pilot_look, "owned_controllers": owned_controllers, "spare_controllers": spare_controllers, "techs": techs, "tech_fit": tech_fit, "tips_seen": tips_seen, "tips_log": tips_log, "h2h": h2h, "rivals": rivals, "rel": rel, "nemeses": nemeses, "pending_talk": pending_talk, "inbox": inbox, "inbox_seen": inbox_seen, "social": social, "pilot_at": pilot_at, "places_been": places_been, "catalogues": catalogues, "pilot_used": pilot_used, "film_index": film_index, "film_pending": film_pending, "films_seen": films_seen, "contracts": contracts, "alerts_unseen": alerts_unseen, "day_log": day_log, "ledger": ledger, "bet_log": bet_log, "patched_week": patched_week, "deliveries": deliveries, "morning_seen": morning_seen, "candle_day": candle_day, "mass_day": mass_day, "guide_seen": guide_seen, "guide_mode": guide_mode, "loan": loan, "loan_free_at": loan_free_at, "gus_alerts": gus_alerts, "tour": tour, "streak": streak, "pub_seen": pub_seen, "digs_left": digs_left, "dig_luck": dig_luck, "bills_note": bills_note, "fight_log": fight_log, "bets": bets, "world": world,
 	}
 	var f := FileAccess.open(slot_path(save_slot) if path == "" else path, FileAccess.WRITE)
 	if f == null:
@@ -5978,6 +5982,8 @@ func load_game(slot: int = -1, mine: bool = false) -> String:
 	patched_week = int(data.get("patched_week", -1))
 	deliveries = data.get("deliveries", [])
 	morning_seen = str(data.get("morning_seen", ""))
+	candle_day = str(data.get("candle_day", ""))
+	mass_day = str(data.get("mass_day", ""))
 	guide_seen = data.get("guide_seen", {}) if typeof(data.get("guide_seen", null)) == TYPE_DICTIONARY else {}
 	guide_mode = int(data.get("guide_mode", 1))   # saves before 1.132 had the tutorial on
 	guide_backfill = not data.has("guide_seen")   # (1.128) a save from before the list: what's done is not paid again
@@ -6759,6 +6765,7 @@ const PLACES := {
 	"home": {"name": "Gus's building", "district": "oldtown", "pos": [318, 300], "road": 2, "kind": "home"},
 	"pub": {"name": "The Rusty Bolt", "district": "oldtown", "pos": [430, 236], "road": 3, "kind": "pub"},
 	"partsrus": {"name": "Parts-R-Us", "district": "oldtown", "pos": [410, 372], "road": 3, "kind": "shop", "feature": "shop"},
+	"church": {"name": "Our Lady of the Harbour", "district": "oldtown", "pos": [300, 118], "road": 2, "kind": "church"},   # (1.137)
 	"brassworks": {"name": "Brassworks & Sons", "district": "oldtown", "pos": [232, 226], "road": 2, "kind": "maker", "maker": "brassworks"},
 	"breakers": {"name": "Hellfire Heavy", "district": "docks", "pos": [336, 446], "road": 1, "kind": "maker", "maker": "hellfire"},
 	"ship": {"name": "The Menagerie", "district": "docks", "pos": [452, 544], "road": 1, "kind": "maker", "maker": "menagerie"},
@@ -6816,6 +6823,37 @@ func place_locked(place: String) -> String:
 	if place == "dojo" and rank_index() < 2 and not story_seen.has("tenryu_invite"):
 		return "Opens to Rust League pilots. Or land a big special move and they'll come to you."   # (1.103)
 	return ""
+
+
+# ---------------------------------------------------------------- (1.137) Our Lady of the Harbour
+# The church in Old Town. Mass on Sunday mornings (an hour of your time), a candle for your dad
+# once a day. Nothing to win there: it's a quiet place in a loud city.
+const MASS_HOURS := 1.0
+
+
+func today_key() -> String:
+	return day_key(year, week, day_index())
+
+
+## Mass is on Sunday morning.
+func mass_time() -> bool:
+	return day == "sun" and phase == 0
+
+
+func go_to_mass() -> int:
+	mass_day = today_key()
+	log_day("Mass at Our Lady of the Harbour.")
+	PlayLog.add("church", "mass")
+	var passed := spend_pilot(MASS_HOURS)
+	save_game()
+	return passed
+
+
+func light_candle() -> void:
+	candle_day = today_key()
+	log_day("Lit a candle for Dad at Our Lady of the Harbour.")
+	PlayLog.add("church", "candle")
+	save_game()
 
 
 ## (1.102) Kane Dynamics only sells to Steel League pilots and champions. "" = they'll sell to you.

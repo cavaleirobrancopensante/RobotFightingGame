@@ -10,7 +10,8 @@ const NAMES := ["click", "buy", "equip", "error", "swing", "uppercut", "hit", "h
 		"voice_gravel", "voice_high", "voice_smooth", "voice_nasal", "voice_boom",
 		# (1.92) each maker's footstep and hit (tools/make_maker_sounds.py)
 		"step_scrapworks", "step_oldiron", "step_brassworks", "step_hellfire", "step_volta", "step_nimbus", "step_kane", "step_tenryu", "step_menagerie",
-		"strike_scrapworks", "strike_oldiron", "strike_brassworks", "strike_hellfire", "strike_volta", "strike_nimbus", "strike_kane", "strike_tenryu", "strike_menagerie"]
+		"strike_scrapworks", "strike_oldiron", "strike_brassworks", "strike_hellfire", "strike_volta", "strike_nimbus", "strike_kane", "strike_tenryu", "strike_menagerie",
+		"church_bell"]   # (1.137) Our Lady of the Harbour's bell on Sunday mornings
 const VOICES := 12
 const MUSIC_DB := -9.0
 const FIGHT_MUSIC_DB := -13.5   # fight songs are mixed hot: play them quieter so they don't blast
@@ -60,6 +61,7 @@ const VOICE_OF := {
 	"VALE": ["voice_smooth", 1.1],   # (1.102) Ms. Vale at Kane Dynamics
 	"HARU": ["voice_high", 1.2],
 	"ESME": ["voice_smooth", 1.35],   # (1.109) Ringmaster Esme of the Menagerie   # (1.103) Haru at the Tenryu dojo
+	"FR. TOMAS": ["voice_smooth", 0.92],   # (1.137) Father Tomas of Our Lady of the Harbour
 	"YOU": ["talk", 1.08],
 	"ECHO": ["talk_robot", 1.0],
 	"MARGO": ["voice_high", 1.18],

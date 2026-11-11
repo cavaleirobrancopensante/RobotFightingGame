@@ -572,6 +572,7 @@ func segs_of(t: String) -> Array:
 			out.append(["kane", tr("Kane Dynamics"), ""])   # (1.102) the showroom in Kane Heights
 			out.append(["tenryu", tr("Tenryu Mecha Works"), ""])   # (1.103) the dojo
 			out.append(["circus", tr("The Menagerie"), ""])   # (1.109) the circus ship
+			out.append(["church", tr("Our Lady of the Harbour"), ""])   # (1.137) the church in Old Town
 		"Season":
 			out.append(["calendar", tr("Calendar"), ""])
 			out.append(["table", tr("Standings"), ""])
@@ -699,7 +700,7 @@ func build_seg_bar() -> void:
 		# (1.77) a place in the city: back to the map, and the place's own name / views
 		tabs_box.add_child(UI.button(tr("‹ City"), func(): Sfx.play("click"); _on_tab("City"), 13, Vector2(96, 34)))
 		if tab == "Parts":
-			var pt := GUI.text(tr(str(MAKER_SHOPS[seg()][2])) if MAKER_SHOPS.has(seg()) else {"dealer": tr("PARTS-R-US")}.get(seg(), tr("THE SCRAPYARD")), 18, GUI.TEXT, "headb")
+			var pt := GUI.text(tr(str(MAKER_SHOPS[seg()][2])) if MAKER_SHOPS.has(seg()) else {"dealer": tr("PARTS-R-US"), "church": tr("OUR LADY OF THE HARBOUR")}.get(seg(), tr("THE SCRAPYARD")), 18, GUI.TEXT, "headb")
 			pt.custom_minimum_size = Vector2(0, 40)
 			pt.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 			pt.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -895,7 +896,7 @@ func play_story(keys: Array, after: Callable = Callable()) -> bool:
 	for k in keys:
 		if typeof(k) == TYPE_DICTIONARY:
 			lines += talk_screens(k.get("lines", []))   # emergent talk: rivals, the pub, streaks
-		elif Story.SCENES.has(k) and (not GameData.story_seen.has(k) or str(k).begins_with("stay_") or str(k).begins_with("down") or str(k).begins_with("up_") or str(k).begins_with("title_")):
+		elif Story.SCENES.has(k) and (not GameData.story_seen.has(k) or str(k).begins_with("stay_") or str(k).begins_with("down") or str(k).begins_with("up_") or str(k).begins_with("title_") or str(k).begins_with("mass_")):
 			lines += story_screens(k)
 			GameData.mark_story_seen(k)
 	if lines.is_empty():
@@ -1158,9 +1159,9 @@ func refresh() -> void:
 		tab = "Bay"
 	if away_from_bay() and HOME_TABS.has(tab):
 		# (1.79) out in the city: you stay where you are (the bay opens when you're back)
-		tab = {"pub": "Pub", "partsrus": "Parts", "scrapyard": "Parts", "brassworks": "Parts", "breakers": "Parts", "showroom": "Parts", "hangar": "Parts", "kanestore": "Parts", "dojo": "Parts", "ship": "Parts"}.get(GameData.pilot_at, "City")
+		tab = {"pub": "Pub", "partsrus": "Parts", "scrapyard": "Parts", "brassworks": "Parts", "breakers": "Parts", "showroom": "Parts", "hangar": "Parts", "kanestore": "Parts", "dojo": "Parts", "ship": "Parts", "church": "Parts"}.get(GameData.pilot_at, "City")
 		if tab == "Parts":
-			segs_on["Parts"] = {"partsrus": "dealer", "brassworks": "brass", "breakers": "hell", "showroom": "volta", "hangar": "nimbus", "kanestore": "kane", "dojo": "tenryu", "ship": "circus"}.get(GameData.pilot_at, "scrap")
+			segs_on["Parts"] = {"partsrus": "dealer", "brassworks": "brass", "breakers": "hell", "showroom": "volta", "hangar": "nimbus", "kanestore": "kane", "dojo": "tenryu", "ship": "circus", "church": "church"}.get(GameData.pilot_at, "scrap")
 	set_seg(seg())
 	# (1.77) the City: the map takes the left side (wider), the panel on the right says what's where
 	var in_city := tab == "City"
@@ -1209,6 +1210,8 @@ func refresh() -> void:
 					build_dealer()
 				"brass", "hell", "volta", "nimbus", "kane", "tenryu", "circus":
 					build_maker_shop(str(MAKER_SHOPS[seg()][1]))
+				"church":
+					build_church()
 				"order":
 					build_order()
 				_:
@@ -4768,7 +4771,8 @@ func scene_info() -> Dictionary:
 			"medals": GameData.trophies, "wall": GameData.wall_trophies(), "gus_point": dad_talk and talk_story, "backup": backup, "stats": GameData.career_stats,
 			"wins": GameData.wins, "losses": GameData.losses, "champion": GameData.champion,
 			"patron": patron_info() if scene == "pub" else {}, "tv": tv_info() if scene == "pub" else {},
-			"controllers": GameData.owned_controllers, "using": str(GameData.pilot_look.get("controller", "gamepad")), "rosary": GameData.story_seen.has("dad_rosary")}
+			"controllers": GameData.owned_controllers, "using": str(GameData.pilot_look.get("controller", "gamepad")), "rosary": GameData.story_seen.has("dad_rosary"),
+			"candle": GameData.candle_day == GameData.today_key(), "mass": GameData.mass_time()}
 
 
 ## The pilots in the pub today: the first sits at the bar, the rest stand around.
@@ -5050,7 +5054,7 @@ func set_scene_for_tab() -> void:
 		"Storage":
 			scene = "storage"
 		"Parts":
-			scene = {"dealer": "shop", "order": "workshop", "brass": "brass", "hell": "hell", "volta": "volta", "nimbus": "nimbus", "kane": "kane", "tenryu": "tenryu", "circus": "circus"}.get(seg(), "scrap")
+			scene = {"dealer": "shop", "order": "workshop", "brass": "brass", "hell": "hell", "volta": "volta", "nimbus": "nimbus", "kane": "kane", "tenryu": "tenryu", "circus": "circus", "church": "church"}.get(seg(), "scrap")
 		"Season":
 			scene = {"cups": "cups", "bets": "phone"}.get(seg(), "office")
 		"Pub":
@@ -5074,7 +5078,7 @@ func set_scene_for_tab() -> void:
 	preview.facing = 1 if scene == "paint" else -1
 	preview.front = scene == "build"   # in the bay the robot hangs on Gus's gantry, facing you
 	preview.light = GarageArt.scene_light(scene)   # (1.61) every place lights the robot its own way
-	preview.hide_robot = scene in ["pub", "office", "phone"]  # the robot stays in the bay when you're at the pub or in the office
+	preview.hide_robot = scene in ["pub", "office", "phone", "church"]  # the robot stays in the bay when you're at the pub or in the office
 	preview.queue_redraw()
 	if scene == "pub" and not talk_story:
 		var hello := GameData.pub_greeting()
@@ -5318,6 +5322,47 @@ func _on_sell_controller(id: String) -> void:
 
 
 ## The scrapyard: a mountain of dead robots. Dig for free (beaten-up) parts, a few digs per fight.
+## (1.137) Our Lady of the Harbour: Mass on Sunday mornings, a candle for your dad. Nothing to buy.
+var bell_day := ""
+
+
+func build_church() -> void:
+	var today := GameData.today_key()
+	section(tr("MASS. Sunday mornings, an hour of your time."))
+	if GameData.mass_day == today:
+		section(tr("You went to Mass this morning."))
+	elif GameData.mass_time():
+		var b := row_button(action_bar(), tr("Stay for Mass") + " · " + trip_text(GameData.MASS_HOURS), _on_mass, true, 260)
+		GUI.primary(b)
+	else:
+		section(tr("Next Mass: Sunday morning."))
+	section(tr("A CANDLE. Your dad lit one here before every big fight."))
+	if GameData.candle_day == today:
+		section(tr("A candle burns for your dad today."))
+	else:
+		row_button(action_bar(), tr("Light a candle for your dad"), _on_candle, true, 300)
+
+
+func _on_mass() -> void:
+	time_begin()
+	var passed := GameData.go_to_mass()
+	var lines := ["mass_a", "mass_b", "mass_c", "mass_d"]
+	play_story([lines[GameData.week % lines.size()]], func():
+		if passed > 0:
+			time_end()
+		else:
+			tp = {}
+		refresh())
+	refresh()
+
+
+func _on_candle() -> void:
+	GameData.light_candle()
+	Sfx.play("click")
+	note(tr("You light a candle for your dad. The flame leans, then stands up straight."))
+	refresh()
+
+
 func build_scrapyard_tab() -> void:
 	var bar := action_bar()
 	var info := GUI.text(tr("One dig a day, and nothing is guaranteed. Every day you stay away, the odds of finding something go up. Digging for one kind of part, or for extras (reactors, controllers), halves them."), 12, GUI.MUTED)
@@ -8792,7 +8837,7 @@ func place_of(t: String, key: String = "") -> String:
 		return "pub"
 	if t == "Parts":
 		var k := key if key != "" else str(segs_on.get("Parts", "scrap"))
-		return {"dealer": "partsrus", "brass": "brassworks", "hell": "breakers", "volta": "showroom", "nimbus": "hangar", "kane": "kanestore", "tenryu": "dojo", "circus": "ship"}.get(k, "scrapyard")
+		return {"dealer": "partsrus", "brass": "brassworks", "hell": "breakers", "volta": "showroom", "nimbus": "hangar", "kane": "kanestore", "tenryu": "dojo", "circus": "ship", "church": "church"}.get(k, "scrapyard")
 	return ""
 
 
@@ -8870,6 +8915,7 @@ const PLACE_TEXT := {"home": "Gus's building: the bay, storage, the workshop and
 		"ship": "The Menagerie Mechanica's circus ship, moored at the end of the Docks. Ringmaster Esme sells animal parts off the deck, in your grade.",
 		"dojo": "Tenryu Mecha Works' dojo in Midtown. Hero robots from across the sea, built to fight Kane. Haru calls every move by name.",
 		"hangar": "Nimbus Aerial's hangar at the edge of the Midtown airfield. Captain Wren tests everything herself. The whole Nimbus line, in your grade.",
+		"church": "Our Lady of the Harbour, the old church up the hill in Old Town. Mass on Sunday mornings. Your dad lit a candle here before his big fights.",
 		"scrapyard": "The Scrapyard. Mountains of dead robots. One dig a day, an hour of digging.",
 		"scrap_ring": "The scrap ring. Pickups and the Scrap League fight here.",
 		"sports_hall": "Ferrum Sports Hall. The Rust League's fight nights.",
@@ -9027,6 +9073,11 @@ func enter_place(place: String) -> void:
 			var ks := "kane_first" if GameData.maker_refuses("kane") != "" else "kane_welcome"
 			if not GameData.story_seen.has(ks) and not (ks == "kane_first" and GameData.story_seen.has("kane_welcome")):
 				get_tree().create_timer(0.4).timeout.connect(func(): play_story([ks]))
+		"church":
+			tab = "Parts"
+			segs_on["Parts"] = "church"
+			if not GameData.story_seen.has("church_first"):
+				get_tree().create_timer(0.4).timeout.connect(func(): play_story(["church_first"]))
 		"scrapyard":
 			tab = "Parts"
 			segs_on["Parts"] = "scrap"
@@ -9380,6 +9431,12 @@ func check_gus_cards() -> void:
 					tr("Your dad never went to him. But we might have to."),
 					[[tr("See Varga ›"), func(): _on_tab("Season"); season_view = "money"; refresh(), true], [tr("Not yet"), Callable(), false]])
 			return
+	# (1.137) Sunday morning: the bells of Our Lady of the Harbour carry across Old Town
+	if GameData.mass_time() and bell_day != GameData.today_key() and GameData.story_seen.has("first_garage"):
+		bell_day = GameData.today_key()
+		Sfx.play("church_bell", 0.0, -4.0)
+		if GameData.mass_day != GameData.today_key():
+			note(tr("The bells of Our Lady of the Harbour. Mass this morning, in Old Town."))
 	# (1.135) the first of December (week 45, Monday): St. Eligius, patron of metalworkers
 	var elig := "eligius:%d" % GameData.year
 	if tab == "Bay" and GameData.week == 45 and GameData.day_index() == 0 and GameData.story_seen.has("first_garage") \

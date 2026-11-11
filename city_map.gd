@@ -20,7 +20,7 @@ const ZOOM_MIN := 1.0
 const ZOOM_MAX := 4.5
 ## The avenue that runs from the Docks up to Kane Heights; every place joins it at PLACES "road".
 const AVENUE := [Vector2(110, 476), Vector2(230, 420), Vector2(320, 352), Vector2(470, 304), Vector2(600, 292), Vector2(720, 222), Vector2(870, 160)]
-const PIN := {"home": Color(0.95, 0.76, 0.19), "pub": Color(1.0, 0.45, 0.3), "shop": Color(0.4, 0.75, 1.0), "scrap": Color(0.85, 0.55, 0.25), "venue": Color(0.62, 0.62, 0.7), "maker": Color(0.85, 0.68, 0.22)}
+const PIN := {"home": Color(0.95, 0.76, 0.19), "pub": Color(1.0, 0.45, 0.3), "shop": Color(0.4, 0.75, 1.0), "scrap": Color(0.85, 0.55, 0.25), "venue": Color(0.62, 0.62, 0.7), "maker": Color(0.85, 0.68, 0.22), "church": Color(0.82, 0.84, 0.95)}
 const SEA := [Vector2(-600, -400), Vector2(70, -400), Vector2(70, 0), Vector2(90, 180), Vector2(60, 330), Vector2(120, 410), Vector2(300, 520), Vector2(520, 560), Vector2(640, 1000), Vector2(-600, 1000)]
 
 ## The districts' street grids: [rect, block size, roof colour, kind]. Together they cover all the land.
@@ -1040,6 +1040,10 @@ func _glyph(kind: String, c: Vector2, locked: bool) -> void:
 				cv.draw_line(c + Vector2(cos(a), sin(a)) * 3.0, c + Vector2(cos(a), sin(a)) * 5.5, g, 2.0)
 			cv.draw_circle(c, 3.2, g)
 			cv.draw_circle(c, 1.2, Color(0.85, 0.68, 0.22))
+		"church":
+			# (1.137) a cross
+			cv.draw_line(c + Vector2(0, -6), c + Vector2(0, 6), g, 2.4)
+			cv.draw_line(c + Vector2(-4, -2), c + Vector2(4, -2), g, 2.4)
 		"venue":
 			cv.draw_arc(c, 4.0, 0, TAU, 12, g, 1.6)
 			cv.draw_line(c + Vector2(-4, 0), c + Vector2(4, 0), g, 1.2)
