@@ -1,0 +1,92 @@
+## (1.130) First-week measurement: run as the main scene in a copy of the project (with a screen, e.g. xvfb).
+## Prints, day by day, the windows that pop up, Gus's lines, words read and marching stripes on screen,
+## and the words in each day's plan. Compare builds by running it on an older commit too.
+extends Node
+# first-week measurement: windows, words and stripes a new player meets, day by day
+var g
+var win := 0
+var words := 0
+var lines := 0
+var last_ov = null
+var last_line := ""
+func wc(t: String) -> int:
+	return t.split(" ", false).size()
+func ov_words(n: Node) -> int:
+	var c := 0
+	if n is Label and n.is_visible_in_tree():
+		c += wc(n.text)
+	elif n is Button and n.is_visible_in_tree():
+		c += wc(n.text)
+	for k in n.get_children():
+		c += ov_words(k)
+	return c
+func stripes(n: Node) -> int:
+	var c := 0
+	if n.name == "March" and n is CanvasItem and n.is_visible_in_tree():
+		c += 1
+	for k in n.get_children():
+		c += stripes(k)
+	return c
+func _process(_d: float) -> void:
+	if g == null or not is_instance_valid(g):
+		return
+	if g.overlay != null and is_instance_valid(g.overlay) and g.overlay != last_ov:
+		win += 1
+		words += ov_words(g.overlay)
+	last_ov = g.overlay
+	if not g.talk_lines.is_empty() and str(g.talk_lines[0][1]) != last_line:
+		last_line = str(g.talk_lines[0][1])
+		lines += 1
+		words += wc(last_line)
+func settle() -> void:
+	for i in 30:
+		await get_tree().create_timer(0.1).timeout
+		var busy := false
+		if g.overlay != null and is_instance_valid(g.overlay):
+			g.close_popup(); busy = true
+		if not g.talk_lines.is_empty():
+			g._talk_next(); busy = true
+		if not busy and i > 4:
+			return
+func report(tag: String) -> void:
+	print("M ", tag, " windows=", win, " lines=", lines, " words=", words, " stripes=", stripes(g))
+	win = 0; words = 0; lines = 0
+func _ready() -> void:
+	await get_tree().process_frame
+	var gd = GameData
+	gd.set_language("en")
+	gd.settings["guide"] = 1
+	gd.new_game()
+	gd.story_seen.append("first_garage")
+	g = load("res://garage.tscn").instantiate()
+	get_tree().root.add_child.call_deferred(g)
+	await get_tree().create_timer(1.5).timeout
+	var s0 := stripes(g)
+	await settle()
+	report("arrive(stripes_at_start=%d)" % s0)
+	for t in ["Season", "City", "Feed", "Crew", "Bay"]:
+		if g.has_method("_on_tab"):
+			g._on_tab(t)
+		await get_tree().create_timer(0.5).timeout
+		await settle()
+	report("look_round")
+	if g.has_method("_on_guide_chip"):
+		g._on_guide_chip()
+		await get_tree().create_timer(2.5).timeout
+		await settle()
+		g._on_tab("Bay")
+		await settle()
+		report("tapped_chip")
+	for d in 4:
+		gd.pass_day()
+		g.refresh()
+		g.check_gus_cards()
+		await get_tree().create_timer(0.6).timeout
+		await settle()
+		report("day%d" % (d + 2))
+		g.open_day_plan()
+		await get_tree().create_timer(0.3).timeout
+		print("PLAN day%d words=%d" % [d + 2, ov_words(g.overlay)])
+		g.close_popup()
+		win = 0; words = 0
+	get_tree().quit()
