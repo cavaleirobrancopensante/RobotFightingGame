@@ -634,3 +634,32 @@ static func draw_cross(ci: CanvasItem, top: Vector2, h: float, chain_l: Vector2,
 		ci.draw_rect(r, gold)
 	ci.draw_line(stem.position + Vector2(cw * 0.3, cw), stem.position + Vector2(cw * 0.3, h - cw), gold.lightened(0.45), maxf(0.8, cw * 0.6))
 
+
+## (1.136) Your dad's rosary (his mother's before him), hanging from a controller: a loop of small dark beads
+## from the hang point, the five larger Our Father beads, then the short tail with the little crucifix.
+## top = where it hangs from, s = scale; it sways a little with t.
+static func draw_rosary(ci: CanvasItem, top: Vector2, s: float, t: float) -> void:
+	var sway := sin(t * 1.7) * 0.18
+	var bead := Color(0.32, 0.2, 0.14)
+	var big := Color(0.45, 0.3, 0.2)
+	var silver := Color(0.78, 0.78, 0.82)
+	var drop := 14.0 * s
+	var w := 5.0 * s
+	var centre := top + Vector2(sin(sway) * drop, cos(sway) * drop)   # where the loop meets the tail
+	# the loop: beads round an oval between the hang point and the centre medal
+	var n := 16
+	for k in n:
+		var a := TAU * k / n
+		var p := top.lerp(centre, 0.5) + Vector2(cos(a) * w, sin(a) * drop * 0.5).rotated(-sway)
+		var r := 1.15 * s if k % 4 != 0 else 1.6 * s
+		ci.draw_circle(p, r, big if k % 4 == 0 else bead)
+	ci.draw_circle(centre, 1.5 * s, silver)   # the centre medal
+	# the tail: three small beads, one large, then the crucifix
+	var dir := Vector2(sin(sway * 1.4), cos(sway * 1.4))
+	for k in 4:
+		ci.draw_circle(centre + dir * (2.6 + k * 2.4) * s, (1.6 if k == 3 else 1.1) * s, big if k == 3 else bead)
+	var ct := centre + dir * 13.5 * s
+	var side := Vector2(dir.y, -dir.x)
+	ci.draw_line(ct, ct + dir * 5.5 * s, silver, maxf(1.0, 1.1 * s))
+	ci.draw_line(ct + dir * 1.6 * s - side * 1.8 * s, ct + dir * 1.6 * s + side * 1.8 * s, silver, maxf(1.0, 1.1 * s))
+

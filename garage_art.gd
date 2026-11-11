@@ -1012,6 +1012,8 @@ static func _gear_shelf(ci: CanvasItem, size: Vector2, t: float, info: Dictionar
 		if on:
 			_cr(ci, sp[1], 20.0, Color(0.95, 0.76, 0.19, 0.18 + 0.08 * sin(t * 3.0)))
 		PilotArt.draw_controller(ci, sp[1], 0.85, str(sp[0]), on, t)
+		if on and info.get("rosary", false):
+			PilotArt.draw_rosary(ci, sp[1] + Vector2(9, 2), 0.9, t)   # (1.136) it hangs on the controller you use
 
 
 ## BotMedia: a close-up of your pilot from the front, face lit blue by the phone in both hands.

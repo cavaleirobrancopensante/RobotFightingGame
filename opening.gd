@@ -744,6 +744,7 @@ func draw_dad_face(ci: CanvasItem, W: float, H: float, tt: float) -> void:
 	GarageArt._cr(ci, stick + Vector2(12 * s, -5 * s - jab), 3.6 * s, skin)
 	ci.draw_circle(stick + Vector2(-6 * s, 2 * s), 3 * s, Color("#ff00aa", 0.25 + 0.15 * sin(tt * 6.0)))
 	ci.draw_circle(stick + Vector2(-6 * s, 2 * s), 1.2 * s, Color("#ff00aa"))
+	PilotArt.draw_rosary(ci, stick + Vector2(-4.5 * s, -8 * s), s * 0.42, tt)   # (1.136) his mother's rosary on his stick
 
 
 func draw_dad_clash(ci: CanvasItem, W: float, H: float, tt: float) -> void:

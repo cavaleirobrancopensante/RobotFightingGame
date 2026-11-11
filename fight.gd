@@ -5942,6 +5942,8 @@ func draw_pilot(pd: Dictionary, off: Vector2) -> void:
 		var sh := neck + Vector2(side * 10 * s, 3 * s)
 		PilotArt._limb2(ci, sh, pad + Vector2(side * 6 * s, 0), outfit.darkened(0.15), 5 * s)
 	PilotArt.draw_controller(ci, pad, s, str(look.get("controller", "gamepad")), j > 0.0, clock)
+	if team == 0 and mode != "quick" and mode != "watch" and GameData.story_seen.has("dad_rosary"):
+		PilotArt.draw_rosary(ci, pad + Vector2(face * 9 * s, 2 * s), s * 0.9, clock)   # (1.136) your dad's rosary on your stick
 	draw_pilot_bubble(pd, hc + Vector2(0, -hr - 10 * s))
 
 

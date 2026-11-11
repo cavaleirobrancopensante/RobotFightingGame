@@ -170,6 +170,11 @@ const SCENES := {
 		["GUS", "Welcome to the bay. Don't touch the coffee."],
 		["GUS", "{RENT_GARAGE}"],
 	]},
+	# ---- (1.136) the day after you start: your dad's rosary
+	"dad_rosary": {"place": "GUS'S BAY", "lines": [
+		["GUS", "One more thing, kid. This was your dad's. His mother's rosary, before that."],
+		["GUS", "He hung it on his stick every fight. Hang it on yours."],
+	]},
 	# ---- career moments (shown after the fight that decides them)
 	"up_scrap": {"place": "THE SCRAP HEAP RING", "lines": [
 		["ANNOUNCER", "...and that's the Open Trials done! Fourteen nobodies just became somebodies!"],

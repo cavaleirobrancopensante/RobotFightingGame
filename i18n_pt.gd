@@ -4148,4 +4148,6 @@ const T := {
 	"Old Pike's waiting at the Rusty Bolt. First time on the sticks? I'll coach you through the fight, show you round the bay after and keep a list of things to try.": "O velho Pike está esperando no Rusty Bolt. Primeira vez no controle? Eu te treino durante a luta, te mostro a oficina depois e guardo uma lista de coisas para experimentar.",
 	"Know what you're doing? Then it's just you and Pike, and I'll keep quiet.": "Sabe o que está fazendo? Então é só você e o Pike, e eu fico quieto.",
 	"First of December, kid. Saint Eligius, patron of us metal bashers. A goldsmith before he was a bishop. Say one for the bay.": "Primeiro de dezembro, garoto. Santo Elói, padroeiro de nós que batemos metal. Era ourives antes de ser bispo. Reza uma pela oficina.",
+	"One more thing, kid. This was your dad's. His mother's rosary, before that.": "Mais uma coisa, garoto. Isto era do seu pai. Antes disso, o terço da mãe dele.",
+	"He hung it on his stick every fight. Hang it on yours.": "Ele pendurava no controle em toda luta. Pendura no seu.",
 }

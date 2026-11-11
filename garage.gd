@@ -4768,7 +4768,7 @@ func scene_info() -> Dictionary:
 			"medals": GameData.trophies, "wall": GameData.wall_trophies(), "gus_point": dad_talk and talk_story, "backup": backup, "stats": GameData.career_stats,
 			"wins": GameData.wins, "losses": GameData.losses, "champion": GameData.champion,
 			"patron": patron_info() if scene == "pub" else {}, "tv": tv_info() if scene == "pub" else {},
-			"controllers": GameData.owned_controllers, "using": str(GameData.pilot_look.get("controller", "gamepad"))}
+			"controllers": GameData.owned_controllers, "using": str(GameData.pilot_look.get("controller", "gamepad")), "rosary": GameData.story_seen.has("dad_rosary")}
 
 
 ## The pilots in the pub today: the first sits at the bar, the rest stand around.
@@ -9298,6 +9298,10 @@ func check_gus_cards() -> void:
 				tr("Know your way round already? Say so and I'll keep quiet."),
 				[[tr("Show me"), func(): GameData.guide_answer(true); refresh(), true],
 				[tr("I know what I'm doing"), func(): GameData.guide_answer(false); refresh(), false]])
+		return
+	# (1.136) your dad's rosary: Gus hands it over on your first look round the bay after the welcome
+	if GameData.story_seen.has("first_garage") and not GameData.story_seen.has("dad_rosary") and tab == "Bay":
+		play_story(["dad_rosary"])
 		return
 	# (1.98) Gus puts in a word with old Silas once you've a few wins (before the Scrap League opens his door)
 	if not GameData.story_seen.has("brass_invite") and GameData.wins >= 3 and GameData.tour < 0 and GameData.story_seen.has("first_garage"):
