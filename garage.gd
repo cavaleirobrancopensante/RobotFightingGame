@@ -2984,7 +2984,7 @@ func tour_steps() -> Array:
 	# (1.129) three stops: the big button, Gus's list, the Trials. The list does the rest.
 	return [
 		{"target": "next", "text": tr("Time only moves when you press the big yellow button. The bay works on the jobs while it runs.")},
-		{"target": "guide", "text": tr("That's my list, down there. Tap it and I'll take you where to go next. Every one pays a little.")},
+		{"target": "guide", "text": tr("That's my list, down there. Tap it and I'll take you where to go next.")},
 		{"target": "fight", "text": tr("Saturday is the Open Trials. Two wins put us in the Scrap League, two losses and we're out. Practise on my junkers at the scrapyard.")},
 	]
 
@@ -6802,8 +6802,8 @@ var plan_open := false
 func update_guide() -> void:
 	if guide_chip == null:
 		return
-	for pay in GameData.guide_payouts():
-		note(tr("Gus's list: %s ✓  +$%d") % [tr(str(pay[0])), int(pay[1])])
+	for done in GameData.guide_payouts():
+		note(tr("Gus's list: %s ✓") % tr(str(done)))
 		Sfx.play("buy", 0.05)
 	var g := GameData.guide_step()
 	guide_chip.visible = not g.is_empty() and GameData.tour != 0   # the tour's first stop is the big button
@@ -6826,7 +6826,7 @@ func _on_guide_chip() -> void:
 ## Menu > Gus's list: every step, ticked or not.
 func open_guide_list() -> void:
 	var col := open_popup(tr("GUS'S LIST"))
-	var a := GUI.text(tr("Things to try in your first weeks. Each one pays a little the first time."), 15, GUI.MUTED)
+	var a := GUI.text(tr("Things to try in your first weeks."), 15, GUI.MUTED)
 	a.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	a.custom_minimum_size.x = UI.px(15) * 24
 	col.add_child(a)
@@ -6838,7 +6838,6 @@ func open_guide_list() -> void:
 		t.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		t.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		r.add_child(t)
-		r.add_child(GUI.text("+$%d" % int(g[4]), 15, GUI.MUTED, "num"))
 		if not done:
 			var go: Array = g[2]
 			row_button(r, tr("Go ›"), func(): close_popup(); go_to(str(go[0]), str(go[1])), true, 90)

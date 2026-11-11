@@ -4138,4 +4138,7 @@ const T := {
 	"That's my list, down there. Tap it and I'll take you where to go next. Every one pays a little.": "Esa es mi lista, ahí abajo. Tócala y te llevo adonde ir. Cada una paga un poco.",
 	"Guided start: %s": "Inicio guiado: %s",
 	"OFF, skip it": "APAGADO, saltarlo",
+	"Gus's list: %s ✓": "Lista de Gus: %s ✓",
+	"Things to try in your first weeks.": "Cosas que probar en tus primeras semanas.",
+	"That's my list, down there. Tap it and I'll take you where to go next.": "Esa es mi lista, ahí abajo. Tócala y te llevo adonde ir.",
 }

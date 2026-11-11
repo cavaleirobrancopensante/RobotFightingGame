@@ -3,7 +3,7 @@ const PlayLog = preload("res://playlog.gd")   # (1.87) the playtest log
 
 # helper scripts, loaded by path so the game also runs without an editor scan
 ## The game's version, shown on the main menu. Bump it with every change (1.1, 1.2, ...).
-const VERSION := "1.130"
+const VERSION := "1.131"
 const Arena = preload("res://arena.gd")
 const I18n = preload("res://i18n.gd")
 const Catalog = preload("res://catalog.gd")
@@ -4401,7 +4401,7 @@ var open_action := ""   # garage button to press after an unlock scene (style, p
 
 # ---------------------------------------------------------------- Gus's list (1.128)
 # The onboarding: one thing to do at a time, shown as Gus's chip in the bottom bar. A tap takes you
-# there (the thing to tap gets the marching stripes); doing it ticks it off and pays a little.
+# there (the thing to tap gets the marching stripes); doing it ticks it off (no money: since 1.131 the list only teaches).
 # Steps tick by what you've done (guide_mark) or by where your career is, in any order; the chip
 # always shows the first one not done. Menu > Gus's list shows them all. Skip the guided start
 # (new-game Difficulty window, settings "guide" 0) turns it off.
@@ -4477,9 +4477,8 @@ func guide_payouts() -> Array:
 	for g in GUIDE:
 		var id := str(g[0])
 		if guide_done(id) and not guide_seen.has(id):
-			guide_seen[id] = true
-			book("prizes", int(g[4]))
-			out.append([str(g[1]), int(g[4])])
+			guide_seen[id] = true   # (1.131) a tick and a note, no money: the list teaches, it doesn't pay
+			out.append(str(g[1]))
 	return out
 
 
