@@ -910,7 +910,16 @@ static func look_of(wid: int) -> Dictionary:
 		return make_look(wid, "")
 	if not p.has("look"):
 		p["look"] = make_look(wid, str(p["name"]))
+	if not p["look"].has("cross"):
+		p["look"]["cross"] = wears_cross(wid)   # (1.138) older saves: decided once, the same way
 	return p["look"]
+
+
+## (1.138) About a quarter of Port Ferrum's pilots wear a small cross (seeded by the pilot).
+static func wears_cross(wid: int) -> bool:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = wid * 9173 + 41
+	return rng.randf() < 0.25
 
 
 static func make_look(wid: int, name: String) -> Dictionary:
@@ -925,6 +934,7 @@ static func make_look(wid: int, name: String) -> Dictionary:
 			"glasses": PilotArt.GLASSES[rng.randi() % PilotArt.GLASSES.size()] if rng.randf() < 0.3 else "none"}
 	for x in PilotArt.EXTRAS[rng.randi() % PilotArt.EXTRAS.size()]:
 		look[x] = true
+	look["cross"] = wears_cross(wid)
 	if female:
 		look["female"] = true
 		look["beard"] = "none"

@@ -4171,4 +4171,6 @@ const T := {
 	"Blessed are the meek. Strange words in a fighting town. Think about them anyway.": "Bem-aventurados os mansos. Palavras estranhas numa cidade de lutas. Pensem nelas mesmo assim.",
 	"The Lord keeps no table of wins and losses. He goes after the one that's lost.": "O Senhor não tem tabela de vitórias e derrotas. Ele vai atrás da ovelha perdida.",
 	"We are dust, and the robots are rust. Only love lasts. Be kind to someone this week.": "Somos pó, e os robôs são ferrugem. Só o amor permanece. Sejam bondosos com alguém esta semana.",
+	"Cross": "Cruz",
+	"Gold cross": "Cruz de ouro",
 }

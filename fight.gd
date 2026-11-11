@@ -5929,6 +5929,8 @@ func draw_pilot(pd: Dictionary, off: Vector2) -> void:
 		RobotArt._plate(ci, torso, outfit)
 	else:
 		ci.draw_colored_polygon(torso, outfit)
+	if look.get("cross", false):
+		PilotArt.draw_cross(ci, neck + Vector2(0, 7 * s), 8 * s, neck + Vector2(-5 * s, 0), neck + Vector2(5 * s, 0))   # (1.138)
 	# head
 	var hc := neck + Vector2(face * lean * 3 * s, -11 * s)
 	var hr := 10.0 * s
@@ -5938,13 +5940,39 @@ func draw_pilot(pd: Dictionary, off: Vector2) -> void:
 	var j: float = pd["jerk"] / 0.22
 	var jx := sin(clock * 40.0) * 3.0 * s * j
 	var pad := neck + Vector2(face * (14 + lean * 4) * s + jx, (10 - hands_up * 26) * s - j * 4 * s)
+	var crossing := sign_of_cross(look, hc, neck, face, s)   # (1.138) at the countdown, if they wear a cross
 	for side in [-1.0, 1.0]:
 		var sh := neck + Vector2(side * 10 * s, 3 * s)
-		PilotArt._limb2(ci, sh, pad + Vector2(side * 6 * s, 0), outfit.darkened(0.15), 5 * s)
+		var hand := pad + Vector2(side * 6 * s, 0)
+		if crossing != Vector2.INF and side == face:
+			hand = crossing
+		PilotArt._limb2(ci, sh, hand, outfit.darkened(0.15), 5 * s)
+		if crossing != Vector2.INF and side == face:
+			PilotArt._cr(ci, hand, 2.6 * s, Color(look.get("skin", "#c8946e")))
 	PilotArt.draw_controller(ci, pad, s, str(look.get("controller", "gamepad")), j > 0.0, clock)
 	if team == 0 and mode != "quick" and mode != "watch" and GameData.story_seen.has("dad_rosary"):
 		PilotArt.draw_rosary(ci, pad + Vector2(face * 9 * s, 2 * s), s * 0.9, clock)   # (1.136) your dad's rosary on your stick
 	draw_pilot_bubble(pd, hc + Vector2(0, -hr - 10 * s))
+
+
+## (1.138) A pilot who wears a cross makes the sign of the cross during the 3-2-1: one hand leaves
+## the pad, touches the forehead, the chest, the left shoulder, the right, and goes back.
+## Returns where that hand is, or Vector2.INF when it's on the pad.
+const CROSS_TIME := 1.7
+func sign_of_cross(look: Dictionary, hc: Vector2, neck: Vector2, face: float, s: float) -> Vector2:
+	if not look.get("cross", false) or phase != "intro" or intro_step != "count" or count_t >= CROSS_TIME:
+		return Vector2.INF
+	var u := count_t / CROSS_TIME
+	var pad := neck + Vector2(face * 14 * s, 10 * s)
+	var keys := [[0.0, pad], [0.18, hc + Vector2(face * 5 * s, -8 * s)], [0.38, neck + Vector2(face * 4 * s, 14 * s)],
+			[0.58, neck + Vector2(-7 * s, 4 * s)], [0.78, neck + Vector2(7 * s, 4 * s)], [1.0, pad]]
+	for k in keys.size() - 1:
+		var a: Array = keys[k]
+		var b: Array = keys[k + 1]
+		if u <= float(b[0]):
+			var f := clampf((u - float(a[0])) / (float(b[0]) - float(a[0])), 0.0, 1.0)
+			return (a[1] as Vector2).lerp(b[1], smoothstep(0.0, 1.0, f))
+	return Vector2.INF
 
 
 func draw_pilot_bubble(pd: Dictionary, anchor: Vector2) -> void:

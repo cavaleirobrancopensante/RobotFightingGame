@@ -4889,6 +4889,7 @@ func build_pilot_looks() -> void:
 		["Beard", "beard", tr(PilotArt.BEARD_NAMES.get(look["beard"], "?")), ""],
 		["Glasses", "glasses", tr(PilotArt.GLASSES_NAMES.get(look["glasses"], "?")), ""],
 		["Extras", "extras", "none" if extras.is_empty() else " + ".join(extras), ""],
+		["Cross", "cross", tr("Gold cross") if look.get("cross", false) else tr("None"), ""],   # (1.138)
 	]
 	for l in lines:
 		var bar := HBoxContainer.new()
@@ -4921,6 +4922,8 @@ func build_pilot_looks() -> void:
 func _on_pilot_change(what: String, step: int) -> void:
 	var look: Dictionary = GameData.pilot_look
 	match what:
+		"cross":
+			look["cross"] = not look.get("cross", false)
 		"female":
 			look["female"] = not look.get("female", false)
 			if look["female"]:
