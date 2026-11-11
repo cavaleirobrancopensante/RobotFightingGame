@@ -3,7 +3,7 @@ const PlayLog = preload("res://playlog.gd")   # (1.87) the playtest log
 
 # helper scripts, loaded by path so the game also runs without an editor scan
 ## The game's version, shown on the main menu. Bump it with every change (1.1, 1.2, ...).
-const VERSION := "1.147"
+const VERSION := "1.148"
 const Arena = preload("res://arena.gd")
 const I18n = preload("res://i18n.gd")
 const Catalog = preload("res://catalog.gd")
@@ -291,6 +291,7 @@ var spare_controllers: Array = []   # dug-up controllers waiting in Storage (1.5
 var techs: Array = []        # (1.93) technique chips you own (ids from TECHNIQUES)
 var tech_fit := {}           # (1.93) arm / leg slot -> the technique chip in it
 var tips_seen: Array = []
+var trials_done: Array = []   # (1.148) combo trials cleared (their step keys)
 var opening_replay := false   # the opening cutscene was asked for again (BotMedia): back to the bay after it
 var social := {}      # BotMedia: posts, follows, your followers (social.gd)
 var films := {}       # (1.75) key -> a whole filmed fight (its own file, films_path(); the newest FILMS_KEEP)
@@ -640,6 +641,7 @@ func new_game() -> void:
 	techs = []
 	tech_fit = {}
 	tips_seen = []
+	trials_done = []
 	tips_log = []
 	h2h = {}
 	rivals = []
@@ -5872,7 +5874,7 @@ func save_game(path: String = "") -> bool:
 		"owned_chips": owned_chips, "chips": chips, "circuit": circuit, "circuit_offers": circuit_offers,
 		"circuits_won": circuits_won, "pickup": pickup, "setups": setups, "custom_parts": custom_parts,
 		"year": year, "week": week, "day": day, "rank": rank, "event": {}, "leagues": leagues, "title_seeds": title_seeds, "trophies": trophies, "career_stats": career_stats,
-		"pecking_k": pecking_k(), "style": style, "style_locked": style_locked, "shop_stock": shop_stock, "chip_stock": chip_stock, "scout": scout, "wingmen": wingmen, "sending": sending, "pilot_look": pilot_look, "owned_controllers": owned_controllers, "spare_controllers": spare_controllers, "techs": techs, "tech_fit": tech_fit, "tips_seen": tips_seen, "tips_log": tips_log, "h2h": h2h, "rivals": rivals, "rel": rel, "nemeses": nemeses, "pending_talk": pending_talk, "inbox": inbox, "inbox_seen": inbox_seen, "social": social, "pilot_at": pilot_at, "places_been": places_been, "catalogues": catalogues, "pilot_used": pilot_used, "film_index": film_index, "film_pending": film_pending, "films_seen": films_seen, "contracts": contracts, "alerts_unseen": alerts_unseen, "day_log": day_log, "ledger": ledger, "bet_log": bet_log, "patched_week": patched_week, "deliveries": deliveries, "morning_seen": morning_seen, "walkin": walkin, "habits": habits, "ghost_id": ghost_id, "ghost_log": ghost_log, "ghost_last": ghost_last, "candle_day": candle_day, "mass_day": mass_day, "guide_seen": guide_seen, "guide_mode": guide_mode, "loan": loan, "loan_free_at": loan_free_at, "gus_alerts": gus_alerts, "tour": tour, "streak": streak, "pub_seen": pub_seen, "digs_left": digs_left, "dig_luck": dig_luck, "bills_note": bills_note, "fight_log": fight_log, "bets": bets, "world": world,
+		"pecking_k": pecking_k(), "style": style, "style_locked": style_locked, "shop_stock": shop_stock, "chip_stock": chip_stock, "scout": scout, "wingmen": wingmen, "sending": sending, "pilot_look": pilot_look, "owned_controllers": owned_controllers, "spare_controllers": spare_controllers, "techs": techs, "tech_fit": tech_fit, "tips_seen": tips_seen, "trials_done": trials_done, "tips_log": tips_log, "h2h": h2h, "rivals": rivals, "rel": rel, "nemeses": nemeses, "pending_talk": pending_talk, "inbox": inbox, "inbox_seen": inbox_seen, "social": social, "pilot_at": pilot_at, "places_been": places_been, "catalogues": catalogues, "pilot_used": pilot_used, "film_index": film_index, "film_pending": film_pending, "films_seen": films_seen, "contracts": contracts, "alerts_unseen": alerts_unseen, "day_log": day_log, "ledger": ledger, "bet_log": bet_log, "patched_week": patched_week, "deliveries": deliveries, "morning_seen": morning_seen, "walkin": walkin, "habits": habits, "ghost_id": ghost_id, "ghost_log": ghost_log, "ghost_last": ghost_last, "candle_day": candle_day, "mass_day": mass_day, "guide_seen": guide_seen, "guide_mode": guide_mode, "loan": loan, "loan_free_at": loan_free_at, "gus_alerts": gus_alerts, "tour": tour, "streak": streak, "pub_seen": pub_seen, "digs_left": digs_left, "dig_luck": dig_luck, "bills_note": bills_note, "fight_log": fight_log, "bets": bets, "world": world,
 	}
 	var f := FileAccess.open(slot_path(save_slot) if path == "" else path, FileAccess.WRITE)
 	if f == null:
@@ -5985,6 +5987,7 @@ func load_game(slot: int = -1, mine: bool = false) -> String:
 		pilot_look.merge(data["pilot_look"], true)
 	pilot_look = PilotArt.normalize(pilot_look)
 	tips_seen = data.get("tips_seen", []).duplicate()
+	trials_done = data.get("trials_done", []).duplicate()
 	tips_log = data.get("tips_log", []).duplicate()
 	h2h = data.get("h2h", {})
 	rivals = data.get("rivals", []).map(func(x): return int(x))

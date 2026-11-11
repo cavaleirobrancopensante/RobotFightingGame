@@ -456,6 +456,7 @@ var reset_rect := Rect2()   # Test Drive: start over
 var hitbox_rect := Rect2()  # Test Drive: show the hit boxes
 var dummy_rect := Rect2()   # (1.141) Training room: what the dummy does
 var frames_rect := Rect2()  # (1.141) Training room: the frame data table
+var trials_rect := Rect2()  # (1.148) Training room: combo trials
 var hitbox_view := false
 var touch_device := false
 var control_pads := 1      # movement pads on screen (multibot split controls use more)
@@ -995,6 +996,7 @@ func layout() -> void:
 	hitbox_rect = Rect2(w * 0.5 + 160.0, h * 0.04 + 52.0, 130.0, 44.0)
 	frames_rect = Rect2(w * 0.5 + 160.0, h * 0.04 + 162.0, 130.0, 44.0)
 	dummy_rect = Rect2(w * 0.5 - 290.0, h * 0.04 + 162.0, 130.0, 44.0)
+	trials_rect = Rect2(w * 0.5 - 290.0, h * 0.04 + 236.0, 130.0, 44.0)
 
 
 # ---------------------------------------------------------------- input
@@ -1149,6 +1151,9 @@ func handle_tap(p: Vector2) -> bool:
 		return true
 	if mode == "test" and training_dummy() and dummy_rect.has_point(p):
 		next_dummy_mode()
+		return true
+	if mode == "test" and training_dummy() and trials_rect.has_point(p):
+		next_trial()
 		return true
 	if quit_rect.has_point(p):
 		if mode == "watch" or mode == "test":
@@ -2256,6 +2261,7 @@ func tick(delta: float) -> void:
 	update_pilots(delta)
 	if mode == "test":
 		track_training_damage()
+		update_trial(delta)
 		for f in team_c:
 			if f.spec.get("junk", "") == "dummy" and clock - float(f.spec.get("hit_t", 0.0)) > 1.6:
 				for slot in f.parts:
@@ -3821,6 +3827,8 @@ func apply_hit(att: Fighter, d: Fighter, a: Dictionary, at: Vector2) -> void:
 		else:
 			att.combo = 1
 		att.combo_timer = 1.25 + att.ctrl.get("combo", 0.0)
+		if mode == "test" and att == player and trial_i >= 0:
+			trial_landed(att)
 		if att.combo >= 2:
 			att.combo_show = 1.2
 			if att.combo == 3 or att.combo == 5 or att.combo >= 8:
@@ -5527,6 +5535,7 @@ func draw_hud() -> void:
 			hud_btns = [[quit_rect, "LEAVE"], [moves_rect, "MOVES"], [reset_rect, "RESET"], [hitbox_rect, "HITBOX"], [frames_rect, "FRAMES"]]
 			if training_dummy():
 				hud_btns.append([dummy_rect, "DUMMY"])
+				hud_btns.append([trials_rect, "TRIALS"])
 		for rr in hud_btns:
 			ci.draw_rect(rr[0], Color(1, 1, 1, 0.1))
 			ci.draw_rect(rr[0], Color(1, 1, 1, 0.4), false, 2.0)
@@ -5748,6 +5757,8 @@ func draw_training() -> void:
 			dm = tr("REC %.1f s") % maxf(0.0, REC_MAX - dum_rec_t)
 		ci.draw_string(font, dummy_rect.position + Vector2(0, dummy_rect.size.y + 18.0), dm, HORIZONTAL_ALIGNMENT_CENTER, dummy_rect.size.x, fs(12),
 				GUI.RED if dummy_mode == "record" else GUI.MUTED)
+	if trial_i >= 0:
+		draw_trial()
 	if frames_view:
 		draw_frame_table()
 
@@ -5801,6 +5812,179 @@ func draw_frame_table() -> void:
 			ci.draw_string(font if c == 0 else font_num, Vector2(r.position.x + 16 + cols[c] * (w - 32), y), vals[c], HORIZONTAL_ALIGNMENT_LEFT,
 					(w - 32) * 0.33 if c == 0 else -1, fs(14 if c == 0 else 17), col)
 	ci.draw_string(font, Vector2(r.position.x + 16, r.end.y - 12), tr("HIT / BLOCK: frames ahead (+) or behind (-). Hits cancel on contact."), HORIZONTAL_ALIGNMENT_LEFT, w - 32.0, fs(12), GUI.MUTED)
+
+
+# ---------------------------------------------------------------- (1.148) combo trials
+# TRIALS (against the Mop Bucket) runs through combos built from this robot's own kit: strings of
+# plain hits, its parts' moves, its torso commands, a throw, and a normal cancelled into each of its
+# specials. Land the steps in order in one combo; Gus counts them out. A wrong hit or a dropped
+# combo starts it again. Cleared trials are kept (GameData.trials_done, by their step keys).
+var trial_list: Array = []   # [{title, steps: [key]}]
+var trial_i := -1            # -1 = no trial
+var trial_n := 0             # steps landed in this attempt
+var trial_clear_t := 0.0     # the CLEARED banner
+var trial_say := ""          # Gus's count
+var trial_say_t := 0.0
+const TRIAL_COUNT := ["ONE!", "TWO!", "THREE!", "FOUR!", "FIVE!", "SIX!"]
+const TRIAL_MAX := 10
+
+
+## The key of a landed hit: P / K = a middle hit (or a technique), P^ Pv K^ Kv = the outer hits
+## (or the part's own move there), cmP / cmK = torso commands, throw, sp:<id> = a special.
+func trial_key(f: Fighter) -> String:
+	if f.state == "special":
+		return "sp:" + f.special_id
+	var st := f.state
+	if st == "throw":
+		return "throw"
+	if st.begins_with("cm_"):
+		return "cmP" if str(ATTACKS[st].get("family", "")) == "punch" else "cmK"
+	var base := str(ATTACKS[st].get("base", st)) if ATTACKS.has(st) else st
+	match base:
+		"uppercut": return "P^"
+		"low_punch": return "Pv"
+		"high_kick": return "K^"
+		"sweep": return "Kv"
+		"hammer": return "airP"
+		"fly_kick": return "airK"
+	return "P" if str(ATTACKS.get(st, {}).get("family", "")) == "punch" else "K"
+
+
+## What a step is called on the panel, with the move this robot really throws there.
+func trial_step_name(key: String) -> String:
+	var arm := player.next_limb("arm", true)
+	var leg := player.next_limb("leg", true)
+	match key:
+		"P": return tr("PUNCH")
+		"K": return tr("KICK")
+		"P^": return tr("PUNCH ▲") + "  " + move_name(limb_move(player, "uppercut", arm)) if arm != "" else tr("PUNCH ▲")
+		"Pv": return tr("PUNCH ▼") + "  " + move_name(limb_move(player, "low_punch", arm)) if arm != "" else tr("PUNCH ▼")
+		"K^": return tr("KICK ▲") + "  " + move_name(limb_move(player, "high_kick", leg)) if leg != "" else tr("KICK ▲")
+		"Kv": return tr("KICK ▼") + "  " + move_name(limb_move(player, "sweep", leg)) if leg != "" else tr("KICK ▼")
+		"cmP": return tr("◀ + PUNCH") + "  " + move_name(command_for(player, "punch"))
+		"cmK": return tr("◀ + KICK") + "  " + move_name(command_for(player, "kick"))
+		"throw": return tr("PUNCH + KICK") + "  " + tr("Throw")
+	if key.begins_with("sp:") and Specials.MOVES.has(key.substr(3)):
+		var m: Dictionary = Specials.MOVES[key.substr(3)]
+		return Specials.seq_text(m["seq"]) + "  " + tr(m["name"])
+	return key
+
+
+## This robot's trials, from its own kit.
+func build_trials() -> Array:
+	var out: Array = []
+	var arms := player.arms() > 0
+	var legs := player.legs() > 0
+	if arms:
+		out.append({"title": "Jab, jab, high", "steps": ["P", "P", "P^"]})
+		out.append({"title": "Low, then up", "steps": ["Pv", "P", "P^"]})
+	if arms and legs:
+		out.append({"title": "Hands to feet", "steps": ["P", "P", "K"]})
+	if legs:
+		out.append({"title": "Kick, kick, sweep", "steps": ["K", "K", "Kv"]})
+		out.append({"title": "Kick high", "steps": ["Kv", "K", "K^"]})
+	if arms and command_for(player, "punch") != "":
+		out.append({"title": "Your torso's command", "steps": ["P", "P", "cmP"]})
+	if legs and command_for(player, "kick") != "":
+		out.append({"title": "Your torso's kick", "steps": ["K", "cmK"]})
+	if can_throw_part(player):
+		out.append({"title": "Grab and throw", "steps": ["throw"]})
+	for sid in player.specials:
+		if out.size() >= TRIAL_MAX:
+			break
+		var lead := "P" if arms else "K"
+		out.append({"title": "Cancel into it", "steps": [lead, lead, "sp:" + str(sid)]})
+	return out.slice(0, TRIAL_MAX)
+
+
+func trial_done_key(t: Dictionary) -> String:
+	return ",".join(t["steps"])
+
+
+func next_trial() -> void:
+	if trial_list.is_empty():
+		trial_list = build_trials()
+	trial_i += 1
+	if trial_i >= trial_list.size():
+		trial_i = -1   # past the last one: trials off
+	trial_n = 0
+	trial_clear_t = 0.0
+	trial_say = ""
+	if trial_i >= 0:
+		dummy_mode = "stand"
+		trial_say = tr("Show me. Land them in order, one combo.")
+		trial_say_t = 2.5
+	Sfx.play("click")
+
+
+func trial_landed(f: Fighter) -> void:
+	if trial_i < 0 or trial_i >= trial_list.size() or trial_clear_t > 0.0:
+		return
+	var steps: Array = trial_list[trial_i]["steps"]
+	var key := trial_key(f)
+	if trial_n > 0 and f.combo <= 1:
+		trial_n = 0   # the combo dropped: from the top
+	if trial_n > 0 and key == str(steps[trial_n - 1]) and (key.begins_with("sp:") or f.state == "special"):
+		return   # more hits of the same special
+	if trial_n < steps.size() and key == str(steps[trial_n]):
+		trial_n += 1
+		trial_say = tr(TRIAL_COUNT[mini(trial_n, TRIAL_COUNT.size()) - 1])
+		trial_say_t = 1.0
+		Sfx.play("voice_gravel", 0.05, Sfx.VOICE_DB)   # Gus counts
+		if trial_n >= steps.size():
+			trial_clear_t = 2.2
+			trial_say = tr("That's the one. Now do it without thinking.")
+			trial_say_t = 2.2
+			Sfx.play("cheer", 0.1, -6.0)
+			var dk := trial_done_key(trial_list[trial_i])
+			if not GameData.trials_done.has(dk):
+				GameData.trials_done.append(dk)
+	else:
+		trial_n = 1 if key == str(steps[0]) else 0
+		if trial_n == 1:
+			trial_say = tr(TRIAL_COUNT[0])
+			trial_say_t = 1.0
+
+
+func update_trial(delta: float) -> void:
+	if trial_say_t > 0.0:
+		trial_say_t -= delta
+	if trial_clear_t > 0.0:
+		trial_clear_t -= delta
+		if trial_clear_t <= 0.0:
+			trial_n = 0
+
+
+func draw_trial() -> void:
+	if trial_i < 0 or trial_i >= trial_list.size():
+		return
+	var t: Dictionary = trial_list[trial_i]
+	var steps: Array = t["steps"]
+	var lh := fs(15) + 8.0
+	var w := minf(360.0, screen.x * 0.3)
+	var say_h := 0.0
+	if trial_say_t > 0.0:
+		say_h = font.get_multiline_string_size(trial_say, HORIZONTAL_ALIGNMENT_LEFT, w - 68.0, fs(14)).y + 8.0
+	var r := Rect2(16.0, screen.y * 0.3, w, 64.0 + lh * steps.size() + say_h)
+	ci.draw_rect(r, Color(0.04, 0.04, 0.06, 0.82))
+	ci.draw_rect(r, GUI.MUTED, false, 1.5)
+	var cleared := GameData.trials_done.has(trial_done_key(t))
+	ci.draw_string(font_head, r.position + Vector2(12, 24), tr("TRIAL %d OF %d") % [trial_i + 1, trial_list.size()] + ("  ✓" if cleared else ""),
+			HORIZONTAL_ALIGNMENT_LEFT, w - 24.0, fs(14), GUI.GREEN if cleared else GUI.HEAD)
+	ci.draw_string(font, r.position + Vector2(12, 46), tr(str(t["title"])), HORIZONTAL_ALIGNMENT_LEFT, w - 24.0, fs(14), GUI.TEXT)
+	var y := r.position.y + 46.0
+	for k in steps.size():
+		y += lh
+		var done := k < trial_n
+		var col: Color = GUI.GREEN if done else (GUI.YELLOW if k == trial_n else GUI.MUTED)
+		ci.draw_string(font, Vector2(r.position.x + 12, y), ("✓ " if done else "%d  " % (k + 1)) + trial_step_name(str(steps[k])),
+				HORIZONTAL_ALIGNMENT_LEFT, w - 24.0, fs(14), col)
+	if trial_say_t > 0.0:
+		y += lh
+		ci.draw_string(font_head, Vector2(r.position.x + 12, y), tr("GUS") + "  ", HORIZONTAL_ALIGNMENT_LEFT, -1, fs(13), GUI.HEAD)
+		ci.draw_multiline_string(font, Vector2(r.position.x + 56, y), trial_say, HORIZONTAL_ALIGNMENT_LEFT, w - 68.0, fs(14), -1, GUI.YELLOW)
+	if trial_clear_t > 0.0:
+		ci.draw_string(font_big, Vector2(0, screen.y * 0.82), tr("TRIAL CLEARED"), HORIZONTAL_ALIGNMENT_CENTER, screen.x, fs(44), GUI.GREEN)
 
 
 # ---------------------------------------------------------------- (1.147) moves from parts

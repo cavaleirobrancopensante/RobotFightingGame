@@ -139,6 +139,7 @@ static func attacks(base: Dictionary) -> Dictionary:
 static func _build(base: Dictionary, m: Array) -> Dictionary:
 	var d: Dictionary = (base[m[0]] as Dictionary).duplicate()
 	d["pose"] = m[0]
+	d["base"] = m[0]
 	for k in m[3]:
 		d[k] = m[3][k]
 	d["name"] = m[2]
