@@ -9376,6 +9376,12 @@ func check_gus_cards() -> void:
 					tr("Your dad never went to him. But we might have to."),
 					[[tr("See Varga ›"), func(): _on_tab("Season"); season_view = "money"; refresh(), true], [tr("Not yet"), Callable(), false]])
 			return
+	# (1.135) the first of December (week 45, Monday): St. Eligius, patron of metalworkers
+	var elig := "eligius:%d" % GameData.year
+	if tab == "Bay" and GameData.week == 45 and GameData.day_index() == 0 and GameData.story_seen.has("first_garage") \
+			and not GameData.story_seen.has(elig):
+		GameData.mark_story_seen(elig)
+		say(tr("First of December, kid. Saint Eligius, patron of us metal bashers. A goldsmith before he was a bishop. Say one for the bay."))
 	# (1.117) the first look at the bay each day: the morning card
 	if tab == "Bay" and GameData.tour < 0 and GameData.story_seen.has("first_garage") \
 			and GameData.morning_seen != GameData.day_key(GameData.year, GameData.week, GameData.day_index()):

@@ -4152,4 +4152,5 @@ const T := {
 	"Want me to show you the ropes?": "¿Quieres que te enseñe lo básico?",
 	"Old Pike's waiting at the Rusty Bolt. First time on the sticks? I'll coach you through the fight, show you round the bay after and keep a list of things to try.": "El viejo Pike espera en el Rusty Bolt. ¿Primera vez a los mandos? Te entreno durante la pelea, después te enseño el taller y te guardo una lista de cosas que probar.",
 	"Know what you're doing? Then it's just you and Pike, and I'll keep quiet.": "¿Sabes lo que haces? Entonces sois tú y Pike, y yo me callo.",
+	"First of December, kid. Saint Eligius, patron of us metal bashers. A goldsmith before he was a bishop. Say one for the bay.": "Primero de diciembre, chico. San Eloy, patrón de los que golpeamos metal. Fue orfebre antes que obispo. Reza una por el taller.",
 }

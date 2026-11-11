@@ -172,6 +172,10 @@ static func _props_back(ci: CanvasItem, size: Vector2, scene: String, t: float, 
 			_tool_board(ci, pb)
 			_sign(ci, Vector2(size.x * 0.62, 30), I18n.t("GUS'S BAY"), Color(0.95, 0.65, 0.35))
 			_bay_trophies(ci, size, info)
+			# (1.135) Gus's corner of faith: a crucifix with a palm cross tucked behind it, and St. Eligius,
+			# patron of metalworkers, in a little gold frame by the tools
+			_crucifix(ci, Vector2(size.x * 0.455, 34), 46.0)
+			_saint_eligius(ci, Rect2(18, 118 + size.y * 0.2 + 16, 30, 40), t)
 			_lamp(ci, Vector2(size.x * 0.62, 0), size, t)
 			# behind the robot: a stepladder, and your pilot up it checking the robot's head
 			var spot: Array = ROBOT_SPOT["build"]
@@ -247,6 +251,8 @@ static func _props_back(ci: CanvasItem, size: Vector2, scene: String, t: float, 
 			_ln(ci, Vector2(pl.position.x + 6, 26), Vector2(pl.position.x + 6, pl.position.y + 3), Color(0.55, 0.45, 0.3), 1.5)
 			_ln(ci, Vector2(pl.end.x - 6, 26), Vector2(pl.end.x - 6, pl.position.y + 1), Color(0.55, 0.45, 0.3), 1.5)
 			_maker_plaque(ci, pl, "scrapworks", I18n.t("SCRAPWORKS"), I18n.t("WE BUY JUNK"))
+			# (1.135) a roadside shrine among the heaps: Our Lady in a little wooden box, and a candle someone keeps lit
+			_shrine(ci, Vector2(size.x * 0.27, floor_y), 78.0, t)
 		"paint":
 			# drop cloth with splatters in the paint colour
 			var pc: Color = info.get("paint", Color(0.8, 0.3, 0.2))
@@ -1925,3 +1931,81 @@ static func _ac(ci: CanvasItem, at: Vector2, r: float, a0: float, a1: float, n: 
 		RobotArt._arc(ci, at, r, a0, a1, n, c, w)
 	else:
 		ci.draw_arc(at, r, a0, a1, n, c, w)
+
+
+# ---------------------------------------------------------------- (1.135) faith in the world
+
+## A wooden crucifix on the wall: top = the top of the upright, h = its height. A dried palm cross
+## is tucked behind it (from Palm Sunday), the corpus pale against the dark wood.
+static func _crucifix(ci: CanvasItem, top: Vector2, h: float) -> void:
+	var wood := Color(0.36, 0.24, 0.15)
+	var w := maxf(3.0, h * 0.12)
+	var beam_y := top.y + h * 0.27
+	# the palm: two thin dried leaves crossing behind the upright
+	var palm := Color(0.62, 0.55, 0.32)
+	_ln(ci, top + Vector2(-h * 0.32, h * 0.08), top + Vector2(h * 0.14, h * 0.62), palm, 2.0)
+	_ln(ci, top + Vector2(h * 0.3, h * 0.04), top + Vector2(-h * 0.1, h * 0.58), palm.darkened(0.15), 2.0)
+	_rc(ci, Rect2(top.x - w * 0.5, top.y, w, h), wood)
+	_rc(ci, Rect2(top.x - h * 0.3, beam_y - w * 0.5, h * 0.6, w), wood)
+	_rc(ci, Rect2(top.x - w * 0.9, top.y - w * 0.3, w * 1.8, w * 0.5), wood.lightened(0.15))   # the little title board
+	# the corpus
+	var skin := Color(0.86, 0.8, 0.68)
+	var hd := Vector2(top.x, beam_y - w * 0.15)
+	ci.draw_line(hd + Vector2(-h * 0.25, w * 0.15), hd + Vector2(h * 0.25, w * 0.15), skin, maxf(1.5, w * 0.35))
+	ci.draw_line(hd + Vector2(0, w * 0.4), hd + Vector2(0, h * 0.52), skin, maxf(2.0, w * 0.55))
+	ci.draw_circle(hd + Vector2(h * 0.02, -w * 0.25), maxf(1.6, w * 0.38), skin)
+	ci.draw_rect(Rect2(hd.x - w * 0.35, hd.y + h * 0.22, w * 0.7, h * 0.08), Color(0.92, 0.9, 0.84))   # the loincloth
+
+
+## St. Eligius, the goldsmith bishop, patron of everyone who works metal: a small icon in a gold frame,
+## mitre and halo, a hammer raised over an anvil. A dried flower wedged in the frame.
+static func _saint_eligius(ci: CanvasItem, r: Rect2, t: float) -> void:
+	var gold := Color(0.85, 0.66, 0.26)
+	_rc(ci, r, gold)
+	var inner := r.grow(-3)
+	ci.draw_rect(inner, Color(0.42, 0.12, 0.1))
+	var c := inner.get_center()
+	var s := inner.size.y / 40.0
+	ci.draw_circle(c + Vector2(0, -9 * s), 6.5 * s, Color(0.95, 0.8, 0.35, 0.9))   # the halo
+	ci.draw_colored_polygon(PackedVector2Array([c + Vector2(-9 * s, 18 * s), c + Vector2(9 * s, 18 * s), c + Vector2(4 * s, -3 * s), c + Vector2(-4 * s, -3 * s)]), Color(0.86, 0.84, 0.78))   # the alb
+	ci.draw_colored_polygon(PackedVector2Array([c + Vector2(-6 * s, 14 * s), c + Vector2(6 * s, 14 * s), c + Vector2(3 * s, -2 * s), c + Vector2(-3 * s, -2 * s)]), Color(0.7, 0.2, 0.16))   # the chasuble
+	ci.draw_circle(c + Vector2(0, -8 * s), 3.2 * s, Color(0.85, 0.68, 0.52))   # the face
+	ci.draw_colored_polygon(PackedVector2Array([c + Vector2(-3 * s, -11 * s), c + Vector2(3 * s, -11 * s), c + Vector2(0, -17 * s)]), Color(0.92, 0.88, 0.75))   # the mitre
+	ci.draw_line(c + Vector2(5 * s, 4 * s), c + Vector2(10 * s, -4 * s), Color(0.5, 0.36, 0.2), maxf(1.0, 1.2 * s))   # the hammer
+	ci.draw_rect(Rect2(c + Vector2(8 * s, -6 * s), Vector2(5 * s, 3 * s)), Color(0.55, 0.55, 0.58))
+	ci.draw_rect(Rect2(c + Vector2(-12 * s, 14 * s), Vector2(8 * s, 4 * s)), Color(0.3, 0.3, 0.33))   # the anvil
+	_rc(ci, r, gold.darkened(0.35), false, 1.5)
+	ci.draw_line(r.position + Vector2(r.size.x - 4, 2), r.position + Vector2(r.size.x + 4, -8), Color(0.55, 0.5, 0.3), 1.5)   # a dried flower
+	ci.draw_circle(r.position + Vector2(r.size.x + 4, -8), 2.5, Color(0.7, 0.35, 0.3))
+
+
+## A roadside shrine on a post: a small gabled wooden box with Our Lady in blue and white inside,
+## a glass candle in red that flickers, a few wildflowers in a tin can at the foot. base = the post's foot.
+static func _shrine(ci: CanvasItem, base: Vector2, h: float, t: float) -> void:
+	var wood := Color(0.42, 0.3, 0.2)
+	_rc(ci, Rect2(base.x - 3, base.y - h * 0.62, 6, h * 0.62), wood.darkened(0.2))   # the post
+	var box := Rect2(base.x - h * 0.17, base.y - h, h * 0.34, h * 0.38)
+	_rc(ci, box, wood)
+	_pg(ci, PackedVector2Array([box.position + Vector2(-4, 0), Vector2(box.get_center().x, box.position.y - h * 0.14), Vector2(box.end.x + 4, box.position.y)]), wood.darkened(0.1))   # the gable roof
+	var niche := box.grow(-4)
+	ci.draw_rect(niche, Color(0.12, 0.1, 0.12))
+	# the flame's glow inside the niche
+	var fl := 0.75 + 0.25 * sin(t * 9.0) * sin(t * 5.3)
+	ci.draw_circle(niche.get_center() + Vector2(0, niche.size.y * 0.3), niche.size.x * 0.6, Color(1.0, 0.6, 0.3, 0.12 * fl))
+	# Our Lady: white veil, blue mantle, hands together
+	var m := niche.get_center() + Vector2(0, -niche.size.y * 0.05)
+	var k := niche.size.y / 26.0
+	ci.draw_colored_polygon(PackedVector2Array([m + Vector2(-5 * k, 11 * k), m + Vector2(5 * k, 11 * k), m + Vector2(2.5 * k, -5 * k), m + Vector2(-2.5 * k, -5 * k)]), Color(0.3, 0.45, 0.78))
+	ci.draw_circle(m + Vector2(0, -7 * k), 2.6 * k, Color(0.93, 0.92, 0.9))
+	ci.draw_circle(m + Vector2(0, -6.5 * k), 1.7 * k, Color(0.86, 0.72, 0.6))
+	ci.draw_circle(m + Vector2(0, -7 * k), 4.2 * k, Color(1.0, 0.85, 0.45, 0.35))   # her halo of light
+	# the candle in a red glass at her feet
+	var cg := Rect2(niche.get_center().x + niche.size.x * 0.18, niche.end.y - 7 * k, 4 * k, 6 * k)
+	ci.draw_rect(cg, Color(0.75, 0.12, 0.12, 0.85))
+	ci.draw_circle(cg.position + Vector2(2 * k, -1.2 * k), 1.3 * k * fl, Color(1.0, 0.8, 0.35))
+	# wildflowers in a tin at the foot of the post
+	_rc(ci, Rect2(base.x + 6, base.y - 10, 9, 10), Color(0.55, 0.55, 0.58))
+	for j in 3:
+		var stem_top := Vector2(base.x + 8 + j * 3, base.y - 18 - j * 3)
+		ci.draw_line(Vector2(base.x + 9 + j * 2, base.y - 9), stem_top, Color(0.3, 0.5, 0.25), 1.2)
+		ci.draw_circle(stem_top, 2.0, [Color(0.95, 0.85, 0.3), Color(0.9, 0.9, 0.95), Color(0.85, 0.4, 0.5)][j])
