@@ -3,7 +3,7 @@ const PlayLog = preload("res://playlog.gd")   # (1.87) the playtest log
 
 # helper scripts, loaded by path so the game also runs without an editor scan
 ## The game's version, shown on the main menu. Bump it with every change (1.1, 1.2, ...).
-const VERSION := "1.139"
+const VERSION := "1.140"
 const Arena = preload("res://arena.gd")
 const I18n = preload("res://i18n.gd")
 const Catalog = preload("res://catalog.gd")
@@ -2456,6 +2456,8 @@ func patron_today() -> Dictionary:
 ## still there, sleeping it off ("hungover"); in the afternoon one or two early drinkers (the first
 ## of tonight's crowd); in the evening the whole night crowd, 3 to 6 of them.
 func patrons_today() -> Array:
+	if pub_closed():
+		return []
 	if phase >= 2:
 		return night_patrons(year, week, day_index())
 	var rng := RandomNumberGenerator.new()
@@ -2483,6 +2485,8 @@ func patrons_today() -> Array:
 
 ## Everyone at the bar on the night of (y, w, di).
 func night_patrons(y: int, w: int, di: int) -> Array:
+	if pub_closed(w, di):
+		return []   # (1.140) closed for Christmas / Easter
 	var rng := RandomNumberGenerator.new()
 	rng.seed = y * 100000 + w * 10 + di + 99
 	var count := rng.randi_range(3, 6)
@@ -6835,9 +6839,24 @@ func today_key() -> String:
 	return day_key(year, week, day_index())
 
 
-## Mass is on Sunday morning.
+## Mass is on Sunday morning, and on Christmas morning.
 func mass_time() -> bool:
-	return day == "sun" and phase == 0
+	return (day == "sun" or holy_day() == "christmas") and phase == 0
+
+
+## (1.140) The feasts on Port Ferrum's calendar (months are 4 weeks: December is weeks 45 to 48).
+## Christmas Eve = week 48 Wednesday, Christmas Day = week 48 Thursday, Good Friday = week 14
+## Friday, Easter Sunday = week 14 Sunday. "" on any other day.
+const FEASTS := {"48/2": "christmas_eve", "48/3": "christmas", "14/4": "good_friday", "14/6": "easter"}
+
+
+func holy_day(w: int = -1, di: int = -1) -> String:
+	return str(FEASTS.get("%d/%d" % [week if w < 0 else w, day_index() if di < 0 else di], ""))
+
+
+## The Rusty Bolt shuts on Christmas Day and Easter Sunday: no crowd, no pickups.
+func pub_closed(w: int = -1, di: int = -1) -> bool:
+	return holy_day(w, di) in ["christmas", "easter"]
 
 
 func go_to_mass() -> int:

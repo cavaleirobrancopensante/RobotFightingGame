@@ -192,6 +192,8 @@ static func _props_back(ci: CanvasItem, size: Vector2, scene: String, t: float, 
 			# patron of metalworkers, in a little gold frame by the tools
 			_crucifix(ci, Vector2(size.x * 0.455, 34), 46.0)
 			_saint_eligius(ci, Rect2(18, 118 + size.y * 0.2 + 16, 30, 40), t)
+			if info.get("crib", false):
+				_crib(ci, Vector2(60, 118 + size.y * 0.2 + 56), 70.0, t)   # (1.140) from Christmas Eve to the year's end
 			_lamp(ci, Vector2(size.x * 0.62, 0), size, t)
 			# behind the robot: a stepladder, and your pilot up it checking the robot's head
 			var spot: Array = ROBOT_SPOT["build"]
@@ -2110,7 +2112,7 @@ static func _church_back(ci: CanvasItem, size: Vector2, floor_y: float, t: float
 	_rc(ci, Rect2(mensa.position.x - 3, mensa.position.y, 6, 26), Color(0.96, 0.96, 0.93))
 	_rc(ci, Rect2(mensa.end.x - 3, mensa.position.y, 6, 26), Color(0.96, 0.96, 0.93))
 	var frontal := Rect2(mensa.position.x + 10, mensa.position.y + 6, mensa.size.x - 20, mensa.size.y - 8)
-	_rc(ci, frontal, Color(0.2, 0.45, 0.28))
+	_rc(ci, frontal, Color(0.93, 0.91, 0.84) if info.get("feast", false) else Color(0.2, 0.45, 0.28))   # (1.140) white on the feasts
 	_rc(ci, frontal, gold, false, 2.0)
 	_ln(ci, frontal.get_center() + Vector2(0, -12), frontal.get_center() + Vector2(0, 12), gold, 3.0)
 	_ln(ci, frontal.get_center() + Vector2(-8, -4), frontal.get_center() + Vector2(8, -4), gold, 3.0)
@@ -2151,7 +2153,7 @@ static func _church_front(ci: CanvasItem, size: Vector2, floor_y: float, s: floa
 	var mass: bool = info.get("mass", false)
 	var ax := size.x * CHURCH_ALTAR
 	var tf := Vector2(ax, floor_y - 21.0)   # on the top step, in front of the mensa
-	_priest_back(ci, tf, s, t, mass)
+	_priest_back(ci, tf, s, t, mass, info.get("feast", false))
 	_head(info, "FR. TOMAS", tf, s)
 	# the altar rail across the sanctuary
 	var marble := Color(0.82, 0.8, 0.76)
@@ -2181,7 +2183,7 @@ static func _church_front(ci: CanvasItem, size: Vector2, floor_y: float, s: floa
 ## A priest seen from behind. mass = alb and a green fiddleback chasuble with the gold column on its
 ## back, the Host raised over his head for a few seconds out of every eight; else a black cassock.
 const ELEVATION := 8.0
-static func _priest_back(ci: CanvasItem, feet: Vector2, s: float, t: float, mass: bool) -> void:
+static func _priest_back(ci: CanvasItem, feet: Vector2, s: float, t: float, mass: bool, feast: bool = false) -> void:
 	var skin := Color(0.79, 0.63, 0.49)
 	var hair := Color(0.81, 0.79, 0.76)
 	var gold := Color(0.92, 0.74, 0.3)
@@ -2210,7 +2212,7 @@ static func _priest_back(ci: CanvasItem, feet: Vector2, s: float, t: float, mass
 		_ln(ci, sr, neck + Vector2(13 * s, 20 * s), sleeve, 5.5 * s)
 	if mass:
 		# the fiddleback chasuble: green, waisted at the sides, the gold column down the back
-		var green := Color(0.17, 0.42, 0.24)
+		var green := Color(0.95, 0.93, 0.86) if feast else Color(0.17, 0.42, 0.24)   # (1.140) white and gold for Christmas and Easter
 		_pg(ci, PackedVector2Array([neck + Vector2(-12 * s, 0), neck + Vector2(12 * s, 0), neck + Vector2(9 * s, 14 * s), neck + Vector2(13 * s, 36 * s),
 				neck + Vector2(-13 * s, 36 * s), neck + Vector2(-9 * s, 14 * s)]), green)
 		_rc(ci, Rect2(neck.x - 3 * s, neck.y + 2 * s, 6 * s, 34 * s), gold)
@@ -2226,3 +2228,36 @@ static func _priest_back(ci: CanvasItem, feet: Vector2, s: float, t: float, mass
 		ci.draw_circle(host, 14 * s * up, Color(1.0, 0.95, 0.75, 0.18 * up))
 		ci.draw_circle(host, 5.5 * s, Color(0.98, 0.97, 0.92))
 		ci.draw_arc(host, 5.5 * s, 0, TAU, 16, Color(0.75, 0.72, 0.62), 1.0)
+
+
+## (1.140) Gus's crib on the shelf from Christmas Eve to the year's end: a little wooden stable,
+## the star on its roof, Mary in blue, Joseph in brown, the Child in the manger, a lamb.
+static func _crib(ci: CanvasItem, base: Vector2, w: float, t: float) -> void:
+	var wood := Color(0.42, 0.29, 0.18)
+	var h := w * 0.62
+	_rc(ci, Rect2(base.x - 4, base.y, w + 8, 4), wood.darkened(0.2))   # the shelf
+	_rc(ci, Rect2(base.x + 3, base.y - h, 4, h), wood)
+	_rc(ci, Rect2(base.x + w - 7, base.y - h, 4, h), wood)
+	_pg(ci, PackedVector2Array([Vector2(base.x - 3, base.y - h + 2), Vector2(base.x + w * 0.5, base.y - h - w * 0.22), Vector2(base.x + w + 3, base.y - h + 2)]), wood.darkened(0.1))
+	var star := Vector2(base.x + w * 0.5, base.y - h - w * 0.3)
+	var tw := 0.8 + 0.2 * sin(t * 3.0)
+	ci.draw_circle(star, 6.0, Color(1.0, 0.85, 0.4, 0.15 * tw))
+	var pts := PackedVector2Array()
+	for k in 10:
+		var a := -PI * 0.5 + k * PI / 5.0
+		pts.append(star + Vector2(cos(a), sin(a)) * (4.0 if k % 2 == 0 else 1.7))
+	ci.draw_colored_polygon(pts, Color(1.0, 0.85, 0.35))
+	var gy := base.y
+	var k := w / 70.0
+	# Mary kneeling (blue), Joseph standing (brown, a staff), the manger with the Child between them
+	_pg(ci, PackedVector2Array([Vector2(base.x + 14 * k, gy), Vector2(base.x + 26 * k, gy), Vector2(base.x + 22 * k, gy - 16 * k), Vector2(base.x + 17 * k, gy - 16 * k)]), Color(0.3, 0.45, 0.78))
+	ci.draw_circle(Vector2(base.x + 19.5 * k, gy - 19 * k), 3.2 * k, Color(0.93, 0.92, 0.9))
+	ci.draw_circle(Vector2(base.x + 20.2 * k, gy - 18.6 * k), 2.1 * k, Color(0.86, 0.72, 0.6))
+	_pg(ci, PackedVector2Array([Vector2(base.x + 47 * k, gy), Vector2(base.x + 57 * k, gy), Vector2(base.x + 55 * k, gy - 24 * k), Vector2(base.x + 49 * k, gy - 24 * k)]), Color(0.5, 0.33, 0.2))
+	ci.draw_circle(Vector2(base.x + 52 * k, gy - 27 * k), 2.6 * k, Color(0.82, 0.66, 0.5))
+	ci.draw_line(Vector2(base.x + 60 * k, gy), Vector2(base.x + 60 * k, gy - 30 * k), Color(0.55, 0.4, 0.25), maxf(1.0, k))
+	_rc(ci, Rect2(base.x + 30 * k, gy - 8 * k, 13 * k, 8 * k), wood.lightened(0.15))   # the manger
+	ci.draw_rect(Rect2(base.x + 30 * k, gy - 10 * k, 13 * k, 3 * k), Color(0.85, 0.75, 0.4))   # the straw
+	ci.draw_circle(Vector2(base.x + 36.5 * k, gy - 11 * k), 2.4 * k, Color(0.9, 0.78, 0.66))   # the Child
+	ci.draw_circle(Vector2(base.x + 36.5 * k, gy - 11 * k), 4.5 * k, Color(1.0, 0.9, 0.5, 0.25))
+	ci.draw_circle(Vector2(base.x + 8 * k, gy - 3 * k), 3.0 * k, Color(0.95, 0.95, 0.92))   # a lamb

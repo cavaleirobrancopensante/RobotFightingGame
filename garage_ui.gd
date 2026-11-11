@@ -875,7 +875,8 @@ class TalkBar extends Control:
 ## pickup = a green coin, rent = red bill, stock = a crate.
 const EVENT_COLORS := {"open": Color(0.6, 0.75, 0.7), "scrap": Color(0.62, 0.5, 0.36), "rust": Color(0.82, 0.42, 0.18),
 		"iron": Color(0.55, 0.62, 0.72), "steel": Color(0.8, 0.88, 1.0), "title": YELLOW, "exhibition": YELLOW,
-		"cup": Color(0.75, 0.5, 1.0), "pickup": Color(0.55, 0.78, 0.42), "rent": Color(1.0, 0.42, 0.35), "stock": Color(0.62, 0.5, 0.36)}
+		"cup": Color(0.75, 0.5, 1.0), "pickup": Color(0.55, 0.78, 0.42), "rent": Color(1.0, 0.42, 0.35), "stock": Color(0.62, 0.5, 0.36),
+		"christmas": Color(1.0, 0.84, 0.35), "easter": Color(0.95, 0.94, 0.88)}
 
 static func draw_event_icon(ci: CanvasItem, kind: String, c: Vector2, r: float, ring: bool = false) -> void:
 	var col: Color = EVENT_COLORS.get(kind, MUTED)
@@ -932,6 +933,18 @@ static func draw_event_icon(ci: CanvasItem, kind: String, c: Vector2, r: float, 
 			ci.draw_arc(c + Vector2(r * 0.62, -r * 0.4), r * 0.28, -PI * 0.5, PI * 0.5, 8, col, maxf(2.0, r * 0.14))
 			ci.draw_rect(Rect2(c + Vector2(-r * 0.1, r * 0.1), Vector2(r * 0.2, r * 0.45)), col)
 			ci.draw_rect(Rect2(c + Vector2(-r * 0.45, r * 0.55), Vector2(r * 0.9, r * 0.3)), col)
+		"christmas":
+			# (1.140) the star over Bethlehem: five points, gold
+			var pts := PackedVector2Array()
+			for k in 10:
+				var a := -PI * 0.5 + k * PI / 5.0
+				pts.append(c + Vector2(cos(a), sin(a)) * r * (0.95 if k % 2 == 0 else 0.4))
+			ci.draw_colored_polygon(pts, col)
+		"easter":
+			# (1.140) the empty cross with the sunrise behind it
+			ci.draw_arc(c + Vector2(0, r * 0.5), r * 0.75, PI, TAU, 12, Color(1.0, 0.75, 0.35), maxf(1.5, r * 0.18))
+			ci.draw_rect(Rect2(c + Vector2(-r * 0.12, -r * 0.9), Vector2(r * 0.24, r * 1.7)), col)
+			ci.draw_rect(Rect2(c + Vector2(-r * 0.5, -r * 0.5), Vector2(r, r * 0.22)), col)
 		"pickup":
 			ci.draw_circle(c, r * 0.85, col)
 			ci.draw_circle(c, r * 0.65, col.darkened(0.25))

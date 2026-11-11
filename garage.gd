@@ -1849,7 +1849,9 @@ func tonight_strip(mode: String) -> void:
 	var bar := action_bar()
 	var o := GameData.current_opponent()
 	var text := ""
-	if o.is_empty():
+	if o.is_empty() and GameData.pub_closed():
+		text = tr("TONIGHT: no fights. The Rusty Bolt is closed for the feast.")   # (1.140)
+	elif o.is_empty():
 		text = tr("TONIGHT: nothing booked. Pickups at the Rusty Bolt if you want one.")
 	else:
 		text = tr("TONIGHT: %s · %s") % [GameData.fight_title(), str(o.get("name", "?"))] + "   " + tr("Purse $%d") % GameData.current_reward()
@@ -1860,7 +1862,7 @@ func tonight_strip(mode: String) -> void:
 	l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	bar.add_child(l)
-	if o.is_empty():
+	if o.is_empty() and not GameData.pub_closed():
 		row_button(bar, tr("Find a fight ›"), go_to.bind("Pub", "bar"), true, 150)
 	else:
 		GUI.mark_new(row_button(bar, tr("Bell Check ›"), open_fight_popup, true, 150), true)
@@ -4772,7 +4774,8 @@ func scene_info() -> Dictionary:
 			"wins": GameData.wins, "losses": GameData.losses, "champion": GameData.champion,
 			"patron": patron_info() if scene == "pub" else {}, "tv": tv_info() if scene == "pub" else {},
 			"controllers": GameData.owned_controllers, "using": str(GameData.pilot_look.get("controller", "gamepad")), "rosary": GameData.story_seen.has("dad_rosary"),
-			"candle": GameData.candle_day == GameData.today_key(), "mass": GameData.mass_time()}
+			"candle": GameData.candle_day == GameData.today_key(), "mass": GameData.mass_time(),
+			"feast": GameData.holy_day() in ["christmas", "easter"], "crib": (GameData.week == 48 and GameData.day_index() >= 2) or GameData.week > 48}
 
 
 ## The pilots in the pub today: the first sits at the bar, the rest stand around.
@@ -5350,7 +5353,10 @@ func _on_mass() -> void:
 	time_begin()
 	var passed := GameData.go_to_mass()
 	var lines := ["mass_a", "mass_b", "mass_c", "mass_d"]
-	play_story([lines[GameData.week % lines.size()]], func():
+	var key: String = lines[GameData.week % lines.size()]
+	if GameData.holy_day() in ["christmas", "easter"]:
+		key = "mass_" + GameData.holy_day()   # (1.140)
+	play_story([key], func():
 		if passed > 0:
 			time_end()
 		else:
@@ -5835,7 +5841,7 @@ func build_calendar() -> void:
 	key.add_theme_constant_override("h_separation", 12)
 	list_box.add_child(key)
 	for k in [["open", "Open Trials"], ["scrap", "Scrap League"], ["rust", "Rust League"], ["iron", "Iron League"], ["steel", "Steel League"], ["title", "Championship"], ["cup", "Cup"],
-			["pickup", "Pickup booked"], ["rent", "Rent"], ["stock", "New stock"]]:
+			["pickup", "Pickup booked"], ["rent", "Rent"], ["stock", "New stock"], ["christmas", "Christmas"], ["easter", "Easter"]]:
 		var it := HBoxContainer.new()
 		it.add_theme_constant_override("separation", 4)
 		it.add_child(GUI.EventIcon.new(k[0], 18.0))
@@ -6020,6 +6026,16 @@ func day_events(w: int, day: int) -> Array:
 					lines.append(GameData.World.news_text(n))
 			if not lines.is_empty():
 				out.append({"icon": "", "title": tr("AROUND PORT FERRUM"), "text": "\n".join(lines.slice(0, 8))})
+	# (1.140) the feasts
+	match GameData.holy_day(w, day):
+		"christmas_eve":
+			out.append({"icon": "christmas", "title": tr("CHRISTMAS EVE"), "text": tr("Gus puts the crib out in the bay.")})
+		"christmas":
+			out.append({"icon": "christmas", "title": tr("CHRISTMAS DAY"), "text": tr("Mass in the morning. The Rusty Bolt is closed: no pickups.")})
+		"good_friday":
+			out.append({"icon": "easter", "title": tr("GOOD FRIDAY"), "text": tr("A quiet day.")})
+		"easter":
+			out.append({"icon": "easter", "title": tr("EASTER SUNDAY"), "text": tr("Mass in the morning. The Rusty Bolt is closed: no pickups.")})
 	if day == 6:
 		if (w - 1) % GameData.MONTH_WEEKS == GameData.MONTH_WEEKS - 1 and GameData.living_cost() > 0:
 			if GameData.rank_index() < 2:
@@ -6405,6 +6421,10 @@ func open_pilot(wid: int) -> void:
 ## Today's pilots in the pub and the TV.
 func build_pub_cards() -> void:
 	var pats := GameData.patrons_today()
+	if GameData.pub_closed():
+		section(tr("CLOSED FOR CHRISTMAS. The bartender's at home with his family. No fights today.") if GameData.holy_day() == "christmas"
+				else tr("CLOSED FOR EASTER. The bartender's at home with his family. No fights today."))
+		return
 	if GameData.phase == 0:
 		section(tr("THE MORNING AFTER. A few of last night's crowd never made it home.") if not pats.is_empty() else tr("THE MORNING AFTER. Nobody here but the bartender."))
 	elif GameData.phase == 1:
@@ -6464,6 +6484,9 @@ func build_pub_cards() -> void:
 ## Challenge the pilot at the bar: tonight's pickup fight is against them.
 ## A tag team pickup with a pilot at the bar (1.58): two of you against two of them.
 func _on_team_up(wid: int, sure: bool = false) -> void:
+	if GameData.pub_closed():
+		note(tr("Not today. Even the Rusty Bolt is closed. Fight tomorrow."), "error")   # (1.140)
+		return
 	if not sure and trials_warning(_on_team_up.bind(wid, true)):
 		return
 	var err := GameData.start_tag(wid)
@@ -6476,6 +6499,9 @@ func _on_team_up(wid: int, sure: bool = false) -> void:
 
 
 func _on_challenge(wid: int = -1, sure: bool = false) -> void:
+	if GameData.pub_closed():
+		note(tr("Not today. Even the Rusty Bolt is closed. Fight tomorrow."), "error")   # (1.140)
+		return
 	if not sure and trials_warning(_on_challenge.bind(wid, true)):
 		return
 	GameData.start_pickup(wid)
@@ -9439,7 +9465,21 @@ func check_gus_cards() -> void:
 		bell_day = GameData.today_key()
 		Sfx.play("church_bell", 0.0, -4.0)
 		if GameData.mass_day != GameData.today_key():
-			note(tr("The bells of Our Lady of the Harbour. Mass this morning, in Old Town."))
+			match GameData.holy_day():
+				"christmas":
+					note(tr("Christmas morning. The bells of Our Lady of the Harbour ring for Mass."))
+				"easter":
+					note(tr("Easter morning. The bells of Our Lady of the Harbour ring for Mass."))
+				_:
+					note(tr("The bells of Our Lady of the Harbour. Mass this morning, in Old Town."))
+	# (1.140) Gus on Christmas Eve, Christmas Day, Good Friday and Easter
+	var feast := GameData.holy_day()
+	if feast != "" and tab == "Bay" and GameData.story_seen.has("first_garage") and not GameData.story_seen.has("feast:%s:%d" % [feast, GameData.year]):
+		GameData.mark_story_seen("feast:%s:%d" % [feast, GameData.year])
+		say(tr({"christmas_eve": "Christmas Eve, kid. I put the crib out on the bench. Your dad always did. We'll go to Midnight Mass if you're up for it.",
+				"christmas": "Happy Christmas, kid. Rusty Bolt's shut, nobody fights today. Go to Mass, then come back and I'll burn us a turkey.",
+				"good_friday": "Good Friday. Quiet day in the bay. No music, kid, not today.",
+				"easter": "He is risen, kid. Easter Sunday. Bolt's shut, so it's Mass, lunch, and the robot can wait."}[feast]))
 	# (1.135) the first of December (week 45, Monday): St. Eligius, patron of metalworkers
 	var elig := "eligius:%d" % GameData.year
 	if tab == "Bay" and GameData.week == 45 and GameData.day_index() == 0 and GameData.story_seen.has("first_garage") \

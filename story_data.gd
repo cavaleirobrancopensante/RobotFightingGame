@@ -250,6 +250,14 @@ const SCENES := {
 		["FR. TOMAS", "So you're his. I baptised you in that font. You cried the whole way through."],
 		["FR. TOMAS", "Your father lit a candle here before every big fight. The candles are by the door, whenever you like."],
 	]},
+	"mass_christmas": {"place": "OUR LADY OF THE HARBOUR", "lines": [
+		["FR. TOMAS", "The Word became flesh, and dwelt among us. God came small, to a stable, among the poor."],
+		["FR. TOMAS", "Go in peace, and a happy Christmas to you all."],
+	]},
+	"mass_easter": {"place": "OUR LADY OF THE HARBOUR", "lines": [
+		["FR. TOMAS", "Why do you look for the living among the dead? He is not here. He is risen."],
+		["FR. TOMAS", "Go in peace, alleluia, alleluia."],
+	]},
 	"mass_a": {"place": "OUR LADY OF THE HARBOUR", "lines": [
 		["FR. TOMAS", "Saint Paul says we run to win a crown that lasts. Not a belt. A crown."],
 		["FR. TOMAS", "Go in peace. The Mass is ended."],
