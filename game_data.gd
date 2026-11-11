@@ -3,7 +3,7 @@ const PlayLog = preload("res://playlog.gd")   # (1.87) the playtest log
 
 # helper scripts, loaded by path so the game also runs without an editor scan
 ## The game's version, shown on the main menu. Bump it with every change (1.1, 1.2, ...).
-const VERSION := "1.126"
+const VERSION := "1.128"
 const Arena = preload("res://arena.gd")
 const I18n = preload("res://i18n.gd")
 const Catalog = preload("res://catalog.gd")
@@ -651,6 +651,8 @@ func new_game() -> void:
 	patched_week = -1
 	deliveries = []
 	morning_seen = ""
+	guide_seen = {}
+	guide_backfill = false
 	loan = {}
 	loan_free_at = 0
 	gus_alerts = []
@@ -1154,6 +1156,7 @@ func equip(uid: int, slot: String) -> String:
 	if old_slot != "":
 		equipped[old_slot] = equipped[slot] if old_slot != slot else -1
 	equipped[slot] = uid
+	guide_mark("fit")
 	if slot == "torso":
 		drop_unmounted()
 	sync_swaps()
@@ -1216,6 +1219,7 @@ func repair_all_cost() -> int:
 func repair_all() -> String:
 	var c := repair_all_cost()
 	if c == 0:
+		guide_mark("repair")
 		return "Your robot is in perfect shape." if not has_work("m") else "Everything's already on the job board."
 	if not can_repair(c):
 		return tr("Repairing everything costs $%d. You don't have the cash. Fix the worst parts one at a time, or fight with the dents.") % c
@@ -1225,6 +1229,7 @@ func repair_all() -> String:
 		if not p.is_empty() and repair_cost(p) > 0:
 			h += queue_repair(p, repair_cost(p))
 	book("repairs", -(c))
+	guide_mark("repair")
 	return tr("Everything's on the job board: $%d, about %s of work.") % [c, hours_text(h)]
 
 
@@ -4367,8 +4372,11 @@ func tip_once(id: String) -> bool:
 
 
 ## Wins needed for each feature: one new thing per win, so Gus can explain each one on its own.
-const UNLOCKS := {"scrapyard": 0, "season": 0, "style": 1, "shop": 2, "moves": 2, "scout": 3, "cups": 5, "team": 6,
-		"workshop": 7, "pilot": 8, "paint": 9, "setups": 10, "randomize": 11}
+## (1.127) Everything is open from day 1: Gus explains each thing the first time you open it, and
+## Gus's list (1.128) leads a new player through them one at a time. Kept as a table so a feature
+## can be held back again if it ever needs to be.
+const UNLOCKS := {"scrapyard": 0, "season": 0, "style": 0, "shop": 0, "moves": 0, "scout": 0, "cups": 0, "team": 0,
+		"workshop": 0, "pilot": 0, "paint": 0, "setups": 0, "randomize": 0}
 
 
 ## Wins, and always a fight after the one that earned it: your first visit to the bay is just
@@ -4389,6 +4397,97 @@ const TAB_FEATURES := {"Shop": "shop", "Season": "season",
 		"Cups": "cups", "Team": "team"}
 var open_tab := ""      # garage tab to open after an unlock scene
 var open_action := ""   # garage button to press after an unlock scene (style, pilot, paint, ...)
+
+
+# ---------------------------------------------------------------- Gus's list (1.128)
+# The onboarding: one thing to do at a time, shown as Gus's chip in the bottom bar. A tap takes you
+# there (the thing to tap gets the marching stripes); doing it ticks it off and pays a little.
+# Steps tick by what you've done (guide_mark) or by where your career is, in any order; the chip
+# always shows the first one not done. Menu > Gus's list shows them all. Skip the guided start
+# (new-game Difficulty window, settings "guide" 0) turns it off.
+# [id, chip text, go: [tab, seg], feature striped, reward]
+const GUIDE := [
+	["repair", "Fix your robot: Repair all", ["Bay", "robot"], "repair", 40],
+	["dig", "Dig for parts at the scrapyard", ["Parts", "scrap"], "scrapyard", 40],
+	["fit", "Bolt a part onto your robot", ["Bay", "storage"], "storage", 40],
+	["win", "Win a fight. Pickups at the Rusty Bolt", ["Pub", "bar"], "", 60],
+	["trials", "Get through the Open Trials", ["Season", "calendar"], "season", 80],
+	["table", "Look at the league table", ["Season", "table"], "", 40],
+	["shop", "Walk into Parts-R-Us", ["Parts", "dealer"], "shop", 40],
+	["post", "Post about a fight on BotMedia", ["Feed", "home"], "", 40],
+	["bet", "Put a bet on a league night", ["Season", "bets"], "", 40],
+	["tech", "Fit a technique to an arm or leg", ["Bay", "chips"], "moves", 60],
+]
+var guide_seen := {}   # step id -> true once the chip has said "done" for it (saved)
+var guide_backfill := false
+
+
+func guide_on() -> bool:
+	return int(settings.get("guide", 1)) == 1
+
+
+func guide_mark(id: String) -> void:
+	if not story_seen.has("guide:" + id):
+		story_seen.append("guide:" + id)
+
+
+func guide_done(id: String) -> bool:
+	if story_seen.has("guide:" + id):
+		return true
+	match id:
+		"win":
+			return wins > 0
+		"trials":
+			return rank != "open" or year > 1 or week > 3
+		"shop":
+			return places_been.has("partsrus")
+		"post":
+			for p in Social.st().get("posts", []):
+				if str(p.get("by", "")) == "me":
+					return true
+			return false
+		"bet":
+			return not bet_log.is_empty() or not bets.is_empty()
+		"tech":
+			return not tech_fit.is_empty()
+	return false
+
+
+## The first step not done yet ({} when the list is finished or switched off).
+func guide_step() -> Dictionary:
+	if not guide_on():
+		return {}
+	for g in GUIDE:
+		if not guide_done(str(g[0])):
+			return {"id": g[0], "text": g[1], "go": g[2], "feature": g[3], "reward": g[4]}
+	return {}
+
+
+## Steps done since last asked, paid once each: [[text, reward], ...] for the notes.
+func guide_payouts() -> Array:
+	var out: Array = []
+	if not guide_on():
+		return out
+	if guide_backfill:
+		guide_backfill = false
+		for g in GUIDE:
+			if guide_done(str(g[0])):
+				guide_seen[str(g[0])] = true
+		return out
+	for g in GUIDE:
+		var id := str(g[0])
+		if guide_done(id) and not guide_seen.has(id):
+			guide_seen[id] = true
+			book("prizes", int(g[4]))
+			out.append([str(g[1]), int(g[4])])
+	return out
+
+
+## (1.127) Only what Gus's list is pointing at gets the marching stripes, so a new player isn't
+## met by a screen full of them.
+func guide_points_at(feature: String) -> bool:
+	var g := guide_step()
+	return not g.is_empty() and str(g["feature"]) == feature
 
 
 ## Still has its star: unlocked, and Gus hasn't explained it yet.
@@ -4483,6 +4582,7 @@ func dig_scrap(kind: String = "") -> Dictionary:
 	if digs_left <= 0:
 		return {"text": "You've dug today. Come back tomorrow.", "part": ""}
 	digs_left -= 1
+	guide_mark("dig")
 	var chance := dig_luck * (DIG_KIND_K if kind != "" else 1.0)
 	dig_luck = 0.0
 	var roll := randf()
@@ -5731,7 +5831,7 @@ func save_game(path: String = "") -> bool:
 		"owned_chips": owned_chips, "chips": chips, "circuit": circuit, "circuit_offers": circuit_offers,
 		"circuits_won": circuits_won, "pickup": pickup, "setups": setups, "custom_parts": custom_parts,
 		"year": year, "week": week, "day": day, "rank": rank, "event": {}, "leagues": leagues, "title_seeds": title_seeds, "trophies": trophies, "career_stats": career_stats,
-		"pecking_k": pecking_k(), "style": style, "style_locked": style_locked, "shop_stock": shop_stock, "chip_stock": chip_stock, "scout": scout, "wingmen": wingmen, "sending": sending, "pilot_look": pilot_look, "owned_controllers": owned_controllers, "spare_controllers": spare_controllers, "techs": techs, "tech_fit": tech_fit, "tips_seen": tips_seen, "tips_log": tips_log, "h2h": h2h, "rivals": rivals, "rel": rel, "nemeses": nemeses, "pending_talk": pending_talk, "inbox": inbox, "inbox_seen": inbox_seen, "social": social, "pilot_at": pilot_at, "places_been": places_been, "catalogues": catalogues, "pilot_used": pilot_used, "film_index": film_index, "film_pending": film_pending, "films_seen": films_seen, "contracts": contracts, "alerts_unseen": alerts_unseen, "day_log": day_log, "ledger": ledger, "bet_log": bet_log, "patched_week": patched_week, "deliveries": deliveries, "morning_seen": morning_seen, "loan": loan, "loan_free_at": loan_free_at, "gus_alerts": gus_alerts, "tour": tour, "streak": streak, "pub_seen": pub_seen, "digs_left": digs_left, "dig_luck": dig_luck, "bills_note": bills_note, "fight_log": fight_log, "bets": bets, "world": world,
+		"pecking_k": pecking_k(), "style": style, "style_locked": style_locked, "shop_stock": shop_stock, "chip_stock": chip_stock, "scout": scout, "wingmen": wingmen, "sending": sending, "pilot_look": pilot_look, "owned_controllers": owned_controllers, "spare_controllers": spare_controllers, "techs": techs, "tech_fit": tech_fit, "tips_seen": tips_seen, "tips_log": tips_log, "h2h": h2h, "rivals": rivals, "rel": rel, "nemeses": nemeses, "pending_talk": pending_talk, "inbox": inbox, "inbox_seen": inbox_seen, "social": social, "pilot_at": pilot_at, "places_been": places_been, "catalogues": catalogues, "pilot_used": pilot_used, "film_index": film_index, "film_pending": film_pending, "films_seen": films_seen, "contracts": contracts, "alerts_unseen": alerts_unseen, "day_log": day_log, "ledger": ledger, "bet_log": bet_log, "patched_week": patched_week, "deliveries": deliveries, "morning_seen": morning_seen, "guide_seen": guide_seen, "loan": loan, "loan_free_at": loan_free_at, "gus_alerts": gus_alerts, "tour": tour, "streak": streak, "pub_seen": pub_seen, "digs_left": digs_left, "dig_luck": dig_luck, "bills_note": bills_note, "fight_log": fight_log, "bets": bets, "world": world,
 	}
 	var f := FileAccess.open(slot_path(save_slot) if path == "" else path, FileAccess.WRITE)
 	if f == null:
@@ -5865,6 +5965,8 @@ func load_game(slot: int = -1, mine: bool = false) -> String:
 	patched_week = int(data.get("patched_week", -1))
 	deliveries = data.get("deliveries", [])
 	morning_seen = str(data.get("morning_seen", ""))
+	guide_seen = data.get("guide_seen", {}) if typeof(data.get("guide_seen", null)) == TYPE_DICTIONARY else {}
+	guide_backfill = not data.has("guide_seen")   # (1.128) a save from before the list: what's done is not paid again
 	loan = data.get("loan", {})
 	loan_free_at = int(data.get("loan_free_at", 0))
 	gus_alerts = data.get("gus_alerts", [])

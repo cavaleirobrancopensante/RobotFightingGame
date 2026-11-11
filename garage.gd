@@ -154,6 +154,7 @@ class BodyMap extends Control:
 				continue
 			draw_rect(r, Color(0.9, 0.2, 0.15).lerp(Color(0.3, 0.9, 0.35), h) if h < 1.0 else Color(0.3, 0.9, 0.35))
 var send_button: Button
+var guide_chip: Button   # (1.128) Gus's list: the next thing to do
 var overlay: Control
 var popup_scroll: ScrollContainer   # the open pop-up's contents (scrolls when they don't fit)
 var popup_footer: VBoxContainer     # the open pop-up's pinned buttons
@@ -461,6 +462,17 @@ func _ready() -> void:
 	bottom.add_child(bell_button)
 	send_button = UI.button("", _on_send, 14, Vector2(150, 46))
 	bottom.add_child(send_button)
+	# (1.128) Gus's list: the one thing to do next; a tap takes you there
+	guide_chip = UI.button("", _on_guide_chip, 15, Vector2(0, 46))
+	guide_chip.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	guide_chip.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	guide_chip.clip_text = true
+	guide_chip.alignment = HORIZONTAL_ALIGNMENT_LEFT
+	guide_chip.add_theme_color_override("font_color", GUI.YELLOW)
+	guide_chip.add_theme_color_override("font_hover_color", GUI.YELLOW.lightened(0.2))
+	guide_chip.custom_minimum_size.x = 120
+	guide_chip.size_flags_stretch_ratio = 4.0   # the chip takes the room, the spacer keeps a little
+	bottom.add_child(guide_chip)
 	var spacer := Control.new()
 	spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	bottom.add_child(spacer)
@@ -614,9 +626,9 @@ func set_seg(key: String) -> void:
 func seg_new(key: String, feature: String) -> bool:
 	if key == "scrap" and GameData.digs_left > 0:
 		return true
-	if key == "style" and GameData.unlocked("paint") and GameData.is_new("paint"):
+	if key == "style" and striped("paint"):
 		return true
-	return feature != "" and GameData.is_new(feature)
+	return feature != "" and striped(feature)
 
 
 func section_new(t: String) -> bool:
@@ -625,12 +637,12 @@ func section_new(t: String) -> bool:
 			if GameData.inbox.size() > GameData.inbox_seen or GameData.alerts_unseen > 0 or not GameData.Social.drafts().is_empty():
 				return true
 		"Storage":
-			return GameData.is_new("storage")
+			return striped("storage")
 		"Season":
-			if GameData.is_new("season") or contracts_new():
+			if striped("season") or contracts_new():
 				return true
 		"Bay":
-			if (GameData.unlocked("setups") and GameData.is_new("setups")) or (GameData.unlocked("randomize") and GameData.is_new("randomize")):
+			if striped("setups") or striped("randomize"):
 				return true
 	for sg in segs_of(t):
 		if seg_new(sg[0], sg[2]):
@@ -1088,6 +1100,7 @@ func refresh() -> void:
 		var mail: Array = GameData.pending_talk
 		GameData.pending_talk = []
 		(func(): play_story(mail)).call_deferred()
+	update_guide.call_deferred()   # after the view is built (opening a view can tick a step)
 	money_label.text = GameData.money_text(GameData.money)
 	money_label.add_theme_color_override("font_color", GUI.RED if GameData.money < 0 else GUI.AMBER)
 	date_button.text = tr("%s %s · WK %d") % [tr(DAY_NAMES[GameData.day_index()]), tr(PHASE_SHORT[GameData.phase]), GameData.week]
@@ -5729,6 +5742,7 @@ func build_season_tab() -> void:
 		"deals":
 			build_contracts()
 		_:
+			GameData.guide_mark("table")
 			build_league_view()
 
 
@@ -6784,6 +6798,53 @@ var plan_open := false
 
 
 ## The big button: the day plan (in the evening with your fight booked, the Bell Check instead).
+# ---------------------------------------------------------------- Gus's list (1.128)
+
+## The chip shows the next step (hidden during Gus's tour); steps just done pay and say so.
+func update_guide() -> void:
+	if guide_chip == null:
+		return
+	for pay in GameData.guide_payouts():
+		note(tr("Gus's list: %s ✓  +$%d") % [tr(str(pay[0])), int(pay[1])])
+		Sfx.play("buy", 0.05)
+	var g := GameData.guide_step()
+	guide_chip.visible = not g.is_empty() and GameData.tour < 0
+	if guide_chip.visible:
+		guide_chip.text = tr("GUS ›  %s") % tr(str(g["text"]))
+		guide_chip.tooltip_text = tr("Gus's list: the next thing to try. Tap to go there.")
+		GUI.mark_new(guide_chip, true)
+
+
+func _on_guide_chip() -> void:
+	var g := GameData.guide_step()
+	if g.is_empty():
+		return
+	PlayLog.add("guide", str(g["id"]))
+	var go: Array = g["go"]
+	go_to(str(go[0]), str(go[1]))
+
+
+## Menu > Gus's list: every step, ticked or not.
+func open_guide_list() -> void:
+	var col := open_popup(tr("GUS'S LIST"))
+	var a := GUI.text(tr("Things to try in your first weeks. Each one pays a little the first time."), 15, GUI.MUTED)
+	a.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	a.custom_minimum_size.x = UI.px(15) * 24
+	col.add_child(a)
+	var next := GameData.guide_step()
+	for g in GameData.GUIDE:
+		var done := GameData.guide_done(str(g[0]))
+		var r := action_bar(col)
+		var t := GUI.text(("✓  " if done else "○  ") + tr(str(g[1])), 16, GUI.GREEN if done else (GUI.YELLOW if not next.is_empty() and next["id"] == g[0] else GUI.TEXT))
+		t.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		t.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		r.add_child(t)
+		r.add_child(GUI.text("+$%d" % int(g[4]), 15, GUI.MUTED, "num"))
+		if not done:
+			var go: Array = g[2]
+			row_button(r, tr("Go ›"), func(): close_popup(); go_to(str(go[0]), str(go[1])), true, 90)
+
+
 ## (1.124) A section that opens on a tap: heading + one-line summary, the rest folded under it.
 func fold(parent: Control, title: String, summary: String, open: bool = false) -> VBoxContainer:
 	var b := Button.new()
@@ -7459,8 +7520,14 @@ func star(text: String, feature: String) -> String:
 
 ## New things get the marching hazard stripes round them: "here, something to do".
 func marked(c: Control, feature: String) -> Control:
-	GUI.mark_new(c, GameData.is_new(feature))
+	GUI.mark_new(c, striped(feature))
 	return c
+
+
+## (1.127) Everything is open from day 1, so an unexplained feature is striped only while Gus's
+## list points at it; Gus still explains each one the first time it's opened.
+func striped(feature: String) -> bool:
+	return GameData.guide_points_at(feature)
 
 
 ## A rail button. The first visit to a section Gus hasn't shown you yet plays his scene first.
@@ -8092,6 +8159,8 @@ func _on_menu() -> void:
 				Loading.run(func():
 					if GameData.load_game(GameData.save_slot, true) == "":
 						Loading.go("res://garage.tscn"))), 19, Vector2(0, 56)))
+	if GameData.guide_on():
+		col.add_child(UI.button(tr("Gus's list"), func(): close_popup(); open_guide_list(), 19, Vector2(0, 56)))
 	# (1.126) the save as a file you keep: download it, upload it on the Load Game screen
 	col.add_child(UI.button(tr("Download save file"), func():
 		GameData.save_game()

@@ -238,7 +238,7 @@ const SCENES := {
 		["GUS", "It's a style. Pick yours under Style. Each one comes with a signature move."],
 	]},
 	"unlock_shop": {"place": "GUS'S BAY", "lines": [
-		["GUS", "Two wins. Enough to walk into the dealer's without getting laughed out. He restocks every Sunday, under Get Parts."],
+		["GUS", "Parts-R-Us, over in the City. New stock every Sunday. Buy what you'll bolt on, rent comes first."],
 	]},
 	"brass_invite": {"place": "GUS'S BAY", "lines": [
 		["GUS", "Silas at Brassworks & Sons asked about you. He built half the gauges on your dad's robot."],
@@ -311,16 +311,16 @@ const SCENES := {
 		["GUS", "Training chips. Each one teaches the robot a special move, and you punch in the combo on the controller. Better heads hold more."],
 	]},
 	"unlock_cups": {"place": "GUS'S BAY", "lines": [
-		["GUS", "The cup promoters will take our entry fee now. Wednesday nights, eight pilots, straight knockout. It's under Season, Cups."],
+		["GUS", "Cup nights are Wednesdays. Eight pilots, straight knockout, pay the entry under Season, Cups."],
 	]},
 	"unlock_team": {"place": "GUS'S BAY", "lines": [
 		["GUS", "That spares shelf is half a robot. Build a backup under Crew, and Send puts it in when the main one's too beat up."],
 	]},
 	"unlock_workshop": {"place": "GUS'S BAY", "lines": [
-		["GUS", "Want a part nobody sells? Tell me the shape and what it should do, and I'll build it. Made to order, under Get Parts."],
+		["GUS", "Want a part nobody sells? Tell me the shape and what it should do, and I'll build it. Made to order, here in the workshop."],
 	]},
 	"unlock_pilot": {"place": "GUS'S BAY", "lines": [
-		["GUS", "People know your face now. Fix your look on BotMedia. Your controllers live in Crew now, under Gear."],
+		["GUS", "Your look is on BotMedia, under Profile. Your controllers live in Crew, under Gear."],
 	]},
 	"unlock_paint": {"place": "GUS'S BAY", "lines": [
 		["GUS", "The crowd cheers for robots they can spot from the cheap seats. Paint's in the Bay, under Style & paint."],

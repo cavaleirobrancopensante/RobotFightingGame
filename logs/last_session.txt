@@ -1,0 +1,15 @@
+ROBOT FIGHTING GAME - error log (2026-11-11 05:38:07, Godot 4.7-stable (official))
+
+== THIS SESSION: 0 ==
+(no errors)
+
+== PREVIOUS SESSION ==
+[05:34:50] ERROR: Parameter "data.tree" is null.
+    at scene/main/node.h:559 (get_tree)
+GDScript backtrace (most recent call first):
+    [0] _ready (res://zz_test.gd:17)
+
+[05:34:50] SCRIPT ERROR: Cannot call method 'create_timer' on a null value.
+    at res://zz_test.gd:17 (_ready)
+GDScript backtrace (most recent call first):
+    [0] _ready (res://zz_test.gd:17)
