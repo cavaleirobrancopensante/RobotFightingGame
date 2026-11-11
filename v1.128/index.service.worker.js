@@ -4,7 +4,7 @@
 // Incrementing CACHE_VERSION will kick off the install event and force
 // previously cached resources to be updated from the network.
 /** @type {string} */
-const CACHE_VERSION = '1792154202|8035007';
+const CACHE_VERSION = '1794375514|7553478';
 /** @type {string} */
 const CACHE_PREFIX = 'RobotFighting-sw-cache-';
 const CACHE_NAME = CACHE_PREFIX + CACHE_VERSION;
