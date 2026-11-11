@@ -4149,4 +4149,7 @@ const T := {
 	"Tutorial: %s": "Tutorial: %s",
 	"Gus asks first": "Gus pregunta antes",
 	"Show it at the bottom of the screen": "Mostrarla en la parte de abajo de la pantalla",
+	"Want me to show you the ropes?": "¿Quieres que te enseñe lo básico?",
+	"Old Pike's waiting at the Rusty Bolt. First time on the sticks? I'll coach you through the fight, show you round the bay after and keep a list of things to try.": "El viejo Pike espera en el Rusty Bolt. ¿Primera vez a los mandos? Te entreno durante la pelea, después te enseño el taller y te guardo una lista de cosas que probar.",
+	"Know what you're doing? Then it's just you and Pike, and I'll keep quiet.": "¿Sabes lo que haces? Entonces sois tú y Pike, y yo me callo.",
 }

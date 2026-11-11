@@ -729,7 +729,7 @@ func _ready() -> void:
 	setup_pilots()
 	barrier_kind = barrier_for(arena_id)
 	cam_c = screen * 0.5
-	if mode == "pickup" and GameData.pickup.get("first", false) and gus_here():
+	if mode == "pickup" and GameData.pickup.get("first", false) and gus_here() and GameData.guide_on():
 		course_step = 0   # the very first fight: Old Pike, Gus's five-step course
 	if mode == "test" or GameData.settings.get("skip_intros", false) or course_step >= 0:
 		intro_step = "count"
@@ -6274,7 +6274,7 @@ func first_fight() -> bool:
 
 ## Gus started saying something: in your first fight, the first few stop the action.
 func coach_shown() -> void:
-	if first_fight() and phase == "fight" and tut_pauses < TUTORIAL_PAUSES and course_step < 0:
+	if first_fight() and GameData.guide_on() and phase == "fight" and tut_pauses < TUTORIAL_PAUSES and course_step < 0:
 		tut_pauses += 1
 		tut_pause = true
 		tut_pause_at = Time.get_ticks_msec()

@@ -314,8 +314,32 @@ func finish() -> void:
 	GameData.mark_story_seen("intro")
 	if GameData.pickup.is_empty() and GameData.wins + GameData.losses == 0:
 		GameData.start_first_fight()
+	if GameData.guide_asking():
+		ask_tutorial()   # (1.133) the tutorial asks first, before Old Pike's fight
+		return
+	go_fight()
+
+
+func go_fight() -> void:
 	GameData.save_game()
 	Loading.go("res://fight.tscn")
+
+
+## (1.133) Gus asks before the first fight: Show me = he coaches the fight, the tour and his list follow;
+## I know what I'm doing = the same fight against Old Pike, no hand holding.
+func ask_tutorial() -> void:
+	var layer := CanvasLayer.new()
+	layer.layer = 20
+	add_child(layer)
+	var root := Control.new()
+	root.set_anchors_preset(Control.PRESET_FULL_RECT)
+	root.theme = GUI.theme()
+	layer.add_child(root)
+	GUI.gus_card(root, tr("Want me to show you the ropes?"),
+			tr("Old Pike's waiting at the Rusty Bolt. First time on the sticks? I'll coach you through the fight, show you round the bay after and keep a list of things to try.") + "\n\n" +
+			tr("Know what you're doing? Then it's just you and Pike, and I'll keep quiet."),
+			[[tr("Show me"), func(): GameData.guide_answer(true); go_fight(), true],
+			[tr("I know what I'm doing"), func(): GameData.guide_answer(false); go_fight(), false]])
 
 
 # ================================================================ the world

@@ -9262,73 +9262,7 @@ var gus_overlay: Control = null
 func gus_card(title: String, text: String, buttons: Array) -> void:
 	close_gus_card()
 	PlayLog.add("gus card", title)
-	Sfx.voice("GUS")
-	var ov := ColorRect.new()
-	ov.color = Color(0, 0, 0, 0.78)
-	ov.set_anchors_preset(Control.PRESET_FULL_RECT)
-	ov.mouse_filter = Control.MOUSE_FILTER_STOP
-	add_child(ov)
-	gus_overlay = ov
-	var vp := get_viewport_rect().size
-	var panel := PanelContainer.new()
-	var sb := GUI.box(Color(0.075, 0.075, 0.095), 16, 0)
-	sb.border_color = GUI.YELLOW
-	sb.set_border_width_all(3)
-	panel.add_theme_stylebox_override("panel", sb)
-	panel.position = vp * 0.06
-	panel.size = vp * 0.88
-	ov.add_child(panel)
-	var outer := VBoxContainer.new()
-	outer.add_theme_constant_override("separation", 0)
-	panel.add_child(outer)
-	var strip := GUI.HazardStrip.new()
-	strip.custom_minimum_size = Vector2(0, 14)
-	outer.add_child(strip)
-	var m := MarginContainer.new()
-	for k in ["margin_left", "margin_right", "margin_top", "margin_bottom"]:
-		m.add_theme_constant_override(k, 22)
-	m.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	outer.add_child(m)
-	var row := HBoxContainer.new()
-	row.add_theme_constant_override("separation", 24)
-	m.add_child(row)
-	var face := GusBust.new()
-	face.custom_minimum_size = Vector2(minf(vp.x * 0.26, 300.0), 0)
-	face.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	row.add_child(face)
-	var col := VBoxContainer.new()
-	col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	col.add_theme_constant_override("separation", 14)
-	row.add_child(col)
-	col.add_child(GUI.text(tr("GUS"), 16, GUI.MUTED, "headb"))
-	var t := GUI.text(title, 30, GUI.YELLOW, "stencil")
-	t.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	col.add_child(t)
-	var sc := ScrollContainer.new()
-	sc.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-	sc.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	col.add_child(sc)
-	var body := GUI.text(text, 21, GUI.TEXT)
-	body.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	body.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	sc.add_child(body)
-	var bar := HFlowContainer.new()
-	bar.add_theme_constant_override("h_separation", 12)
-	bar.add_theme_constant_override("v_separation", 10)
-	col.add_child(bar)
-	for b in buttons:
-		var cb: Callable = b[1]
-		var btn := UI.button(str(b[0]), func():
-			Sfx.play("click")
-			close_gus_card()
-			if cb.is_valid():
-				cb.call(), 19, Vector2(maxf(220.0, vp.x * 0.2), 60))
-		if b.size() > 2 and b[2]:
-			btn.add_theme_color_override("font_color", GUI.INK)
-			btn.add_theme_color_override("font_hover_color", Color(0.08, 0.08, 0.08))
-			for st in ["normal", "hover", "pressed"]:
-				btn.add_theme_stylebox_override(st, GUI.box(GUI.YELLOW if st != "hover" else GUI.YELLOW.lightened(0.15), 10, 8))
-		bar.add_child(btn)
+	gus_overlay = GUI.gus_card(self, title, text, buttons, close_gus_card)
 	GameData.log_talk("GUS", text, "gus")
 
 
@@ -9460,35 +9394,6 @@ func check_gus_cards() -> void:
 
 
 ## Gus from the chest up under his work lamp (the big cards).
-class GusBust extends Control:
-	func _init() -> void:
-		clip_contents = true
-
-	func _draw() -> void:
-		var PA = load("res://pilot_art.gd")
-		var RA = load("res://robot_art.gd")
-		draw_rect(Rect2(Vector2.ZERO, size), Color(0.1, 0.09, 0.08))
-		var r := minf(size.x * 0.23, size.y * 0.2)
-		var c := Vector2(size.x * 0.5, size.y * 0.45)
-		draw_circle(c + Vector2(0, -r * 0.6), r * 2.4, Color(1.0, 0.8, 0.45, 0.06))
-		draw_circle(c + Vector2(0, -r * 0.6), r * 1.6, Color(1.0, 0.8, 0.45, 0.07))
-		var look: Dictionary = PA.GUS_LOOK
-		var outfit := Color(look["outfit"])
-		var body := PackedVector2Array([Vector2(c.x - r * 2.0, size.y), Vector2(c.x - r * 1.7, c.y + r * 1.3), Vector2(c.x - r * 0.5, c.y + r * 1.0),
-				Vector2(c.x + r * 0.5, c.y + r * 1.0), Vector2(c.x + r * 1.7, c.y + r * 1.3), Vector2(c.x + r * 2.0, size.y)])
-		PA.light = "bay"
-		RA._set_light("bay", 1)
-		RA._plate(self, body, outfit)
-		# overall straps and a pocket
-		for side in [-1.0, 1.0]:
-			draw_line(Vector2(c.x + side * r * 0.75, c.y + r * 1.1), Vector2(c.x + side * r * 0.6, size.y), outfit.darkened(0.35), maxf(3.0, r * 0.12))
-			draw_circle(Vector2(c.x + side * r * 0.72, c.y + r * 1.6), r * 0.07, Color(0.8, 0.7, 0.4))
-		draw_rect(Rect2(c.x - r * 0.35, c.y + r * 1.8, r * 0.7, r * 0.5), outfit.darkened(0.2))
-		draw_rect(Rect2(c.x - r * 0.3, c.y + r * 0.75, r * 0.6, r * 0.4), Color(look["skin"]).darkened(0.15))
-		PA.draw_head(self, c, r, look, 0.0, 0.0)
-		PA.light = "neutral"
-
-
 # ---------------------------------------------------------------- (1.84) the music pop-up
 
 ## (1.94) In the jukebox lists: a maker's logo and name over its three songs.
