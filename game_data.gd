@@ -3,7 +3,7 @@ const PlayLog = preload("res://playlog.gd")   # (1.87) the playtest log
 
 # helper scripts, loaded by path so the game also runs without an editor scan
 ## The game's version, shown on the main menu. Bump it with every change (1.1, 1.2, ...).
-const VERSION := "1.143"
+const VERSION := "1.144"
 const Arena = preload("res://arena.gd")
 const I18n = preload("res://i18n.gd")
 const Catalog = preload("res://catalog.gd")
@@ -388,6 +388,7 @@ var pub_seen := ""              # the day you last walked into The Rusty Bolt (t
 const Talk = preload("res://talk_lines.gd")   # this year's division tables: stage -> event (yours is also `event`)
 var pending_stories: Array = []   # scenes the last result unlocked (shown after the fight)
 var last_ko := ""
+var last_finish := ""   # (1.144) how your last K.O. ended: "scrap", "spare" or ""
 var bills_note := 0         # living costs charged since the garage last showed them
 var fight_log: Array = []   # every fight: {y, w, opp, won, mode, title} - for the calendar
 var bets: Array = []        # this week's bets: {on: "event"/"cup"/"self", round, pick, vs, stake, odds}
@@ -5153,7 +5154,9 @@ func record_result(won: bool, part_hp: Dictionary, destroyed: int, salvage_ids: 
 		"circuit":
 			social_stage = "cup"
 	var intact_rips := salvage_ids.filter(func(sv): return bool(sv.get("intact", false))).size()
+	var fol_before := int(Social.st()["followers"])
 	Social.my_fight(o, won, destroyed, intact_rips, lost.size() + wrecked.size(), social_stage)
+	after_finish(o, int(Social.st()["followers"]) - fol_before)
 	var sponsor_pay := Contracts.after_fight(won, destroyed, forfeited)
 	if sponsor_pay > 0:
 		log_day(tr("Sponsors paid $%d.") % sponsor_pay, "good")
@@ -6830,6 +6833,32 @@ func place_locked(place: String) -> String:
 	if place == "dojo" and rank_index() < 2 and not story_seen.has("tenryu_invite"):
 		return "Opens to Rust League pilots. Or land a big special move and they'll come to you."   # (1.103)
 	return ""
+
+
+# ---------------------------------------------------------------- (1.144) finishers and mercy
+## After the fight: SCRAP IT = +15% of the followers the win brought (at least 5), they take it
+## hard (-15); SPARE THEM = they won't forget it (+10) and a fan says so. Both counted for the
+## career (career_stats "scrapped" / "spared"), which BotMedia and Gus notice.
+func after_finish(o: Dictionary, gain: int) -> void:
+	var fin := last_finish
+	last_finish = ""
+	if fin == "":
+		return
+	var wid := int(o.get("wid", -1))
+	var ck := "scrapped" if fin == "scrap" else "spared"
+	career_stats[ck] = int(career_stats.get(ck, 0)) + 1
+	var who := str(o.get("pilot", o.get("name", "?")))
+	if fin == "scrap":
+		Social.st()["followers"] = int(Social.st()["followers"]) + maxi(5, int(gain * 0.15))
+		if wid >= 0:
+			rel_add(wid, -15)
+		Social.post(Social.fan_key(week * 31 + year), ["Did you SEE that? %s got scrapped. Brutal.", "%s won't be walking out of that one.",
+				"That finisher on %s. I need a minute."][(week + year) % 3], [who], {}, ["Scrapped"], false, "fan_me_win")
+	else:
+		if wid >= 0:
+			rel_add(wid, 10)
+		Social.post(Social.fan_key(week * 31 + year), ["Had %s beaten and let them walk. Respect.", "Spared %s. That's class.",
+				"Mercy for %s. Didn't see that coming."][(week + year) % 3], [who], {}, ["Respect"], false, "fan_me_win")
 
 
 # ---------------------------------------------------------------- (1.143) the walk-in

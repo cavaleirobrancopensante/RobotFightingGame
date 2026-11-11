@@ -1043,6 +1043,14 @@ func note_press_at(p: Vector2) -> void:
 
 ## Quit, moves list and aiming. Returns true if the tap was used.
 func handle_tap(p: Vector2) -> bool:
+	if fin_state == "offer" and moment_t <= 0.0:
+		# (1.144) finish it?
+		if fin_rects[0].has_point(p):
+			start_finisher("scrap")
+			return true
+		if fin_rects[1].has_point(p):
+			start_finisher("spare")
+			return true
 	if tut_pause:
 		# a tap that was meant for the fight (you were mashing PUNCH) mustn't skip Gus unread
 		if Time.get_ticks_msec() - tut_pause_at > TUT_GRACE_MS:
@@ -2149,7 +2157,9 @@ func _process(delta: float) -> void:
 				time_up()
 		"ko":
 			# the KO lands, then the results come up by themselves (a tap hurries them)
-			if phase_timer > 2.6 or (phase_timer > 1.0 and tap_pending):
+			if fin_state != "":
+				update_finisher(delta, p_ins[0] if not p_ins.is_empty() else empty_input())
+			elif phase_timer > 2.6 or (phase_timer > 1.0 and tap_pending):
 				finish_match()
 		"results":
 			if phase_timer > 1.0 and tap_pending:
@@ -2282,6 +2292,8 @@ func update_effects(delta: float) -> void:
 
 
 func popup(text: String, at: Vector2, color: Color) -> void:
+	if fin_quiet:
+		return   # (1.144) the finisher tearing things off: one word on screen, not twenty
 	popups.append({"text": text, "pos": at, "t": 0.0, "color": color})
 
 
@@ -2374,6 +2386,8 @@ func finish_match() -> void:
 	var ripped: Array = []
 	for f in team_c:
 		ripped += f.ripped
+	# (1.144) a finisher's shattered parts don't count as parts torn off in the fight; its whole one comes home
+	ripped = ripped.filter(func(rp): return not rp.get("fin", false) or rp.get("intact", false))
 	GameData.last_ko = ko_text
 	var ehp := {}
 	for slot in BODY_PARTS:
@@ -2385,6 +2399,7 @@ func finish_match() -> void:
 	var own_rips := {}
 	for rp in main.ripped:
 		own_rips[str(rp.get("slot", ""))] = bool(rp.get("intact", false))
+	GameData.last_finish = fin_choice   # (1.144)
 	result = GameData.record_result(won, part_hp, ripped.size(), ripped, team_hp, own_rips)
 	phase = "results"
 	phase_timer = 0.0
@@ -4205,7 +4220,7 @@ func damage_part(f: Fighter, slot: String, amount: float, quiet: bool = false, a
 ## A part comes off. A roll decides how: INTACT, the real part flies off and lies in the ring (salvage
 ## for the winner, a wreck you can rebuild if it was yours); BROKEN, it shatters into shards (gone).
 ## A clean aimed rip mostly comes off intact; an overkill hit or an explosion mostly breaks it.
-func rip_off(f: Fighter, slot: String, overkill: float = 0.0) -> void:
+func rip_off(f: Fighter, slot: String, overkill: float = 0.0, force: int = -1) -> void:
 	var p: Dictionary = f.parts[slot]
 	var aimed := false
 	for e in enemies_of(f):
@@ -4218,7 +4233,9 @@ func rip_off(f: Fighter, slot: String, overkill: float = 0.0) -> void:
 	if boom > 0.0:
 		keep = 0.15
 	var intact := randf() < keep
-	f.ripped.append({"id": p["id"], "aimed": aimed, "slot": slot, "intact": intact})
+	if force >= 0:
+		intact = force == 1   # (1.144) a finisher decides
+	f.ripped.append({"id": p["id"], "aimed": aimed, "slot": slot, "intact": intact, "fin": force >= 0})
 	if f.team == 1:
 		if aimed:
 			coach("aimed_rip", tr("Clean rip! Parts you AIM at mostly come off in one piece, and whole parts come home with us after a win."))
@@ -4311,6 +4328,7 @@ func knockout(att: Fighter, d: Fighter, why: String) -> void:
 	var big := mode == "story" and (str(GameData.event.get("phase", "")) == "finals" or str(GameData.event.get("stage", "")) == "title")
 	big_moment("ko", d, 2.8 if big else 2.2, tr("K.O."))
 	end_by(att, why)
+	fin_offer_check(att, d)
 
 
 ## A big moment: slow motion, the camera punches in on `on`, the HUD steps aside. Earned moments
@@ -4455,6 +4473,7 @@ func _draw_ui() -> void:
 		draw_moment_caption()
 		return   # a big moment: the camera's in close, the HUD steps aside
 	draw_hud()
+	draw_finisher_offer()
 	if mode == "test" and (phase == "fight" or phase == "intro"):
 		draw_input_readout()
 		draw_training()
@@ -5425,6 +5444,8 @@ func draw_hud() -> void:
 		"fight":
 			if fight_flash > 0.0:
 				ci.draw_string(font_big, Vector2(0, screen.y * 0.36), tr("FIGHT!"), HORIZONTAL_ALIGNMENT_CENTER, screen.x, fs(96), Color(1.0, 0.3, 0.2, minf(1.0, fight_flash * 2.0)))
+		"ko" when fin_state != "":
+			pass   # (1.144) the finisher has the screen
 		"ko":
 			var big := tr("K.O.") if ko_text != "TIME!" else tr("TIME!")
 			ci.draw_string(font_big, Vector2(0, cy), big, HORIZONTAL_ALIGNMENT_CENTER, screen.x, fs(84), Color(1.0, 0.2, 0.1))
@@ -5665,6 +5686,182 @@ func draw_frame_table() -> void:
 			ci.draw_string(font if c == 0 else font_num, Vector2(r.position.x + 16 + cols[c] * (w - 32), y), vals[c], HORIZONTAL_ALIGNMENT_LEFT,
 					(w - 32) * 0.33 if c == 0 else -1, fs(14 if c == 0 else 17), col)
 	ci.draw_string(font, Vector2(r.position.x + 16, r.end.y - 12), tr("HIT / BLOCK: frames ahead (+) or behind (-). Hits cancel on contact."), HORIZONTAL_ALIGNMENT_LEFT, w - 32.0, fs(12), GUI.MUTED)
+
+
+# ---------------------------------------------------------------- (1.144) finishers and mercy
+# After an earned K.O. in a career fight, the winner gets FIN_OFFER seconds and two choices: SCRAP IT
+# (PUNCH or the button) or SPARE THEM (BLOCK or the button). Earned = the scan found their weak spot,
+# or 2+ of their parts came off, or the K.O. came with more than half your core left. Scrap it plays
+# your main maker's finisher, tears off what's left (one part guaranteed whole, the rest shattered),
+# and makes a clip; Spare them is a bow and a nod. Doing nothing is neither.
+const FIN_OFFER := 3.0
+const FIN_T := 2.6
+## maker -> [the word that pops up, its colour, the pose the winner strikes]
+const FINISHERS := {
+	"scrapworks": ["TAKEN APART", Color(0.85, 0.8, 0.7), "point"],
+	"oldiron": ["FLATTENED", Color(0.95, 0.75, 0.45), "fists_up"],
+	"brassworks": ["RUSTED SOLID", Color(0.95, 0.8, 0.5), "flex"],
+	"hellfire": ["WELDED SHUT", Color(1.0, 0.55, 0.25), "flex"],
+	"volta": ["BLOWN OUT", Color(0.55, 0.9, 1.0), "point"],
+	"nimbus": ["GROUNDED", Color(0.75, 0.88, 1.0), "fists_up"],
+	"kane": ["CUT DOWN", Color(1.0, 0.85, 0.4), "guard"],
+	"tenryu": ["FINAL STRIKE!", Color(1.0, 0.85, 0.2), "fists_up"],
+	"menagerie": ["KING OF THE RING", Color(1.0, 0.6, 0.4), "pound"],
+	"": ["SCRAPPED", Color(1.0, 0.75, 0.35), "fists_up"],
+}
+var fin_state := ""      # "" none, "offer", "scrap", "spare"
+var fin_t := 0.0
+var fin_win: Fighter = null
+var fin_lose: Fighter = null
+var fin_pose := ""
+var fin_hit := false
+var fin_rects := [Rect2(), Rect2()]
+var fin_quiet := false
+var fin_choice := ""     # what you chose, for the results and BotMedia: "scrap", "spare" or ""
+
+
+func fin_offer_check(att: Fighter, d: Fighter) -> void:
+	if (mode != "story" and mode != "pickup") or att.team != 0 or team_p.size() > 1 or team_c.size() > 1 or course_step >= 0:
+		return
+	if first_fight() or str(opp.get("junk", "")) != "":
+		return
+	var earned: bool = att.weak != "" or d.ripped.size() >= 2 or att.ratio("torso") > 0.5
+	if not earned:
+		return
+	fin_state = "offer"
+	fin_t = 0.0
+	fin_win = att
+	fin_lose = d
+	coach("finisher_offer", tr("You earned it. SCRAP IT tears them apart, one part comes home whole. SPARE THEM, and they won't forget it."))
+
+
+func update_finisher(delta: float, i: Dictionary) -> void:
+	match fin_state:
+		"offer":
+			if moment_t > 0.0:
+				return   # the K.O. plays first
+			fin_t += delta
+			if i.get("punch", false):
+				start_finisher("scrap")
+			elif i.get("block_press", false):
+				start_finisher("spare")
+			elif fin_t > FIN_OFFER:
+				fin_state = ""   # walked away: neither
+				phase_timer = 2.0
+		"scrap":
+			fin_t += delta
+			# the winner walks up to it, strikes, then it comes apart
+			var to := fin_lose.pos.x - fin_win.facing * 110.0
+			if fin_t < 0.7:
+				fin_win.pos.x = lerpf(fin_win.pos.x, to, minf(1.0, delta * 6.0))
+			if not fin_hit and fin_t >= 0.9:
+				fin_hit = true
+				finisher_strike()
+			if fin_t >= FIN_T:
+				fin_state = ""
+				fin_pose = ""
+				finish_match()
+		"spare":
+			fin_t += delta
+			if fin_t >= 1.6:
+				fin_state = ""
+				fin_pose = ""
+				finish_match()
+
+
+func start_finisher(kind: String) -> void:
+	fin_state = kind
+	fin_choice = kind
+	fin_t = 0.0
+	fin_hit = false
+	Sfx.play("click")
+	PlayLog.add("fight", "finisher: %s" % kind)
+	if kind == "spare":
+		fin_pose = "bow"
+		popup(tr("SPARED"), fin_lose.pos + Vector2(0, -200.0 * fin_lose.scale), GUI.GREEN)
+		pilot_say(0, "spare", true, tr(["Good fight.", "Get up. You fought well.", "That's enough. Respect."][randi() % 3]))
+		cheer = 2.0
+		Sfx.play("crowd_cheer", 0.1, -6.0)
+		rec_mark("spare", 60.0, "%s spares %s", [rec_name(fin_win), rec_name(fin_lose)], 2.0)
+	else:
+		var fd: Array = FINISHERS.get(fin_win.mk, FINISHERS[""])
+		fin_pose = str(fd[2]) if str(fd[2]) != "guard" else ""
+		pilot_say(0, "finish", true, tr(["Finish it!", "Scrap it!", "Lights out!"][randi() % 3]))
+		rec_mark("scrap", 150.0, "%s scraps %s", [rec_name(fin_win), rec_name(fin_lose)], 3.0)
+
+
+## The finisher lands: each maker its own way, then everything left comes off.
+func finisher_strike() -> void:
+	var fd: Array = FINISHERS.get(fin_win.mk, FINISHERS[""])
+	var at := fin_lose.pos + Vector2(0, -110.0 * fin_lose.scale)
+	var col: Color = fd[1]
+	shake = 24.0
+	hitstop = 0.18
+	cheer = 4.0
+	Sfx.play("hit_big")
+	Sfx.play("crowd_cheer")
+	popup(tr(str(fd[0])), at + Vector2(0, -130.0), col)
+	popup(tr("1 PART COMES HOME WHOLE"), at + Vector2(0, -90.0), GUI.GREEN)
+	fin_quiet = true
+	rings.append({"pos": at, "t": 0.0, "color": col, "r": 220.0})
+	for k in 14:
+		add_spark(at + Vector2(randf_range(-60, 60), randf_range(-60, 60)), col, randf_range(18.0, 36.0))
+	match fin_win.mk:
+		"oldiron", "nimbus":
+			for k in 8:
+				smoke.append({"pos": Vector2(fin_lose.pos.x + randf_range(-90, 90), floor_y - 10.0), "t": 0.0, "dark": false, "k": 1.6})
+		"brassworks":
+			steam_cloud(fin_lose, 1.6, false)
+		"hellfire":
+			for k in 10:
+				smoke.append({"pos": at + Vector2(randf_range(-50, 50), randf_range(-40, 40)), "t": 0.0, "dark": true, "k": 1.5})
+		"tenryu":
+			for k in 3:
+				rings.append({"pos": at, "t": -0.15 * k, "color": Color(1.0, 0.5 + 0.2 * k, 0.2), "r": 260.0 + k * 60.0})
+		_:
+			pass
+	if fin_win.mk == "tenryu" or fin_win.mk == "volta":
+		Sfx.play("strike_" + fin_win.mk, 0.1)
+	# tear off what's left: the best part comes off whole (yours to take home), the rest shatters
+	var left: Array = []
+	for slot in BODY_PARTS:
+		if slot != "torso" and fin_lose.alive(slot):
+			left.append(slot)
+	if left.is_empty():
+		return
+	var best := str(left[0])
+	var best_v := -1.0
+	for slot in left:
+		var pp: Dictionary = fin_lose.parts[slot]
+		var v := float(pp.get("max_hp", 0.0)) * float(pp.get("gm", 1.0))
+		if v > best_v:
+			best_v = v
+			best = slot
+	for slot in left:
+		fin_lose.parts[slot]["hp"] = 0.0
+		rip_off(fin_lose, slot, 0.0, 1 if slot == best else 0)
+	fin_lose.look_dirty = true
+
+
+func draw_finisher_offer() -> void:
+	fin_rects = [Rect2(), Rect2()]
+	if fin_state != "offer" or moment_t > 0.0:
+		return
+	var w := minf(screen.x * 0.3, 300.0)
+	var h := 72.0
+	var y := screen.y * 0.62
+	fin_rects = [Rect2(screen.x * 0.5 - w - 14.0, y, w, h), Rect2(screen.x * 0.5 + 14.0, y, w, h)]
+	ci.draw_string(font_big, Vector2(0, screen.y * 0.36), tr("K.O."), HORIZONTAL_ALIGNMENT_CENTER, screen.x, fs(70), Color(1.0, 0.2, 0.1))
+	ci.draw_string(font_head, Vector2(0, y - 40.0), tr("FINISH IT?"), HORIZONTAL_ALIGNMENT_CENTER, screen.x, fs(30), GUI.YELLOW)
+	var left := maxf(0.0, 1.0 - fin_t / FIN_OFFER)
+	ci.draw_rect(Rect2(screen.x * 0.5 - 180.0, y - 26.0, 360.0 * left, 6.0), GUI.YELLOW)
+	var labels := [[tr("SCRAP IT"), tr("PUNCH"), GUI.RED], [tr("SPARE THEM"), tr("BLOCK"), GUI.GREEN]]
+	for k in 2:
+		var r: Rect2 = fin_rects[k]
+		ci.draw_rect(r, Color(0.05, 0.05, 0.07, 0.9))
+		ci.draw_rect(r, labels[k][2], false, 3.0)
+		ci.draw_string(font_head, r.position + Vector2(0, 38), labels[k][0], HORIZONTAL_ALIGNMENT_CENTER, r.size.x, fs(24), labels[k][2])
+		ci.draw_string(font, r.position + Vector2(0, 62), labels[k][1] if touch_device == false else "", HORIZONTAL_ALIGNMENT_CENTER, r.size.x, fs(12), GUI.MUTED)
 
 
 func draw_input_readout() -> void:
@@ -7530,6 +7727,8 @@ func walkin_call(team: int) -> String:
 ## The pose a robot strikes right now: its entry pose while the camera's on it in the show, its
 ## taunt for a moment after you press BLOCK in the countdown.
 func entry_pose(f: Fighter) -> String:
+	if phase == "ko" and f == fin_win and fin_pose != "":
+		return fin_pose   # (1.144) the finisher's pose, or the bow of mercy
 	if phase != "intro" or f.state not in ["idle", "walk"]:
 		return ""
 	var team := 0 if team_p.has(f) else 1
