@@ -2037,22 +2037,25 @@ static func _shrine(ci: CanvasItem, base: Vector2, h: float, t: float) -> void:
 # ---------------------------------------------------------------- (1.137) Our Lady of the Harbour
 const CHURCH_ALTAR := 0.45   # the altar's x, as a share of the stage
 
-## The church: two tall pointed windows of stained glass with their light on the floor, the apse
-## (the crucifix high up, the red sanctuary lamp), Our Lady on a plinth, and the candle stand
-## (yours lit today). The altar and the pews are drawn in front of the people (_church_front).
+## The church: two tall pointed windows of stained glass with their light on the floor, the apse,
+## and in it the high altar hugging the wall (1.139: the old Latin altar): three steps up, the stone
+## mensa with its frontal, two gradines of tall candles, the gold tabernacle, the reredos with the
+## crucifix above. The red sanctuary lamp, Our Lady on a plinth, the candle stand (yours lit today).
 static func _church_back(ci: CanvasItem, size: Vector2, floor_y: float, t: float, info: Dictionary) -> void:
 	var stone := Color(0.42, 0.39, 0.37)
-	for wx in [size.x * 0.12, size.x * 0.86]:
-		var w := Rect2(wx - 26, 40, 52, floor_y * 0.5)
+	var marble := Color(0.82, 0.8, 0.76)
+	var gold := Color(0.88, 0.7, 0.3)
+	for wx in [size.x * 0.1, size.x * 0.86]:
+		var w := Rect2(wx - 24, 40, 48, floor_y * 0.5)
 		var poly := PackedVector2Array([Vector2(w.position.x, w.end.y)])
 		for k in 13:
 			var a := PI + k * PI / 12.0
-			poly.append(Vector2(w.get_center().x + cos(a) * w.size.x * 0.5, w.position.y + 26 + sin(a) * 30))
+			poly.append(Vector2(w.get_center().x + cos(a) * w.size.x * 0.5, w.position.y + 24 + sin(a) * 28))
 		poly.append(w.end)
 		_pg(ci, poly, stone.darkened(0.3))
 		var glass := Rect2(w.position.x + 6, w.position.y + 14, w.size.x - 12, w.size.y - 18)
 		var cols := [Color(0.2, 0.35, 0.8), Color(0.75, 0.15, 0.18), Color(0.9, 0.7, 0.2), Color(0.25, 0.6, 0.4)]
-		var cell := 10.0
+		var cell := 9.0
 		for gy in int(glass.size.y / cell):
 			for gx in int(glass.size.x / cell):
 				var c: Color = cols[(gx * 3 + gy * 5 + int(wx)) % cols.size()]
@@ -2063,20 +2066,62 @@ static func _church_back(ci: CanvasItem, size: Vector2, floor_y: float, t: float
 				Vector2(glass.end.x + 40, floor_y), Vector2(glass.position.x + 10, floor_y)]), Color(0.6, 0.6, 1.0, 0.06))
 	# the apse
 	var ax := size.x * CHURCH_ALTAR
-	var apse := PackedVector2Array([Vector2(ax - 96, floor_y)])
+	var apse := PackedVector2Array([Vector2(ax - 104, floor_y)])
 	for k in 13:
 		var a := PI + k * PI / 12.0
-		apse.append(Vector2(ax + cos(a) * 96, 118 + sin(a) * 84))
-	apse.append(Vector2(ax + 96, floor_y))
+		apse.append(Vector2(ax + cos(a) * 104, 112 + sin(a) * 84))
+	apse.append(Vector2(ax + 104, floor_y))
 	_pg(ci, apse, stone.darkened(0.42))
-	_crucifix(ci, Vector2(ax, 50), 86.0)
-	var lamp := Vector2(ax + 74, 150)
+	# the three altar steps
+	var step := 7.0
+	for k in 3:
+		var sw := 200.0 - k * 28.0
+		_rc(ci, Rect2(ax - sw * 0.5, floor_y - (k + 1) * step, sw, step), marble.darkened(0.08 * (2 - k)))
+	var top := floor_y - 3 * step
+	# the reredos against the wall: a marble panel with a gold edge, the crucifix above it
+	var rr := Rect2(ax - 62, top - 132, 124, 132)
+	_rc(ci, rr, marble.darkened(0.12))
+	_rc(ci, rr, gold.darkened(0.2), false, 2.0)
+	_crucifix(ci, Vector2(ax, rr.position.y - 84), 80.0)   # on top of the reredos
+	# two gradines (shelves) behind the mensa with six tall candles
+	_rc(ci, Rect2(ax - 58, top - 58, 116, 7), marble)
+	_rc(ci, Rect2(ax - 52, top - 70, 104, 7), marble.darkened(0.04))
+	for k in 6:
+		var side := -1.0 if k < 3 else 1.0
+		var j := k % 3
+		var cx := ax + side * (22.0 + j * 13.0)
+		var cy := top - 70 + (0 if j > 0 else 12)
+		var ch := 30.0 - j * 3.0
+		_rc(ci, Rect2(cx - 3, cy - 6, 6, 6), gold)
+		_rc(ci, Rect2(cx - 2, cy - 6 - ch, 4, ch), Color(0.96, 0.95, 0.9))
+		var fl := 0.8 + 0.2 * sin(t * 8.0 + k * 1.3)
+		ci.draw_circle(Vector2(cx, cy - 9 - ch), 10, Color(1.0, 0.8, 0.45, 0.07 * fl))
+		ci.draw_circle(Vector2(cx, cy - 9 - ch), 2.0 * fl, Color(1.0, 0.86, 0.5))
+	# the tabernacle in the middle, veiled, with the little cross on top
+	var tab := Rect2(ax - 14, top - 84, 28, 34)
+	_rc(ci, tab, gold)
+	_rc(ci, Rect2(tab.position.x + 3, tab.position.y + 8, tab.size.x - 6, tab.size.y - 8), Color(0.92, 0.9, 0.84))   # the veil
+	_ln(ci, Vector2(ax, tab.position.y - 10), Vector2(ax, tab.position.y), gold, 2.0)
+	_ln(ci, Vector2(ax - 4, tab.position.y - 6), Vector2(ax + 4, tab.position.y - 6), gold, 2.0)
+	# the mensa: stone, the white cloth hanging over its ends, the frontal in the day's colour
+	var mensa := Rect2(ax - 64, top - 50, 128, 50)
+	_rc(ci, mensa, marble.darkened(0.06))
+	_rc(ci, Rect2(mensa.position.x - 3, mensa.position.y - 3, mensa.size.x + 6, 6), Color(0.96, 0.96, 0.93))
+	_rc(ci, Rect2(mensa.position.x - 3, mensa.position.y, 6, 26), Color(0.96, 0.96, 0.93))
+	_rc(ci, Rect2(mensa.end.x - 3, mensa.position.y, 6, 26), Color(0.96, 0.96, 0.93))
+	var frontal := Rect2(mensa.position.x + 10, mensa.position.y + 6, mensa.size.x - 20, mensa.size.y - 8)
+	_rc(ci, frontal, Color(0.2, 0.45, 0.28))
+	_rc(ci, frontal, gold, false, 2.0)
+	_ln(ci, frontal.get_center() + Vector2(0, -12), frontal.get_center() + Vector2(0, 12), gold, 3.0)
+	_ln(ci, frontal.get_center() + Vector2(-8, -4), frontal.get_center() + Vector2(8, -4), gold, 3.0)
+	# the sanctuary lamp: always lit
+	var lamp := Vector2(ax + 86, 150)
 	_ln(ci, Vector2(lamp.x, 40), lamp + Vector2(0, -8), Color(0.6, 0.48, 0.2), 1.5)
 	ci.draw_circle(lamp, 16, Color(1.0, 0.3, 0.25, 0.1 + 0.03 * sin(t * 6.0)))
 	_rc(ci, Rect2(lamp.x - 5, lamp.y - 8, 10, 12), Color(0.78, 0.12, 0.14))
 	ci.draw_circle(lamp + Vector2(0, -9), 2.0, Color(1.0, 0.8, 0.4))
 	# Our Lady on a plinth: blue mantle, white veil, a ring of light
-	var mp := Vector2(size.x * 0.22, floor_y - 54)
+	var mp := Vector2(size.x * 0.2, floor_y - 54)
 	_rc(ci, Rect2(mp.x - 14, mp.y, 28, 54), stone.lightened(0.05))
 	_pg(ci, PackedVector2Array([mp + Vector2(-13, 0), mp + Vector2(13, 0), mp + Vector2(6, -54), mp + Vector2(-6, -54)]), Color(0.3, 0.45, 0.78))
 	_pg(ci, PackedVector2Array([mp + Vector2(-5, -2), mp + Vector2(5, -2), mp + Vector2(3, -44), mp + Vector2(-3, -44)]), Color(0.93, 0.92, 0.9))
@@ -2084,10 +2129,10 @@ static func _church_back(ci: CanvasItem, size: Vector2, floor_y: float, t: float
 	ci.draw_circle(mp + Vector2(0, -59), 5.0, Color(0.86, 0.72, 0.6))
 	ci.draw_arc(mp + Vector2(0, -60), 12, 0, TAU, 20, Color(1.0, 0.85, 0.45, 0.6), 1.5)
 	# the candle stand, far left
-	var cs := Rect2(size.x * 0.02, floor_y - 44, size.x * 0.12, 8)
+	var cs := Rect2(size.x * 0.0 + 6, floor_y - 44, size.x * 0.1, 8)
 	_rc(ci, cs, Color(0.35, 0.3, 0.26))
 	_rc(ci, Rect2(cs.get_center().x - 3, cs.end.y, 6, floor_y - cs.end.y), Color(0.3, 0.26, 0.22))
-	var n := maxi(5, int(cs.size.x / 9.0))
+	var n := maxi(4, int(cs.size.x / 9.0))
 	for k in n:
 		var cp := Vector2(cs.position.x + 5 + k * (cs.size.x - 10) / float(n - 1), cs.position.y - 2)
 		ci.draw_rect(Rect2(cp + Vector2(-2.5, -8), Vector2(5, 8)), Color(0.75, 0.15, 0.15, 0.85))
@@ -2098,39 +2143,86 @@ static func _church_back(ci: CanvasItem, size: Vector2, floor_y: float, t: float
 			ci.draw_circle(cp + Vector2(0, -10), 1.6 * fl2, Color(1.0, 0.85, 0.45))
 
 
-## Father Tomas behind the altar, facing the pews (green vestments on Sunday morning, black and a
-## white collar otherwise); you kneeling in the front pew with your hands together.
+## Father Tomas at the high altar with his back to the people, facing God with them. On Sunday
+## morning he wears the green chasuble over the white alb and raises the Host high (the elevation,
+## every few seconds); otherwise he prays there in his black cassock. In front: the white marble
+## altar rail, you kneeling in the front pew, the pews over your legs.
 static func _church_front(ci: CanvasItem, size: Vector2, floor_y: float, s: float, t: float, info: Dictionary, pilot: Dictionary) -> void:
 	var mass: bool = info.get("mass", false)
 	var ax := size.x * CHURCH_ALTAR
-	var tomas := {"skin": "#c9a07c", "hair": "#cfcac2", "eyes": "#4a3a2a", "outfit": "#2f6b3e" if mass else "#1d1d22",
-			"hat": "bald", "beard": "none", "glasses": "round", "collar": true}
-	var tf := Vector2(ax, floor_y - 8 * s)   # on the altar step
-	PilotArt.draw_person(ci, tf, s, tomas, 1.0, "bless" if mass else "pray", t)
+	var tf := Vector2(ax, floor_y - 21.0)   # on the top step, in front of the mensa
+	_priest_back(ci, tf, s, t, mass)
 	_head(info, "FR. TOMAS", tf, s)
-	# the altar in front of him: stone, a white cloth, two candles, the tabernacle
-	var stone := Color(0.42, 0.39, 0.37)
-	var alt := Rect2(ax - 56, floor_y - 44 * s, 112, 44 * s)
-	_rc(ci, Rect2(ax - 80, floor_y - 8 * s, 160, 8 * s), stone.darkened(0.15))   # the step
-	_rc(ci, alt, stone)
-	_rc(ci, Rect2(alt.position.x - 4, alt.position.y - 4, alt.size.x + 8, 8), Color(0.93, 0.92, 0.88))
-	_rc(ci, Rect2(alt.position.x + 14, alt.position.y + 4, 9, alt.size.y * 0.55), Color(0.93, 0.92, 0.88))
-	_rc(ci, Rect2(alt.end.x - 23, alt.position.y + 4, 9, alt.size.y * 0.55), Color(0.93, 0.92, 0.88))
-	ci.draw_line(Vector2(ax - 6, alt.position.y + 18), Vector2(ax + 6, alt.position.y + 18), Color(0.85, 0.66, 0.26), 2.0)
-	ci.draw_line(Vector2(ax, alt.position.y + 12), Vector2(ax, alt.position.y + 26), Color(0.85, 0.66, 0.26), 2.0)
-	for cx in [alt.position.x + 10, alt.end.x - 10]:
-		_rc(ci, Rect2(cx - 3, alt.position.y - 26, 6, 22), Color(0.95, 0.94, 0.88))
-		var fl := 0.8 + 0.2 * sin(t * 8.0 + cx)
-		ci.draw_circle(Vector2(cx, alt.position.y - 30), 14, Color(1.0, 0.8, 0.45, 0.08 * fl))
-		ci.draw_circle(Vector2(cx, alt.position.y - 30), 2.5 * fl, Color(1.0, 0.86, 0.5))
+	# the altar rail across the sanctuary
+	var marble := Color(0.82, 0.8, 0.76)
+	var rail_y := floor_y - 26 * s
+	var rx0 := ax - 112
+	var rx1 := ax + 112
+	_rc(ci, Rect2(rx0, rail_y, rx1 - rx0, 5 * s), marble)
+	var nb := int((rx1 - rx0) / (11 * s))
+	for k in nb + 1:
+		var bx := rx0 + k * (rx1 - rx0) / float(nb)
+		if absf(bx - ax) < 14:
+			continue   # the gate in the middle
+		_rc(ci, Rect2(bx - 2 * s, rail_y + 5 * s, 4 * s, floor_y - rail_y - 5 * s), marble.darkened(0.1))
 	# you, in the front pew
-	var you := Vector2(size.x * 0.76, floor_y)
+	var you := Vector2(size.x * 0.8, floor_y)
 	PilotArt.draw_person(ci, you, s, pilot, -1.0, "pray", t + 0.4)
 	_head(info, "YOU", you, s)
 	for row in 2:
 		var py := floor_y - (30 - row * 12) * s
-		var px := size.x * (0.66 + row * 0.04)
-		var pw := size.x * 0.34
+		var px := size.x * (0.7 + row * 0.04)
+		var pw := size.x * 0.3
 		_rc(ci, Rect2(px, py, pw, 7 * s), Color(0.34, 0.22, 0.13))
 		_rc(ci, Rect2(px, py + 7 * s, pw, 4 * s), Color(0.26, 0.16, 0.1))
 		_rc(ci, Rect2(px + 8, py + 11 * s, 5 * s, floor_y - py - 11 * s), Color(0.26, 0.16, 0.1))
+
+
+## A priest seen from behind. mass = alb and a green fiddleback chasuble with the gold column on its
+## back, the Host raised over his head for a few seconds out of every eight; else a black cassock.
+const ELEVATION := 8.0
+static func _priest_back(ci: CanvasItem, feet: Vector2, s: float, t: float, mass: bool) -> void:
+	var skin := Color(0.79, 0.63, 0.49)
+	var hair := Color(0.81, 0.79, 0.76)
+	var gold := Color(0.92, 0.74, 0.3)
+	var neck := feet + Vector2(0, -54 * s)
+	var robe := Color(0.95, 0.94, 0.9) if mass else Color(0.11, 0.11, 0.13)
+	# the alb (or cassock) to the floor
+	_pg(ci, PackedVector2Array([neck + Vector2(-11 * s, 0), neck + Vector2(11 * s, 0), feet + Vector2(14 * s, 0), feet + Vector2(-14 * s, 0)]), robe)
+	# the arms: raised with the Host at the elevation, else hands together in front (hidden)
+	var ph := fmod(t, ELEVATION)
+	var up := 0.0
+	if mass:
+		up = clampf(minf(ph - 1.0, 4.0 - ph), 0.0, 1.0)   # up from 1 s, held, down by 4 s
+	var sl := neck + Vector2(-11 * s, 3 * s)
+	var sr := neck + Vector2(11 * s, 3 * s)
+	var host := neck + Vector2(0, -26 * s - 8 * s * up)
+	var sleeve := Color(0.95, 0.94, 0.9) if mass else Color(0.11, 0.11, 0.13)
+	if up > 0.02:
+		var hl := (neck + Vector2(-9 * s, 18 * s)).lerp(host + Vector2(-3 * s, 3 * s), up)
+		var hr := (neck + Vector2(9 * s, 18 * s)).lerp(host + Vector2(3 * s, 3 * s), up)
+		_ln(ci, sl, hl, sleeve, 5.5 * s)
+		_ln(ci, sr, hr, sleeve, 5.5 * s)
+		_cr(ci, hl, 2.6 * s, skin)
+		_cr(ci, hr, 2.6 * s, skin)
+	else:
+		_ln(ci, sl, neck + Vector2(-13 * s, 20 * s), sleeve, 5.5 * s)
+		_ln(ci, sr, neck + Vector2(13 * s, 20 * s), sleeve, 5.5 * s)
+	if mass:
+		# the fiddleback chasuble: green, waisted at the sides, the gold column down the back
+		var green := Color(0.17, 0.42, 0.24)
+		_pg(ci, PackedVector2Array([neck + Vector2(-12 * s, 0), neck + Vector2(12 * s, 0), neck + Vector2(9 * s, 14 * s), neck + Vector2(13 * s, 36 * s),
+				neck + Vector2(-13 * s, 36 * s), neck + Vector2(-9 * s, 14 * s)]), green)
+		_rc(ci, Rect2(neck.x - 3 * s, neck.y + 2 * s, 6 * s, 34 * s), gold)
+		_rc(ci, Rect2(neck.x - 8 * s, neck.y + 8 * s, 16 * s, 4 * s), gold)
+	# the back of his head: grey hair round a bald crown
+	var hc := neck + Vector2(0, -10 * s)
+	_cr(ci, hc, 9.5 * s, hair)
+	ci.draw_circle(hc + Vector2(0, -3 * s), 6.0 * s, skin)
+	_cr(ci, hc + Vector2(-9.5 * s, 1 * s), 2.0 * s, skin)   # the ears
+	_cr(ci, hc + Vector2(9.5 * s, 1 * s), 2.0 * s, skin)
+	if up > 0.02:
+		# the Host, white and glowing, held high
+		ci.draw_circle(host, 14 * s * up, Color(1.0, 0.95, 0.75, 0.18 * up))
+		ci.draw_circle(host, 5.5 * s, Color(0.98, 0.97, 0.92))
+		ci.draw_arc(host, 5.5 * s, 0, TAU, 16, Color(0.75, 0.72, 0.62), 1.0)
