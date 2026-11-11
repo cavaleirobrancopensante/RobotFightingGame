@@ -3,7 +3,7 @@ const PlayLog = preload("res://playlog.gd")   # (1.87) the playtest log
 
 # helper scripts, loaded by path so the game also runs without an editor scan
 ## The game's version, shown on the main menu. Bump it with every change (1.1, 1.2, ...).
-const VERSION := "1.148"
+const VERSION := "1.149"
 const Arena = preload("res://arena.gd")
 const I18n = preload("res://i18n.gd")
 const Catalog = preload("res://catalog.gd")
@@ -6917,11 +6917,27 @@ static func read_code(text: String) -> Dictionary:
 
 ## Your ghost: your robot at full health with its chips, your pilot, your walk-in and your habits.
 func ghost_code() -> String:
+	return pack_code(GHOST_PREFIX, ghost_data())
+
+
+## Your ghost as data (the code packs it; a friend's live fight sends it as it is).
+func ghost_data() -> Dictionary:
 	if ghost_id == "":
 		ghost_id = "%x%x" % [randi(), Time.get_unix_time_from_system()]
 	var spec: Dictionary = Clips.plain(test_drive_spec())
-	return pack_code(GHOST_PREFIX, {"v": 1, "id": ghost_id, "pilot": pilot_name, "robot": robot_name, "look": Clips.plain(pilot_look),
-			"walkin": walkin, "spec": spec, "habits": habits, "rank": my_rank(), "w": wins, "l": losses, "game": VERSION})
+	return {"v": 1, "id": ghost_id, "pilot": pilot_name, "robot": robot_name, "look": Clips.plain(pilot_look),
+			"walkin": walkin, "spec": spec, "habits": habits, "rank": my_rank(), "w": wins, "l": losses, "game": VERSION}
+
+
+## (1.149) A live fight with a friend: the host fights the guest's robot, steered by the guest's pad.
+func start_friend_host(g: Dictionary, guest_aa: bool) -> void:
+	start_ghost(g)
+	quick["net"] = "host"
+	quick["net_aa"] = guest_aa
+
+
+func start_friend_guest() -> void:
+	quick = {"net": "guest"}
 
 
 ## Fight a ghost: you in your robot at full health, against it on its owner's habits.

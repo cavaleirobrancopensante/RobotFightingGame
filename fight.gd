@@ -617,6 +617,9 @@ func _ready() -> void:
 	if demo_move != "":
 		setup_demo()
 		return
+	if str(GameData.quick.get("net", "")) == "guest" and replay.is_empty():
+		net_setup_guest()   # (1.149) a friend's fight: we watch the host's frames and send our pad
+		return
 	if not replay.is_empty():
 		setup_replay()
 		return
@@ -773,7 +776,8 @@ func _ready() -> void:
 	cam_c = screen * 0.5
 	if mode == "pickup" and GameData.pickup.get("first", false) and gus_here() and GameData.guide_on():
 		course_step = 0   # the very first fight: Old Pike, Gus's five-step course
-	if mode == "test" or GameData.settings.get("skip_intros", false) or course_step >= 0:
+	net_role = "host" if str(GameData.quick.get("net", "")) == "host" else ""
+	if mode == "test" or GameData.settings.get("skip_intros", false) or course_step >= 0 or net_role != "":
 		intro_step = "count"
 	hud_layer = CanvasLayer.new()
 	hud_layer.layer = 3
@@ -811,6 +815,8 @@ func _ready() -> void:
 	Sfx.play("crowd_cheer", 0.0, -9.0)   # the crowd warms up quietly; it gets loud on big moments
 	cheer = 3.0
 	rec_start()
+	if net_role == "host":
+		net_host_start()
 	# (1.83) Fast fight graphics: the fight is drawn at the game's own size and stretched to the
 	# screen (far fewer pixels on a sharp phone screen); everything else stays sharp
 	if GameData.settings.get("fast_fights", false) and get_tree().current_scene == self:
@@ -973,7 +979,7 @@ func layout() -> void:
 	# touch buttons: default diamonds, or the player's own layout from Settings > Edit controls
 	var active: Array = []
 	var owners: Array = []
-	for f in team_p:
+	for f in (team_c if net_role == "guest" else team_p):
 		for g in f.gadgets:
 			if Specials.GADGETS[g["id"]]["active"] and active.size() < 3:
 				active.append(g)
@@ -1002,7 +1008,7 @@ func layout() -> void:
 # ---------------------------------------------------------------- input
 
 func _input(event: InputEvent) -> void:
-	if demo_move != "" or not replay.is_empty():
+	if demo_move != "" or (not replay.is_empty() and net_role != "guest"):
 		return
 	if clip_view != null and is_instance_valid(clip_view):
 		return   # a clip is playing over the results: its own buttons take the taps
@@ -1086,6 +1092,8 @@ func note_press_at(p: Vector2) -> void:
 
 ## Quit, moves list and aiming. Returns true if the tap was used.
 func handle_tap(p: Vector2) -> bool:
+	if net_role == "guest":
+		return net_guest_tap(p)
 	if fin_state == "offer" and moment_t <= 0.0:
 		# (1.144) finish it?
 		if fin_rects[0].has_point(p):
@@ -1207,6 +1215,9 @@ func handle_tap(p: Vector2) -> bool:
 
 
 func toggle_pause() -> void:
+	if net_role != "":
+		quit_fight()   # (1.149) a friend's fight can't be paused: the menu button leaves
+		return
 	if phase != "fight" and phase != "intro":
 		return
 	paused = not paused
@@ -2122,6 +2133,9 @@ func tick(delta: float) -> void:
 	if demo_move != "":
 		demo_process(delta)
 		return
+	if net_role == "guest":
+		net_guest_process(delta)
+		return
 	if not replay.is_empty():
 		replay_process(delta)
 		return
@@ -2165,7 +2179,9 @@ func tick(delta: float) -> void:
 			assign_foes()
 	var c_ins: Array = []
 	for f in team_c:
-		c_ins.append(ai_input_for(f, delta))
+		c_ins.append(net_take_input(f) if net_role == "host" else ai_input_for(f, delta))
+	if net_role == "host" and not p_ins.is_empty():
+		p_ins[0] = net_delay_input(p_ins[0])   # (1.149) the host waits as long as the guest's pad takes to arrive
 	assign_foes()   # restores player / cpu after the AI turns
 	if mode == "test" and training_dummy() and not c_ins.is_empty() and not p_ins.is_empty() and phase == "fight":
 		dummy_input(p_ins, c_ins)   # (1.141) the training dummy does what you set
@@ -2435,10 +2451,12 @@ func finish_match() -> void:
 		Sfx.play("victory")
 		show_post_card()
 		return
-	if mode == "quick" and GameData.quick.has("ghost"):
+	if mode == "quick" and GameData.quick.has("ghost") and net_role == "":
 		GameData.ghost_after(won, clock, team_p[0].ratio("torso") if team_p[0].alive("torso") else 0.0)   # (1.146)
 	if mode == "story" or mode == "pickup":
 		note_habits()
+	if net_role == "host":
+		Net.send({"t": "end", "won": won, "ko": ko_text})   # (1.149) tell the guest how it went
 	if mode == "quick" or mode == "test":
 		result = {"won": won, "reward": 0}
 		phase = "results"
@@ -2492,6 +2510,9 @@ func leave_after_results() -> void:
 		GameData.last_result = {}
 		Loading.go("res://garage.tscn")
 		return
+	if net_role != "":
+		net_leave()
+		return
 	if mode == "quick" and GameData.quick.has("ghost"):
 		GameData.quick = {}
 		GameData.open_action = "ghost"   # (1.146) back to the bay, the result code waiting
@@ -2539,6 +2560,9 @@ func quit_fight() -> void:
 		live_bets = []
 		GameData.watching = {}   # walked out: the round will decide it on paper
 		Loading.go("res://garage.tscn")
+		return
+	if net_role != "":
+		net_leave()
 		return
 	if mode == "quick" and GameData.quick.has("ghost"):
 		GameData.quick = {}
@@ -2760,6 +2784,10 @@ func update_aim(f: Fighter, delta: float) -> void:
 	# (1.79) auto-aim (Settings > Difficulty): the crosshair goes on the weak spot by itself when the
 	# head is ready, unless you've aimed somewhere else by hand
 	f.auto_hold = maxf(0.0, f.auto_hold - delta)
+	if f == cpu and net_role == "host" and f.weak != "" and f.target != f.weak and f.aim_cd <= 0.0 and f.auto_hold <= 0.0 \
+			and (f.target == "" or not o.alive(f.target)) and bool(GameData.quick.get("net_aa", false)):
+		f.target = f.weak   # (1.149) your friend's auto-aim
+		f.aim_cd = f.aim_time
 	if f == player and f.weak != "" and f.target != f.weak and f.aim_cd <= 0.0 and f.auto_hold <= 0.0 \
 			and (f.target == "" or not o.alive(f.target)) and mode != "watch" and mode != "replay" and sim.is_empty() \
 			and int(GameData.settings.get("auto_aim", 0)) == 1:
@@ -4566,7 +4594,9 @@ func draw_ui(c: CanvasItem) -> void:
 	if demo_move != "" or player == null:
 		return
 	ci = c
-	if not replay.is_empty():
+	if net_role == "guest":
+		draw_net_hud()
+	elif not replay.is_empty():
 		draw_replay_hud()
 	else:
 		_draw_ui()
@@ -4580,6 +4610,8 @@ func _draw_ui() -> void:
 		draw_moment_caption()
 		return   # a big moment: the camera's in close, the HUD steps aside
 	draw_hud()
+	if net_role == "host":
+		draw_net_status()
 	draw_finisher_offer()
 	if mode == "test" and (phase == "fight" or phase == "intro"):
 		draw_input_readout()
@@ -5812,6 +5844,314 @@ func draw_frame_table() -> void:
 			ci.draw_string(font if c == 0 else font_num, Vector2(r.position.x + 16 + cols[c] * (w - 32), y), vals[c], HORIZONTAL_ALIGNMENT_LEFT,
 					(w - 32) * 0.33 if c == 0 else -1, fs(14 if c == 0 else 17), col)
 	ci.draw_string(font, Vector2(r.position.x + 16, r.end.y - 12), tr("HIT / BLOCK: frames ahead (+) or behind (-). Hits cancel on contact."), HORIZONTAL_ALIGNMENT_LEFT, w - 32.0, fs(12), GUI.MUTED)
+
+
+# ---------------------------------------------------------------- (1.149) live with a friend
+# The host runs the fight as a Quick Fight against the guest's robot; the guest's pad arrives over
+# Net (its last held buttons and running counts of presses, so a lost or late message never loses a
+# press). The host's own pad waits about half the round trip so both feel the same delay. Every
+# 1/15 s the host sends a frame in the clip format (rec_frame); the guest plays them a moment
+# behind (NET_BUFFER), like a replay that never ends, and draws its own buttons over it.
+const NET_BUFFER := 0.16
+const NET_BITS := ["left", "right", "up", "down", "block", "punch", "kick", "jump", "special"]
+const NET_COUNTS := ["punch", "kick", "jump", "special", "block"]
+var net_role := ""            # "host", "guest" or ""
+var net_pq: Array = []        # host: its own inputs waiting out the delay
+var net_used := {}            # host: presses of the guest already used
+var net_prev_bits := 0        # host: the guest's last held buttons (for direction tokens)
+var net_str_sent := 0         # host: strings already sent
+var net_frames_read := 0      # guest: frames taken from Net
+var net_counts := {}          # guest: presses so far
+var net_prev_now := {}        # guest: last held buttons
+var net_send_t := 0.0
+var net_ping_t := 0.0
+var net_last_bits := -1
+var net_tgt := ""             # guest: a part of theirs it tapped ("-" = take the crosshair off)
+var net_end := {}             # guest: how it went {won, ko}
+var net_ph: Array = ["intro", "count", 0.0]
+
+
+func net_host_start() -> void:
+	for t in team_c:
+		t.pilot_name = str(GameData.quick.get("ghost", {}).get("pilot", "?"))
+	Net.send({"t": "start", "bots": rec_bots, "arena": arena_id, "crowd": crowd_id, "floor": floor_y,
+			"pilots": [team_p[0].pilot_name, team_c[0].pilot_name], "ranks": [team_p[0].rank_text, team_c[0].rank_text]})
+	Net.ping()
+
+
+## Host: the guest's pad, as an input like the others (direction presses feed its special-move buffer).
+func net_take_input(f: Fighter) -> Dictionary:
+	var i := empty_input()
+	var m: Dictionary = Net.last_input
+	if m.is_empty() or phase == "results":
+		return i
+	var bits := int(m.get("h", 0))
+	for k in NET_BITS.size():
+		var on := (bits >> k) & 1 == 1
+		var nm: String = NET_BITS[k]
+		if nm in ["left", "right", "up", "down", "block", "jump", "special"]:
+			i[nm] = on
+		if nm in ["left", "right", "up", "down"] and on and (net_prev_bits >> k) & 1 == 0:
+			push_token(f, dir_token(f, nm))
+	net_prev_bits = bits
+	i["punch_held"] = (bits >> 5) & 1 == 1
+	i["kick_held"] = (bits >> 6) & 1 == 1
+	var c: Array = m.get("c", [])
+	for k in NET_COUNTS.size():
+		var nm: String = NET_COUNTS[k]
+		var n := int(c[k]) if k < c.size() else 0
+		var fresh := n > int(net_used.get(nm, 0))
+		net_used[nm] = maxi(n, int(net_used.get(nm, 0)))
+		match nm:
+			"jump": i["jump_press"] = fresh
+			"block": i["block_press"] = fresh
+			_: i[nm] = fresh
+	if i["jump_press"]:
+		i["jump"] = true
+	var tg := str(m.get("tg", ""))
+	if tg != "" and tg != str(net_used.get("tg", "")):
+		net_used["tg"] = tg
+		var slot := tg.get_slice(":", 1)
+		if slot == "-":
+			f.target = ""
+		elif f.aim_cd <= 0.0 and player.alive(slot):
+			f.target = slot
+			f.aim_cd = f.aim_time
+	return i
+
+
+## Host: its own pad, held back by about half the round trip (at most 10 ticks).
+func net_delay_input(i: Dictionary) -> Dictionary:
+	var d := clampi(roundi(Net.rtt * 0.5 / STEP), 0, 10)
+	net_pq.append(i)
+	if net_pq.size() <= d:
+		var e := empty_input()
+		e["block"] = i.get("block", false)
+		e["left"] = i.get("left", false)
+		e["right"] = i.get("right", false)
+		return e
+	var out: Dictionary = net_pq.pop_front()
+	while net_pq.size() > d:
+		var extra: Dictionary = net_pq.pop_front()   # the delay shrank: fold the presses in
+		for k in ["punch", "kick", "jump_press", "special", "block_press"]:
+			out[k] = out.get(k, false) or extra.get(k, false)
+	return out
+
+
+func _n2(v: float) -> float:
+	return snappedf(v, 0.01)
+
+
+func net_send_frame(fr: Array) -> void:
+	var w: Array = Array(fr[0] as PackedFloat32Array).map(_n2)
+	var bots: Array = []
+	for b in fr[1]:
+		bots.append(Array(b as PackedFloat32Array).map(_n2))
+	var msg := {"t": "f", "w": w, "b": bots, "e": fr[2], "s": fr[3], "p": fr[4], "ph": [phase, intro_step, snappedf(count_t, 0.01)]}
+	if net_str_sent < rec_strs.size():
+		msg["str"] = rec_strs.slice(net_str_sent)
+		msg["si"] = net_str_sent
+		net_str_sent = rec_strs.size()
+	Net.send(msg)
+	net_send_t += 1.0 / Clips.FPS
+	if net_send_t > 2.0:
+		net_send_t = 0.0
+		Net.ping()
+
+
+func net_leave() -> void:
+	Net.send({"t": "bye"})
+	Net.stop()
+	Net.clear()
+	GameData.quick = {}
+	Loading.apply_edges()
+	Loading.go("res://garage.tscn")
+
+
+# ---- the guest
+
+func net_setup_guest() -> void:
+	var st: Dictionary = Net.start_msg
+	replay = {"bots": st.get("bots", []), "arena": st.get("arena", "scrap_ring"), "crowd": st.get("crowd", "scrappers"),
+			"floor": st.get("floor", 440.0), "str": [""], "fr": []}
+	setup_replay()
+	net_role = "guest"
+	mode = "replay"
+	rp_frames = []
+	rec_strs = [""]
+	touch_device = DisplayServer.is_touchscreen_available()
+	var pl: Array = st.get("pilots", ["", ""])
+	if pl.size() >= 2:
+		player.pilot_name = str(pl[0])
+		cpu.pilot_name = str(pl[1])
+	phase = "intro"
+	intro_step = "count"
+	Sfx.music(Sfx.FIGHT_TRACKS[absi(hash(str(st.get("arena", "")))) % Sfx.FIGHT_TRACKS.size()])
+	OS.low_processor_usage_mode = false
+
+
+func net_pull_frames() -> void:
+	while net_frames_read < Net.frames.size():
+		var m: Dictionary = Net.frames[net_frames_read]
+		net_frames_read += 1
+		if m.has("str"):
+			var si := int(m.get("si", rec_strs.size()))
+			var add: Array = m["str"]
+			for k in add.size():
+				if si + k < rec_strs.size():
+					rec_strs[si + k] = str(add[k])
+				else:
+					rec_strs.append(str(add[k]))
+		var bots: Array = []
+		for b in m.get("b", []):
+			bots.append(PackedFloat32Array(b))
+		rp_frames.append([PackedFloat32Array(m.get("w", [])), bots, m.get("e", []), m.get("s", []), m.get("p", []), m.get("ph", ["fight", "count", 0.0])])
+
+
+func net_guest_process(delta: float) -> void:
+	layout()
+	floor_y = float(replay.get("floor", floor_y))
+	net_send_pad(delta)
+	net_pull_frames()
+	if not Net.end_msg.is_empty() and net_end.is_empty():
+		net_end = Net.end_msg
+		Sfx.play("victory" if not bool(net_end.get("won", true)) else "defeat")
+	if player == null or rp_frames.is_empty():
+		redraw_all()
+		return
+	var last := rp_frames.size() - 1
+	var latest := float(last) / Clips.FPS
+	rp_t += delta
+	var want := latest - NET_BUFFER
+	if rp_t > latest:
+		rp_t = latest   # nothing new yet: wait on the last frame
+	elif rp_t < want - 0.5:
+		rp_t = want     # far behind (a slow load or a hiccup): jump to now
+	elif rp_t < want - 0.05:
+		rp_t += delta * 0.15   # a little behind: catch up quietly
+	var fp := rp_t * Clips.FPS
+	var i := mini(int(fp), last)
+	var a := clampf(fp - i, 0.0, 1.0) if i < last else 0.0
+	while rp_frame < i:
+		rp_frame += 1
+		rp_events(rp_frames[rp_frame])
+	rp_apply(i, a)
+	var ph: Array = rp_frames[i][5]
+	phase = str(ph[0]) if str(ph[0]) != "results" else "ko"
+	intro_step = str(ph[1])
+	count_t = float(ph[2])
+	update_effects(delta)
+	update_camera(delta)
+	arena_redraw_t -= delta
+	if arena_redraw_t <= 0.0 and arena_layer:
+		arena_redraw_t = 1.0 / arena_fps()
+		arena_layer.refresh()
+	redraw_all()
+
+
+## The guest's pad: held buttons as bits, presses as running counts, sent when something changes
+## (and every quarter second anyway).
+func net_send_pad(delta: float) -> void:
+	var ins: Array = read_player_input()
+	var i: Dictionary = ins[0] if not ins.is_empty() else empty_input()
+	var bits := 0
+	for k in NET_BITS.size():
+		var nm: String = NET_BITS[k]
+		var on: bool = i.get(nm, false)
+		if nm == "punch":
+			on = i.get("punch_held", false)
+		elif nm == "kick":
+			on = i.get("kick_held", false)
+		if on:
+			bits |= 1 << k
+	var changed := bits != net_last_bits
+	for nm in NET_COUNTS:
+		var key: String = {"jump": "jump_press", "block": "block_press"}.get(nm, nm)
+		if i.get(key, false):
+			net_counts[nm] = int(net_counts.get(nm, 0)) + 1
+			changed = true
+	net_send_t += delta
+	net_ping_t += delta
+	if net_ping_t > 2.0:
+		net_ping_t = 0.0
+		Net.ping()
+	if changed or net_send_t > 0.25:
+		net_send_t = 0.0
+		net_last_bits = bits
+		var c: Array = []
+		for nm in NET_COUNTS:
+			c.append(int(net_counts.get(nm, 0)))
+		Net.send({"t": "i", "h": bits, "c": c, "tg": net_tgt})
+
+
+func net_guest_tap(p: Vector2) -> bool:
+	if not net_end.is_empty() or Net.state == "lost" or Net.state == "error":
+		net_leave()
+		return true
+	if quit_rect.has_point(p):
+		net_leave()
+		return true
+	for b in buttons + gadget_buttons:
+		if p.distance_to(b["pos"]) <= b["r"] * 1.2:
+			return false
+	var slot := part_at(player, s2w(p))
+	if slot == "":
+		return false
+	# a counter in front so the host sees a new tap even on the same part
+	net_tgt = "%d:%s" % [Time.get_ticks_msec(), "-" if cpu.target == slot else slot]
+	Sfx.play("target")
+	return true
+
+
+func draw_net_status() -> void:
+	var txt := tr("LIVE WITH A FRIEND · %d ms") % roundi(Net.rtt * 1000.0)
+	var col: Color = GUI.GREEN
+	if Net.state == "lost" or Net.state == "error":
+		txt = tr("YOUR FRIEND'S CONNECTION DROPPED. Tap LEAVE.")
+		col = GUI.RED
+	ci.draw_string(font, Vector2(0, screen.y * 0.04 + 118.0), txt, HORIZONTAL_ALIGNMENT_CENTER, screen.x, fs(13), col)
+
+
+func draw_net_hud() -> void:
+	if moment_t > 0.0:
+		draw_moment_caption()
+		return
+	var w := screen.x * 0.36
+	var y := screen.y * 0.04
+	for k in 5:
+		ci.draw_rect(Rect2(0, k * screen.y * 0.03, screen.x, screen.y * 0.03 + 1), Color(0, 0, 0, 0.32 * (1.0 - k / 5.0)))
+	draw_team_bars(team_p, 30.0, y, w, 34.0, false)
+	draw_team_bars(team_c, screen.x - 30.0 - w, y, w, 34.0, true)
+	ci.draw_string(font_head, Vector2(30.0, y + 34.0 + fs(26)), player.label, HORIZONTAL_ALIGNMENT_LEFT, w, fs(26), GUI.TEXT)
+	ci.draw_string(font_head, Vector2(screen.x - 30.0 - w, y + 34.0 + fs(26)), cpu.label + "  " + tr("(YOU)"), HORIZONTAL_ALIGNMENT_RIGHT, w, fs(26), GUI.YELLOW)
+	ci.draw_string(font_num, Vector2(0, y + 30.0), "%d" % ceili(maxf(0.0, time_left)), HORIZONTAL_ALIGNMENT_CENTER, screen.x, fs(34), GUI.YELLOW)
+	ci.draw_string(font, Vector2(0, quit_rect.end.y + fs(16)), tr("LIVE WITH A FRIEND · %d ms") % roundi(Net.rtt * 1000.0), HORIZONTAL_ALIGNMENT_CENTER, screen.x, fs(13), GUI.GREEN)
+	ci.draw_rect(quit_rect, Color(1, 1, 1, 0.1))
+	ci.draw_rect(quit_rect, Color(1, 1, 1, 0.4), false, 2.0)
+	ci.draw_string(font, quit_rect.position + Vector2(0, 31), tr("LEAVE"), HORIZONTAL_ALIGNMENT_CENTER, quit_rect.size.x, fs(19), Color(1, 1, 1, 0.75))
+	if phase == "intro" and rp_frames.size() > 0:
+		var n := clampi(3 - int(count_t / COUNT_STEP), 1, 3)
+		var k := fmod(count_t, COUNT_STEP) / COUNT_STEP
+		ci.draw_string(font_big, Vector2(0, screen.y * 0.36), str(n), HORIZONTAL_ALIGNMENT_CENTER, screen.x, fs(110 - 30 * k), Color(1.0, 0.85, 0.2, 1.0 - k * 0.6))
+	if rp_frames.is_empty():
+		ci.draw_string(font_head, Vector2(0, screen.y * 0.4), tr("WAITING FOR THE HOST..."), HORIZONTAL_ALIGNMENT_CENTER, screen.x, fs(30), GUI.TEXT)
+	if net_end.is_empty() and Net.state != "lost" and Net.state != "error":
+		draw_buttons()
+		if not touch_device:
+			draw_key_strip()
+		return
+	ci.draw_rect(Rect2(Vector2.ZERO, screen), Color(0, 0, 0, 0.5))
+	var big := tr("CONNECTION LOST")
+	var col: Color = GUI.RED
+	if not net_end.is_empty():
+		var won := not bool(net_end.get("won", true))
+		big = tr("YOU WIN!") if won else tr("YOU LOSE")
+		col = GUI.GREEN if won else GUI.RED
+		if str(net_end.get("ko", "")) != "":
+			ci.draw_string(font, Vector2(0, screen.y * 0.5), str(net_end["ko"]), HORIZONTAL_ALIGNMENT_CENTER, screen.x, fs(22), GUI.TEXT)
+	ci.draw_string(font_big, Vector2(0, screen.y * 0.42), big, HORIZONTAL_ALIGNMENT_CENTER, screen.x, fs(64), col)
+	ci.draw_string(font, Vector2(0, screen.y * 0.62), tr("Tap to go back to the bay"), HORIZONTAL_ALIGNMENT_CENTER, screen.x, fs(20), GUI.MUTED)
+
 
 
 # ---------------------------------------------------------------- (1.148) combo trials
@@ -8439,7 +8779,7 @@ var rp_mute := false           # ...and its mute
 
 
 func rec_start() -> void:
-	if mode in ["quick", "test", "demo", "replay"] or not replay.is_empty():
+	if (mode in ["quick", "test", "demo", "replay"] or not replay.is_empty()) and net_role != "host":
 		return
 	rec_on = true
 	rec_bots = []
@@ -8509,7 +8849,7 @@ func rec_sound(sound: String, jit: float, vol: float, pitch: float) -> void:
 
 
 func rec_tick(delta: float) -> void:
-	if not rec_on or (phase != "fight" and phase != "ko"):
+	if not rec_on or (phase != "fight" and phase != "ko" and net_role != "host"):
 		return
 	rec_scan()
 	var fs_all := all_fighters()
@@ -8542,6 +8882,9 @@ func rec_frame(fs_all: Array) -> void:
 		pj.append([str(p["kind"]), fs_all.find(p["owner"]), roundf(p["pos"].x), roundf(p["pos"].y), roundf(p["vel"].x),
 				1 if p.get("returning", false) else 0, snappedf(float(p.get("spin", 0.0)), 0.1), str(p.get("slot", ""))])
 	rec_frames.append([w, fr, rec_ev, rec_snd, pj])
+	if net_role == "host":
+		net_send_frame(rec_frames[-1])
+		rec_frames.clear()   # nothing's kept from a friend's fight: it's on the wire
 	rec_ev = []
 	rec_snd = []
 

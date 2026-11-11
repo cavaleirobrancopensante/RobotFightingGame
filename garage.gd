@@ -6970,6 +6970,118 @@ func open_ghosts() -> void:
 			col.add_child(l)
 
 
+# ---------------------------------------------------------------- (1.149) a friend, live
+var net_status: Label = null
+
+
+## Make a room (you host: the code goes to your friend) or join one with their code.
+func open_friend() -> void:
+	var col := open_popup(tr("FIGHT A FRIEND, LIVE"))
+	var w := UI.px(15) * 28
+	var intro := GUI.text(tr("One of you makes a room and sends the code, the other joins it. Your robots at full health, nothing in either career changes."), 14, GUI.MUTED)
+	intro.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	intro.custom_minimum_size.x = w
+	col.add_child(intro)
+	net_status = GUI.text("", 15, GUI.AMBER)
+	net_status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	net_status.custom_minimum_size.x = w
+	if not Net.got.is_connected(_on_net_msg):
+		Net.got.connect(_on_net_msg)
+	if not Net.state_changed.is_connected(_on_net_state):
+		Net.state_changed.connect(_on_net_state)
+	section(tr("MAKE A ROOM"), col)
+	var code_l := GUI.readout("", 40, GUI.YELLOW)
+	var hb := action_bar(col)
+	var mk := row_button(hb, tr("Make a room"), func():
+		Net.knock_data = {}
+		var c := Net.host()
+		code_l.text = c
+		DisplayServer.clipboard_set(c)
+		note(tr("Room code copied. Send it to your friend."))
+		Sfx.play("click"), true, 160)
+	GUI.primary(mk)
+	col.add_child(code_l)
+	section(tr("JOIN A ROOM"), col)
+	var le := LineEdit.new()
+	le.placeholder_text = tr("Their room code")
+	le.max_length = 8
+	le.custom_minimum_size = Vector2(w * 0.6, UI.tsz(18) + 22)
+	le.add_theme_font_size_override("font_size", UI.tsz(18))
+	col.add_child(le)
+	var jb := action_bar(col)
+	row_button(jb, tr("Join"), func():
+		var c := Net.clean_code(le.text)
+		if c.length() != Net.CODE_LEN:
+			Sfx.play("error")
+			net_status.text = tr("A room code has %d letters.") % Net.CODE_LEN
+			return
+		var g := GameData.ghost_data()
+		g["aa"] = int(GameData.settings.get("auto_aim", 0)) == 1
+		Net.knock_data = g
+		Net.join(c)
+		Sfx.play("click"), true, 120)
+	col.add_child(net_status)
+	var tip := GUI.text(tr("Both of you need this version of the game and an internet connection. It goes through a free public relay, so it may lag a little."), 12, GUI.MUTED)
+	tip.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	tip.custom_minimum_size.x = w
+	col.add_child(tip)
+	_on_net_state(Net.state)
+
+
+func _on_net_state(st: String) -> void:
+	if net_status == null or not is_instance_valid(net_status):
+		return
+	match st:
+		"connecting":
+			net_status.text = tr("Connecting...")
+		"waiting":
+			net_status.text = tr("Waiting for your friend to join...") if Net.role == "host" else tr("Knocking on the room...")
+		"ready":
+			net_status.text = tr("Connected!")
+		"lost":
+			net_status.text = tr("The connection dropped. Try again.")
+		"error":
+			net_status.text = tr("Couldn't reach the relay. Check your internet and try again.")
+		_:
+			net_status.text = ""
+
+
+func _on_net_msg(msg: Dictionary) -> void:
+	match str(msg.get("t", "")):
+		"knock":
+			if Net.role != "host" or str(GameData.quick.get("net", "")) != "":
+				return
+			var g = msg.get("g", {})
+			if not (g is Dictionary) or not (g.get("spec") is Dictionary):
+				return
+			if str(g.get("game", "")) != GameData.VERSION:
+				Net.send({"t": "bye", "why": "version"})
+				if net_status != null and is_instance_valid(net_status):
+					net_status.text = tr("Your friend has version %s. You both need %s.") % [str(g.get("game", "?")), GameData.VERSION]
+				return
+			GameData.flush_save()
+			GameData.start_friend_host(g, bool(g.get("aa", false)))
+			net_lock_screen()
+			Loading.go("res://fight.tscn")
+		"start":
+			if Net.role != "guest" or str(GameData.quick.get("net", "")) != "":
+				return
+			GameData.flush_save()
+			GameData.start_friend_guest()
+			net_lock_screen()
+			Loading.go("res://fight.tscn")
+		"bye":
+			if str(msg.get("why", "")) == "version" and net_status != null and is_instance_valid(net_status):
+				net_status.text = tr("Your versions of the game don't match. Both of you need the newest one.")
+
+
+## Both screens the same size while a friend's fight is on, so the ring is the same on both.
+func net_lock_screen() -> void:
+	var root := get_tree().root
+	root.content_scale_aspect = Window.CONTENT_SCALE_ASPECT_KEEP
+	root.content_scale_size = Loading.base_size
+
+
 ## A long code: shown in a box you can select from, with a Copy button.
 func code_box(col: Control, code: String, copied: String) -> void:
 	var le := LineEdit.new()
@@ -8388,6 +8500,7 @@ func _on_menu() -> void:
 	if not GameData.guide_asking():
 		col.add_child(UI.button(tr("Gus's list"), func(): close_popup(); open_guide_list(), 19, Vector2(0, 56)))
 	col.add_child(UI.button(tr("Ghost fights"), func(): close_popup(); open_ghosts(), 19, Vector2(0, 56)))   # (1.146)
+	col.add_child(UI.button(tr("Fight a friend, live"), func(): close_popup(); open_friend(), 19, Vector2(0, 56)))   # (1.149)
 	# (1.126) the save as a file you keep: download it, upload it on the Load Game screen
 	col.add_child(UI.button(tr("Download save file"), func():
 		GameData.save_game()
