@@ -1036,6 +1036,8 @@ func _input(event: InputEvent) -> void:
 	elif event is InputEventMouseButton and not touch_device and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
 		if not handle_tap(event.position):
 			tap_pending = true
+	elif event is InputEventJoypadButton and event.pressed:
+		pad_event(event.button_index)
 	elif event is InputEventKey and event.pressed and not event.echo:
 		var kb := {KEY_J: "punch", KEY_K: "kick", KEY_SPACE: "jump", KEY_L: "block", KEY_I: "special"}
 		if kb.has(event.physical_keycode) and phase == "fight" and not paused and not tut_pause:
@@ -1271,6 +1273,85 @@ func key(k: Key) -> bool:
 	return Input.is_physical_key_pressed(k)
 
 
+# ---------------------------------------------------------------- (1.150) gamepads
+# Any connected pad plays: the face buttons sit like the touch diamond (Y block on top, X punch on
+# the left, B kick on the right, A jump at the bottom), the d-pad or left stick moves and picks the
+# height, RB is the SPECIAL button (Modern controls), LB / LT / RT the gadgets, Start pauses.
+const PAD_BTN := {"jump": JOY_BUTTON_A, "kick": JOY_BUTTON_B, "punch": JOY_BUTTON_X, "block": JOY_BUTTON_Y,
+		"special": JOY_BUTTON_RIGHT_SHOULDER}
+const PAD_DIR := {"left": JOY_BUTTON_DPAD_LEFT, "right": JOY_BUTTON_DPAD_RIGHT, "up": JOY_BUTTON_DPAD_UP, "down": JOY_BUTTON_DPAD_DOWN}
+const PAD_DEAD := 0.5
+
+
+func pads() -> Array:
+	return Input.get_connected_joypads()
+
+
+func pad(name: String) -> bool:
+	for d in pads():
+		if PAD_BTN.has(name) and Input.is_joy_button_pressed(d, PAD_BTN[name]):
+			return true
+		if PAD_DIR.has(name):
+			if Input.is_joy_button_pressed(d, PAD_DIR[name]):
+				return true
+			var ax := Input.get_joy_axis(d, JOY_AXIS_LEFT_X if name in ["left", "right"] else JOY_AXIS_LEFT_Y)
+			if (name in ["left", "up"] and ax < -PAD_DEAD) or (name in ["right", "down"] and ax > PAD_DEAD):
+				return true
+	return false
+
+
+## LB, LT and RT fire the first three gadgets.
+func pad_gadget(k: int) -> bool:
+	for d in pads():
+		match k:
+			0: if Input.is_joy_button_pressed(d, JOY_BUTTON_LEFT_SHOULDER): return true
+			1: if Input.get_joy_axis(d, JOY_AXIS_TRIGGER_LEFT) > PAD_DEAD: return true
+			2: if Input.get_joy_axis(d, JOY_AXIS_TRIGGER_RIGHT) > PAD_DEAD: return true
+	return false
+
+
+## A pad button went down: presses are remembered like taps, A and Start move the screens on.
+func pad_event(btn: int) -> void:
+	for nm in PAD_BTN:
+		if PAD_BTN[nm] == btn and phase == "fight" and not paused and not tut_pause:
+			pressed_since[nm] = true
+	if btn == JOY_BUTTON_START:
+		if phase == "intro" and intro_step == "show":
+			skip_show()
+		elif paused:
+			quit_ask = false
+			toggle_pause()
+		elif phase == "intro" or phase == "fight":
+			if mode == "watch":
+				quit_fight()
+			else:
+				toggle_pause()
+		else:
+			tap_pending = true
+	elif btn == JOY_BUTTON_A:
+		if phase == "intro" and intro_step == "show":
+			skip_show()
+		elif paused:
+			quit_ask = false
+			toggle_pause()
+		elif tut_pause:
+			if Time.get_ticks_msec() - tut_pause_at > TUT_GRACE_MS:
+				tut_pause = false
+		elif phase == "ko" or phase == "results":
+			tap_pending = true
+	elif btn == JOY_BUTTON_BACK and paused:
+		if quit_ask:
+			quit_fight()
+		else:
+			quit_ask = true
+			Sfx.play("click")
+	elif paused and not quit_ask and (btn == JOY_BUTTON_RIGHT_SHOULDER or btn == JOY_BUTTON_LEFT_SHOULDER):
+		var i := PAUSE_TABS.find(pause_tab)
+		i = (i + (PAUSE_TABS.size() - 1 if btn == JOY_BUTTON_LEFT_SHOULDER else 1)) % PAUSE_TABS.size()
+		pause_tab = PAUSE_TABS[i]
+		Sfx.play("click")
+
+
 ## Input for each of your robots. Linked controls: every robot follows the one pad.
 ## Split controls: each robot has its own movement pad, the action buttons are shared.
 func read_player_input() -> Array:
@@ -1282,21 +1363,21 @@ func read_player_input() -> Array:
 			if t.distance_to(b["pos"]) <= b["r"] * 1.2:
 				held_buttons[b["name"]] = true
 	var now := {
-		"left": held_buttons.get("left", false) or key(KEY_A) or key(KEY_LEFT),
-		"right": held_buttons.get("right", false) or key(KEY_D) or key(KEY_RIGHT),
-		"up": held_buttons.get("up", false) or key(KEY_W) or key(KEY_UP),
-		"down": held_buttons.get("down", false) or key(KEY_S) or key(KEY_DOWN),
-		"block": held_buttons.get("block", false) or key(KEY_L),
-		"punch": held_buttons.get("punch", false) or key(KEY_J),
-		"kick": held_buttons.get("kick", false) or key(KEY_K),
-		"jump": held_buttons.get("jump", false) or (key(KEY_SPACE) and not tut_pause),
-		"special": (held_buttons.get("special", false) or key(KEY_I)) and int(GameData.settings.get("modern", 0)) == 1,   # (1.142) Modern controls
+		"left": held_buttons.get("left", false) or key(KEY_A) or key(KEY_LEFT) or pad("left"),
+		"right": held_buttons.get("right", false) or key(KEY_D) or key(KEY_RIGHT) or pad("right"),
+		"up": held_buttons.get("up", false) or key(KEY_W) or key(KEY_UP) or pad("up"),
+		"down": held_buttons.get("down", false) or key(KEY_S) or key(KEY_DOWN) or pad("down"),
+		"block": held_buttons.get("block", false) or key(KEY_L) or pad("block"),
+		"punch": held_buttons.get("punch", false) or key(KEY_J) or pad("punch"),
+		"kick": held_buttons.get("kick", false) or key(KEY_K) or pad("kick"),
+		"jump": held_buttons.get("jump", false) or ((key(KEY_SPACE) or pad("jump")) and not tut_pause),
+		"special": (held_buttons.get("special", false) or key(KEY_I) or pad("special")) and int(GameData.settings.get("modern", 0)) == 1,   # (1.142) Modern controls
 	}
 	for pad in range(1, control_pads):
 		for d in Controls.MOVE_NAMES:
 			now[Controls.pad_name(d, pad)] = held_buttons.get(Controls.pad_name(d, pad), false)
 	for k in gadget_buttons.size():
-		now["gadget%d" % k] = held_buttons["gadget%d" % k] or key(GADGET_KEYS[k])
+		now["gadget%d" % k] = held_buttons["gadget%d" % k] or key(GADGET_KEYS[k]) or pad_gadget(k)
 	var shared := empty_input()
 	shared["block"] = now["block"]
 	# a press counts once, even if it came and went between two frames (pressed_since catches those)
@@ -4619,7 +4700,7 @@ func _draw_ui() -> void:
 	draw_coach()
 	if (phase == "intro" or phase == "fight") and mode != "watch":
 		draw_buttons()
-		if not touch_device:
+		if not touch_device or not pads().is_empty():
 			draw_key_strip()
 	if course_on() and phase == "fight":
 		draw_course()
@@ -6710,13 +6791,18 @@ func draw_key_strip() -> void:
 	var t := tr("A D move · W / S high / low · Space jump · J punch · K kick · L block · hold J / K to charge · 1 2 3 gadgets · Esc pause")
 	if int(GameData.settings.get("modern", 0)) == 1:
 		t = tr("A D move · W / S high / low · Space jump · J punch · K kick · L block · I special · 1 2 3 gadgets · Esc pause")
+	if not pads().is_empty():
+		t = tr("Stick move and aim high / low · A jump · X punch · B kick · Y block · hold X / B to charge · RB special · LB LT RT gadgets · Start pause")
 	var size := fs(15)
+	while size > 9 and font.get_string_size(t, HORIZONTAL_ALIGNMENT_LEFT, -1, size).x + 28.0 > screen.x - 16.0:
+		size -= 1   # it always fits the screen
 	var w := font.get_string_size(t, HORIZONTAL_ALIGNMENT_LEFT, -1, size).x + 28.0
 	var r := Rect2(screen.x * 0.5 - w * 0.5, screen.y - size - 22.0, w, size + 14.0)
 	ci.draw_rect(r, Color(0, 0, 0, 0.55))
 	ci.draw_string(font, Vector2(r.position.x, r.end.y - 9.0), t, HORIZONTAL_ALIGNMENT_CENTER, r.size.x, size, Color(1, 1, 1, 0.8))
 
 
+const PAD_KEYS := "ON A GAMEPAD: the stick or d-pad moves, up / down aim your hit high or low, down alone crouches · A jump · X punch · B kick · Y block · hold X or B to charge · RB special · LB LT RT gadgets · Start pause · A to continue."
 const PC_KEYS := "ON A COMPUTER: A D (or the arrows) move · W / S (up / down) aim your hit high or low, S alone crouches · Space jump · J punch · K kick · L block · hold J or K to charge · 1 2 3 gadgets · click an enemy part to aim · Esc or M pause · Enter to continue."
 
 
@@ -6932,6 +7018,7 @@ func draw_pause_tips(x: float, y: float, bottom: float) -> void:
 func _draw_pause_lines(x: float, y: float, bottom: float) -> void:
 	var lines: Array = [
 		[tr(PC_KEYS) if not touch_device else "", Color(0.55, 1.0, 0.7)],
+		[tr(PAD_KEYS) if not pads().is_empty() else "", Color(0.55, 1.0, 0.7)],
 		[tr("PUNCH · KICK · BLOCK · JUMP. The pad sets the height: up + PUNCH = uppercut, down + PUNCH = low jab, up + KICK = high kick, down + KICK = sweep. In combos, → means toward the enemy (P = punch, K = kick)."), Color(0.8, 0.8, 0.85)],
 		[tr("Your arms take turns: jab, cross, jab. Kicks swap legs the same way. Lose a limb and the other one does all the work."), Color(0.8, 0.8, 0.85)],
 		[tr("Combos: hit again while the enemy is still reeling. Landed attacks can chain into the next."), Color(0.8, 0.8, 0.85)],

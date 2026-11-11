@@ -4526,4 +4526,6 @@ const T := {
 	"Couldn't reach the relay. Check your internet and try again.": "No se pudo llegar al relé. Revisa tu internet e inténtalo de nuevo.",
 	"Your friend has version %s. You both need %s.": "Tu amigo tiene la versión %s. Ambos necesitan la %s.",
 	"Your versions of the game don't match. Both of you need the newest one.": "Sus versiones del juego no coinciden. Ambos necesitan la más nueva.",
+	"Stick move and aim high / low · A jump · X punch · B kick · Y block · hold X / B to charge · RB special · LB LT RT gadgets · Start pause": "Stick mueve y apunta alto / bajo · A salta · X puño · B patada · Y bloquea · mantén X / B para cargar · RB especial · LB LT RT accesorios · Start pausa",
+	"ON A GAMEPAD: the stick or d-pad moves, up / down aim your hit high or low, down alone crouches · A jump · X punch · B kick · Y block · hold X or B to charge · RB special · LB LT RT gadgets · Start pause · A to continue.": "CON MANDO: el stick o la cruceta mueve, arriba / abajo apuntan el golpe alto o bajo, abajo solo se agacha · A salta · X puño · B patada · Y bloquea · mantén X o B para cargar · RB especial · LB LT RT accesorios · Start pausa · A para seguir.",
 }

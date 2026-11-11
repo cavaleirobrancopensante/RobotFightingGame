@@ -4521,4 +4521,6 @@ const T := {
 	"Couldn't reach the relay. Check your internet and try again.": "Não deu para alcançar o relé. Verifique sua internet e tente de novo.",
 	"Your friend has version %s. You both need %s.": "Seu amigo tem a versão %s. Vocês dois precisam da %s.",
 	"Your versions of the game don't match. Both of you need the newest one.": "As versões do jogo de vocês não batem. Os dois precisam da mais nova.",
+	"Stick move and aim high / low · A jump · X punch · B kick · Y block · hold X / B to charge · RB special · LB LT RT gadgets · Start pause": "Analógico move e mira alto / baixo · A pula · X soco · B chute · Y bloqueia · segure X / B para carregar · RB especial · LB LT RT acessórios · Start pausa",
+	"ON A GAMEPAD: the stick or d-pad moves, up / down aim your hit high or low, down alone crouches · A jump · X punch · B kick · Y block · hold X or B to charge · RB special · LB LT RT gadgets · Start pause · A to continue.": "NO CONTROLE: o analógico ou o direcional move, cima / baixo miram o golpe alto ou baixo, baixo sozinho agacha · A pula · X soco · B chute · Y bloqueia · segure X ou B para carregar · RB especial · LB LT RT acessórios · Start pausa · A para continuar.",
 }
