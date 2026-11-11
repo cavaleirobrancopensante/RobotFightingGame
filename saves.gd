@@ -217,6 +217,7 @@ func build_difficulty() -> void:
 	var items := [
 		[tr("CPU difficulty: %s") % tr(SETTINGS.DIFF_NAMES[int(s["difficulty"])]), _on_diff_step.bind("difficulty")],
 		[tr("Auto-aim: %s") % tr(SETTINGS.AIM_NAMES[clampi(int(s.get("auto_aim", 0)), 0, 1)]), _on_diff_step.bind("auto_aim")],
+		[tr("Specials: %s") % tr(SETTINGS.MODERN_NAMES[clampi(int(s.get("modern", 0)), 0, 1)]), _on_diff_step.bind("modern")],
 		[tr("Gus's coaching: %s") % tr(SETTINGS.COACH_NAMES[clampi(int(s.get("coaching", 2)), 0, 3)]), _on_diff_step.bind("coaching")],
 		[tr("Starting money: %s (new games)") % GameData.money_text(int(s.get("start_money", GameData.START_MONEY))), _on_diff_step.bind("start_money")],
 		[tr("Rent & food: %s") % (tr("none") if int(s.get("living_cost", GameData.LIVING_COST)) == 0 else tr("$%d a month") % int(s.get("living_cost", GameData.LIVING_COST))), _on_diff_step.bind("living_cost")],
@@ -236,6 +237,8 @@ func _on_diff_step(key: String) -> void:
 			s["coaching"] = (int(s.get("coaching", 2)) + 1) % SETTINGS.COACH_NAMES.size()
 		"auto_aim":
 			s["auto_aim"] = 1 - clampi(int(s.get("auto_aim", 0)), 0, 1)
+		"modern":
+			s["modern"] = 1 - clampi(int(s.get("modern", 0)), 0, 1)
 		"start_money":
 			var opts: Array = GameData.START_MONEY_OPTIONS
 			s["start_money"] = opts[(opts.find(int(s.get("start_money", GameData.START_MONEY))) + 1) % opts.size()]

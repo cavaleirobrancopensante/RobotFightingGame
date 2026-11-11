@@ -4225,4 +4225,8 @@ const T := {
 	"Flying kick": "Voadora",
 	"Hammer": "Martelada",
 	"Stands still and never breaks. The training room: DUMMY sets what it does (block, jump, record and play back), FRAMES shows your frame data.": "Fica parado e nunca quebra. A sala de treino: BONECO escolhe o que ele faz (defender, pular, gravar e reproduzir), QUADROS mostra os quadros dos seus golpes.",
+	"CLASSIC (inputs)": "CLÁSSICO (comandos)",
+	"MODERN (SPECIAL button, 80% damage)": "MODERNO (botão ESPECIAL, 80% do dano)",
+	"Specials: %s": "Especiais: %s",
+	"A D move · W / S high / low · Space jump · J punch · K kick · L block · I special · 1 2 3 gadgets · Esc pause": "A D move · W / S alto / baixo · Espaço pula · J soco · K chute · L defesa · I especial · 1 2 3 acessórios · Esc pausa",
 }

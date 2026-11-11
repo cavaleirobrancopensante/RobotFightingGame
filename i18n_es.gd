@@ -4230,4 +4230,8 @@ const T := {
 	"Flying kick": "Patada voladora",
 	"Hammer": "Martillazo",
 	"Stands still and never breaks. The training room: DUMMY sets what it does (block, jump, record and play back), FRAMES shows your frame data.": "Se queda quieto y nunca se rompe. La sala de entrenamiento: MUÑECO elige lo que hace (bloquear, saltar, grabar y reproducir), CUADROS muestra los cuadros de tus golpes.",
+	"CLASSIC (inputs)": "CLÁSICO (comandos)",
+	"MODERN (SPECIAL button, 80% damage)": "MODERNO (botón ESPECIAL, 80% del daño)",
+	"Specials: %s": "Especiales: %s",
+	"A D move · W / S high / low · Space jump · J punch · K kick · L block · I special · 1 2 3 gadgets · Esc pause": "A D mover · W / S alto / bajo · Espacio salta · J puñetazo · K patada · L bloqueo · I especial · 1 2 3 accesorios · Esc pausa",
 }

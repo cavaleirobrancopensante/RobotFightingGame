@@ -57,6 +57,9 @@ static func default_buttons(screen: Vector2, gadget_labels: Array, pads: int = 1
 	out.append({"name": "kick", "pos": rc + Vector2(r * 1.55, 0), "r": r, "label": "KICK"})
 	out.append({"name": "block", "pos": rc + Vector2(0, -r * 1.55), "r": r, "label": "BLOCK"})
 	out.append({"name": "jump", "pos": rc + Vector2(0, r * 1.3), "r": r, "label": "JUMP"})
+	if int(GameData.settings.get("modern", 0)) == 1:
+		# (1.142) Modern controls: one SPECIAL button, up and left of the action diamond
+		out.append({"name": "special", "pos": rc + Vector2(-r * 2.15, -r * 1.95), "r": r * 0.78, "label": "SPECIAL"})
 	var gr := r * 0.72
 	for k in gadget_labels.size():
 		var gp: Vector2

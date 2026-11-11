@@ -25,9 +25,11 @@ var start_money_button: Button
 var coach_button: Button
 const COACH_NAMES := ["OFF", "A little", "Normal", "Lots (easier)"]
 const AIM_NAMES := ["OFF", "ON (weak spots, easier)"]
+const MODERN_NAMES := ["CLASSIC (inputs)", "MODERN (SPECIAL button, 80% damage)"]
 var living_button: Button
 var pecking_button: Button
 var aim_button: Button
+var modern_button: Button   # (1.142)
 var edges_button: Button
 var text_label: Label
 const EDGE_NAMES := ["OFF", "Small", "Medium", "Large"]   # dark bars down the sides, for phone buttons that never hide
@@ -173,6 +175,7 @@ func refresh() -> void:
 		var pk: Dictionary = GameData.PECKING[clampi(int(s.get("pecking", 1)), 0, GameData.PECKING.size() - 1)]
 		pecking_button.text = tr("Pecking Order: %s (x%.1f a grade)") % [tr(pk["name"]), float(pk["k"])]
 		aim_button.text = tr("Auto-aim: %s") % tr(AIM_NAMES[clampi(int(s.get("auto_aim", 0)), 0, 1)])
+		modern_button.text = tr("Specials: %s") % tr(MODERN_NAMES[clampi(int(s.get("modern", 0)), 0, 1)])
 
 
 func _on_lang(lang: String) -> void:
@@ -229,7 +232,8 @@ func _on_difficulty() -> void:
 	living_button = UI.button("", _on_living, 19, Vector2(560, 52))
 	pecking_button = UI.button("", _on_pecking, 19, Vector2(560, 52))
 	aim_button = UI.button("", _on_auto_aim, 19, Vector2(560, 52))
-	for b in [diff_button, aim_button, coach_button, start_money_button, living_button, pecking_button]:
+	modern_button = UI.button("", _on_modern, 19, Vector2(560, 52))
+	for b in [diff_button, aim_button, modern_button, coach_button, start_money_button, living_button, pecking_button]:
 		col.add_child(b)
 	var pnote := UI.label("Pecking Order: how much tougher and harder hitting each part grade is. Underdog lets a good pilot punch above their grade; Brutal means a robot two grades up flattens you in seconds.", 13, GUI.MUTED)
 	pnote.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -402,6 +406,13 @@ func _on_controls() -> void:
 
 func _on_diff() -> void:
 	GameData.settings["difficulty"] = (GameData.settings["difficulty"] + 1) % DIFF_NAMES.size()
+	GameData.save_settings()
+	refresh()
+
+
+## (1.142) Modern controls: one SPECIAL button plus a direction instead of the inputs.
+func _on_modern() -> void:
+	GameData.settings["modern"] = 1 - clampi(int(GameData.settings.get("modern", 0)), 0, 1)
 	GameData.save_settings()
 	refresh()
 

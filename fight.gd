@@ -124,6 +124,7 @@ class Fighter:
 	var attack_limb := ""
 	var timer := 0.0
 	var hit_done := false
+	var easy_sp := false     # (1.142) this special came from the SPECIAL button (Modern controls)
 	var landed := false      # the current attack connected (allows combo cancels)
 	var queued := ""         # attack pressed slightly early, waiting for the current one to allow it
 	var queued_t := 0.0
@@ -982,7 +983,7 @@ func _input(event: InputEvent) -> void:
 		if not handle_tap(event.position):
 			tap_pending = true
 	elif event is InputEventKey and event.pressed and not event.echo:
-		var kb := {KEY_J: "punch", KEY_K: "kick", KEY_SPACE: "jump", KEY_L: "block"}
+		var kb := {KEY_J: "punch", KEY_K: "kick", KEY_SPACE: "jump", KEY_L: "block", KEY_I: "special"}
 		if kb.has(event.physical_keycode) and phase == "fight" and not paused and not tut_pause:
 			pressed_since[kb[event.physical_keycode]] = true
 		if phase == "intro" and intro_step == "show":
@@ -1193,7 +1194,7 @@ func part_at(f: Fighter, p: Vector2) -> String:
 func empty_input() -> Dictionary:
 	return {"left": false, "right": false, "up": false, "down": false, "block": false,
 			"punch": false, "kick": false, "punch_held": false, "kick_held": false,
-			"jump": false, "jump_press": false, "gadget": -1}
+			"jump": false, "jump_press": false, "gadget": -1, "special": false}
 
 
 func key(k: Key) -> bool:
@@ -1219,6 +1220,7 @@ func read_player_input() -> Array:
 		"punch": held_buttons.get("punch", false) or key(KEY_J),
 		"kick": held_buttons.get("kick", false) or key(KEY_K),
 		"jump": held_buttons.get("jump", false) or (key(KEY_SPACE) and not tut_pause),
+		"special": (held_buttons.get("special", false) or key(KEY_I)) and int(GameData.settings.get("modern", 0)) == 1,   # (1.142) Modern controls
 	}
 	for pad in range(1, control_pads):
 		for d in Controls.MOVE_NAMES:
@@ -1228,7 +1230,7 @@ func read_player_input() -> Array:
 	var shared := empty_input()
 	shared["block"] = now["block"]
 	# a press counts once, even if it came and went between two frames (pressed_since catches those)
-	for nm in ["punch", "kick", "jump"]:
+	for nm in ["punch", "kick", "jump", "special"]:
 		shared[nm if nm != "jump" else "jump_press"] = (now[nm] and not prev_held.get(nm, false)) or pressed_since.has(nm)
 	shared["block_press"] = (now["block"] and not prev_held.get("block", false)) or pressed_since.has("block")
 	shared["punch_held"] = now["punch"]
@@ -1299,6 +1301,35 @@ func match_special(f: Fighter, button: String) -> String:
 			best = id
 			best_len = seq.size()
 	return best
+
+
+## (1.142) Modern controls: SPECIAL alone fires the first special, with forward the second, back
+## the third, up the fourth, down the fifth (the order they sit in your chips); one that can't go
+## right now falls back to the first that can. Specials fired this way do MODERN_DMG of the damage.
+const MODERN_DMG := 0.8
+const MODERN_DIRS := ["N", "F", "B", "U", "D"]
+func modern_pick(f: Fighter, i: Dictionary) -> String:
+	if f.specials.is_empty():
+		return ""
+	var d := "N"
+	if i.get("up", false) and not i.get("down", false):
+		d = "U"
+	elif i.get("down", false) and not i.get("up", false):
+		d = "D"
+	elif i.get("right", false) != i.get("left", false):
+		d = "F" if (i.get("right", false) and f.facing == 1) or (i.get("left", false) and f.facing == -1) else "B"
+	var k := MODERN_DIRS.find(d)
+	if k < f.specials.size() and can_special(f, str(f.specials[k])):
+		return str(f.specials[k])
+	for id in f.specials:
+		if can_special(f, str(id)):
+			return str(id)
+	return ""
+
+
+## What the SPECIAL button does with each direction, for the Moves page ("SPECIAL ▶").
+func modern_text(k: int) -> String:
+	return tr("SPECIAL") + ["", " ▶", " ◀", " ▲", " ▼"][clampi(k, 0, 4)]
 
 
 func can_special(f: Fighter, id: String) -> bool:
@@ -2710,6 +2741,7 @@ func start_special(f: Fighter, id: String) -> void:
 	if randf() < 0.6:
 		pilot_say(f.team, "special", false, (tr(Specials.MOVES[id]["name"]) as String).to_upper() + "!" if not pilots.is_empty() and not pilots[f.team]["auto"] else tr("[ EXECUTE: %s ]") % (tr(Specials.MOVES[id]["name"]) as String).to_upper())
 	f.special_id = id
+	f.easy_sp = false
 	f.attack_limb = f.next_limb(m["limb"]) if m.has("limb") else ""
 	f.aim_ang = aim_angle(f, str(m.get("pose", "")))
 	f.special_moment = false
@@ -3163,6 +3195,12 @@ func update_fighter(f: Fighter, o: Fighter, i: Dictionary, delta: float) -> void
 			f.queued = hit_for("punch" if punch else "kick", h)
 			f.queued_t = 0.45
 		# combo cancel: a normal that landed can go straight into the next attack or a special
+		if f.landed and f.timer >= a["startup"] + a["active"] and i.get("special", false):
+			var msp := modern_pick(f, i)
+			if msp != "":
+				start_special(f, msp)
+				f.easy_sp = true
+				return
 		if f.landed and f.timer >= a["startup"] + a["active"] and f.queued != "":
 			if start_queued(f):
 				return
@@ -3191,10 +3229,15 @@ func update_fighter(f: Fighter, o: Fighter, i: Dictionary, delta: float) -> void
 		else:
 			f.curl_hold = 0.0
 		var sp := ""
+		var easy := false
 		if punch or kick:
 			sp = match_special(f, "P" if punch else "K")
+		if sp == "" and i.get("special", false):
+			sp = modern_pick(f, i)   # (1.142) Modern controls: the SPECIAL button and a direction
+			easy = sp != ""
 		if sp != "":
 			start_special(f, sp)
+			f.easy_sp = easy
 		elif not f.on_ground and ((punch and f.arms() > 0) or (kick and f.legs() > 0)):
 			start_attack(f, "hammer" if punch else "fly_kick")
 		elif (punch and f.arms() > 0) or (kick and f.legs() > 0):
@@ -3562,6 +3605,8 @@ func apply_hit(att: Fighter, d: Fighter, a: Dictionary, at: Vector2) -> void:
 	# the spark goes where the limb met the body (shots and blasts: at the part they hit)
 	var spark_pos := at if not touched.is_empty() else Vector2(at.x, hit_at.y)
 	var dmg: float = a["damage"]
+	if att.state == "special" and att.easy_sp:
+		dmg *= MODERN_DMG   # (1.142) fired with the SPECIAL button
 
 	# shield bubble: nothing gets through
 	if d.shield_t > 0.0:
@@ -5754,6 +5799,8 @@ func draw_buttons() -> void:
 ## On a computer the touch buttons are hidden: one line of keys along the bottom instead.
 func draw_key_strip() -> void:
 	var t := tr("A D move · W / S high / low · Space jump · J punch · K kick · L block · hold J / K to charge · 1 2 3 gadgets · Esc pause")
+	if int(GameData.settings.get("modern", 0)) == 1:
+		t = tr("A D move · W / S high / low · Space jump · J punch · K kick · L block · I special · 1 2 3 gadgets · Esc pause")
 	var size := fs(15)
 	var w := font.get_string_size(t, HORIZONTAL_ALIGNMENT_LEFT, -1, size).x + 28.0
 	var r := Rect2(screen.x * 0.5 - w * 0.5, screen.y - size - 22.0, w, size + 14.0)
@@ -5988,7 +6035,10 @@ func _draw_pause_lines(x: float, y: float, bottom: float) -> void:
 	for id in player.specials:
 		var m: Dictionary = Specials.MOVES[id]
 		var cd: float = player.cooldowns.get(id, 0.0)
-		lines.append([tr("%s   %s%s   · %s") % [Specials.seq_text(m["seq"]), tr(m["name"]), tr("  (%.0fs)") % ceilf(cd) if cd > 0.0 else "", tr(m["desc"])], Color(0.5, 0.9, 1.0)])
+		var keys := Specials.seq_text(m["seq"])
+		if int(GameData.settings.get("modern", 0)) == 1 and player.specials.find(id) < 5:
+			keys = modern_text(player.specials.find(id)) + "  (" + keys + ")"
+		lines.append([tr("%s   %s%s   · %s") % [keys, tr(m["name"]), tr("  (%.0fs)") % ceilf(cd) if cd > 0.0 else "", tr(m["desc"])], Color(0.5, 0.9, 1.0)])
 	for g in player.gadgets:
 		var info: Dictionary = Specials.GADGETS[g["id"]]
 		lines.append([tr("%s%s: %s") % ["[" + info["short"] + "]  " if info["active"] else "", info["name"], tr(info["desc"])], Color(1.0, 0.85, 0.4)])
