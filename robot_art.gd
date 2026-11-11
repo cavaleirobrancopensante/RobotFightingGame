@@ -230,10 +230,26 @@ static func limb_poses(look: Dictionary, pose: Dictionary) -> Dictionary:
 				clawing.append(k)
 		for i in clawing.size():
 			arm_pose[clawing[i]] = "claw:%f" % fmod(crawl + float(i) / clawing.size(), 1.0)
-	# (1.104) Gorilla Arms stand on their knuckles, and pound the chest in turn for the signature
+	# (1.143) the walk-in pose (or the countdown taunt)
+	var entry := str(pose.get("entry", ""))
+	var et := float(pose.get("time", 0.0))
 	var pound: float = pose.get("pound", -1.0)
+	match entry:
+		"fists_up":
+			arm_pose = {"arm_front": "hammer_up", "arm_back": "hammer_up", "arm_front2": "hammer_up", "arm_back2": "hammer_up"}
+		"flex":
+			arm_pose = {"arm_front": "flex", "arm_back": "flex", "arm_front2": "flex", "arm_back2": "flex"}
+		"point":
+			arm_pose["arm_front"] = "punch"
+		"shrug":
+			arm_pose = {"arm_front": "shrug", "arm_back": "shrug", "arm_front2": "shrug", "arm_back2": "shrug"}
+		"bow":
+			arm_pose = {"arm_front": "limp", "arm_back": "limp", "arm_front2": "limp", "arm_back2": "limp"}
+		"pound":
+			pound = fmod(et * 3.0, 1.0)
+	# (1.104) Gorilla Arms stand on their knuckles, and pound the chest in turn for the signature
 	for k in ["arm_front", "arm_back", "arm_front2", "arm_back2"]:
-		if str(_part(look, k).get("shape", "")) != "gorilla":
+		if str(_part(look, k).get("shape", "")) != "gorilla" and entry != "pound":
 			continue
 		if pound >= 0.0:
 			var first: bool = k == "arm_front" or k == "arm_front2"
@@ -1159,6 +1175,14 @@ static func arm_pose_points(s: Vector2, pose: String, back: bool, reach_x: float
 			# the other fist drawn back for the next beat
 			h = s + Vector2(28 if not back else 20, -14)
 			e = s + Vector2(30 if not back else 22, 16)
+		"flex":
+			# (1.143) a strongman's flex: the elbow out at shoulder height, the fist up by the head
+			e = s + Vector2(30 if not back else 24, -4)
+			h = s + Vector2(26 if not back else 20, -40)
+		"shrug":
+			# (1.143) palms up, elbows in: so what?
+			e = s + Vector2(10 if not back else 4, 22)
+			h = s + Vector2(36 if not back else 30, 4)
 		"open":
 			# front view on the gantry: hanging down and out to the side
 			e = s + Vector2(12, 28)

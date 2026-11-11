@@ -124,6 +124,8 @@ class Fighter:
 	var attack_limb := ""
 	var timer := 0.0
 	var hit_done := false
+	var taunt_t := 0.0       # (1.143) striking its taunt pose in the countdown
+	var taunted := false
 	var easy_sp := false     # (1.142) this special came from the SPECIAL button (Modern controls)
 	var landed := false      # the current attack connected (allows combo cancels)
 	var queued := ""         # attack pressed slightly early, waiting for the current one to allow it
@@ -765,7 +767,10 @@ func _ready() -> void:
 		var mf := Sfx.maker_fight(str((team_p[0] as Fighter).sets[0]))
 		if mf != "":
 			fight_track = mf
-	Sfx.music(WALKIN_MUSIC.get(barrier_kind, "walkin_arena") if intro_step == "show" else fight_track)
+	var walk_song: String = str(WALKIN_MUSIC.get(barrier_kind, "walkin_arena"))
+	if str(walkin_for(0).get("song", "")) != "" and mode != "watch":
+		walk_song = str(walkin_for(0)["song"])   # (1.143) your own walk-in song
+	Sfx.music(walk_song if intro_step == "show" else fight_track)
 	Sfx.play("crowd_cheer", 0.0, -9.0)   # the crowd warms up quietly; it gets loud on big moments
 	cheer = 3.0
 	rec_start()
@@ -2101,7 +2106,14 @@ func _process(delta: float) -> void:
 	if phase == "intro" and intro_step == "count":
 		# 3-2-1: walk about, but no hitting yet (and the barrier keeps you on your side)
 		for k in p_ins.size():
+			if p_ins[k].get("block_press", false) and k == 0:
+				try_taunt(team_p[0])   # (1.143) BLOCK in the countdown: your taunt
 			p_ins[k] = move_only(p_ins[k])
+		for k2 in team_c.size():
+			var tw := walkin_for(1)
+			if k2 == 0 and str(tw.get("taunt", "")) != "" and not team_c[0].taunted and count_t > 0.6 and randf() < 0.02:
+				team_c[0].taunted = true   # a world pilot taunts back now and then
+				team_c[0].taunt_t = 1.4
 		# (1.71) the enemy walks steadily up to its mark and settles there. It used to roll the dice
 		# every frame (walk 70% of frames), which made it stutter through the countdown.
 		for k in c_ins.size():
@@ -3040,6 +3052,7 @@ func update_fighter(f: Fighter, o: Fighter, i: Dictionary, delta: float) -> void
 	f.shield_t = maxf(0.0, f.shield_t - delta)
 	f.invuln_t = maxf(0.0, f.invuln_t - delta)
 	f.stun_t = maxf(0.0, f.stun_t - delta)
+	f.taunt_t = maxf(0.0, f.taunt_t - delta)
 	f.jet_t = maxf(0.0, f.jet_t - delta)
 	f.combo_show = maxf(0.0, f.combo_show - delta)
 	f.combo_timer = maxf(0.0, f.combo_timer - delta)
@@ -4959,6 +4972,9 @@ func body_pose(f: Fighter) -> Dictionary:
 		var q := f.squash / 0.18 * float(f.mo.get("squash", 1.0))
 		sy *= 1.0 - 0.22 * q
 		sx *= 1.0 + 0.16 * q
+	var ep := entry_pose(f)
+	if ep == "bow" and f.on_ground:
+		lean = f.facing * 0.42 * minf(1.0, sin(fmod(clock, 2.2) / 2.2 * PI) * 2.0)   # (1.143) a slow bow
 	if rot == 0.0:
 		rot = lean
 	base.x += dx
@@ -4992,7 +5008,7 @@ func body_pose(f: Fighter) -> Dictionary:
 			"dazed": f.daze_t > 0.0, "tuck": f.state == "jump" and not f.on_ground and absf(f.vel.y) < 330.0,
 			"blocking": f.blocking or (f.state == "special" and state == "block"),
 			"crawl": fmod(f.walk_phase / TAU, 1.0) if f.state == "walk" and f.legs() == 0 and f.arms() > 0 else -1.0,
-			"fist_out": f.fist_out.keys(), "drop": drop, "ball": ball_k(f)}
+			"fist_out": f.fist_out.keys(), "drop": drop, "ball": ball_k(f), "entry": ep}
 	return {"base": base, "rot": rot, "sx": sx, "sy": sy, "state": state, "extended": extended, "swoosh": swoosh, "dx": dx}
 
 
@@ -5034,6 +5050,7 @@ func draw_fighter(f: Fighter, off: Vector2) -> void:
 			"jet": f.jet_t > 0.0 or (not f.on_ground and f.vel.y < -400.0 and f.has_gadget("double_jump")),
 			"boost": f.boost_t > 0.0, "sprint": f.sprint_t > 0.5, "sx": sx, "sy": sy,
 			"pound": fmod(f.timer * 5.0, 1.0) if f.state == "special" and f.special_id == "chest_pound" else -1.0,
+			"entry": f.vis_pose.get("entry", ""),
 			"bite": f.bite_t, "proud": f.proud, "trunk": f.trunk_t, "trunk_part": f.trunk_def,
 			"fan": clampf(minf((FAN_T - f.fan_t) / 0.25, f.fan_t / 0.3), 0.0, 1.0) if f.fan_t > 0.0 else 0.0,
 			"dazed": f.vis_pose.get("dazed", false), "tuck": f.vis_pose.get("tuck", false),
@@ -7476,12 +7493,69 @@ func announcer_line() -> String:
 				return opener + " " + tr("In the right corner, no pilot, just Kane Dynamics' fight program...")
 			return opener + " " + tr("In the right corner, piloted by %s...") % who
 		"b_zoom":
-			return tr("...%s!") % name
+			return tr("...%s!") % name + walkin_call(1)
 		"a_call":
 			return tr("And in the left corner, piloted by %s...") % who if who != "" else tr("And in the left corner...")
 		"a_zoom":
-			return tr("...%s!") % name
+			return tr("...%s!") % name + walkin_call(0)
 	return ""
+
+
+# ---------------------------------------------------------------- (1.143) walk-in personality
+## A corner's walk-in: yours from Bay > Style & paint, a world pilot's rolled from their id.
+func walkin_for(team: int) -> Dictionary:
+	if mode == "quick" or mode == "test" or mode == "replay":
+		return {}
+	if team == 0 and mode != "watch":
+		return GameData.walkin
+	var wid := -1
+	if team == 0:
+		wid = int(GameData.watch_robot(0).get("wid", -1))
+	else:
+		wid = int(opp.get("wid", -1)) if mode != "watch" else int(GameData.watch_robot(1).get("wid", -1))
+	return GameData.World.walkin_of(wid) if wid >= 0 else {}
+
+
+## What the announcer adds after the robot's name: its nickname and its line.
+func walkin_call(team: int) -> String:
+	var w := walkin_for(team)
+	var out := ""
+	if str(w.get("nick", "")) != "":
+		out += " " + tr(str(w["nick"])) + "!"
+	if str(w.get("line", "")) != "":
+		out += " " + tr(str(w["line"]))
+	return out
+
+
+## The pose a robot strikes right now: its entry pose while the camera's on it in the show, its
+## taunt for a moment after you press BLOCK in the countdown.
+func entry_pose(f: Fighter) -> String:
+	if phase != "intro" or f.state not in ["idle", "walk"]:
+		return ""
+	var team := 0 if team_p.has(f) else 1
+	var w := walkin_for(team)
+	if intro_step == "show":
+		var b := show_beat()
+		if (b == "a_zoom" and f == team_p[0]) or (b == "b_zoom" and f == team_c[0]):
+			var p := str(w.get("pose", "guard"))
+			return "" if p == "guard" else p
+	elif intro_step == "count" and f.taunt_t > 0.0:
+		return str(w.get("taunt", ""))
+	return ""
+
+
+## BLOCK in the countdown: your taunt (once). Taunting someone you don't get on with makes it worse.
+func try_taunt(f: Fighter) -> void:
+	var w := walkin_for(0)
+	if f.taunted or str(w.get("taunt", "")) == "":
+		return
+	f.taunted = true
+	f.taunt_t = 1.4
+	pilot_say(0, "taunt", false, tr(["Come on then!", "Is that it?", "Look at this junk.", "You're mine."][randi() % 4]))
+	var wid := int(opp.get("wid", -1))
+	if wid >= 0 and mode != "watch" and mode != "quick":
+		GameData.rel_add(wid, -3)
+	cheer = maxf(cheer, 1.5)
 
 
 ## The show's overlay: title band, the announcer's caption, the robot's card, SKIP.

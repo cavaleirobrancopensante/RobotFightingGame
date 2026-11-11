@@ -3,7 +3,7 @@ const PlayLog = preload("res://playlog.gd")   # (1.87) the playtest log
 
 # helper scripts, loaded by path so the game also runs without an editor scan
 ## The game's version, shown on the main menu. Bump it with every change (1.1, 1.2, ...).
-const VERSION := "1.142"
+const VERSION := "1.143"
 const Arena = preload("res://arena.gd")
 const I18n = preload("res://i18n.gd")
 const Catalog = preload("res://catalog.gd")
@@ -651,6 +651,7 @@ func new_game() -> void:
 	patched_week = -1
 	deliveries = []
 	morning_seen = ""
+	walkin = {}
 	candle_day = ""
 	mass_day = ""
 	guide_seen = {}
@@ -3060,6 +3061,7 @@ func next_day() -> void:
 const PATCH_HP := 0.4
 var patched_week := -1
 var morning_seen := ""   # (1.117) the day key of the last morning card you saw
+var walkin := {}   # (1.143) your robot's walk-in: {nick, line, pose, taunt, song} (see WALKIN_*)
 var candle_day := ""   # (1.137) the day key you last lit a candle at Our Lady of the Harbour
 var mass_day := ""     # (1.137) the day key of the last Mass you went to
 var deliveries: Array = []   # (1.116) part ids ordered from a catalogue at home: in Storage tomorrow morning
@@ -5852,7 +5854,7 @@ func save_game(path: String = "") -> bool:
 		"owned_chips": owned_chips, "chips": chips, "circuit": circuit, "circuit_offers": circuit_offers,
 		"circuits_won": circuits_won, "pickup": pickup, "setups": setups, "custom_parts": custom_parts,
 		"year": year, "week": week, "day": day, "rank": rank, "event": {}, "leagues": leagues, "title_seeds": title_seeds, "trophies": trophies, "career_stats": career_stats,
-		"pecking_k": pecking_k(), "style": style, "style_locked": style_locked, "shop_stock": shop_stock, "chip_stock": chip_stock, "scout": scout, "wingmen": wingmen, "sending": sending, "pilot_look": pilot_look, "owned_controllers": owned_controllers, "spare_controllers": spare_controllers, "techs": techs, "tech_fit": tech_fit, "tips_seen": tips_seen, "tips_log": tips_log, "h2h": h2h, "rivals": rivals, "rel": rel, "nemeses": nemeses, "pending_talk": pending_talk, "inbox": inbox, "inbox_seen": inbox_seen, "social": social, "pilot_at": pilot_at, "places_been": places_been, "catalogues": catalogues, "pilot_used": pilot_used, "film_index": film_index, "film_pending": film_pending, "films_seen": films_seen, "contracts": contracts, "alerts_unseen": alerts_unseen, "day_log": day_log, "ledger": ledger, "bet_log": bet_log, "patched_week": patched_week, "deliveries": deliveries, "morning_seen": morning_seen, "candle_day": candle_day, "mass_day": mass_day, "guide_seen": guide_seen, "guide_mode": guide_mode, "loan": loan, "loan_free_at": loan_free_at, "gus_alerts": gus_alerts, "tour": tour, "streak": streak, "pub_seen": pub_seen, "digs_left": digs_left, "dig_luck": dig_luck, "bills_note": bills_note, "fight_log": fight_log, "bets": bets, "world": world,
+		"pecking_k": pecking_k(), "style": style, "style_locked": style_locked, "shop_stock": shop_stock, "chip_stock": chip_stock, "scout": scout, "wingmen": wingmen, "sending": sending, "pilot_look": pilot_look, "owned_controllers": owned_controllers, "spare_controllers": spare_controllers, "techs": techs, "tech_fit": tech_fit, "tips_seen": tips_seen, "tips_log": tips_log, "h2h": h2h, "rivals": rivals, "rel": rel, "nemeses": nemeses, "pending_talk": pending_talk, "inbox": inbox, "inbox_seen": inbox_seen, "social": social, "pilot_at": pilot_at, "places_been": places_been, "catalogues": catalogues, "pilot_used": pilot_used, "film_index": film_index, "film_pending": film_pending, "films_seen": films_seen, "contracts": contracts, "alerts_unseen": alerts_unseen, "day_log": day_log, "ledger": ledger, "bet_log": bet_log, "patched_week": patched_week, "deliveries": deliveries, "morning_seen": morning_seen, "walkin": walkin, "candle_day": candle_day, "mass_day": mass_day, "guide_seen": guide_seen, "guide_mode": guide_mode, "loan": loan, "loan_free_at": loan_free_at, "gus_alerts": gus_alerts, "tour": tour, "streak": streak, "pub_seen": pub_seen, "digs_left": digs_left, "dig_luck": dig_luck, "bills_note": bills_note, "fight_log": fight_log, "bets": bets, "world": world,
 	}
 	var f := FileAccess.open(slot_path(save_slot) if path == "" else path, FileAccess.WRITE)
 	if f == null:
@@ -5987,6 +5989,7 @@ func load_game(slot: int = -1, mine: bool = false) -> String:
 	deliveries = data.get("deliveries", [])
 	morning_seen = str(data.get("morning_seen", ""))
 	candle_day = str(data.get("candle_day", ""))
+	walkin = data.get("walkin", {}) if typeof(data.get("walkin", {})) == TYPE_DICTIONARY else {}
 	mass_day = str(data.get("mass_day", ""))
 	guide_seen = data.get("guide_seen", {}) if typeof(data.get("guide_seen", null)) == TYPE_DICTIONARY else {}
 	guide_mode = int(data.get("guide_mode", 1))   # saves before 1.132 had the tutorial on
@@ -6827,6 +6830,63 @@ func place_locked(place: String) -> String:
 	if place == "dojo" and rank_index() < 2 and not story_seen.has("tenryu_invite"):
 		return "Opens to Rust League pilots. Or land a big special move and they'll come to you."   # (1.103)
 	return ""
+
+
+# ---------------------------------------------------------------- (1.143) the walk-in
+# Your robot's walk-in personality, picked in Bay > Style & paint: a nickname and a line for the
+# announcer (from lists, never typed, so translations and the writing rules hold), the pose it
+# strikes when the camera reaches it, a taunt for the countdown (BLOCK), and a song from the
+# jukebox for the walk-in. Titles unlock with trophies. World pilots roll theirs (World.walkin_of).
+const WALKIN_NICKS := ["The Scrapyard Kid", "The Rust Bucket Who Wouldn't Die", "Port Ferrum's Own", "The Pride of Old Town",
+		"The Comeback Machine", "The Gutter Rat", "Gus's Pride and Joy", "The Hammer of the Docks", "The Night Shift",
+		"The Last Bolt Standing", "Old Iron Heart", "The Dockside Menace"]
+## Earned titles: [title, trophy kind, best medal needed (1 = gold)]
+const WALKIN_TITLES := [["The Trials Graduate", "open", 3], ["Scrap League Champion", "scrap", 1], ["Rust League Champion", "rust", 1],
+		["Iron League Champion", "iron", 1], ["Steel League Champion", "steel", 1], ["The Titanium Champion", "title", 1], ["Cup Winner", "cup", 1]]
+const WALKIN_LINES := ["Built in a scrapyard, raised on bad odds.", "Every bolt paid for in sweat.", "Still standing.", "Here for the belt.",
+		"Ask the last one how it went.", "Bring a spare head.", "Patched up and fired up.", "One more round, every round.",
+		"Nobody's scrap forever.", "The crowd's favourite underdog.", "Hits like a dropped crane.", "Born in the blue and gold."]
+const WALKIN_POSES := {"guard": "Guard up", "fists_up": "Both fists up", "flex": "Flex", "point": "Point at them",
+		"pound": "Pound the chest", "shrug": "Shrug", "bow": "A bow"}
+const WALKIN_POSE_ORDER := ["guard", "fists_up", "flex", "point", "pound", "shrug", "bow"]
+
+
+## Every nickname you can pick right now: the plain ones and the titles you've earned.
+func walkin_nicks() -> Array:
+	var out: Array = WALKIN_NICKS.duplicate()
+	for t in WALKIN_TITLES:
+		for tr_ in trophies:
+			if str(tr_.get("kind", "")) == str(t[1]) and int(tr_.get("medal", 9)) <= int(t[2]):
+				out.append(t[0])
+				break
+	return out
+
+
+func walkin_text(key: String) -> String:
+	var v := str(walkin.get(key, ""))
+	return tr(v) if v != "" else ""
+
+
+## Cycle one walk-in choice (dir +1 / -1). "" = none (nick, line, taunt, song).
+func walkin_step(key: String, dir: int) -> void:
+	var opts: Array = []
+	match key:
+		"nick":
+			opts = [""] + walkin_nicks()
+		"line":
+			opts = [""] + WALKIN_LINES
+		"pose":
+			opts = WALKIN_POSE_ORDER
+		"taunt":
+			opts = [""] + WALKIN_POSE_ORDER.slice(1)
+		"song":
+			opts = [""]
+			for j in Sfx.JUKEBOX:
+				opts.append(str(j[0]))
+	var cur := str(walkin.get(key, "guard" if key == "pose" else ""))
+	var k := opts.find(cur)
+	walkin[key] = opts[posmod(k + dir, opts.size())]
+	save_game()
 
 
 # ---------------------------------------------------------------- (1.137) Our Lady of the Harbour

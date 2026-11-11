@@ -915,6 +915,22 @@ static func look_of(wid: int) -> Dictionary:
 	return p["look"]
 
 
+## (1.143) A world pilot's walk-in, rolled once from their id: most have a nickname, some a line,
+## everyone a pose.
+static func walkin_of(wid: int) -> Dictionary:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = wid * 7919 + 143
+	var gd = GameData
+	var out := {"pose": gd.WALKIN_POSE_ORDER[rng.randi() % gd.WALKIN_POSE_ORDER.size()]}
+	if rng.randf() < 0.6:
+		out["nick"] = gd.WALKIN_NICKS[rng.randi() % gd.WALKIN_NICKS.size()]
+	if rng.randf() < 0.45:
+		out["line"] = gd.WALKIN_LINES[rng.randi() % gd.WALKIN_LINES.size()]
+	if rng.randf() < 0.4:
+		out["taunt"] = gd.WALKIN_POSE_ORDER[1 + rng.randi() % (gd.WALKIN_POSE_ORDER.size() - 1)]
+	return out
+
+
 ## (1.138) About a quarter of Port Ferrum's pilots wear a small cross (seeded by the pilot).
 static func wears_cross(wid: int) -> bool:
 	var rng := RandomNumberGenerator.new()

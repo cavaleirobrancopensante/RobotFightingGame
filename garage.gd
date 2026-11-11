@@ -7792,6 +7792,51 @@ func _on_reroll() -> void:
 
 
 ## Bay > Style & paint: pick a fighting style (watch each signature move first), and a paint job.
+## (1.143) The walk-in: what the announcer calls your robot, the pose it strikes when the camera
+## reaches it, your taunt in the countdown (BLOCK) and the song it walks in to.
+func build_walkin(col: Control) -> void:
+	section(tr("WALK-IN"), col, tr("How the announcer calls you, the pose when the camera reaches you, a taunt for the countdown (press BLOCK) and your walk-in song. Titles unlock with trophies."))
+	var w := GameData.walkin
+	var song := tr("The venue's")
+	for j in Sfx.JUKEBOX:
+		if str(j[0]) == str(w.get("song", "")):
+			song = str(j[1])
+	var rows := [["Nickname", "nick", GameData.walkin_text("nick") if str(w.get("nick", "")) != "" else tr("None")],
+			["Line", "line", GameData.walkin_text("line") if str(w.get("line", "")) != "" else tr("None")],
+			["Pose", "pose", tr(GameData.WALKIN_POSES.get(str(w.get("pose", "guard")), "Guard up"))],
+			["Taunt", "taunt", tr(GameData.WALKIN_POSES[str(w["taunt"])]) if str(w.get("taunt", "")) != "" else tr("None")],
+			["Song", "song", song]]
+	for r in rows:
+		var row := HBoxContainer.new()
+		row.add_theme_constant_override("separation", 8)
+		col.add_child(row)
+		var k := GUI.text(tr(r[0]), 13, GUI.MUTED)
+		k.custom_minimum_size = Vector2(UI.tsz(13) * 6.0, 0)
+		row.add_child(k)
+		var v := GUI.text(str(r[2]), 14, GUI.TEXT)
+		v.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		v.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		row.add_child(v)
+		row.add_child(UI.button("‹", _on_walkin.bind(r[1], -1), 16, Vector2(44, 38)))
+		row.add_child(UI.button("›", _on_walkin.bind(r[1], 1), 16, Vector2(44, 38)))
+	var call := tr("...%s!") % GameData.robot_name
+	if str(w.get("nick", "")) != "":
+		call += " " + GameData.walkin_text("nick") + "!"
+	if str(w.get("line", "")) != "":
+		call += " " + GameData.walkin_text("line")
+	var cl := GUI.text(tr("The announcer: %s") % call, 12, GUI.CYAN)
+	cl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	col.add_child(cl)
+
+
+func _on_walkin(key: String, dir: int) -> void:
+	GameData.walkin_step(key, dir)
+	Sfx.play("click")
+	if key == "song" and str(GameData.walkin.get("song", "")) != "":
+		Sfx.music(str(GameData.walkin["song"]))   # a taste of it
+	refresh()
+
+
 func build_style_view() -> void:
 	var col := list_box
 	section(tr("FIGHTING STYLE"), col, tr("Your style changes how ECHO fights and gives it a free signature move.").replace("ECHO", GameData.robot_name))
@@ -7825,6 +7870,7 @@ func build_style_view() -> void:
 		var b := UI.button("Pick", _on_pick_style.bind(id), 14, Vector2(84, 38))
 		b.disabled = id == GameData.style or GameData.style_locked
 		btns.add_child(b)
+	build_walkin(col)
 	if GameData.unlocked("paint"):
 		section(tr("PAINT JOB"), col)
 		var grid := GridContainer.new()
