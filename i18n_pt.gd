@@ -4136,4 +4136,12 @@ const T := {
 	"Gus's list: %s ✓": "Lista do Gus: %s ✓",
 	"Things to try in your first weeks.": "Coisas para experimentar nas primeiras semanas.",
 	"That's my list, down there. Tap it and I'll take you where to go next.": "Essa é a minha lista, ali embaixo. Toque nela e eu te levo aonde ir.",
+	"Want the tour?": "Quer o tour?",
+	"First time running a robot? I'll walk you round the bay and keep a list of things to try, one at a time.": "Primeira vez cuidando de um robô? Eu te mostro a oficina e guardo uma lista de coisas para experimentar, uma de cada vez.",
+	"Know your way round already? Say so and I'll keep quiet.": "Já conhece tudo por aqui? É só dizer que eu fico quieto.",
+	"Show me": "Me mostra",
+	"I know what I'm doing": "Eu sei o que estou fazendo",
+	"Tutorial: %s": "Tutorial: %s",
+	"Gus asks first": "Gus pergunta antes",
+	"Show it at the bottom of the screen": "Mostrar na parte de baixo da tela",
 }

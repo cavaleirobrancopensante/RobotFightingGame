@@ -221,7 +221,7 @@ func build_difficulty() -> void:
 		[tr("Starting money: %s (new games)") % GameData.money_text(int(s.get("start_money", GameData.START_MONEY))), _on_diff_step.bind("start_money")],
 		[tr("Rent & food: %s") % (tr("none") if int(s.get("living_cost", GameData.LIVING_COST)) == 0 else tr("$%d a month") % int(s.get("living_cost", GameData.LIVING_COST))), _on_diff_step.bind("living_cost")],
 		[tr("Pecking Order: %s (x%.1f a grade)") % [tr(pk["name"]), float(pk["k"])], _on_diff_step.bind("pecking")],
-		[tr("Guided start: %s") % (tr("ON") if GameData.guide_on() else tr("OFF, skip it")), _on_diff_step.bind("guide")],
+		[tr("Tutorial: %s") % (tr("Gus asks first") if int(s.get("guide", 1)) == 1 else tr("OFF, skip it")), _on_diff_step.bind("guide")],
 	]
 	for it in items:
 		diff_box.add_child(UI.button(it[0], it[1], 19, Vector2(560, 52)))
@@ -245,8 +245,9 @@ func _on_diff_step(key: String) -> void:
 			s["living_cost"] = lopts[(lopts.find(int(s.get("living_cost", GameData.LIVING_COST))) + 1) % lopts.size()]
 		"guide":
 			# (1.129) Gus's list and the tour: off for players who know the game
-			s["guide"] = 0 if GameData.guide_on() else 1
-			GameData.tour = 0 if GameData.guide_on() else -1
+			s["guide"] = 0 if int(s.get("guide", 1)) == 1 else 1
+			GameData.guide_mode = -1 if int(s["guide"]) == 1 else 0
+			GameData.tour = -1
 		"pecking":
 			GameData.set_pecking((int(s.get("pecking", 1)) + 1) % GameData.PECKING.size())
 	GameData.save_settings()

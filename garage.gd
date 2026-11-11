@@ -6830,6 +6830,11 @@ func open_guide_list() -> void:
 	a.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	a.custom_minimum_size.x = UI.px(15) * 24
 	col.add_child(a)
+	if not GameData.guide_on():
+		# (1.132) said no at the start: the list is still here if you change your mind
+		var on := UI.button(tr("Show it at the bottom of the screen"), func(): GameData.guide_mode = 1; GameData.request_save(); close_popup(); refresh(), 16, Vector2(0, 50))
+		GUI.primary(on)
+		col.add_child(on)
 	var next := GameData.guide_step()
 	for g in GameData.GUIDE:
 		var done := GameData.guide_done(str(g[0]))
@@ -8160,7 +8165,7 @@ func _on_menu() -> void:
 				Loading.run(func():
 					if GameData.load_game(GameData.save_slot, true) == "":
 						Loading.go("res://garage.tscn"))), 19, Vector2(0, 56)))
-	if GameData.guide_on():
+	if not GameData.guide_asking():
 		col.add_child(UI.button(tr("Gus's list"), func(): close_popup(); open_guide_list(), 19, Vector2(0, 56)))
 	# (1.126) the save as a file you keep: download it, upload it on the Load Game screen
 	col.add_child(UI.button(tr("Download save file"), func():
@@ -9352,6 +9357,14 @@ func check_gus_cards() -> void:
 		return
 	if overlay != null or talk_story:
 		return   # one thing at a time: a window or a story scene first
+	# (1.132) the tutorial starts by asking if you want it
+	if GameData.guide_asking() and GameData.story_seen.has("first_garage") and tab == "Bay":
+		gus_card(tr("Want the tour?"),
+				tr("First time running a robot? I'll walk you round the bay and keep a list of things to try, one at a time.") + "\n\n" +
+				tr("Know your way round already? Say so and I'll keep quiet."),
+				[[tr("Show me"), func(): GameData.guide_answer(true); refresh(), true],
+				[tr("I know what I'm doing"), func(): GameData.guide_answer(false); refresh(), false]])
+		return
 	# (1.98) Gus puts in a word with old Silas once you've a few wins (before the Scrap League opens his door)
 	if not GameData.story_seen.has("brass_invite") and GameData.wins >= 3 and GameData.tour < 0 and GameData.story_seen.has("first_garage"):
 		play_story(["brass_invite"])

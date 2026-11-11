@@ -3,7 +3,7 @@ const PlayLog = preload("res://playlog.gd")   # (1.87) the playtest log
 
 # helper scripts, loaded by path so the game also runs without an editor scan
 ## The game's version, shown on the main menu. Bump it with every change (1.1, 1.2, ...).
-const VERSION := "1.131"
+const VERSION := "1.132"
 const Arena = preload("res://arena.gd")
 const I18n = preload("res://i18n.gd")
 const Catalog = preload("res://catalog.gd")
@@ -671,7 +671,8 @@ func new_game() -> void:
 		_clear_film()
 	contracts = {}
 	alerts_unseen = 0
-	tour = 0 if guide_on() else -1   # (1.129) the guided start can be skipped
+	guide_mode = -1 if int(settings.get("guide", 1)) == 1 else 0   # (1.132) Gus asks first
+	tour = -1   # starts only if you say yes
 	streak = 0
 	pub_seen = ""
 	digs_left = DIGS_PER_FIGHT
@@ -4420,10 +4421,23 @@ const GUIDE := [
 ]
 var guide_seen := {}   # step id -> true once the chip has said "done" for it (saved)
 var guide_backfill := false
+var guide_mode := 1   # (1.132) per save: -1 = Gus hasn't asked yet, 0 = no tutorial, 1 = tutorial on
 
 
 func guide_on() -> bool:
-	return int(settings.get("guide", 1)) == 1
+	return guide_mode == 1
+
+
+## (1.132) The first thing the tutorial does is ask if you want it (settings "guide" 0 = never ask, no tutorial).
+func guide_asking() -> bool:
+	return guide_mode == -1
+
+
+func guide_answer(on: bool) -> void:
+	guide_mode = 1 if on else 0
+	tour = 0 if on else -1
+	PlayLog.add("guide", "tutorial " + ("on" if on else "off"))
+	request_save()
 
 
 func guide_mark(id: String) -> void:
@@ -5830,7 +5844,7 @@ func save_game(path: String = "") -> bool:
 		"owned_chips": owned_chips, "chips": chips, "circuit": circuit, "circuit_offers": circuit_offers,
 		"circuits_won": circuits_won, "pickup": pickup, "setups": setups, "custom_parts": custom_parts,
 		"year": year, "week": week, "day": day, "rank": rank, "event": {}, "leagues": leagues, "title_seeds": title_seeds, "trophies": trophies, "career_stats": career_stats,
-		"pecking_k": pecking_k(), "style": style, "style_locked": style_locked, "shop_stock": shop_stock, "chip_stock": chip_stock, "scout": scout, "wingmen": wingmen, "sending": sending, "pilot_look": pilot_look, "owned_controllers": owned_controllers, "spare_controllers": spare_controllers, "techs": techs, "tech_fit": tech_fit, "tips_seen": tips_seen, "tips_log": tips_log, "h2h": h2h, "rivals": rivals, "rel": rel, "nemeses": nemeses, "pending_talk": pending_talk, "inbox": inbox, "inbox_seen": inbox_seen, "social": social, "pilot_at": pilot_at, "places_been": places_been, "catalogues": catalogues, "pilot_used": pilot_used, "film_index": film_index, "film_pending": film_pending, "films_seen": films_seen, "contracts": contracts, "alerts_unseen": alerts_unseen, "day_log": day_log, "ledger": ledger, "bet_log": bet_log, "patched_week": patched_week, "deliveries": deliveries, "morning_seen": morning_seen, "guide_seen": guide_seen, "loan": loan, "loan_free_at": loan_free_at, "gus_alerts": gus_alerts, "tour": tour, "streak": streak, "pub_seen": pub_seen, "digs_left": digs_left, "dig_luck": dig_luck, "bills_note": bills_note, "fight_log": fight_log, "bets": bets, "world": world,
+		"pecking_k": pecking_k(), "style": style, "style_locked": style_locked, "shop_stock": shop_stock, "chip_stock": chip_stock, "scout": scout, "wingmen": wingmen, "sending": sending, "pilot_look": pilot_look, "owned_controllers": owned_controllers, "spare_controllers": spare_controllers, "techs": techs, "tech_fit": tech_fit, "tips_seen": tips_seen, "tips_log": tips_log, "h2h": h2h, "rivals": rivals, "rel": rel, "nemeses": nemeses, "pending_talk": pending_talk, "inbox": inbox, "inbox_seen": inbox_seen, "social": social, "pilot_at": pilot_at, "places_been": places_been, "catalogues": catalogues, "pilot_used": pilot_used, "film_index": film_index, "film_pending": film_pending, "films_seen": films_seen, "contracts": contracts, "alerts_unseen": alerts_unseen, "day_log": day_log, "ledger": ledger, "bet_log": bet_log, "patched_week": patched_week, "deliveries": deliveries, "morning_seen": morning_seen, "guide_seen": guide_seen, "guide_mode": guide_mode, "loan": loan, "loan_free_at": loan_free_at, "gus_alerts": gus_alerts, "tour": tour, "streak": streak, "pub_seen": pub_seen, "digs_left": digs_left, "dig_luck": dig_luck, "bills_note": bills_note, "fight_log": fight_log, "bets": bets, "world": world,
 	}
 	var f := FileAccess.open(slot_path(save_slot) if path == "" else path, FileAccess.WRITE)
 	if f == null:
@@ -5965,6 +5979,7 @@ func load_game(slot: int = -1, mine: bool = false) -> String:
 	deliveries = data.get("deliveries", [])
 	morning_seen = str(data.get("morning_seen", ""))
 	guide_seen = data.get("guide_seen", {}) if typeof(data.get("guide_seen", null)) == TYPE_DICTIONARY else {}
+	guide_mode = int(data.get("guide_mode", 1))   # saves before 1.132 had the tutorial on
 	guide_backfill = not data.has("guide_seen")   # (1.128) a save from before the list: what's done is not paid again
 	loan = data.get("loan", {})
 	loan_free_at = int(data.get("loan_free_at", 0))
