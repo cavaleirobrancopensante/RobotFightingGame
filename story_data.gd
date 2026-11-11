@@ -26,6 +26,7 @@ const SPEAKERS := {
 	"ROSA": {"color": "#ff7b54", "face": {"skin": "#b07850", "hair": "#3b1f14", "hat": "bun", "outfit": "#8e2c1c", "long_hair": true, "female": true}},
 	"NIK & NAT": {"color": "#7fd3ff", "face": {"skin": "#e2b48c", "hair": "#00b7ff", "hat": "", "outfit": "#1f2a44", "goggles": true, "twin": true}},
 	"BULL": {"color": "#c9a46b", "face": {"skin": "#c08a64", "hair": "#1a1a1a", "hat": "helmet", "outfit": "#3d2b1f", "beard": true}},
+	"DAD": {"color": "#e056c8", "face": {"skin": "#b07a52", "hair": "#2a1d14", "hat": "headband", "outfit": "#5a3a22", "beard": "chinstrap", "beard_color": "#3a2e28", "scar": true}},
 	"IRONSIDE": {"color": "#d0d0d0", "face": {"skin": "#8d5a3b", "hair": "#d8d8d8", "hat": "bald", "outfit": "#4a4a52", "beard": true, "scar": true}},
 }
 
@@ -163,6 +164,39 @@ const SCENES := {
 		["NARRATOR", "For a second the arena is silent. Then the front rows stand up, every pilot Kane ever fired, and the whole place explodes."],
 		["NARRATOR", "Kane Dynamics' stock fell forty percent by morning. By the end of the month, the league brought back pilot licenses."],
 		["NARRATOR", "THE END... of your first championship. Next year OVERLORD wants its belt back, and the whole Steel League wants you."],
+	]},
+
+	# ---- (1.153) the reveal's aftermath
+	"dad_home_scene": {"place": "GUS'S BAY", "lines": [
+		["NARRATOR", "It takes Gus and three pilots from the front row to cut him out of Kane's chair. The whole arena goes quiet while they do."],
+		["DAD", "Kid. Look at you. Look at ECHO."],
+		["YOU", "They told us you were dead. I lit candles for you."],
+		["DAD", "Kane needed OVERLORD to win and swore it had no pilot. The chair did the rest. I saw every one of your fights. I couldn't stop my hands."],
+		["GUS", "You're home now. Sit down before you fall down. And don't touch the coffee."],
+		["DAD", "I'm done fighting. But I can still turn a wrench, Gus."],
+		["NARRATOR", "Kane Dynamics calls it a malfunction. Nobody in Port Ferrum believes them."],
+	]},
+	"dad_lost": {"place": "GUS'S BAY", "lines": [
+		["GUS", "He's alive, kid. He's in there. We know that now."],
+		["YOU", "Next time I bring him home."],
+		["GUS", "Next time. Get some sleep. You'll need your hands steady."],
+	]},
+	"post_9_seen": {"place": "THE KANE GRAND HALL: FINAL", "lines": [
+		["ANNOUNCER", "THE TITANIUM CHAMPIONSHIP IS DECIDED! THE SCRAP-HEAP UNDERDOG IS YOUR NEW CHAMPION!"],
+		["KANE", "...Impossible. Every program. Every simulation."],
+		["GUS", "Your dad's still in that machine, kid. Next year we take the belt AND we bring him home."],
+		["NARRATOR", "The front rows stand up, every pilot Kane ever fired. Kane leaves by the back door."],
+		["NARRATOR", "THE END... of your first championship. OVERLORD will be back, and so will you."],
+	]},
+	"post_9_dad": {"place": "THE KANE GRAND HALL: FINAL", "lines": [
+		["ANNOUNCER", "THE TITANIUM CHAMPIONSHIP IS DECIDED! THE SCRAP-HEAP UNDERDOG IS YOUR NEW CHAMPION!"],
+		["KANE", "...Impossible. It had every advantage."],
+		["GUS", "It had no pilot. Not anymore."],
+		["DAD", "Front row. Where I always wanted to watch you from."],
+		["YOU", "Your trophies, Dad. Mine go up next to them."],
+		["NARRATOR", "The front rows stand up, every pilot Kane ever fired, and the whole place explodes."],
+		["NARRATOR", "Kane Dynamics' stock fell forty percent by morning. By the end of the month the league brought back pilot licences."],
+		["NARRATOR", "THE END... of your first championship. Next year the whole Steel League wants your belt."],
 	]},
 
 	# ---- the first time in the bay

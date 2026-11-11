@@ -1051,6 +1051,9 @@ func _input(event: InputEvent) -> void:
 				return
 		match event.physical_keycode:
 			KEY_ENTER, KEY_SPACE:
+				if reveal_i >= 0:
+					reveal_next()
+					return
 				if paused:
 					quit_ask = false
 					toggle_pause()
@@ -1096,6 +1099,9 @@ func note_press_at(p: Vector2) -> void:
 func handle_tap(p: Vector2) -> bool:
 	if net_role == "guest":
 		return net_guest_tap(p)
+	if reveal_i >= 0:
+		reveal_next()
+		return true
 	if fin_state == "offer" and moment_t <= 0.0:
 		# (1.144) finish it?
 		if fin_rects[0].has_point(p):
@@ -1328,6 +1334,8 @@ func pad_event(btn: int) -> void:
 				toggle_pause()
 		else:
 			tap_pending = true
+	elif btn == JOY_BUTTON_A and reveal_i >= 0:
+		reveal_next()
 	elif btn == JOY_BUTTON_A:
 		if phase == "intro" and intro_step == "show":
 			skip_show()
@@ -2229,6 +2237,15 @@ func tick(delta: float) -> void:
 	if paused:
 		redraw_all()
 		return
+	if reveal_i >= 0:
+		reveal_t += delta
+		redraw_all()
+		return   # (1.153) the reveal holds the fight
+	if reveal_state == "" and overlord_fight() and (phase == "fight" or phase == "ko") and cpu != null \
+			and (not cpu.alive("head") or cpu.ratio("torso") < REVEAL_AT or cpu.state == "ko"):
+		start_reveal()
+		redraw_all()
+		return
 	update_coach(delta)
 	if mode == "watch" and not simming:
 		update_live_bets(delta)
@@ -2604,14 +2621,16 @@ func leave_after_results() -> void:
 		get_tree().change_scene_to_file("res://main.tscn")
 		return
 	var keys: Array = []
+	if reveal_state != "" and not won and not GameData.story_seen.has("dad_home"):
+		keys.append("dad_lost")   # (1.153) he's still in there
 	if won and mode == "story" and fight_idx >= 0 and fight_idx != 9:
 		keys.append("post_%d" % fight_idx)   # (OVERLORD's scene is the title: it comes with the table)
 	keys += GameData.pending_stories   # emergent talk, then the year's results: medals, promotion
 	GameData.pending_stories = []
 	# the finale gets the big story screen; everything else plays in the garage when you get back
-	if keys.has("post_9"):
+	if keys.has("post_9") or keys.has("post_9_seen") or keys.has("post_9_dad"):
 		var named: Array = keys.filter(func(k): return typeof(k) == TYPE_STRING)
-		if GameData.queue_stories(named, "res://garage.tscn"):
+		if GameData.queue_stories(named, "res://credits.tscn"):   # (1.153) the title: then the credits
 			GameData.bay_stories = keys.filter(func(k): return typeof(k) != TYPE_STRING)
 			Loading.go("res://story.tscn")
 			return
@@ -4685,6 +4704,9 @@ func draw_ui(c: CanvasItem) -> void:
 
 
 func _draw_ui() -> void:
+	if reveal_i >= 0:
+		draw_reveal()
+		return
 	if phase == "intro" and intro_step == "show":
 		return   # the show: no HUD, no buttons - the overlay does the talking
 	if moment_t > 0.0:
@@ -5299,6 +5321,8 @@ func draw_fighter(f: Fighter, off: Vector2) -> void:
 		})
 	if bk > 0.0:
 		RobotArt.draw_ball(ci, base, f.get_look(), {"facing": f.facing, "k": bk, "spin": f.roll_a, "time": clock, "flash": f.flash > 0.0, "light": fight_light()})
+	if f == cpu and reveal_state != "" and not f.alive("head"):
+		draw_cockpit(f, off)   # (1.153) where OVERLORD's head was: the chair, and him in it
 	if f.state == "special" and TELEGRAPH.has(f.special_id) and f.timer < float(Specials.MOVES[f.special_id]["startup"]):
 		# a heavy special winding up: an orange glow round the body
 		var gc2 := visual_point(f, RobotArt.part_center(f.get_look(), "torso")) + off
@@ -6235,6 +6259,115 @@ func draw_net_hud() -> void:
 
 
 
+# ---------------------------------------------------------------- (1.153) the reveal
+# OVERLORD has a pilot. When its head comes off (or its core drops under REVEAL_AT, or it goes down
+# first), the fight stops: where the head was there's a chair, wires, and your dad strapped into
+# it, his old pad's magenta light on his face. A few lines, then the fight goes on. Knock it out
+# and the only choice is GET HIM OUT (fin_dad): he comes home (GameData.dad_freed). Lose, and he's
+# still in there (story "dad_lost"); the next OVERLORD fight shows him again.
+const REVEAL_AT := 0.45
+const REVEAL_GRACE := 0.7     # seconds a line stays before a tap moves it on (mashing doesn't skip it)
+const REVEAL_LINES := [
+	["NARRATOR", "Where OVERLORD's head was, there's a chair. Wires. A man strapped into it, a pad in his hands."],
+	["YOU", "...Dad?"],
+	["DAD", "Kid. Don't hold back. It won't let me stop, and it won't let me lose."],
+	["KANE", "Keep fighting. Nobody in this building saw anything."],
+	["GUS", "He's alive. All this time. Bring it down, kid. Then we get him out."],
+]
+var reveal_state := ""   # "" not yet, "shown"
+var reveal_i := -1       # the line on screen while the fight holds
+var reveal_t := 0.0
+
+
+func overlord_fight() -> bool:
+	return mode == "story" and fight_idx == GameData.OPPONENTS.size() - 1 and not GameData.story_seen.has("dad_home") and team_c.size() == 1
+
+
+func start_reveal() -> void:
+	reveal_state = "shown"
+	if cpu.alive("head"):
+		cpu.parts["head"]["hp"] = 0.0
+		rip_off(cpu, "head", 0.0, 0)   # the head blows off and shatters
+	cpu.look_dirty = true
+	cpu.pilot_name = tr("YOUR DAD")
+	shake = 26.0
+	hitstop = 0.3
+	Sfx.play("break")
+	Sfx.play("crowd_ooh", 0.0, -2.0)
+	reveal_i = 0
+	reveal_t = 0.0
+	if not GameData.story_seen.has("dad_seen"):
+		GameData.story_seen.append("dad_seen")
+	rec_mark("reveal", 220.0, "There's a pilot inside %s", [rec_name(cpu)], 4.0)
+	PlayLog.add("fight", "the reveal")
+
+
+func reveal_next() -> void:
+	if reveal_t < REVEAL_GRACE:
+		return
+	reveal_i += 1
+	reveal_t = 0.0
+	Sfx.play("click")
+	if reveal_i >= REVEAL_LINES.size():
+		reveal_i = -1   # back to the fight
+		cheer = 3.0
+
+
+## The chair inside OVERLORD's neck: a dark hollow, straps, cables, his face lit magenta.
+func draw_cockpit(f: Fighter, off: Vector2) -> void:
+	var g := RobotArt.geom(f.get_look())
+	var tr_r: Rect2 = g["torso"]
+	var neck := visual_point(f, Vector2(tr_r.get_center().x, tr_r.position.y)) + off
+	if f.state == "ko":
+		neck = f.pos + Vector2(f.facing * -30.0, -40.0) * f.scale + off   # knocked down: the chair lies with the body
+	var s := f.scale
+	var hole := Rect2(neck + Vector2(-34, -62) * s, Vector2(68, 66) * s)
+	ci.draw_rect(hole, Color(0.05, 0.03, 0.06))
+	ci.draw_rect(hole, Color(0.35, 0.1, 0.3), false, 2.0)
+	var pulse := 0.55 + 0.45 * sin(clock * 3.0)
+	ci.draw_circle(hole.get_center() + Vector2(0, 6) * s, 44.0 * s, Color(1.0, 0.2, 0.85, 0.12 * pulse))
+	# the chair back and the cables into it
+	ci.draw_rect(Rect2(hole.position + Vector2(14, 6) * s, Vector2(40, 52) * s), Color(0.2, 0.18, 0.22))
+	for k in 3:
+		var a := hole.position + Vector2((16 + k * 18) * s, 2 * s)
+		ci.draw_line(a, a + Vector2((k - 1) * 6 * s, -18 * s), Color(0.15, 0.15, 0.18), 3.0 * s)
+	var face := hole.get_center() + Vector2(0, -6) * s
+	PilotArt.draw_head(ci, face, 15.0 * s, GameData.dad_look(), -float(f.facing), 0.0)
+	# straps across his chest
+	ci.draw_line(face + Vector2(-16, 18) * s, face + Vector2(16, 34) * s, Color(0.1, 0.1, 0.12), 4.0 * s)
+	ci.draw_line(face + Vector2(16, 18) * s, face + Vector2(-16, 34) * s, Color(0.1, 0.1, 0.12), 4.0 * s)
+	ci.draw_circle(face + Vector2(0, 30) * s, 4.0 * s, Color(1.0, 0.25, 0.85, pulse))   # his pad's light
+
+
+## The fight holds: his face close up, magenta from below, and the line.
+func draw_reveal() -> void:
+	ci.draw_rect(Rect2(Vector2.ZERO, screen), Color(0.0, 0.0, 0.02, 0.72))
+	var bar := screen.y * 0.09
+	ci.draw_rect(Rect2(0, 0, screen.x, bar), Color.BLACK)
+	ci.draw_rect(Rect2(0, screen.y - bar, screen.x, bar), Color.BLACK)
+	var c := Vector2(screen.x * 0.5, screen.y * 0.36)
+	var r := screen.y * 0.14
+	var pulse := 0.6 + 0.4 * sin(Time.get_ticks_msec() / 1000.0 * 2.4)
+	ci.draw_circle(c, r * 1.7, Color(1.0, 0.2, 0.85, 0.1 * pulse))
+	ci.draw_circle(c, r * 1.25, Color(0.06, 0.04, 0.08))
+	for k in 4:
+		var a := -PI * 0.85 + k * 0.5
+		ci.draw_line(c + Vector2(cos(a), sin(a)) * r * 1.25, c + Vector2(cos(a), sin(a)) * r * 2.2, Color(0.18, 0.16, 0.2), 6.0)
+	var who := str(REVEAL_LINES[reveal_i][0])
+	PilotArt.light = "overlord"
+	PilotArt.draw_head(ci, c, r, GameData.dad_look(), 1.0, 0.6 if who == "DAD" and fmod(reveal_t * 8.0, 1.0) < 0.5 else 0.0)
+	PilotArt.light = fight_light()
+	ci.draw_arc(c, r * 1.25, 0, TAU, 64, Color(1.0, 0.25, 0.85, 0.7 * pulse), 4.0)
+	var box := Rect2(screen.x * 0.12, screen.y * 0.62, screen.x * 0.76, screen.y * 0.2)
+	ci.draw_rect(box, Color(0.04, 0.04, 0.06, 0.92))
+	ci.draw_rect(box, GUI.MUTED, false, 1.5)
+	var name_c: Color = Color(Story.SPEAKERS.get(who, {}).get("color", "#d0d0d0"))   # style-ok: the speaker's own colour
+	ci.draw_string(font_head, box.position + Vector2(18, 30), tr(who), HORIZONTAL_ALIGNMENT_LEFT, -1, fs(18), name_c)
+	ci.draw_multiline_string(font, box.position + Vector2(18, 58), tr(str(REVEAL_LINES[reveal_i][1])), HORIZONTAL_ALIGNMENT_LEFT, box.size.x - 36.0, fs(20), -1, GUI.TEXT)
+	if reveal_t >= REVEAL_GRACE:
+		ci.draw_string(font, Vector2(0, screen.y - bar - 10.0), tr("Tap to continue"), HORIZONTAL_ALIGNMENT_CENTER, screen.x, fs(14), GUI.MUTED)
+
+
 # ---------------------------------------------------------------- (1.148) combo trials
 # TRIALS (against the Mop Bucket) runs through combos built from this robot's own kit: strings of
 # plain hits, its parts' moves, its torso commands, a throw, and a normal cancelled into each of its
@@ -6492,9 +6625,18 @@ var fin_hit := false
 var fin_rects := [Rect2(), Rect2()]
 var fin_quiet := false
 var fin_choice := ""     # what you chose, for the results and BotMedia: "scrap", "spare" or ""
+var fin_dad := false     # (1.153) the OVERLORD fight: the only choice is getting him out
 
 
 func fin_offer_check(att: Fighter, d: Fighter) -> void:
+	if att.team == 0 and overlord_fight() and team_c.size() == 1:
+		# (1.153) your dad's in there: no scrapping, only getting him out, and no clock on it
+		fin_state = "offer"
+		fin_dad = true
+		fin_t = 0.0
+		fin_win = att
+		fin_lose = d
+		return
 	if (mode != "story" and mode != "pickup") or att.team != 0 or team_p.size() > 1 or team_c.size() > 1 or course_step >= 0:
 		return
 	if first_fight() or str(opp.get("junk", "")) != "":
@@ -6515,6 +6657,10 @@ func update_finisher(delta: float, i: Dictionary) -> void:
 			if moment_t > 0.0:
 				return   # the K.O. plays first
 			fin_t += delta
+			if fin_dad:
+				if i.get("punch", false) or i.get("kick", false) or i.get("block_press", false) or tap_pending:
+					start_finisher("spare")
+				return
 			if i.get("punch", false):
 				start_finisher("scrap")
 			elif i.get("block_press", false):
@@ -6537,7 +6683,7 @@ func update_finisher(delta: float, i: Dictionary) -> void:
 				finish_match()
 		"spare":
 			fin_t += delta
-			if fin_t >= 1.6:
+			if fin_t >= (3.2 if fin_dad else 1.6):
 				fin_state = ""
 				fin_pose = ""
 				finish_match()
@@ -6550,6 +6696,15 @@ func start_finisher(kind: String) -> void:
 	fin_hit = false
 	Sfx.play("click")
 	PlayLog.add("fight", "finisher: %s" % kind)
+	if kind == "spare" and fin_dad:
+		fin_pose = ""
+		popup(tr("GET HIM OUT"), fin_lose.pos + Vector2(0, -200.0 * fin_lose.scale), GUI.GREEN)
+		pilot_say(0, "spare", true, tr("Hold on, Dad. We're getting you out."))
+		cheer = 4.0
+		Sfx.play("crowd_cheer", 0.05)
+		rec_mark("spare", 200.0, "%s frees the pilot inside %s", [rec_name(fin_win), rec_name(fin_lose)], 3.0)
+		GameData.dad_freed()
+		return
 	if kind == "spare":
 		fin_pose = "bow"
 		popup(tr("SPARED"), fin_lose.pos + Vector2(0, -200.0 * fin_lose.scale), GUI.GREEN)
@@ -6620,6 +6775,16 @@ func finisher_strike() -> void:
 func draw_finisher_offer() -> void:
 	fin_rects = [Rect2(), Rect2()]
 	if fin_state != "offer" or moment_t > 0.0:
+		return
+	if fin_dad:
+		var dw := minf(screen.x * 0.4, 380.0)
+		var dr := Rect2(screen.x * 0.5 - dw * 0.5, screen.y * 0.62, dw, 76.0)
+		fin_rects = [dr, dr]
+		ci.draw_string(font_head, Vector2(0, dr.position.y - 22.0), tr("IT'S OVER"), HORIZONTAL_ALIGNMENT_CENTER, screen.x, fs(30), GUI.TEXT)
+		ci.draw_rect(dr, Color(0.05, 0.05, 0.07, 0.92))
+		ci.draw_rect(dr, GUI.GREEN, false, 3.0)
+		ci.draw_string(font_head, dr.position + Vector2(0, 40), tr("GET HIM OUT"), HORIZONTAL_ALIGNMENT_CENTER, dr.size.x, fs(26), GUI.GREEN)
+		ci.draw_string(font, dr.position + Vector2(0, 64), tr("tap, or any button"), HORIZONTAL_ALIGNMENT_CENTER, dr.size.x, fs(12), GUI.MUTED)
 		return
 	var w := minf(screen.x * 0.3, 300.0)
 	var h := 72.0

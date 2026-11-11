@@ -145,7 +145,7 @@ func _ready() -> void:
 	gd.quick = {}
 
 	# 7. other scenes load
-	for path in ["res://main.tscn", "res://saves.tscn", "res://settings.tscn", "res://opening.tscn"]:
+	for path in ["res://main.tscn", "res://saves.tscn", "res://settings.tscn", "res://opening.tscn", "res://credits.tscn"]:
 		var sc = load(path)
 		var node = sc.instantiate() if sc != null else null
 		var made: bool = node != null
@@ -155,6 +155,17 @@ func _ready() -> void:
 			node.queue_free()
 			await frames(2)
 		ok("scene " + path.get_file(), made)
+
+	# 8. the ending's pieces are there (1.153)
+	var St = load("res://story_data.gd")
+	var missing: Array = []
+	for k in ["pre_9", "post_9", "post_9_seen", "post_9_dad", "dad_home_scene", "dad_lost"]:
+		if not St.SCENES.has(k):
+			missing.append(k)
+	ok("ending scenes", missing.is_empty(), str(missing))
+	var h0: int = gd.hands()
+	gd.dad_freed()
+	ok("dad comes home", gd.dad_home() and gd.hands() == h0 + 1, "hands %d -> %d" % [h0, gd.hands()])
 
 	print("SMOKE DONE ok=%d fail=%d" % [oks, fails])
 	get_tree().quit(1 if fails > 0 else 0)

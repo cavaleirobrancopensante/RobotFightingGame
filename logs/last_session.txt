@@ -1,31 +1,15 @@
-ROBOT FIGHTING GAME - error log (2026-11-11 23:26:14, Godot 4.7-stable (official))
+ROBOT FIGHTING GAME - error log (2026-11-11 23:31:09, Godot 4.7-stable (official))
 
 == THIS SESSION: 0 ==
 (no errors)
 
 == PREVIOUS SESSION ==
-[23:08:34] SCRIPT ERROR: Invalid call. Nonexistent function 'oops' in base 'Nil'.
-    at res://garage.gd:532 (tab_list)
+[23:30:05] SCRIPT ERROR: Invalid access to property or key 'reward' on a base object of type 'Dictionary'.
+    at res://game_data.gd:2390 (current_reward)
 GDScript backtrace (most recent call first):
-    [0] tab_list (res://garage.gd:532)
-    [1] refresh (res://garage.gd:1162)
-    [2] _ready (res://garage.gd:504)
-    [3] _ready (res://zz_smoke.gd:83)
-    [4] frames (res://zz_smoke.gd:21)
-
-[23:08:34] SCRIPT ERROR: Invalid call. Nonexistent function 'oops' in base 'Nil'.
-    at res://garage.gd:532 (tab_list)
-GDScript backtrace (most recent call first):
-    [0] tab_list (res://garage.gd:532)
-    [1] build_rail (res://garage.gd:663)
-    [2] refresh (res://garage.gd:1180)
-    [3] _ready (res://garage.gd:504)
-    [4] _ready (res://zz_smoke.gd:83)
-    [5] frames (res://zz_smoke.gd:21)
-
-[23:08:35] SCRIPT ERROR: Invalid call. Nonexistent function 'oops' in base 'Nil'.
-    at res://garage.gd:532 (tab_list)
-GDScript backtrace (most recent call first):
-    [0] tab_list (res://garage.gd:532)
-    [1] _ready (res://zz_smoke.gd:88)
-    [2] frames (res://zz_smoke.gd:21)
+    [0] current_reward (res://game_data.gd:2390)
+    [1] record_result (res://game_data.gd:5073)
+    [2] finish_match (res://fight.gd:2594)
+    [3] update_finisher (res://fight.gd:6687)
+    [4] tick (res://fight.gd:2341)
+    [5] _process (res://fight.gd:2218)

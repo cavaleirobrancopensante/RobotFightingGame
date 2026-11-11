@@ -373,6 +373,13 @@ static func _front(ci: CanvasItem, size: Vector2, scene: String, t: float, info:
 			# Gus works on the robot's leg with a wrench, sparks fly (the pilot is up the ladder behind)
 			PilotArt.draw_person(ci, Vector2(robot_base.x - 84 * s, floor_y), s, gus, 1.0, "wrench", t)
 			_head(info, "GUS", Vector2(robot_base.x - 84 * s, floor_y), s)
+			if info.get("dad", false):
+				# (1.153) your dad, home: on a stool by the bench with his coffee, his arm in a sling
+				var df := Vector2(size.x * 0.86, floor_y)
+				PilotArt.draw_seat(ci, df, s, -1.0, "stool")
+				PilotArt.draw_person(ci, df, s, info.get("dad_look", {}), -1.0, "drink", t + 1.3, Color(0.85, 0.85, 0.8))
+				_ln(ci, df + Vector2(-10 * s, -58 * s), df + Vector2(8 * s, -40 * s), Color(0.92, 0.92, 0.88), 4 * s)   # the sling
+				_head(info, "DAD", df, s, true)
 			var spark_age: float = info.get("spark", 99.0)
 			if fmod(t, 2.4) < 0.25 or spark_age < 0.6:
 				_sparks(ci, Vector2(robot_base.x - 50 * s, floor_y - robot_h * 0.25), t, 1.5 if spark_age < 0.6 else 1.0)

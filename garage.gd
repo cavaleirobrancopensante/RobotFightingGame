@@ -4783,7 +4783,7 @@ func scene_info() -> Dictionary:
 			"medals": GameData.trophies, "wall": GameData.wall_trophies(), "gus_point": dad_talk and talk_story, "backup": backup, "stats": GameData.career_stats,
 			"wins": GameData.wins, "losses": GameData.losses, "champion": GameData.champion,
 			"patron": patron_info() if scene == "pub" else {}, "tv": tv_info() if scene == "pub" else {},
-			"controllers": GameData.owned_controllers, "using": str(GameData.pilot_look.get("controller", "gamepad")), "rosary": GameData.story_seen.has("dad_rosary"),
+			"controllers": GameData.owned_controllers, "using": str(GameData.pilot_look.get("controller", "gamepad")), "rosary": GameData.story_seen.has("dad_rosary"), "dad": GameData.dad_home(), "dad_look": GameData.dad_look(),
 			"candle": GameData.candle_day == GameData.today_key(), "mass": GameData.mass_time(),
 			"feast": GameData.holy_day() in ["christmas", "easter"], "crib": (GameData.week == 48 and GameData.day_index() >= 2) or GameData.week > 48}
 

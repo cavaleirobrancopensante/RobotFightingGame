@@ -45,7 +45,7 @@ const W_TOL := [0.02, 0.03, 0.0, 0.0, 0.0, 3.0, 0.1]
 
 ## What a moment is called and how much it's worth (the best three of a fight become clips).
 const KIND_NAMES := {"ko": "K.O.", "rip": "PART TORN OFF", "finisher": "FINISHER", "special": "SPECIAL",
-		"down": "KNOCKDOWN", "guard": "GUARD BROKEN", "combo": "COMBO", "comeback": "COMEBACK", "close": "AT THE BELL", "scrap": "SCRAPPED", "spare": "SPARED"}
+		"down": "KNOCKDOWN", "guard": "GUARD BROKEN", "combo": "COMBO", "comeback": "COMEBACK", "close": "AT THE BELL", "scrap": "SCRAPPED", "spare": "SPARED", "reveal": "THE PILOT INSIDE"}
 
 
 static func _hold(i: int, world: bool) -> bool:

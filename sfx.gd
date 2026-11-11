@@ -54,6 +54,7 @@ const MENU_SOUNDS := ["click", "buy", "equip", "error", "sell", "repair", "talk"
 ## announcers boom. Unknown speakers get the plain "talk" blip.
 const VOICE_OF := {
 	"GUS": ["voice_gravel", 1.0],
+	"DAD": ["voice_gravel", 0.82],   # (1.153) lower than Gus, rough from the chair
 	"SILAS": ["voice_smooth", 0.82],   # (1.98) old Silas of Brassworks & Sons
 	"MAGDA": ["voice_gravel", 1.35],   # (1.99) Magda of Hellfire Heavy, a foreman's rasp
 	"DEX": ["voice_smooth", 1.2],   # (1.100) Dex the Volta salesman

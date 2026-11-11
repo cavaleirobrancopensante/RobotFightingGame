@@ -3,7 +3,7 @@ const PlayLog = preload("res://playlog.gd")   # (1.87) the playtest log
 
 # helper scripts, loaded by path so the game also runs without an editor scan
 ## The game's version, shown on the main menu. Bump it with every change (1.1, 1.2, ...).
-const VERSION := "1.152"
+const VERSION := "1.153"
 const Arena = preload("res://arena.gd")
 const I18n = preload("res://i18n.gd")
 const Catalog = preload("res://catalog.gd")
@@ -1292,7 +1292,22 @@ var overtime := false              # work through tonight
 
 
 func hands() -> int:
-	return 1 + mechanics
+	return 1 + mechanics + (1 if dad_home() else 0)   # (1.153) your dad turns a wrench too
+
+
+## (1.153) Your dad is home: out of Kane's chair, in the bay with Gus.
+func dad_home() -> bool:
+	return story_seen.has("dad_home")
+
+
+## Spared at the end of the OVERLORD fight: he comes home (the scene plays back in the bay).
+func dad_freed() -> void:
+	if dad_home():
+		return
+	story_seen.append("dad_home")
+	pending_stories.append("dad_home_scene")
+	log_day(tr("We got Dad out of OVERLORD."))
+	PlayLog.add("story", "dad freed")
 
 
 func max_mechanics() -> int:
@@ -5352,7 +5367,8 @@ func finish_title(ev: Dictionary) -> String:
 		text += tr(". Prize $%d and a trophy for the office wall!") % prize
 	if m == 1:
 		if not champion:
-			pending_stories.append("post_9")
+			# (1.153) the title scene knows what you know about your dad
+			pending_stories.append("post_9_dad" if dad_home() else ("post_9_seen" if story_seen.has("dad_seen") else "post_9"))
 		champion = true
 		make_offers()
 	else:
