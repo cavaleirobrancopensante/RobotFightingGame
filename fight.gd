@@ -40,8 +40,8 @@ const MOVE_PUNCH := 0.6
 const MOVE_BLOCK := 0.4
 const MOVE_CHARGE := 0.35
 const KICK_HOP_UP := 300.0
-const PUNCHES := ["punch", "low_punch", "uppercut", "hook", "overhand", "shove", "elbow"]
-const KICKS := ["kick", "high_kick", "sweep", "push_kick", "roundhouse", "axe_kick", "knee"]
+var PUNCHES := ["punch", "low_punch", "uppercut", "hook", "overhand", "shove", "elbow"]
+var KICKS := ["kick", "high_kick", "sweep", "push_kick", "roundhouse", "axe_kick", "knee"]
 const JUMP_SPEED := 860.0
 const STUN_K := 1.18          # hit stun and knockback a bit longer: room after each hit, less mashing
 const KNOCK_K := 1.125
@@ -72,7 +72,7 @@ const CHARGE_DMG := 2.2
 const CHARGE_DRAIN := 0.22    # share of the tank per second while charging
 
 ## The six normal hits: PUNCH or KICK, with the pad held up, level or down.
-const ATTACKS := {
+var ATTACKS := {
 	"punch":     {"startup": 0.07, "active": 0.10, "recovery": 0.16, "reach": 82.0,  "damage": 7.0,  "height": "high", "stun": 0.22, "limb": "arm", "zone": "punch", "family": "punch"},
 	"low_punch": {"startup": 0.08, "active": 0.10, "recovery": 0.20, "reach": 80.0,  "damage": 6.0,  "height": "low",  "stun": 0.22, "limb": "arm", "zone": "low_punch", "family": "punch"},
 	"uppercut":  {"startup": 0.12, "active": 0.10, "recovery": 0.35, "reach": 72.0,  "damage": 13.0, "height": "mid",  "stun": 0.50, "limb": "arm", "zone": "uppercut", "launch": -700.0, "family": "punch"},
@@ -583,7 +583,29 @@ func fs(size: float) -> int:
 	return UIK.tsz(size)   # the player's text size (Settings > Text size)
 
 
+## (1.147) moves from parts join the attacks: each over its base hit, costed and aimed like it
+func add_part_moves() -> void:
+	var pm := PartMoves.attacks(ATTACKS)
+	for id in pm:
+		var a: Dictionary = pm[id]
+		ATTACKS[id] = a
+		var pose := str(a.get("pose", "punch"))
+		if a["family"] == "punch" and not PUNCHES.has(id):
+			PUNCHES.append(id)
+		elif a["family"] == "kick" and not KICKS.has(id):
+			KICKS.append(id)
+		MOVE_COST[id] = MOVE_COST.get(pose, 1.6)
+		if AIM_TILT.has(pose):
+			AIM_TILT[id] = AIM_TILT[pose]
+
+
+## An attack's drawn pose: its own name, or the base hit a part move is drawn with.
+func pose_of(attack: String) -> String:
+	return str(ATTACKS[attack].get("pose", attack)) if ATTACKS.has(attack) else attack
+
+
 func _ready() -> void:
+	add_part_moves()
 	fight_seed = int(GameData.fight_seed) if int(GameData.fight_seed) != 0 else randi()
 	GameData.fight_seed = 0
 	frng.seed = fight_seed
@@ -907,6 +929,11 @@ func make_fighter(spec: Dictionary) -> Fighter:
 		var psig := str(GameData.part_def(str(pid)).get("sig", ""))
 		if psig != "" and Specials.MOVES.has(psig) and not f.specials.has(psig):
 			f.specials.append(psig)
+	# (1.147) three parts from one maker wake its two signatures, while the robot has room for them
+	for mk in f.sets:
+		for sid in Specials.MOVES:
+			if str(Specials.MOVES[sid].get("set_sig", "")) == str(mk) and not f.specials.has(sid) and f.specials.size() < PartMoves.MAX_INPUTS:
+				f.specials.append(sid)
 	for t in spec.get("traits", []):
 		var tid: String = t["trait"]
 		f.gtraits[tid] = f.gtraits.get(tid, 0.0) + Catalog.trait_value(t)
@@ -1571,6 +1598,8 @@ func read_ai_input(delta: float) -> Dictionary:
 		i[k] = true
 	if ai_plan.get("fresh", false) and ai_plan.has("tap"):
 		i[ai_plan["tap"]] = true
+		if ai_plan.has("tap2"):
+			i[ai_plan["tap2"]] = true   # (1.147) a throw: both buttons
 	ai_plan["fresh"] = false
 	var melee := ai_melee()
 	# follow-up after a hook / EMP / booster: they're helpless, so hit them with the best thing we have
@@ -1764,6 +1793,11 @@ func ai_decide(dist: float, toward: String, away: String) -> Dictionary:
 	var atk := 0.68 if aggro else 0.55
 	if cpu.style == "tank":
 		atk = 0.45
+	# (1.147) a guard up close against a gripping arm: throw it; now and then a torso command
+	if player.blocking and can_throw(cpu) and frng.randf() < 0.3 + 0.3 * ai_smart:
+		return {"tap": "punch", "tap2": "kick"}
+	if frng.randf() < 0.1 and command_for(cpu, "punch") != "":
+		return {"hold": [away], "tap": "punch" if frng.randf() < 0.5 else "kick"}
 	if r < atk * 0.45 and can_punch:
 		return {"tap": "punch"}
 	if r < atk * 0.75 and can_kick:
@@ -2523,7 +2557,7 @@ func quit_fight() -> void:
 # limb draws, times the move's weight: punches are cheap, kicks are hungry. Refills when you
 # stop attacking. Empty it and you burn out.
 
-const MOVE_COST := {"punch": 1.0, "low_punch": 1.0, "uppercut": 1.3, "sweep": 2.0, "kick": 2.6, "high_kick": 2.8, "fly_kick": 2.4, "hammer": 1.6,
+var MOVE_COST := {"punch": 1.0, "low_punch": 1.0, "uppercut": 1.3, "sweep": 2.0, "kick": 2.6, "high_kick": 2.8, "fly_kick": 2.4, "hammer": 1.6,
 		"hook": 1.1, "overhand": 1.9, "shove": 0.9, "elbow": 1.0, "push_kick": 2.2, "roundhouse": 3.0, "axe_kick": 3.0, "knee": 2.2}
 const REFILL := 0.20          # share of the tank refilled per second when not attacking
 const REFILL_DELAY := 0.6     # seconds after a move before it starts refilling
@@ -2623,6 +2657,11 @@ func start_attack(f: Fighter, attack: String, charge: float = 0.0) -> void:
 	if (attack == "punch" or attack == "kick") and f.tech.has(limb) and ATTACKS.has(str(f.tech[limb])):
 		attack = str(f.tech[limb])   # (1.93) this limb's technique chip
 		a = ATTACKS[attack]
+	if attack in ["uppercut", "low_punch", "high_kick", "sweep"] and f.parts.get(limb) is Dictionary and not f.parts[limb].is_empty():
+		var sm := PartMoves.shape_move(str(f.parts[limb].get("shape", "")), attack)   # (1.147) the part's own move
+		if sm != "" and ATTACKS.has(sm) and str(f.parts[limb].get("swap", "")) == "":
+			attack = sm
+			a = ATTACKS[attack]
 	f.state = attack
 	f.kick_hop = false
 	pilot_jerk(f.team)
@@ -2645,7 +2684,7 @@ func start_attack(f: Fighter, attack: String, charge: float = 0.0) -> void:
 	f.hit_done = false
 	f.landed = false
 	f.blocking = false
-	f.crouching = attack == "sweep" or attack == "low_punch"
+	f.crouching = pose_of(attack) == "sweep" or pose_of(attack) == "low_punch"
 	f.aim_ang = aim_angle(f, attack)
 	if attack == "fly_kick":
 		f.vel = Vector2(f.facing * 430.0 * f.scale, 620.0)   # dives at the floor, forward
@@ -3316,6 +3355,10 @@ func update_fighter(f: Fighter, o: Fighter, i: Dictionary, delta: float) -> void
 		if sp != "":
 			start_special(f, sp)
 			f.easy_sp = easy
+		elif punch and kick and f.on_ground and can_throw(f):
+			start_attack(f, "throw")   # (1.147) a gripping arm, up close: a throw
+		elif (punch or kick) and f.on_ground and h == 1 and backing(f, i) and command_for(f, "punch" if punch else "kick") != "":
+			start_attack(f, command_for(f, "punch" if punch else "kick"))   # (1.147) back + button: the torso maker's command
 		elif not f.on_ground and ((punch and f.arms() > 0) or (kick and f.legs() > 0)):
 			start_attack(f, "hammer" if punch else "fly_kick")
 		elif (punch and f.arms() > 0) or (kick and f.legs() > 0):
@@ -3518,7 +3561,7 @@ func choose_part(att: Fighter, d: Fighter, zone_name: String, sure: bool = false
 func strike_pose(f: Fighter) -> String:
 	if f.state == "special" and Specials.MOVES.has(f.special_id):
 		return str(Specials.MOVES[f.special_id].get("pose", "punch"))
-	return f.state
+	return pose_of(f.state)
 
 
 ## The striking line of f's limb in a pose, in world coordinates: {"a", "b", "r"}.
@@ -3595,7 +3638,7 @@ func aim_angle(f: Fighter, attack: String) -> float:
 
 ## How far each hit can tilt toward its target: [its own angle, most it tilts up, most it tilts down].
 ## Small enough that crouching under a high punch, or jumping a sweep, still works.
-const AIM_TILT := {"punch": [0.02, 0.30, 0.30], "low_punch": [0.46, 0.25, 0.25], "uppercut": [-0.67, 0.2, 0.55],
+var AIM_TILT := {"punch": [0.02, 0.30, 0.30], "low_punch": [0.46, 0.25, 0.25], "uppercut": [-0.67, 0.2, 0.55],
 		"kick": [-0.17, 0.25, 0.25], "high_kick": [-0.69, 0.2, 0.5],
 		"hook": [-0.1, 0.2, 0.25], "overhand": [0.07, 0.2, 0.3], "shove": [0.14, 0.2, 0.2], "push_kick": [-0.31, 0.2, 0.25], "roundhouse": [-0.57, 0.2, 0.45]}
 
@@ -3851,6 +3894,12 @@ func apply_hit(att: Fighter, d: Fighter, a: Dictionary, at: Vector2) -> void:
 			burn += limb_trait(att, "head", "burn")   # (1.99) a Welder's Mask: every hit comes with a spit of flame
 		if burn > 0.0 and d.alive(slot):
 			d.burns.append({"slot": slot, "dps": burn / 3.0 * att.gpow, "t": 6.0 if att.sets.has("hellfire") else 3.0})
+		if a.has("burn") and d.alive(slot):
+			d.burns.append({"slot": slot, "dps": float(a["burn"]) / 3.0 * att.gpow, "t": 3.0})   # (1.147) a part move that burns
+		if a.has("steam"):
+			steam_cloud(att, float(a["steam"]), true)   # (1.147) a part move that vents
+		if a.get("throw", false):
+			throw_over(att, d)
 		var crush := off_trait(att, src, "crush")
 		if crush > 0.0 and d.alive(slot):
 			# (1.97) a Crane Hook clamps on and keeps crushing
@@ -4821,7 +4870,7 @@ func draw_projectiles(off: Vector2) -> void:
 func body_pose(f: Fighter) -> Dictionary:
 	var base := f.pos
 	var rot := 0.0
-	var state := f.state
+	var state := pose_of(f.state)   # (1.147) a part move is drawn as its base hit
 	var extended := false
 	if state == "special":
 		var m: Dictionary = Specials.MOVES[f.special_id]
@@ -5600,7 +5649,7 @@ func frame_data(f: Fighter, attack: String, limb: String) -> Dictionary:
 	var after := ac - 1 + rc   # frames left once it touches
 	var on_hit := roundi(float(a["stun"]) * STUN_K * 60.0) - after
 	var on_block := -after
-	var bounce: bool = str(a.get("family", "")) == "punch" and not a.has("through") and not a.has("push")
+	var bounce: bool = str(a.get("family", "")) == "punch" and not a.has("through") and not a.has("push") and not a.get("unblockable", false)
 	if bounce:
 		on_block = -roundi(0.32 * 60.0)   # block beats punch: the fist bounces off
 	var dmg := float(a["damage"])
@@ -5644,7 +5693,17 @@ const NORMAL_NAMES := {"punch": "Jab", "low_punch": "Low punch", "uppercut": "Up
 func move_name(attack: String) -> String:
 	if NORMAL_NAMES.has(attack):
 		return tr(NORMAL_NAMES[attack])
+	if PartMoves.name_of(attack) != "":
+		return tr(PartMoves.name_of(attack))   # (1.147) moves from parts
 	return GameData.tech_name(attack)
+
+
+## (1.147) the hit a limb really throws for a base hit: its part's own move when it has one.
+func limb_move(f: Fighter, at: String, slot: String) -> String:
+	if not (at in ["uppercut", "low_punch", "high_kick", "sweep"]) or not f.alive(slot) or str(f.parts[slot].get("swap", "")) != "":
+		return at
+	var sm := PartMoves.shape_move(str(f.parts[slot].get("shape", "")), at)
+	return sm if sm != "" and ATTACKS.has(sm) else at
 
 
 func slot_word(slot: String) -> String:
@@ -5700,13 +5759,19 @@ func draw_frame_table() -> void:
 	var leg := player.next_limb("leg", true)
 	for at in ["punch", "low_punch", "uppercut", "hammer"]:
 		if arm != "":
-			rows.append(frame_data(player, at, arm))
+			rows.append(frame_data(player, limb_move(player, at, arm), arm))
 	for slot in ["arm_front", "arm_back"]:
 		if player.tech.has(slot) and ATTACKS.has(str(player.tech[slot])) and player.alive(slot):
 			rows.append(frame_data(player, str(player.tech[slot]), slot))
 	for at in ["kick", "high_kick", "sweep", "fly_kick"]:
 		if leg != "":
-			rows.append(frame_data(player, at, leg))
+			rows.append(frame_data(player, limb_move(player, at, leg), leg))
+	for bt in ["punch", "kick"]:
+		var cm := command_for(player, bt)
+		if cm != "":
+			rows.append(frame_data(player, cm, arm if bt == "punch" else leg))
+	if can_throw_part(player) and arm != "":
+		rows.append(frame_data(player, "throw", arm))
 	for slot in ["leg_front", "leg_back"]:
 		if player.tech.has(slot) and ATTACKS.has(str(player.tech[slot])) and player.alive(slot):
 			rows.append(frame_data(player, str(player.tech[slot]), slot))
@@ -5736,6 +5801,45 @@ func draw_frame_table() -> void:
 			ci.draw_string(font if c == 0 else font_num, Vector2(r.position.x + 16 + cols[c] * (w - 32), y), vals[c], HORIZONTAL_ALIGNMENT_LEFT,
 					(w - 32) * 0.33 if c == 0 else -1, fs(14 if c == 0 else 17), col)
 	ci.draw_string(font, Vector2(r.position.x + 16, r.end.y - 12), tr("HIT / BLOCK: frames ahead (+) or behind (-). Hits cancel on contact."), HORIZONTAL_ALIGNMENT_LEFT, w - 32.0, fs(12), GUI.MUTED)
+
+
+# ---------------------------------------------------------------- (1.147) moves from parts
+## A gripping arm that's still on, and the enemy close enough to grab.
+func can_throw(f: Fighter) -> bool:
+	if f.foe == null or absf(f.foe.pos.x - f.pos.x) > PartMoves.THROW_RANGE * f.scale + 40.0 or not f.foe.on_ground:
+		return false
+	return can_throw_part(f)
+
+
+func can_throw_part(f: Fighter) -> bool:
+	for slot in ["arm_front", "arm_back", "arm_front2", "arm_back2"]:
+		if f.alive(slot) and PartMoves.GRIP.has(str(f.parts[slot].get("shape", ""))):
+			return true
+	return false
+
+
+## Holding the pad away from the enemy.
+func backing(f: Fighter, i: Dictionary) -> bool:
+	return (i.get("right", false) and f.facing == -1 and not i.get("left", false)) or (i.get("left", false) and f.facing == 1 and not i.get("right", false))
+
+
+## The torso maker's command for a button, or "".
+func command_for(f: Fighter, button: String) -> String:
+	var tp = f.parts.get("torso", {})
+	if not (tp is Dictionary) or tp.is_empty():
+		return ""
+	var id := PartMoves.command(str(GameData.part_def(str(tp.get("id", ""))).get("maker", "")), button)
+	return id if ATTACKS.has(id) and f.next_limb("arm" if button == "punch" else "leg", true) != "" else ""
+
+
+## A throw lands: they're flung over you and land on the other side.
+func throw_over(att: Fighter, d: Fighter) -> void:
+	d.pos.x = clampf(att.pos.x - att.facing * 90.0 * att.scale, 60.0, screen.x - 60.0)
+	d.facing = -d.facing
+	att.facing = -att.facing
+	shake = maxf(shake, 10.0)
+	popup(tr("THROWN!"), d.pos + Vector2(0, -200.0 * d.scale), Color(1.0, 0.8, 0.4))
+	Sfx.play("hit_big", 0.1)
 
 
 # ---------------------------------------------------------------- (1.146) habits, for your ghost
@@ -6311,6 +6415,16 @@ func _draw_pause_lines(x: float, y: float, bottom: float) -> void:
 	]
 	if team_p.size() > 1:
 		lines.append([tr("TEAM: tap an enemy part to send your whole team after that robot. ") + (tr("Each numbered pad moves the robot with that number; PUNCH / KICK / BLOCK / JUMP work for all of them.") if control_pads > 1 else tr("Linked controls: every robot follows the one pad.")) + tr(" Switch in Settings > Team controls."), Color(0.5, 0.8, 1.0)])
+	# (1.147) the moves the robot's parts bring
+	var pm_parts: Array = []
+	for slot in ["arm_front", "arm_back", "leg_front", "leg_back", "torso"]:
+		if player.alive(slot):
+			for m in PartMoves.of_part(GameData.part_def(str(player.parts[slot].get("id", "")))):
+				var t := "%s %s" % [tr(str(m[1])), tr(str(m[0]))]
+				if not pm_parts.has(t):
+					pm_parts.append(t)
+	if not pm_parts.is_empty():
+		lines.append([tr("YOUR PARTS' MOVES: %s") % ", ".join(pm_parts), Color(1.0, 0.85, 0.4)])
 	if player.specials.is_empty():
 		lines.append([tr("No special moves installed. Buy training chips in the garage!"), Color(1.0, 0.7, 0.3)])
 	for id in player.specials:

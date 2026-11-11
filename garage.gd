@@ -1666,6 +1666,12 @@ func build_detail() -> void:
 		var tl := GUI.text(tr("TECHNIQUES IT TAKES: %s") % (", ".join(tk.map(func(t): return GameData.tech_name(t))) if not tk.is_empty() else tr("only its plain hit")), 12, GUI.CYAN, "headb")
 		tl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		info.add_child(tl)
+	# (1.147) the moves this part brings to its buttons
+	var pmv: Array = PartMoves.of_part(d)
+	if not pmv.is_empty():
+		var ml := GUI.text(tr("MOVES IT BRINGS: %s") % ", ".join(pmv.map(func(m): return "%s %s" % [tr(str(m[1])), tr(str(m[0]))])), 12, GUI.CYAN, "headb")
+		ml.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		info.add_child(ml)
 	# notes and extras (traits, gadgets)
 	for n in PartNotes.notes(d, kind, health, str(p.get("uid", d["id"]))):
 		var warn := str(n).begins_with("!")
