@@ -155,6 +155,7 @@ class BodyMap extends Control:
 			draw_rect(r, Color(0.9, 0.2, 0.15).lerp(Color(0.3, 0.9, 0.35), h) if h < 1.0 else Color(0.3, 0.9, 0.35))
 var send_button: Button
 var guide_chip: Button   # (1.128) Gus's list: the next thing to do
+var guide_tapped := false   # (1.129) the tour's second stop ends when you tap the chip
 var overlay: Control
 var popup_scroll: ScrollContainer   # the open pop-up's contents (scrolls when they don't fit)
 var popup_footer: VBoxContainer     # the open pop-up's pinned buttons
@@ -2980,11 +2981,10 @@ func job_etas() -> Array:
 
 func tour_steps() -> Array:
 	# short on purpose: one line per stop, and only the stops you can't find by yourself
+	# (1.129) three stops: the big button, Gus's list, the Trials. The list does the rest.
 	return [
-		{"target": "repair", "text": tr("The robot's dented. Repair all puts the dents on the job board. Check the price, then tap it.")},
 		{"target": "next", "text": tr("Time only moves when you press the big yellow button. The bay works on the jobs while it runs.")},
-		{"target": "rail:City", "text": tr("The City, on your tablet. The scrapyard's down at the Docks, an hour away. One dig a day.")},
-		{"target": "dig", "text": tr("Tap Dig anywhere. Some days there's nothing, but it's free.")},
+		{"target": "guide", "text": tr("That's my list, down there. Tap it and I'll take you where to go next. Every one pays a little.")},
 		{"target": "fight", "text": tr("Saturday is the Open Trials. Two wins put us in the Scrap League, two losses and we're out. Practise on my junkers at the scrapyard.")},
 	]
 
@@ -2992,14 +2992,10 @@ func tour_steps() -> Array:
 func tour_done(i: int) -> bool:
 	match i:
 		0:
-			return GameData.repair_all_cost() == 0 or GameData.has_work("m") or repair_tapped
-		1:
 			return tour_clock != "" and tour_clock != clock_key()
+		1:
+			return guide_tapped or GameData.guide_step().is_empty()
 		2:
-			return tab == "Parts"
-		3:
-			return GameData.digs_left <= 0 or tab != "Parts"
-		4:
 			return GameData.wins + GameData.losses > 1
 	return true
 
@@ -3015,6 +3011,8 @@ func tour_target(i: int) -> Control:
 			return fight_button
 		"dig":
 			return dig_button if is_instance_valid(dig_button) else null
+		"guide":
+			return guide_chip
 	if t.begins_with("rail:") and rail_buttons.has(t.substr(5)) and is_instance_valid(rail_buttons[t.substr(5)]):
 		return rail_buttons[t.substr(5)]
 	return null
@@ -6808,7 +6806,7 @@ func update_guide() -> void:
 		note(tr("Gus's list: %s ✓  +$%d") % [tr(str(pay[0])), int(pay[1])])
 		Sfx.play("buy", 0.05)
 	var g := GameData.guide_step()
-	guide_chip.visible = not g.is_empty() and GameData.tour < 0
+	guide_chip.visible = not g.is_empty() and GameData.tour != 0   # the tour's first stop is the big button
 	if guide_chip.visible:
 		guide_chip.text = tr("GUS ›  %s") % tr(str(g["text"]))
 		guide_chip.tooltip_text = tr("Gus's list: the next thing to try. Tap to go there.")
@@ -6820,6 +6818,7 @@ func _on_guide_chip() -> void:
 	if g.is_empty():
 		return
 	PlayLog.add("guide", str(g["id"]))
+	guide_tapped = true
 	var go: Array = g["go"]
 	go_to(str(go[0]), str(go[1]))
 
@@ -6962,64 +6961,67 @@ func open_day_plan() -> void:
 		for e in day_events(tw, tom):
 			bits.append(str(e.get("title", "")))
 		col.add_child(GUI.text(tr("TOMORROW: %s") % (", ".join(bits) if not bits.is_empty() else tr("nothing on")), 15, GUI.HEAD, "headb"))
-	# 3. before you go: what you can still do, done right here (1.124: one terse line each)
-	var todo := VBoxContainer.new()
-	todo.add_theme_constant_override("separation", 6)
-	var cost := GameData.repair_all_cost()
-	if cost > 0:
-		GUI.mark_new(info_line(todo, tr("Repairs"), tr("$%d, %s of work") % [cost, GameData.hours_text(GameData.repair_all_hours())], GUI.TEXT,
-				tr("Repair all $%d") % cost, _plan_do.bind("repair"), GameData.can_repair(cost)), GameData.can_repair(cost))
-	if not GameData.jobs.is_empty() and not GameData.overtime:
-		info_line(todo, tr("Overtime"), tr("8 more hours tonight"), GUI.TEXT, tr("Overtime $%d") % GameData.overtime_cost(), _plan_do.bind("overtime"), GameData.money >= GameData.overtime_cost())
-	if GameData.digs_left > 0:
-		GUI.mark_new(info_line(todo, tr("Dig"), tr("%d%% today, %d%% tomorrow") % [roundi(GameData.dig_luck * 100), roundi(minf(GameData.DIG_LUCK_MAX, GameData.dig_luck + GameData.DIG_LUCK_STEP) * 100)], GUI.TEXT,
-				tr("Dig now") + dig_tag(), _plan_do.bind("dig")), true)
-	var unread := GameData.inbox.size() - GameData.inbox_seen
-	if unread > 0:
-		info_line(todo, tr("Messages"), tr("%d unread") % unread, GUI.TEXT, tr("Read them ›"), func(): close_popup(); go_to("Feed", "all"))
-	var offers_n: int = GameData.Contracts.st()["offers"].size()
-	if offers_n > 0:
-		info_line(todo, tr("Offers"), tr("%d waiting") % offers_n, GUI.TEXT, tr("Deals ›"), func(): close_popup(); go_to("Season", "deals"))
-	if not GameData.Social.drafts().is_empty():
-		info_line(todo, tr("BotMedia"), tr("Your fight post is waiting"), GUI.TEXT, tr("Post ›"), func(): close_popup(); go_to("Feed", "home"))
-	if not GameData.league_night().is_empty() and not evening:
-		info_line(todo, tr("Bets"), tr("Close at the bell"), GUI.TEXT, tr("Bets ›"), func(): close_popup(); go_to("Pub", "bets"))
-	if GameData.day_index() == 6:
-		info_line(todo, tr("Dealer"), tr("Restocks tomorrow"), GUI.TEXT, tr("Dealer ›"), func(): close_popup(); go_to("Parts", "dealer"), GameData.unlocked("shop"))
-	if todo.get_child_count() > 0:
+	# (1.129) week 1 with Gus's list on: only tonight, the bay's work and the big button
+	var simple := GameData.year == 1 and GameData.week == 1 and GameData.guide_on()
+	if not simple:
+		# 3. before you go: what you can still do, done right here (1.124: one terse line each)
+		var todo := VBoxContainer.new()
+		todo.add_theme_constant_override("separation", 6)
+		var cost := GameData.repair_all_cost()
+		if cost > 0:
+			GUI.mark_new(info_line(todo, tr("Repairs"), tr("$%d, %s of work") % [cost, GameData.hours_text(GameData.repair_all_hours())], GUI.TEXT,
+					tr("Repair all $%d") % cost, _plan_do.bind("repair"), GameData.can_repair(cost)), GameData.can_repair(cost))
+		if not GameData.jobs.is_empty() and not GameData.overtime:
+			info_line(todo, tr("Overtime"), tr("8 more hours tonight"), GUI.TEXT, tr("Overtime $%d") % GameData.overtime_cost(), _plan_do.bind("overtime"), GameData.money >= GameData.overtime_cost())
+		if GameData.digs_left > 0:
+			GUI.mark_new(info_line(todo, tr("Dig"), tr("%d%% today, %d%% tomorrow") % [roundi(GameData.dig_luck * 100), roundi(minf(GameData.DIG_LUCK_MAX, GameData.dig_luck + GameData.DIG_LUCK_STEP) * 100)], GUI.TEXT,
+					tr("Dig now") + dig_tag(), _plan_do.bind("dig")), true)
+		var unread := GameData.inbox.size() - GameData.inbox_seen
+		if unread > 0:
+			info_line(todo, tr("Messages"), tr("%d unread") % unread, GUI.TEXT, tr("Read them ›"), func(): close_popup(); go_to("Feed", "all"))
+		var offers_n: int = GameData.Contracts.st()["offers"].size()
+		if offers_n > 0:
+			info_line(todo, tr("Offers"), tr("%d waiting") % offers_n, GUI.TEXT, tr("Deals ›"), func(): close_popup(); go_to("Season", "deals"))
+		if not GameData.Social.drafts().is_empty():
+			info_line(todo, tr("BotMedia"), tr("Your fight post is waiting"), GUI.TEXT, tr("Post ›"), func(): close_popup(); go_to("Feed", "home"))
+		if not GameData.league_night().is_empty() and not evening:
+			info_line(todo, tr("Bets"), tr("Close at the bell"), GUI.TEXT, tr("Bets ›"), func(): close_popup(); go_to("Pub", "bets"))
+		if GameData.day_index() == 6:
+			info_line(todo, tr("Dealer"), tr("Restocks tomorrow"), GUI.TEXT, tr("Dealer ›"), func(): close_popup(); go_to("Parts", "dealer"), GameData.unlocked("shop"))
+		if todo.get_child_count() > 0:
+			col.add_child(GUI.HazardStrip.new())
+			col.add_child(GUI.head_row(tr("BEFORE THE TIME GOES"), "", 15))
+			col.add_child(todo)
+		# 4. coming up: the next three days, folded
+		var soon: Array = []
+		for k in range(1, 4):
+			var di := GameData.day_index() + k
+			var w := GameData.week + di / 7
+			var d := di % 7
+			var bits2: Array = []
+			for e in day_events(w, d):
+				var t := str(e.get("title", ""))
+				if str(e.get("icon", "")) == "rent" and GameData.money < GameData.living_cost():
+					t += " " + tr("(you're short!)")
+				bits2.append(t)
+			if not bits2.is_empty():
+				soon.append(tr(DAY_NAMES[d]) + ": " + ", ".join(bits2))
+		var nt := next_thing()
 		col.add_child(GUI.HazardStrip.new())
-		col.add_child(GUI.head_row(tr("BEFORE THE TIME GOES"), "", 15))
-		col.add_child(todo)
-	# 4. coming up: the next three days, folded
-	var soon: Array = []
-	for k in range(1, 4):
-		var di := GameData.day_index() + k
-		var w := GameData.week + di / 7
-		var d := di % 7
-		var bits2: Array = []
-		for e in day_events(w, d):
-			var t := str(e.get("title", ""))
-			if str(e.get("icon", "")) == "rent" and GameData.money < GameData.living_cost():
-				t += " " + tr("(you're short!)")
-			bits2.append(t)
-		if not bits2.is_empty():
-			soon.append(tr(DAY_NAMES[d]) + ": " + ", ".join(bits2))
-	var nt := next_thing()
-	col.add_child(GUI.HazardStrip.new())
-	if not nt.is_empty() and not (int(nt["w"]) == GameData.week and int(nt["d"]) == GameData.day_index() + 1 and evening):
-		# (1.117) one tap to whatever comes next; the bay works the days in between
-		GUI.mark_new(info_line(col, tr("Next"), "%s, %s" % [tr(DAY_FULL_UP[int(nt["d"])]).capitalize(), str(nt["what"])], GUI.CYAN,
-				tr("Skip to it ▸"), func(): _on_go_to_day(int(nt["d"]), int(nt["w"]), true)), false)
-	if not soon.is_empty():
-		var body := fold(col, tr("COMING UP"), tr("%d days") % soon.size())
-		for line in soon:
-			var sl := GUI.text(str(line), 13, GUI.TEXT)
-			sl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-			body.add_child(sl)
-		if GameData.can_pass_day():
-			# days or weeks ahead: pick the day on the calendar
-			var r7 := flow_bar(body)
-			row_button(r7, tr("Calendar ›"), func(): close_popup(); go_to("Season", "calendar"), true, 170)
+		if not nt.is_empty() and not (int(nt["w"]) == GameData.week and int(nt["d"]) == GameData.day_index() + 1 and evening):
+			# (1.117) one tap to whatever comes next; the bay works the days in between
+			GUI.mark_new(info_line(col, tr("Next"), "%s, %s" % [tr(DAY_FULL_UP[int(nt["d"])]).capitalize(), str(nt["what"])], GUI.CYAN,
+					tr("Skip to it ▸"), func(): _on_go_to_day(int(nt["d"]), int(nt["w"]), true)), false)
+		if not soon.is_empty():
+			var body := fold(col, tr("COMING UP"), tr("%d days") % soon.size())
+			for line in soon:
+				var sl := GUI.text(str(line), 13, GUI.TEXT)
+				sl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+				body.add_child(sl)
+			if GameData.can_pass_day():
+				# days or weeks ahead: pick the day on the calendar
+				var r7 := flow_bar(body)
+				row_button(r7, tr("Calendar ›"), func(): close_popup(); go_to("Season", "calendar"), true, 170)
 	# the decision
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 10)
@@ -8238,6 +8240,20 @@ func _on_bell() -> void:
 ## (1.117) The morning card: the day at a glance (money after the next bill, the robot at the next
 ## bell, the job board, offers, the loan, the dig, what's next). Opens by itself the first time you
 ## look at the bay each day; the Bell chip opens it again. The Bell Check for days without a fight.
+## (1.129) The morning card only comes when the day has something in it: a fight tonight, an offer,
+## a delivery, a loan coming due, a bill this week you can't cover, or a robot that won't be ready.
+func morning_worth() -> bool:
+	if GameData.fight_mode() != "open" and not GameData.current_opponent().is_empty():
+		return true
+	if not GameData.Contracts.st()["offers"].is_empty() or not GameData.deliveries.is_empty():
+		return true
+	if not GameData.loan.is_empty() and int(GameData.loan.get("due", 0)) - GameData.abs_week() <= 1:
+		return true
+	if GameData.weeks_to_bills() <= 1 and GameData.money < GameData.living_cost():
+		return true
+	return bell_readiness(GameData.hours_to_bell()) < 0.6
+
+
 func open_morning_card() -> void:
 	GameData.morning_seen = GameData.day_key(GameData.year, GameData.week, GameData.day_index())
 	var col := open_popup(tr("%s %s") % [tr(DAY_FULL_UP[GameData.day_index()]), tr(GameData.PHASE_NAMES[GameData.phase])])
@@ -9417,8 +9433,10 @@ func check_gus_cards() -> void:
 	# (1.117) the first look at the bay each day: the morning card
 	if tab == "Bay" and GameData.tour < 0 and GameData.story_seen.has("first_garage") \
 			and GameData.morning_seen != GameData.day_key(GameData.year, GameData.week, GameData.day_index()):
-		open_morning_card()
-		return
+		if morning_worth():
+			open_morning_card()
+			return
+		GameData.morning_seen = GameData.day_key(GameData.year, GameData.week, GameData.day_index())   # (1.129) a quiet day: no card
 	var month := (GameData.week - 1) / GameData.MONTH_WEEKS
 	var key := "gus_rent:%d:%d" % [GameData.year, month]
 	if GameData.weeks_to_bills() <= 1 and GameData.money < GameData.living_cost() and GameData.living_cost() > 0 and not GameData.story_seen.has(key):

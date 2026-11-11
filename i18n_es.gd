@@ -4135,4 +4135,7 @@ const T := {
 	"Post about a fight on BotMedia": "Publica sobre una pelea en BotMedia",
 	"Put a bet on a league night": "Apuesta en una noche de liga",
 	"Fit a technique to an arm or leg": "Pon una técnica en un brazo o una pierna",
+	"That's my list, down there. Tap it and I'll take you where to go next. Every one pays a little.": "Esa es mi lista, ahí abajo. Tócala y te llevo adonde ir. Cada una paga un poco.",
+	"Guided start: %s": "Inicio guiado: %s",
+	"OFF, skip it": "APAGADO, saltarlo",
 }

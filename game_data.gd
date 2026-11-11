@@ -3,7 +3,7 @@ const PlayLog = preload("res://playlog.gd")   # (1.87) the playtest log
 
 # helper scripts, loaded by path so the game also runs without an editor scan
 ## The game's version, shown on the main menu. Bump it with every change (1.1, 1.2, ...).
-const VERSION := "1.128"
+const VERSION := "1.129"
 const Arena = preload("res://arena.gd")
 const I18n = preload("res://i18n.gd")
 const Catalog = preload("res://catalog.gd")
@@ -671,7 +671,7 @@ func new_game() -> void:
 		_clear_film()
 	contracts = {}
 	alerts_unseen = 0
-	tour = 0
+	tour = 0 if guide_on() else -1   # (1.129) the guided start can be skipped
 	streak = 0
 	pub_seen = ""
 	digs_left = DIGS_PER_FIGHT
