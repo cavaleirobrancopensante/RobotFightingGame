@@ -1560,6 +1560,8 @@ class GusBust extends Control:
 		draw_rect(Rect2(c.x - r * 0.35, c.y + r * 1.8, r * 0.7, r * 0.5), outfit.darkened(0.2))
 		draw_rect(Rect2(c.x - r * 0.3, c.y + r * 0.75, r * 0.6, r * 0.4), Color(look["skin"]).darkened(0.15))
 		PA.draw_head(self, c, r, look, 0.0, 0.0)
+		if look.get("cross", false):
+			PA.draw_cross(self, Vector2(c.x, c.y + r * 1.3), r * 0.7, Vector2(c.x - r * 0.45, c.y + r * 0.95), Vector2(c.x + r * 0.45, c.y + r * 0.95))
 		PA.light = "neutral"
 
 

@@ -286,7 +286,7 @@ static func draw_controller(ci: CanvasItem, p: Vector2, s: float, kind: String, 
 # ---------------------------------------------------------------- full-body people (garage scenes)
 
 const GUS_LOOK := {"skin": "#6b4530", "hair": "#33507a", "hat": "cap", "beard": "full", "beard_color": "#c4c4c4",
-		"eyes": "#5b3a1e", "glasses": "none", "outfit": "#33507a", "gus": true}
+		"eyes": "#5b3a1e", "glasses": "none", "outfit": "#33507a", "gus": true, "cross": true}
 
 
 ## A standing person. feet = where they stand, s = scale (1.0 is about 70px tall), dir = 1 facing right.
@@ -328,6 +328,9 @@ static func draw_person(ci: CanvasItem, feet: Vector2, s: float, raw: Dictionary
 		_blk(ci, Rect2(hip + Vector2(-9 * s, -20 * s), Vector2(18 * s, 20 * s)), outfit)
 		_ln2(ci, hip + Vector2(-7 * s, -20 * s), neck + Vector2(-7 * s, 0), outfit, 2.5 * s)
 		_ln2(ci, hip + Vector2(7 * s, -20 * s), neck + Vector2(7 * s, 0), outfit, 2.5 * s)
+	if look.get("cross", false):
+		# (1.134) a small gold crucifix on a chain, hanging below the beard
+		draw_cross(ci, neck + Vector2(0, 7 * s), 8 * s, neck + Vector2(-5 * s, 0), neck + Vector2(5 * s, 0))
 	if sitting:
 		_sit_leg(ci, feet, s, dir, pants, 1)
 	# arms: where the hands go for each pose
@@ -613,3 +616,21 @@ static func _sit_leg(ci: CanvasItem, feet: Vector2, s: float, dir: float, pants:
 	_blk(ci, Rect2(Vector2(sx, top + 3 * s), Vector2(8 * s, feet.y - 3 * s - top - 3 * s)), pc)
 	var shoe_x := minf(kx - 8 * s * dir, kx + 4 * s * dir)
 	_rc(ci, Rect2(Vector2(shoe_x, feet.y - 3 * s), Vector2(12 * s, 3 * s)), Color(0.13, 0.1, 0.08).darkened(0.25 if k == 0 else 0.0))
+
+
+## (1.134) A small gold Latin cross on a thin chain: top = where the chain meets the cross, h = its height,
+## the chain runs up to the two neck points. Lit like everything else (a warm glint on the left edge).
+static func draw_cross(ci: CanvasItem, top: Vector2, h: float, chain_l: Vector2, chain_r: Vector2) -> void:
+	var gold := Color(0.93, 0.76, 0.3)
+	var dark := Color(0.45, 0.32, 0.1)
+	var cw := maxf(1.0, h * 0.11)
+	ci.draw_polyline(PackedVector2Array([chain_l, top, chain_r]), Color(0.85, 0.7, 0.32, 0.85), maxf(0.8, h * 0.05), true)
+	var w := maxf(1.6, h * 0.2)   # the bar's thickness
+	var stem := Rect2(top + Vector2(-w * 0.5, 0), Vector2(w, h))
+	var beam := Rect2(top + Vector2(-h * 0.33, h * 0.24), Vector2(h * 0.66, w))
+	for r in [stem, beam]:
+		ci.draw_rect(r.grow(cw * 0.6), dark)
+	for r in [stem, beam]:
+		ci.draw_rect(r, gold)
+	ci.draw_line(stem.position + Vector2(cw * 0.3, cw), stem.position + Vector2(cw * 0.3, h - cw), gold.lightened(0.45), maxf(0.8, cw * 0.6))
+
