@@ -3,7 +3,7 @@ const PlayLog = preload("res://playlog.gd")   # (1.87) the playtest log
 
 # helper scripts, loaded by path so the game also runs without an editor scan
 ## The game's version, shown on the main menu. Bump it with every change (1.1, 1.2, ...).
-const VERSION := "1.140"
+const VERSION := "1.141"
 const Arena = preload("res://arena.gd")
 const I18n = preload("res://i18n.gd")
 const Catalog = preload("res://catalog.gd")
@@ -4865,7 +4865,7 @@ const JUNKERS := {
 		"desc": "Wanders about the ring and bumps into things. Practise chasing and aiming at parts.",
 		"parts": {"head": "junk_head_dome", "torso": "junk_torso_crate", "arm_front": "junk_arm_claw", "arm_back": "junk_arm_claw", "leg_front": "junk_leg_wheel", "leg_back": "junk_leg_wheel"}},
 	"mop": {"name": "MOP BUCKET", "junk": "dummy", "body": "#e0c25a", "style": "tank",
-		"desc": "Stands still and never breaks. Practise your combos and special moves.",
+		"desc": "Stands still and never breaks. The training room: DUMMY sets what it does (block, jump, record and play back), FRAMES shows your frame data.",
 		"parts": {"head": "junk_head", "torso": "junk_torso", "arm_front": "junk_arm", "arm_back": "junk_arm", "leg_front": "junk_leg", "leg_back": "junk_leg"}},
 }
 

@@ -2884,6 +2884,8 @@ func build_overview() -> void:
 	GUI.mark_new(repair_all_btn, total > 0 and GameData.can_repair(total))
 	repair_all_btn.add_theme_color_override("font_color", GUI.AMBER)
 	key.add_child(repair_all_btn)
+	# (1.141) the training room: your robot against Gus's dummy, frame data and dummy settings
+	key.add_child(UI.button(tr("Training room ›"), _on_test_drive.bind("mop", "", "", "bay"), 14, Vector2(0, 38)))
 	var kgap := Control.new()
 	kgap.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	key.add_child(kgap)

@@ -451,6 +451,8 @@ var quit_rect := Rect2()
 var moves_rect := Rect2()
 var reset_rect := Rect2()   # Test Drive: start over
 var hitbox_rect := Rect2()  # Test Drive: show the hit boxes
+var dummy_rect := Rect2()   # (1.141) Training room: what the dummy does
+var frames_rect := Rect2()  # (1.141) Training room: the frame data table
 var hitbox_view := false
 var touch_device := false
 var control_pads := 1      # movement pads on screen (multibot split controls use more)
@@ -944,6 +946,8 @@ func layout() -> void:
 	moves_rect = Rect2(w * 0.5 + 10.0, h * 0.04 + 52.0, 130.0, 44.0)
 	reset_rect = Rect2(w * 0.5 - 290.0, h * 0.04 + 52.0, 130.0, 44.0)
 	hitbox_rect = Rect2(w * 0.5 + 160.0, h * 0.04 + 52.0, 130.0, 44.0)
+	frames_rect = Rect2(w * 0.5 + 160.0, h * 0.04 + 162.0, 130.0, 44.0)
+	dummy_rect = Rect2(w * 0.5 - 290.0, h * 0.04 + 162.0, 130.0, 44.0)
 
 
 # ---------------------------------------------------------------- input
@@ -1083,6 +1087,13 @@ func handle_tap(p: Vector2) -> bool:
 	if mode == "test" and hitbox_rect.has_point(p):
 		hitbox_view = not hitbox_view
 		Sfx.play("click")
+		return true
+	if mode == "test" and frames_rect.has_point(p):
+		frames_view = not frames_view
+		Sfx.play("click")
+		return true
+	if mode == "test" and training_dummy() and dummy_rect.has_point(p):
+		next_dummy_mode()
 		return true
 	if quit_rect.has_point(p):
 		if mode == "watch" or mode == "test":
@@ -2046,6 +2057,8 @@ func _process(delta: float) -> void:
 	for f in team_c:
 		c_ins.append(ai_input_for(f, delta))
 	assign_foes()   # restores player / cpu after the AI turns
+	if mode == "test" and training_dummy() and not c_ins.is_empty() and not p_ins.is_empty() and phase == "fight":
+		dummy_input(p_ins, c_ins)   # (1.141) the training dummy does what you set
 	if course_step >= 0 and course_step < COURSE.size() - 1 and not c_ins.is_empty():
 		c_ins[0] = course_input(delta)   # Old Pike does what the lesson needs
 	if moment_t > 0.0:
@@ -2124,6 +2137,7 @@ func _process(delta: float) -> void:
 	update_trail(delta)
 	update_pilots(delta)
 	if mode == "test":
+		track_training_damage()
 		for f in team_c:
 			if f.spec.get("junk", "") == "dummy" and clock - float(f.spec.get("hit_t", 0.0)) > 1.6:
 				for slot in f.parts:
@@ -2369,8 +2383,8 @@ func leave_after_results() -> void:
 func leave_test_drive() -> void:
 	var from := str(GameData.test_drive.get("from", "scrap"))
 	GameData.test_drive = {}
-	GameData.open_tab = "Parts"
-	GameData.open_action = from
+	GameData.open_tab = "Bay" if from == "bay" else "Parts"
+	GameData.open_action = "" if from == "bay" else from
 	GameData.last_result = {}
 	Loading.go("res://garage.tscn")
 
@@ -2511,6 +2525,8 @@ func start_attack(f: Fighter, attack: String, charge: float = 0.0) -> void:
 	f.kick_hop = false
 	pilot_jerk(f.team)
 	f.attack_limb = limb
+	if mode == "test" and f == player:
+		last_fd = frame_data(f, attack, limb)   # (1.141) the training room's readout
 	f.charge_mult = 1.0 + (CHARGE_DMG - 1.0) * clampf(charge, 0.0, 1.0)
 	f.guard_break = charge >= 0.999
 	spend(f, attack_cost(f, attack, limb))
@@ -4383,6 +4399,7 @@ func _draw_ui() -> void:
 	draw_hud()
 	if mode == "test" and (phase == "fight" or phase == "intro"):
 		draw_input_readout()
+		draw_training()
 	draw_coach()
 	if (phase == "intro" or phase == "fight") and mode != "watch":
 		draw_buttons()
@@ -5327,7 +5344,9 @@ func draw_hud() -> void:
 	if phase == "intro" or phase == "fight":
 		var hud_btns: Array = [[quit_rect, "LEAVE"]] if mode == "watch" else [[quit_rect, "QUIT"], [moves_rect, "MOVES"]]
 		if mode == "test":
-			hud_btns = [[quit_rect, "LEAVE"], [moves_rect, "MOVES"], [reset_rect, "RESET"], [hitbox_rect, "HITBOX"]]
+			hud_btns = [[quit_rect, "LEAVE"], [moves_rect, "MOVES"], [reset_rect, "RESET"], [hitbox_rect, "HITBOX"], [frames_rect, "FRAMES"]]
+			if training_dummy():
+				hud_btns.append([dummy_rect, "DUMMY"])
 		for rr in hud_btns:
 			ci.draw_rect(rr[0], Color(1, 1, 1, 0.1))
 			ci.draw_rect(rr[0], Color(1, 1, 1, 0.4), false, 2.0)
@@ -5358,6 +5377,234 @@ func draw_hud() -> void:
 
 
 ## Test Drive: what you just pressed (fades out), so you can see why a combo did or didn't come out.
+# ---------------------------------------------------------------- (1.141) the training room
+# Any Test Drive is a training room: frame data for the move you just threw, the damage of the
+# last hit and the combo, and FRAMES = the whole table for this robot. Against the Mop Bucket the
+# DUMMY button sets what it does: stand, crouch, jump, block everything, block after the first
+# hit, block at random, or RECORD (you pilot the dummy for up to 10 s) and PLAY it back on a loop.
+const DUMMY_MODES := ["stand", "crouch", "jump", "block", "block_after", "random", "record", "play"]
+const DUMMY_NAMES := {"stand": "STAND", "crouch": "CROUCH", "jump": "JUMP", "block": "BLOCK ALL", "block_after": "BLOCK AFTER 1ST HIT",
+		"random": "RANDOM BLOCK", "record": "RECORD", "play": "PLAY BACK"}
+const REC_MAX := 10.0
+var frames_view := false
+var last_fd := {}
+var dummy_mode := "stand"
+var dum_buf: Array = []
+var dum_rec_t := 0.0
+var dum_play_i := 0
+var rand_guard := {}      # the attack the random guard last decided on, and the decision
+var tr_prev_hp := -1.0
+var tr_last := {}         # {"dmg", "slot", "t"}
+var tr_combo := 0.0
+
+
+func training_dummy() -> bool:
+	return cpu != null and str(cpu.spec.get("junk", "")) == "dummy"
+
+
+func next_dummy_mode() -> void:
+	var k := DUMMY_MODES.find(dummy_mode)
+	dummy_mode = DUMMY_MODES[(k + 1) % DUMMY_MODES.size()]
+	if dummy_mode == "play" and dum_buf.is_empty():
+		dummy_mode = "stand"   # nothing recorded: skip playback
+	if dummy_mode == "record":
+		dum_buf.clear()
+		dum_rec_t = 0.0
+	dum_play_i = 0
+	Sfx.play("click")
+
+
+## What the dummy does this frame. RECORD hands your pad to the dummy (yours stands still).
+func dummy_input(p_ins: Array, c_ins: Array) -> void:
+	var i: Dictionary = c_ins[0]
+	var pa: Dictionary = ATTACKS.get(player.state, {})
+	var coming: bool = not pa.is_empty() and player.timer <= float(pa["startup"]) + float(pa["active"])
+	var low: bool = coming and str(pa.get("height", "mid")) == "low"
+	match dummy_mode:
+		"crouch":
+			i["down"] = true
+		"jump":
+			if cpu.on_ground and fmod(clock, 1.3) < 0.05:
+				i["jump"] = true
+				i["jump_press"] = true
+		"block":
+			i["block"] = true
+			i["down"] = low
+		"block_after":
+			if clock - float(cpu.spec.get("hit_t", -9.0)) < 1.0:
+				i["block"] = true
+				i["down"] = low
+		"random":
+			if coming:
+				var key := "%s:%d" % [player.state, int(clock * 10.0) / 6]
+				if str(rand_guard.get("k", "")) != key:
+					rand_guard = {"k": key, "on": randf() < 0.5}
+				i["block"] = bool(rand_guard["on"])
+				i["down"] = low
+		"record":
+			c_ins[0] = (p_ins[0] as Dictionary).duplicate()
+			p_ins[0] = empty_input()
+			dum_buf.append(c_ins[0])
+			dum_rec_t += get_physics_process_delta_time()
+			if dum_rec_t >= REC_MAX:
+				dummy_mode = "play"
+				dum_play_i = 0
+		"play":
+			if not dum_buf.is_empty():
+				c_ins[0] = (dum_buf[dum_play_i % dum_buf.size()] as Dictionary).duplicate()
+				dum_play_i += 1
+
+
+## Frames at 60 a second for an attack thrown by this limb: startup, active, recovery, and how far
+## ahead (+) or behind (-) you are when it lands on its first active frame, on a hit and on a guard.
+func frame_data(f: Fighter, attack: String, limb: String) -> Dictionary:
+	var a: Dictionary = ATTACKS[attack]
+	var spd := f.attack_speed(limb) if limb != "" else 1.0
+	var k := TEMPO / maxf(0.1, spd) * 60.0
+	var su := roundi(float(a["startup"]) * k) + 1
+	var ac := roundi(float(a["active"]) * k)
+	var rc := roundi(float(a["recovery"]) * k)
+	var after := ac - 1 + rc   # frames left once it touches
+	var on_hit := roundi(float(a["stun"]) * STUN_K * 60.0) - after
+	var on_block := -after
+	var bounce: bool = str(a.get("family", "")) == "punch" and not a.has("through") and not a.has("push")
+	if bounce:
+		on_block = -roundi(0.32 * 60.0)   # block beats punch: the fist bounces off
+	var dmg := float(a["damage"])
+	if f.parts.has(limb) and f.alive(limb):
+		dmg *= f.limb_damage(f.parts[limb])
+	return {"name": attack, "su": su, "ac": ac, "rc": rc, "hit": on_hit, "block": on_block, "bounce": bounce, "dmg": dmg,
+			"launch": a.has("launch"), "height": str(a.get("height", "mid")), "air": a.get("air", false)}
+
+
+## Damage to the dummy: the last hit, the part it landed on, and the combo so far.
+func track_training_damage() -> void:
+	if cpu == null:
+		return
+	var tot := 0.0
+	var worst := ""
+	var worst_d := 0.0
+	for slot in cpu.parts:
+		var pp: Dictionary = cpu.parts[slot]
+		if pp.is_empty():
+			continue
+		tot += float(pp["hp"])
+		var was := float(pp.get("_tr", pp["hp"]))
+		if was - float(pp["hp"]) > worst_d:
+			worst_d = was - float(pp["hp"])
+			worst = slot
+		pp["_tr"] = pp["hp"]
+	if tr_prev_hp >= 0.0 and tot < tr_prev_hp - 0.01:
+		var d := tr_prev_hp - tot
+		if player.combo >= 2 and clock - float(tr_last.get("t", -9.0)) < 1.2:
+			tr_combo += d
+		else:
+			tr_combo = d
+		tr_last = {"dmg": d, "slot": worst, "t": clock}
+	tr_prev_hp = tot
+
+
+const NORMAL_NAMES := {"punch": "Jab", "low_punch": "Low punch", "uppercut": "Uppercut", "kick": "Kick", "high_kick": "High kick",
+		"sweep": "Sweep", "fly_kick": "Flying kick", "hammer": "Hammer"}
+
+
+func move_name(attack: String) -> String:
+	if NORMAL_NAMES.has(attack):
+		return tr(NORMAL_NAMES[attack])
+	return GameData.tech_name(attack)
+
+
+func slot_word(slot: String) -> String:
+	return tr(str(GameData.SLOT_NAMES.get(slot, slot))).to_upper()
+
+
+func fd_signed(n: int) -> String:
+	return ("+%d" % n) if n > 0 else str(n)
+
+
+## On hit / on block for the readouts: air moves depend on when they land, so they say AIR.
+func fd_adv(row: Dictionary, key: String) -> String:
+	return tr("AIR") if row.get("air", false) else fd_signed(int(row[key]))
+
+
+func draw_training() -> void:
+	var box := Rect2(screen.x * 0.5 - 150.0, screen.y * 0.04 + 162.0, 300.0, 112.0)
+	ci.draw_rect(box, Color(0, 0, 0, 0.55))
+	var x := box.position.x + 10.0
+	var y := box.position.y + 22.0
+	if last_fd.is_empty():
+		ci.draw_string(font, Vector2(x, y), tr("Throw a move to see its frames."), HORIZONTAL_ALIGNMENT_LEFT, box.size.x - 20.0, fs(13), GUI.MUTED)
+	else:
+		ci.draw_string(font_head, Vector2(x, y), move_name(str(last_fd["name"])).to_upper(), HORIZONTAL_ALIGNMENT_LEFT, box.size.x - 20.0, fs(15), GUI.HEAD)
+		y += 24.0
+		ci.draw_string(font_num, Vector2(x, y), tr("START %d · ACT %d · REC %d") % [last_fd["su"], last_fd["ac"], last_fd["rc"]], HORIZONTAL_ALIGNMENT_LEFT, box.size.x - 20.0, fs(16), GUI.TEXT)
+		y += 22.0
+		var hc: Color = GUI.GREEN if int(last_fd["hit"]) >= 0 else GUI.AMBER
+		var bc: Color = GUI.GREEN if int(last_fd["block"]) >= 0 else GUI.RED
+		if last_fd.get("air", false):
+			hc = GUI.MUTED
+			bc = GUI.MUTED
+		ci.draw_string(font_num, Vector2(x, y), tr("ON HIT %s") % fd_adv(last_fd, "hit"), HORIZONTAL_ALIGNMENT_LEFT, -1, fs(16), hc)
+		ci.draw_string(font_num, Vector2(x + 140.0, y), tr("ON BLOCK %s") % fd_adv(last_fd, "block"), HORIZONTAL_ALIGNMENT_LEFT, -1, fs(16), bc)
+	y = box.position.y + 100.0
+	if not tr_last.is_empty():
+		ci.draw_string(font_num, Vector2(x, y), tr("HIT %d · %s · COMBO %d") % [roundi(float(tr_last["dmg"])), slot_word(str(tr_last["slot"])), roundi(tr_combo)],
+				HORIZONTAL_ALIGNMENT_LEFT, box.size.x - 20.0, fs(16), GUI.YELLOW)
+	if training_dummy():
+		var dm := tr(DUMMY_NAMES[dummy_mode])
+		if dummy_mode == "record":
+			dm = tr("REC %.1f s") % maxf(0.0, REC_MAX - dum_rec_t)
+		ci.draw_string(font, dummy_rect.position + Vector2(0, dummy_rect.size.y + 18.0), dm, HORIZONTAL_ALIGNMENT_CENTER, dummy_rect.size.x, fs(12),
+				GUI.RED if dummy_mode == "record" else GUI.MUTED)
+	if frames_view:
+		draw_frame_table()
+
+
+## Every normal this robot throws, with its frames (FRAMES).
+func draw_frame_table() -> void:
+	var rows: Array = []
+	var arm := player.next_limb("arm", true)
+	var leg := player.next_limb("leg", true)
+	for at in ["punch", "low_punch", "uppercut", "hammer"]:
+		if arm != "":
+			rows.append(frame_data(player, at, arm))
+	for slot in ["arm_front", "arm_back"]:
+		if player.tech.has(slot) and ATTACKS.has(str(player.tech[slot])) and player.alive(slot):
+			rows.append(frame_data(player, str(player.tech[slot]), slot))
+	for at in ["kick", "high_kick", "sweep", "fly_kick"]:
+		if leg != "":
+			rows.append(frame_data(player, at, leg))
+	for slot in ["leg_front", "leg_back"]:
+		if player.tech.has(slot) and ATTACKS.has(str(player.tech[slot])) and player.alive(slot):
+			rows.append(frame_data(player, str(player.tech[slot]), slot))
+	var lh := fs(15) + 8.0
+	var w := minf(screen.x - 40.0, 760.0)
+	var h := 70.0 + lh * (rows.size() + 1)
+	var r := Rect2(screen.x * 0.5 - w * 0.5, screen.y * 0.5 - h * 0.5, w, h)
+	ci.draw_rect(r, Color(0.04, 0.04, 0.06, 0.92))
+	ci.draw_rect(r, GUI.MUTED, false, 1.5)
+	ci.draw_string(font_head, r.position + Vector2(16, 30), tr("FRAME DATA · 60 A SECOND"), HORIZONTAL_ALIGNMENT_LEFT, w - 32.0, fs(17), GUI.HEAD)
+	var cols := [0.0, 0.36, 0.47, 0.57, 0.67, 0.79, 0.91]
+	var heads := ["MOVE", "START", "ACT", "REC", "HIT", "BLOCK", "DMG"]
+	var y := r.position.y + 58.0
+	for c in cols.size():
+		ci.draw_string(font, Vector2(r.position.x + 16 + cols[c] * (w - 32), y), tr(heads[c]), HORIZONTAL_ALIGNMENT_LEFT, -1, fs(12), GUI.MUTED)
+	for row in rows:
+		y += lh
+		var vals := [move_name(str(row["name"])), str(row["su"]), str(row["ac"]), str(row["rc"]), fd_adv(row, "hit"), fd_adv(row, "block"), str(roundi(float(row["dmg"])))]
+		for c in cols.size():
+			var col: Color = GUI.TEXT
+			if row.get("air", false) and c >= 4 and c <= 5:
+				col = GUI.MUTED
+			elif c == 4:
+				col = GUI.GREEN if int(row["hit"]) >= 0 else GUI.AMBER
+			elif c == 5:
+				col = GUI.GREEN if int(row["block"]) >= 0 else GUI.RED
+			ci.draw_string(font if c == 0 else font_num, Vector2(r.position.x + 16 + cols[c] * (w - 32), y), vals[c], HORIZONTAL_ALIGNMENT_LEFT,
+					(w - 32) * 0.33 if c == 0 else -1, fs(14 if c == 0 else 17), col)
+	ci.draw_string(font, Vector2(r.position.x + 16, r.end.y - 12), tr("HIT / BLOCK: frames ahead (+) or behind (-). Hits cancel on contact."), HORIZONTAL_ALIGNMENT_LEFT, w - 32.0, fs(12), GUI.MUTED)
+
+
 func draw_input_readout() -> void:
 	var toks: Array = []
 	for b in player.buffer:
