@@ -1,0 +1,160 @@
+## (1.151) The safety net: tools/check.sh runs this as the main scene in a copy of the project before
+## every release. Each check prints "OK <name>" or "FAIL <name>: why"; check.sh also fails on any
+## SCRIPT ERROR the engine prints. Keep it under ~3 minutes; add a check for anything that broke once.
+extends Node
+
+var fails := 0
+var oks := 0
+
+
+func ok(name: String, cond: bool, why: String = "") -> void:
+	if cond:
+		oks += 1
+		print("OK ", name)
+	else:
+		fails += 1
+		print("FAIL ", name, ": ", why)
+
+
+func frames(n: int) -> void:
+	for k in n:
+		await get_tree().process_frame
+
+
+## Controls on screen that run off it (outside any scroll list or clipping parent).
+func off_screen(n: Node, vp: Rect2, out: Array) -> void:
+	if n is ScrollContainer:
+		return
+	if n is Control:
+		var c := n as Control
+		if not c.is_visible_in_tree():
+			return
+		if c.clip_contents:
+			return
+		var r := c.get_global_rect()
+		if r.encloses(vp):
+			pass   # a backdrop over the whole screen: look inside it
+		elif r.size.x > 4 and r.size.y > 4 and (r.position.x < vp.position.x - 6 or r.end.x > vp.end.x + 6 or r.end.y > vp.end.y + 6):
+			out.append("%s %s" % [c.name, str(r)])
+			return
+	if n is CanvasLayer and not (n as CanvasLayer).visible:
+		return
+	for k in n.get_children():
+		off_screen(k, vp, out)
+
+
+## A fight, run headless to its end (or a time limit): returns its phase.
+func run_fight(limit_s: float) -> Array:
+	var f = load("res://fight.tscn").instantiate()
+	get_tree().root.add_child(f)
+	f.set_process(false)
+	var n := 0
+	while f.phase != "results" and n < int(limit_s * 60.0):
+		f.tick(f.STEP)
+		n += 1
+	var ph: String = f.phase
+	var info := [ph, f.clock]
+	f.queue_free()
+	await frames(2)
+	return info
+
+
+func _ready() -> void:
+	await frames(2)
+	var gd = GameData
+	gd.set_language("en")
+	gd.settings["skip_intros"] = true
+
+	# 1. a new game
+	gd.new_game()
+	ok("new game", gd.week == 1 and not gd.equipped.is_empty() and not gd.leagues.is_empty(), "week %s, equipped %d" % [gd.week, gd.equipped.size()])
+
+	# 2. save and load give back the same career
+	gd.save_slot = 8
+	var m0: int = gd.money
+	var eq0 := JSON.stringify(gd.equipped)
+	var saved: bool = gd.save_game()
+	gd.money = -12345
+	var err: String = gd.load_game(8)
+	ok("save and load", saved and err == "" and gd.money == m0 and JSON.stringify(gd.equipped) == eq0, "err '%s' money %s" % [err, gd.money])
+
+	# 3. every screen in the garage opens and stays on the screen
+	var g = load("res://garage.tscn").instantiate()
+	get_tree().root.add_child(g)
+	await frames(6)
+	var vp := get_viewport().get_visible_rect()
+	var visited := 0
+	var bad: Array = []
+	for t in g.tab_list():
+		for sg in g.segs_of(t):
+			g.go_to(t, str(sg[0]))
+			await frames(3)
+			visited += 1
+			var out: Array = []
+			off_screen(g, vp, out)
+			if not out.is_empty():
+				bad.append("%s/%s: %s" % [t, sg[0], out[0]])
+			if g.overlay != null and is_instance_valid(g.overlay):
+				g.close_popup()
+	ok("garage screens open (%d)" % visited, visited > 10, "only %d" % visited)
+	ok("garage screens fit", bad.is_empty(), "; ".join(bad.slice(0, 4)))
+	g.open_day_plan()
+	await frames(3)
+	ok("day plan opens", g.overlay != null and is_instance_valid(g.overlay))
+	g.close_popup()
+	g.queue_free()
+	await frames(3)
+
+	# 4. a week goes by
+	var w0: int = gd.week
+	for k in 7:
+		gd.pass_day()
+	ok("a week passes", gd.week == w0 + 1 or gd.week == 1, "week %d -> %d" % [w0, gd.week])
+
+	# 5. fights run to the end
+	for seed in [11, 22, 33]:
+		gd.start_quick_fight()
+		gd.fight_seed = seed
+		var r: Array = await run_fight(200.0)
+		ok("quick fight %d ends" % seed, r[0] == "results", "phase %s at %.0f s" % [r[0], r[1]])
+	gd.quick = {}
+	gd.start_test_drive("mop")
+	var td: Array = await run_fight(3.0)
+	ok("test drive runs", td[0] == "fight" or td[0] == "intro", "phase %s" % td[0])
+	gd.test_drive = {}
+
+	# 6. the same seed gives the same fight (online and ghosts lean on it)
+	gd.start_quick_fight()
+	var q: Dictionary = gd.quick.duplicate(true)
+	var ends: Array = []
+	for k in 2:
+		gd.quick = q.duplicate(true)
+		gd.fight_seed = 4242
+		var f = load("res://fight.tscn").instantiate()
+		get_tree().root.add_child(f)
+		f.set_process(false)
+		for n in 60 * 40:
+			f.tick(f.STEP)
+		var s := ""
+		for fi in f.all_fighters():
+			s += "%.2f:%.3f," % [fi.pos.x, fi.ratio("torso")]
+		ends.append(s)
+		f.queue_free()
+		await frames(2)
+	ok("repeatable fights", ends[0] == ends[1], "%s vs %s" % [ends[0], ends[1]])
+	gd.quick = {}
+
+	# 7. other scenes load
+	for path in ["res://main.tscn", "res://saves.tscn", "res://settings.tscn", "res://opening.tscn"]:
+		var sc = load(path)
+		var node = sc.instantiate() if sc != null else null
+		var made: bool = node != null
+		if made:
+			get_tree().root.add_child(node)
+			await frames(4)
+			node.queue_free()
+			await frames(2)
+		ok("scene " + path.get_file(), made)
+
+	print("SMOKE DONE ok=%d fail=%d" % [oks, fails])
+	get_tree().quit(1 if fails > 0 else 0)
