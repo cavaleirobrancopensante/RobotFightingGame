@@ -30,6 +30,7 @@ var living_button: Button
 var pecking_button: Button
 var aim_button: Button
 var modern_button: Button   # (1.142)
+var colour_button: Button
 var edges_button: Button
 var text_label: Label
 const EDGE_NAMES := ["OFF", "Small", "Medium", "Large"]   # dark bars down the sides, for phone buttons that never hide
@@ -122,6 +123,7 @@ func _ready() -> void:
 	errors_button = UI.button("", _on_errors, 19, Vector2(bw / UI.SCALE, 50))
 	reset_button = GUI.danger(UI.button("", _on_reset, 19, Vector2(bw / UI.SCALE, 50)))
 	edges_button = UI.button("", _on_edges, 19, Vector2(bw / UI.SCALE, 50))
+	colour_button = UI.button("", _on_colour, 19, Vector2(bw / UI.SCALE, 50))   # (1.152)
 	# text size: smaller / bigger, the whole game follows (the screen rebuilds so you see it at once)
 	var text_row := HBoxContainer.new()
 	text_row.custom_minimum_size = Vector2(bw, 50 * UI.SCALE)
@@ -138,10 +140,11 @@ func _ready() -> void:
 	plus.disabled = lv >= UI.TEXT_LEVELS.size() - 1
 	for c in [minus, text_label, plus]:
 		text_row.add_child(c)
-	for b in [text_row, sound_button, music_button, shake_button, battery_button, fastfight_button, smooth_button, size_button, edges_button,
+	for b in [text_row, sound_button, music_button, shake_button, battery_button, fastfight_button, smooth_button, size_button, edges_button, colour_button,
 			UI.button("Edit controls (move & resize)", _on_controls, 19, Vector2(bw / UI.SCALE, 50)), team_button,
 			UI.button("Difficulty...", _on_difficulty, 19, Vector2(bw / UI.SCALE, 50)), delete_button, errors_button, reset_button,
-			UI.button("Copy playtest log", _on_copy_log, 19, Vector2(bw / UI.SCALE, 50))]:
+			UI.button("Copy playtest log", _on_copy_log, 19, Vector2(bw / UI.SCALE, 50)),
+			UI.button("Privacy", _on_privacy, 19, Vector2(bw / UI.SCALE, 50))]:
 		grid.add_child(b)
 	grid.add_child(UI.button("Back", _on_back, 19, Vector2(bw / UI.SCALE, 50)))
 	for b in grid.get_children():
@@ -158,6 +161,7 @@ func refresh() -> void:
 	size_button.text = tr("Touch buttons: %s") % tr(SIZE_NAMES[s["button_size"]])
 	text_label.text = tr("Text size: %s") % tr(UI.TEXT_NAMES[clampi(int(s.get("text", UI.TEXT_DEFAULT)), 0, UI.TEXT_NAMES.size() - 1)])
 	edges_button.text = tr("Screen edges: %s") % tr(EDGE_NAMES[clampi(int(s.get("edges", 0)), 0, EDGE_NAMES.size() - 1)])
+	colour_button.text = tr("Colour-blind help: %s") % tr(Loading.COLOUR_MODES[clampi(int(s.get("cvd", 0)), 0, Loading.COLOUR_MODES.size() - 1)])
 	var n := GameData.error_count()
 	errors_button.text = tr("Error log (%d)") % n if n > 0 else tr("Error log (no errors)")
 	smooth_button.text = tr("Smooth edges: %s") % tr("ON" if UI.smooth_edges() else "OFF")
@@ -366,6 +370,37 @@ func _on_close_errors() -> void:
 		log_overlay.queue_free()
 		log_overlay = null
 	refresh()
+
+
+## (1.152) Colour-blind help: a filter over the whole screen that pulls apart the colours you mix up.
+func _on_colour() -> void:
+	GameData.settings["cvd"] = (int(GameData.settings.get("cvd", 0)) + 1) % Loading.COLOUR_MODES.size()
+	GameData.save_settings()
+	Loading.apply_colour()
+	refresh()
+	Sfx.play("click")
+
+
+## (1.152) What the game keeps and what leaves your device.
+const PRIVACY := "WHAT THE GAME KEEPS\nYour saves, settings and the playtest log stay on this device. There are no accounts, no ads and nothing is tracked.\n\nFIGHTING A FRIEND, LIVE\nThe two games talk through a free public relay (emqx.io, hivemq.com or mosquitto.org). It carries your robot, your pilot's name and look, your record and your button presses, and only while the fight is on. The relay is public: anyone who knew your room code could read it, so never put anything private in your names.\n\nGHOSTS AND SAVE FILES\nGhost codes, result codes and downloaded save files only go where you paste or send them.\n\nCRASH REPORTS\nNothing is sent by itself. If the game closes unexpectedly, the main menu offers to copy a report, and you choose whether to send it."
+
+
+func _on_privacy() -> void:
+	var ov := ColorRect.new()
+	ov.color = Color(GUI.BG, 0.97)
+	ov.set_anchors_preset(Control.PRESET_FULL_RECT)
+	ov.mouse_filter = Control.MOUSE_FILTER_STOP
+	add_child(ov)
+	var col := VBoxContainer.new()
+	col.add_theme_constant_override("separation", 14)
+	UI.fit_screen(ov, 24).add_child(col)
+	col.add_child(GUI.heading(tr("PRIVACY"), 26))
+	var l := UI.label(tr(PRIVACY), 17, GUI.TEXT)
+	l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	l.custom_minimum_size.x = minf(720.0, get_viewport_rect().size.x - 80.0)
+	col.add_child(l)
+	col.add_child(UI.button("Back", func(): ov.queue_free(), 19, Vector2(200, 50)))
+	Sfx.play("click")
 
 
 ## (1.120) Smooth edges: the arena, the menu and the opening painted at twice the pixels.

@@ -282,6 +282,8 @@ func _ready() -> void:
 	add_child(ver)
 	add_child(msg)
 
+	if Loading.crashed_last:
+		crash_panel()
 	# the language flags, top right, the first thing anyone who needs them sees
 	var flags := HBoxContainer.new()
 	flags.add_theme_constant_override("separation", 4)
@@ -337,6 +339,37 @@ func _on_settings() -> void:
 
 
 ## (1.111) Android Back on the main menu leaves the game, as phones expect.
+## (1.152) The last session ended without closing: offer the report, never send it by itself.
+func crash_panel() -> void:
+	var p := PanelContainer.new()
+	p.add_theme_stylebox_override("panel", GUI.box(Color(GUI.BG, 0.92), 10.0, 12.0))
+	p.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_LEFT)
+	p.offset_left = 12
+	p.offset_bottom = -34
+	p.grow_vertical = Control.GROW_DIRECTION_BEGIN   # sits low on the left, clear of the title
+	add_child(p)
+	var col := VBoxContainer.new()
+	col.add_theme_constant_override("separation", 6)
+	p.add_child(col)
+	var l := UI.label(tr("The game closed unexpectedly last time."), 15, GUI.AMBER)
+	l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	l.custom_minimum_size.x = 300
+	col.add_child(l)
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 6)
+	col.add_child(row)
+	row.add_child(UI.button("Copy the report", func():
+		var PL = load("res://playlog.gd")
+		PL.flush()
+		DisplayServer.clipboard_set(PL.full_text(GameData.error_catcher.snapshot()))
+		msg.text = tr("Report copied. Paste it in a message to Salgadoido, it helps fix the crash.")
+		Loading.crashed_last = false
+		p.queue_free(), 15, Vector2(0, 40)))
+	row.add_child(UI.button("Dismiss", func():
+		Loading.crashed_last = false
+		p.queue_free(), 15, Vector2(0, 40)))
+
+
 func on_back() -> void:
 	get_tree().quit()
 

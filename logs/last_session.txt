@@ -1,11 +1,31 @@
-ROBOT FIGHTING GAME - error log (2026-11-11 23:04:31, Godot 4.7-stable (official))
+ROBOT FIGHTING GAME - error log (2026-11-11 23:26:14, Godot 4.7-stable (official))
 
 == THIS SESSION: 0 ==
 (no errors)
 
 == PREVIOUS SESSION ==
-[05:43:16] ERROR: No loader found for resource: res://store/loading_bg.png (expected type: unknown)
-    at core/io/resource_loader.cpp:332 (_load)
+[23:08:34] SCRIPT ERROR: Invalid call. Nonexistent function 'oops' in base 'Nil'.
+    at res://garage.gd:532 (tab_list)
 GDScript backtrace (most recent call first):
-    [0] build_screen (res://loading.gd:86)
-    [1] _ready (res://loading.gd:71)
+    [0] tab_list (res://garage.gd:532)
+    [1] refresh (res://garage.gd:1162)
+    [2] _ready (res://garage.gd:504)
+    [3] _ready (res://zz_smoke.gd:83)
+    [4] frames (res://zz_smoke.gd:21)
+
+[23:08:34] SCRIPT ERROR: Invalid call. Nonexistent function 'oops' in base 'Nil'.
+    at res://garage.gd:532 (tab_list)
+GDScript backtrace (most recent call first):
+    [0] tab_list (res://garage.gd:532)
+    [1] build_rail (res://garage.gd:663)
+    [2] refresh (res://garage.gd:1180)
+    [3] _ready (res://garage.gd:504)
+    [4] _ready (res://zz_smoke.gd:83)
+    [5] frames (res://zz_smoke.gd:21)
+
+[23:08:35] SCRIPT ERROR: Invalid call. Nonexistent function 'oops' in base 'Nil'.
+    at res://garage.gd:532 (tab_list)
+GDScript backtrace (most recent call first):
+    [0] tab_list (res://garage.gd:532)
+    [1] _ready (res://zz_smoke.gd:88)
+    [2] frames (res://zz_smoke.gd:21)

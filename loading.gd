@@ -71,6 +71,66 @@ func _ready() -> void:
 	var parts := build_screen(cover)
 	title_label = parts[0]
 	bar = parts[1]
+	_colour_layer()
+	apply_colour()
+	# (1.152) did the last session end without closing? (a crash, or the phone killing it while open)
+	crashed_last = FileAccess.file_exists(RUN_FLAG)
+	_running(true)
+	var PL = load("res://playlog.gd")
+	if crashed_last:
+		PL.add("session", "THE LAST SESSION ENDED WITHOUT CLOSING (crash?)")
+	PL.add("session", "start, version %s, %s" % [GameData.VERSION, OS.get_name()])
+
+
+# ---------------------------------------------------------------- (1.152) colour-blind help
+## Settings > Colour-blind help: a screen-wide filter over everything (fights, the bay, the menus).
+const COLOUR_MODES := ["OFF", "RED-GREEN (red weak)", "RED-GREEN (green weak)", "BLUE-YELLOW"]
+var colour_rect: ColorRect = null
+
+
+func _colour_layer() -> void:
+	var cl := CanvasLayer.new()
+	cl.layer = 119   # over the game and its pop-ups, under the loading cover
+	add_child(cl)
+	colour_rect = ColorRect.new()
+	colour_rect.set_anchors_preset(Control.PRESET_FULL_RECT)
+	colour_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var mat := ShaderMaterial.new()
+	mat.shader = load("res://shaders/colour_help.gdshader")
+	colour_rect.material = mat
+	cl.add_child(colour_rect)
+
+
+func apply_colour() -> void:
+	if colour_rect == null:
+		return
+	var m := clampi(int(GameData.settings.get("cvd", 0)), 0, COLOUR_MODES.size() - 1)
+	colour_rect.visible = m > 0
+	(colour_rect.material as ShaderMaterial).set_shader_parameter("mode", m)
+
+
+# ---------------------------------------------------------------- (1.152) crash clues
+## A flag file sits there while the game is open and in front; a clean close, the phone putting
+## it away or the browser tab hidden takes it down. Found at start = the last session died open.
+const RUN_FLAG := "user://running.flag"
+var crashed_last := false
+
+
+func _running(on: bool) -> void:
+	if on:
+		var f := FileAccess.open(RUN_FLAG, FileAccess.WRITE)
+		if f:
+			f.store_string(Time.get_datetime_string_from_system())
+	elif FileAccess.file_exists(RUN_FLAG):
+		DirAccess.remove_absolute(ProjectSettings.globalize_path(RUN_FLAG))
+
+
+func _notification(what: int) -> void:
+	match what:
+		NOTIFICATION_WM_CLOSE_REQUEST, NOTIFICATION_APPLICATION_PAUSED, NOTIFICATION_APPLICATION_FOCUS_OUT, NOTIFICATION_PREDELETE, NOTIFICATION_EXIT_TREE:
+			_running(false)
+		NOTIFICATION_APPLICATION_RESUMED, NOTIFICATION_APPLICATION_FOCUS_IN:
+			_running(true)
 
 
 ## (1.115) The loading screen, the same everywhere (the boot screen too): the splash picture, and
