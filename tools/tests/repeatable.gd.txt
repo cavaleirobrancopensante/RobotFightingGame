@@ -1,0 +1,34 @@
+extends Node
+func run_once(q: Dictionary, seed: int) -> String:
+	GameData.quick = q.duplicate(true)
+	GameData.fight_seed = seed
+	var f = load("res://fight.tscn").instantiate()
+	get_tree().root.add_child(f)
+	f.set_process(false)
+	for k in 60 * 120:
+		f.tick(f.STEP)
+		if f.phase == "results":
+			break
+	var out := "%s t=%.3f " % [f.phase, f.clock]
+	for fi in f.all_fighters():
+		out += "%s@%.2f," % [fi.label, fi.pos.x]
+		for slot in fi.parts:
+			if not fi.parts[slot].is_empty():
+				out += "%s:%.3f " % [slot, float(fi.parts[slot]["hp"])]
+	f.queue_free()
+	await get_tree().process_frame
+	return out
+func _ready() -> void:
+	await get_tree().process_frame
+	GameData.set_language("en")
+	GameData.settings["skip_intros"] = true
+	GameData.new_game()
+	GameData.start_quick_fight()
+	var q: Dictionary = GameData.quick.duplicate(true)
+	var a = await run_once(q, 777)
+	var b = await run_once(q, 777)
+	var c = await run_once(q, 778)
+	print("SAME ", a == b, " DIFFSEED ", a != c)
+	print("A ", a.substr(0, 300))
+	print("C ", c.substr(0, 300))
+	get_tree().quit()

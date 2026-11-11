@@ -3,7 +3,7 @@ const PlayLog = preload("res://playlog.gd")   # (1.87) the playtest log
 
 # helper scripts, loaded by path so the game also runs without an editor scan
 ## The game's version, shown on the main menu. Bump it with every change (1.1, 1.2, ...).
-const VERSION := "1.144"
+const VERSION := "1.145"
 const Arena = preload("res://arena.gd")
 const I18n = preload("res://i18n.gd")
 const Catalog = preload("res://catalog.gd")
@@ -404,6 +404,7 @@ var pickup := {}              # a scrapyard pickup fight in a quiet week: {enemy
 var world := {}               # every computer pilot, their money and robots (see world.gd)
 var watching := {}            # a computer-vs-computer fight you're watching: {on, round, a, b}
 var last_enemy_hp := {}       # the enemy's part health when the last fight ended: {slot: [hp, max]}
+var fight_seed := 0          # (1.145) the next fight's random seed (0 = a fresh one); ghosts and matches set it
 var quick := {}               # Quick Fight from the menu: {player, enemy} random bots, never saved
 var test_drive := {}          # Scrapyard Test Drive: {"junker": id, "try": part id or "", "slot": slot} - never saved, no damage
 var setups: Array = []        # saved builds: {} or {name, equipped, chips, paint}

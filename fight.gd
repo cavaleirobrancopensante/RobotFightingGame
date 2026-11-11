@@ -534,6 +534,14 @@ var shake := 0.0
 # shown in the garage. Your robot does the move on a training dummy, over and over.
 var demo_move := ""
 var replay := {}            # (1.74) set before adding to the tree: play this clip instead of a fight
+# (1.145) Repeatable fights: every random roll the fight's logic makes comes from frng, seeded once
+# (fight_seed: GameData.fight_seed if something set it, a ghost or a match, else a fresh one), and the
+# logic runs in fixed STEP ticks whatever the screen's frame rate, so the same seed and the same
+# inputs give the same fight on any device. Drawing keeps the plain randf() (it doesn't feed back).
+const STEP := 1.0 / 60.0
+var frng := RandomNumberGenerator.new()
+var fight_seed := 0
+var step_acc := 0.0
 var demo_specs: Array = []
 var demo_t := 0.0
 var demo_fired := false
@@ -576,6 +584,9 @@ func fs(size: float) -> int:
 
 
 func _ready() -> void:
+	fight_seed = int(GameData.fight_seed) if int(GameData.fight_seed) != 0 else randi()
+	GameData.fight_seed = 0
+	frng.seed = fight_seed
 	font = GUI.body()
 	font_head = GUI.headb()
 	font_num = GUI.num()
@@ -659,9 +670,9 @@ func _ready() -> void:
 	for f in team_c:
 		f.dmg_mult *= DIFF_DAMAGE[diff]
 		f.foe = player
-		f.ai = {"timer": randf() * 0.3, "plan": {}, "think": maxf(THINK_MIN, opp["think"] * DIFF_THINK[diff] * THINK_K),
+		f.ai = {"timer": frng.randf() * 0.3, "plan": {}, "think": maxf(THINK_MIN, opp["think"] * DIFF_THINK[diff] * THINK_K),
 				"block": minf(0.85, opp["block"] * DIFF_BLOCK[diff]), "smart": opp["smart"],
-				"special_cd": 3.0 + randf(), "gadget_cd": 1.5 + randf(), "kit": {}}
+				"special_cd": 3.0 + frng.randf(), "gadget_cd": 1.5 + frng.randf(), "kit": {}}
 		set_aim_level(f, GameData.pilot_aim_level(opp) if diff >= 1 else maxi(1, GameData.pilot_aim_level(opp) - 1))
 		f.ai_rattled = bool(opp.get("rattled", false))
 		if int(opp.get("wid", -1)) >= 0:
@@ -676,9 +687,9 @@ func _ready() -> void:
 	for f in team_p:
 		if f.spec.has("ai_src") and mode != "watch":
 			var src: Dictionary = f.spec["ai_src"]
-			f.ai = {"timer": randf() * 0.3, "plan": {}, "think": maxf(THINK_MIN, float(src.get("think", 0.4)) * THINK_K),
+			f.ai = {"timer": frng.randf() * 0.3, "plan": {}, "think": maxf(THINK_MIN, float(src.get("think", 0.4)) * THINK_K),
 					"block": minf(0.85, float(src.get("block", 0.2))), "smart": float(src.get("smart", 0.0)),
-					"special_cd": 3.0 + randf(), "gadget_cd": 1.5 + randf(), "kit": {}}
+					"special_cd": 3.0 + frng.randf(), "gadget_cd": 1.5 + frng.randf(), "kit": {}}
 			set_aim_level(f, GameData.pilot_aim_level(src))
 			f.ai_rattled = bool(src.get("rattled", false))
 			f.pilot_name = str(src.get("pilot", ""))
@@ -713,9 +724,9 @@ func _ready() -> void:
 		# both corners are computer pilots: the left robot gets a brain too
 		var left_o: Dictionary = GameData.watch_robot(0)
 		for f in team_p:
-			f.ai = {"timer": randf() * 0.3, "plan": {}, "think": maxf(THINK_MIN, float(left_o.get("think", 0.4)) * THINK_K),
+			f.ai = {"timer": frng.randf() * 0.3, "plan": {}, "think": maxf(THINK_MIN, float(left_o.get("think", 0.4)) * THINK_K),
 					"block": minf(0.85, float(left_o.get("block", 0.2))), "smart": float(left_o.get("smart", 0.0)),
-					"special_cd": 3.0 + randf(), "gadget_cd": 1.5 + randf(), "kit": {}}
+					"special_cd": 3.0 + frng.randf(), "gadget_cd": 1.5 + frng.randf(), "kit": {}}
 			set_aim_level(f, GameData.pilot_aim_level(left_o))
 			f.ai_rattled = bool(left_o.get("rattled", false))
 			if int(left_o.get("wid", -1)) >= 0:
@@ -759,7 +770,7 @@ func _ready() -> void:
 	OS.low_processor_usage_mode = false   # fights animate every frame
 	# boss music for OVERLORD and for any final
 	var boss: bool = fight_idx == GameData.OPPONENTS.size() - 1 or GameData.fight_is_final()
-	var pick: int = fight_idx if fight_idx >= 0 else randi() % 97
+	var pick: int = fight_idx if fight_idx >= 0 else frng.randi() % 97
 	fight_track = "boss" if boss else Sfx.FIGHT_TRACKS[pick % Sfx.FIGHT_TRACKS.size()]
 	# (1.94) a set of 3+ parts from one maker in the left corner (yours, or the left robot when you watch,
 	# so the music never hints at the winner): that maker's fight song
@@ -1390,7 +1401,7 @@ func ai_input_for(f: Fighter, delta: float) -> Dictionary:
 		var gap: float = (f.pos.x - f.foe.pos.x) * float(f.foe.facing)
 		if gap > 0.0 and gap < 330.0:
 			if f.ai.get("vs_roll", -1.0) < 0.0:
-				f.ai["vs_roll"] = randf()
+				f.ai["vs_roll"] = frng.randf()
 			var smart: float = clampf(float(f.ai.get("smart", 0.3)), 0.0, 1.0)
 			var pick: float = f.ai["vs_roll"]
 			if pick < 0.25 + smart * 0.35 and f.legs() > 0:
@@ -1421,7 +1432,7 @@ func ai_gecko(f: Fighter, i: Dictionary, delta: float) -> Dictionary:
 	if f.on_ground and f.state in ["idle", "walk"] and f.legs() > 0:
 		var near_l := f.pos.x - wall_l < 200.0
 		var near_r := wall_r - f.pos.x < 200.0
-		if (near_l or near_r) and randf() < delta * 0.8:
+		if (near_l or near_r) and frng.randf() < delta * 0.8:
 			f.ai["wall_dir"] = -1 if near_l else 1
 			var j := empty_input()
 			j["jump"] = true
@@ -1441,15 +1452,15 @@ func ai_shell(f: Fighter, i: Dictionary, delta: float) -> Dictionary:
 	if f.state == "curl":
 		var j := empty_input()
 		j["block"] = f.ai_curl > 0.0 or dist < 240.0
-		if f.timer >= CURL_IN and dist > 120.0 and dist < 600.0 and randf() < delta * 4.0:
+		if f.timer >= CURL_IN and dist > 120.0 and dist < 600.0 and frng.randf() < delta * 4.0:
 			j["punch"] = true
 		return j
 	if not f.state in ["idle", "walk"] or not f.on_ground:
 		return i
 	if f.ai_curl <= 0.0:
 		var coming := ATTACKS.has(o.state) and dist < 230.0 and o.timer < float(ATTACKS[o.state]["startup"])
-		if (coming and randf() < 0.03) or (dist > 240.0 and dist < 600.0 and f.power > f.power_max * 0.35 and randf() < delta * 0.15):
-			f.ai_curl = CURL_HOLD + randf_range(0.3, 0.9)
+		if (coming and frng.randf() < 0.03) or (dist > 240.0 and dist < 600.0 and f.power > f.power_max * 0.35 and frng.randf() < delta * 0.15):
+			f.ai_curl = CURL_HOLD + frng.randf_range(0.3, 0.9)
 	if f.ai_curl > 0.0:
 		var k := empty_input()
 		k["block"] = true
@@ -1528,21 +1539,21 @@ func read_ai_input(delta: float) -> Dictionary:
 		var pdx: float = cpu.pos.x - p["pos"].x
 		if absf(pdx) < 300.0 and signf(pdx) == signf(p["vel"].x):
 			p["ai_seen"] = true
-			if not cpu.on_ground and cpu.air_jumps > 0 and randf() < 0.4 + ai_smart * 0.5:
+			if not cpu.on_ground and cpu.air_jumps > 0 and frng.randf() < 0.4 + ai_smart * 0.5:
 				ai_plan = {"hold": ["jump", away], "fresh": true, "air": true, "air_in": false, "dj_now": true}   # jet over it
 				ai_timer = 0.4
-			elif randf() < 0.25 + ai_smart * 0.6 and cpu.state in ["idle", "walk"]:
+			elif frng.randf() < 0.25 + ai_smart * 0.6 and cpu.state in ["idle", "walk"]:
 				var sh := ai_gadget("shield")
 				if not sh.is_empty():
 					use_gadget(cpu, sh)
-				elif cpu.legs() > 0 and cpu.on_ground and randf() < 0.6:
+				elif cpu.legs() > 0 and cpu.on_ground and frng.randf() < 0.6:
 					ai_plan = {"hold": ["jump", away], "fresh": true}
 				elif cpu.arms() > 0:
 					ai_plan = {"hold": ["block"], "fresh": true}
 				ai_timer = 0.4
 
 	if ai_timer <= 0.0:
-		ai_timer = randf_range(ai_think * 0.5, ai_think)
+		ai_timer = frng.randf_range(ai_think * 0.5, ai_think)
 		ai_pick_target()
 		ai_plan = ai_decide(dist, toward, away)
 		ai_plan["fresh"] = true
@@ -1550,7 +1561,7 @@ func read_ai_input(delta: float) -> Dictionary:
 			ai_timer = float(ai_plan["keep"])   # e.g. holding a charge
 		# sharp pilots turn a limb you're aiming at away from you
 		if cpu.ai_level >= 4 and player.target != "" and cpu.lead_slots().has(player.target) and cpu.ratio(player.target) < 0.75 \
-				and cpu.on_ground and cpu.state in ["idle", "walk"] and randf() < (0.35 if cpu.ai_level == 4 else 0.55):
+				and cpu.on_ground and cpu.state in ["idle", "walk"] and frng.randf() < (0.35 if cpu.ai_level == 4 else 0.55):
 			switch_stance(cpu)
 
 	for k in ai_plan.get("hold", []):
@@ -1568,7 +1579,7 @@ func read_ai_input(delta: float) -> Dictionary:
 			i[ai_plan["follow"]] = true
 		ai_plan["follow"] = ""
 	# jet packs: second jump at the top of the first one (or right now, to hop over a shot)
-	if ai_plan.get("air", false) and not cpu.on_ground and cpu.air_jumps > 0 and (ai_plan.get("dj_now", false) or (cpu.vel.y > -150.0 and randf() < 0.25)):
+	if ai_plan.get("air", false) and not cpu.on_ground and cpu.air_jumps > 0 and (ai_plan.get("dj_now", false) or (cpu.vel.y > -150.0 and frng.randf() < 0.25)):
 		i["jump_press"] = true
 		ai_plan["dj_now"] = false
 		var ad := toward if ai_plan.get("air_in", true) else away
@@ -1578,25 +1589,25 @@ func read_ai_input(delta: float) -> Dictionary:
 		var bo := ai_gadget("booster")
 		if bo.is_empty():
 			bo = ai_gadget("flame_dash")
-		if not bo.is_empty() and randf() < 0.1 + ai_smart * 0.1:
+		if not bo.is_empty() and frng.randf() < 0.1 + ai_smart * 0.1:
 			use_gadget(cpu, bo)
 	# combo cancel: a normal that landed flows straight into a special
 	if ATTACKS.has(cpu.state) and cpu.landed and not ai_plan.get("cancel_tried", false) \
 			and cpu.timer >= ATTACKS[cpu.state]["startup"] + ATTACKS[cpu.state]["active"]:
 		ai_plan["cancel_tried"] = true
-		if randf() < 0.15 + ai_smart * 0.55:
+		if frng.randf() < 0.15 + ai_smart * 0.55:
 			var chain := ai_pick_special(dist, false, true)
 			if chain != "":
 				start_special(cpu, chain)
 	# in the air and close: a flying kick or a hammer on the way down
-	if not cpu.on_ground and cpu.state == "jump" and dist < 230.0 * cpu.scale and cpu.vel.y > -200.0 and randf() < 0.05 + ai_smart * 0.08:
-		i["kick" if cpu.legs() > 0 and randf() < 0.6 else "punch"] = true
+	if not cpu.on_ground and cpu.state == "jump" and dist < 230.0 * cpu.scale and cpu.vel.y > -200.0 and frng.randf() < 0.05 + ai_smart * 0.08:
+		i["kick" if cpu.legs() > 0 and frng.randf() < 0.6 else "punch"] = true
 	# in the air above the enemy: dive stomp if we know it
-	if not cpu.on_ground and cpu.state == "jump" and dist < 200.0 and cpu.specials.has("dive_stomp") and can_special(cpu, "dive_stomp") and randf() < 0.08 + ai_smart * 0.15:
+	if not cpu.on_ground and cpu.state == "jump" and dist < 200.0 and cpu.specials.has("dive_stomp") and can_special(cpu, "dive_stomp") and frng.randf() < 0.08 + ai_smart * 0.15:
 		start_special(cpu, "dive_stomp")
 	# combo: smarter bots follow up a landed hit (if they've got the power for it)
-	if ATTACKS.has(cpu.state) and cpu.landed and cpu.power > cpu.power_max * 0.3 and randf() < ai_smart * 0.08 + (0.05 if cpu.style == "striker" else 0.0):
-		i["punch" if randf() < 0.6 else "kick"] = true
+	if ATTACKS.has(cpu.state) and cpu.landed and cpu.power > cpu.power_max * 0.3 and frng.randf() < ai_smart * 0.08 + (0.05 if cpu.style == "striker" else 0.0):
+		i["punch" if frng.randf() < 0.6 else "kick"] = true
 	return i
 
 
@@ -1620,12 +1631,12 @@ func junk_input(i: Dictionary) -> Dictionary:
 		"mower":
 			# Lawnmower Larry: wanders off in a random direction, turns round, sometimes bumps into you
 			if clock > float(cpu.spec["next_t"]):
-				cpu.spec["next_t"] = clock + randf_range(1.0, 2.6)
-				cpu.spec["wander"] = ["left", "right", ""][randi() % 3]
+				cpu.spec["next_t"] = clock + frng.randf_range(1.0, 2.6)
+				cpu.spec["wander"] = ["left", "right", ""][frng.randi() % 3]
 			var wd := str(cpu.spec.get("wander", ""))
 			if wd != "":
 				i[wd] = true
-			if dist < melee and randf() < 0.01:
+			if dist < melee and frng.randf() < 0.01:
 				i["kick"] = true
 	return i   # (the Mop Bucket just stands there)
 
@@ -1649,21 +1660,21 @@ func ai_decide(dist: float, toward: String, away: String) -> Dictionary:
 		p_open = p_open or not threatened
 	var hurt := cpu.ratio("torso")
 	var aggro: bool = cpu.over_t > 0.0 or cpu.haste_t > 0.0 or cpu.style == "striker"
-	var r := randf()
+	var r := frng.randf()
 	var pw := cpu.power / maxf(1.0, cpu.power_max)
 	# power: punish a burned-out enemy, and don't burn out yourself
 	if player.burn_t > 0.0 and dist < melee + 40.0 and can_punch:
 		return {"tap": "punch"}
 	if player.burn_t > 0.0 and dist >= melee + 40.0:
 		return {"hold": [toward]}
-	if pw < 0.25 and not p_open and randf() < 0.35 + ai_smart * 0.6:
+	if pw < 0.25 and not p_open and frng.randf() < 0.35 + ai_smart * 0.6:
 		if threatened and cpu.arms() > 0 and dist < 170.0 * cpu.scale:
 			return {"hold": ["block"]}
 		return {"hold": [away]}   # back off and recharge
 	if pw < 0.45:
-		can_kick = can_kick and randf() < 0.25   # kicks are hungry: save them
+		can_kick = can_kick and frng.randf() < 0.25   # kicks are hungry: save them
 	# reading the player's habits (smarter bots read them more often)
-	if dist < melee + 30.0 and not threatened and randf() < 0.1 + ai_smart * 0.45:
+	if dist < melee + 30.0 and not threatened and frng.randf() < 0.1 + ai_smart * 0.45:
 		var top := ""
 		var most := 1.5
 		for k in habit:
@@ -1688,7 +1699,7 @@ func ai_decide(dist: float, toward: String, away: String) -> Dictionary:
 	if free and ai_gadget_cd <= 0.0:
 		var plan := ai_use_gadgets(dist, threatened, toward)
 		if not plan.is_empty():
-			ai_gadget_cd = randf_range(0.6, 1.4) - ai_smart * 0.4
+			ai_gadget_cd = frng.randf_range(0.6, 1.4) - ai_smart * 0.4
 			return plan
 	# 2) special moves
 	if free:
@@ -1697,46 +1708,46 @@ func ai_decide(dist: float, toward: String, away: String) -> Dictionary:
 			start_special(cpu, special)
 			return {}
 	# punish a whiffed attack
-	if p_open and dist < melee + 20.0 and randf() < 0.45 + ai_smart * 0.45:
-		if can_punch and (randf() < 0.6 or not can_kick):
+	if p_open and dist < melee + 20.0 and frng.randf() < 0.45 + ai_smart * 0.45:
+		if can_punch and (frng.randf() < 0.6 or not can_kick):
 			return {"tap": "punch"}
 		if can_kick:
 			return {"tap": "kick"}
 	# 3) defend
 	if threatened and dist < 170.0 * cpu.scale:
-		if cpu.arms() > 0 and (randf() < ai_block or (cpu.style == "tank" and randf() < 0.5)):
+		if cpu.arms() > 0 and (frng.randf() < ai_block or (cpu.style == "tank" and frng.randf() < 0.5)):
 			return {"hold": ["block"]}
-		if aggro and dist < melee and can_punch and randf() < 0.4:
+		if aggro and dist < melee and can_punch and frng.randf() < 0.4:
 			return {"tap": "punch"}   # strikers trade blows
-		if ai_kit["air"] and can_kick and randf() < 0.45:
+		if ai_kit["air"] and can_kick and frng.randf() < 0.45:
 			return {"hold": ["jump", away], "air": true, "air_in": false}   # jump away
 		return {"hold": [away]}
 	# a charged hit beats a turtle
-	if player.blocking and dist < melee + 20.0 and randf() < 0.3 + ai_smart * 0.5:
+	if player.blocking and dist < melee + 20.0 and frng.randf() < 0.3 + ai_smart * 0.5:
 		var cb2 := ai_charge_plan(can_punch, can_kick)
 		if not cb2.is_empty():
 			return cb2
 	# 4) self-repairing robots back off to heal when hurt
-	if cpu.has_gadget("regen") and hurt < 0.4 and dist < 320.0 and randf() < 0.55:
+	if cpu.has_gadget("regen") and hurt < 0.4 and dist < 320.0 and frng.randf() < 0.55:
 		return {"hold": [away]}
 	# 5) shooters keep their distance while a shot is ready
 	if ai_kit["range"] > 0.0 and ai_ranged_ready() and not aggro:
 		var want: float = ai_kit["range"]
 		var near_wall := cpu.pos.x < wall_l + 140.0 or cpu.pos.x > wall_r - 140.0
 		if dist < want * 0.7 and not near_wall:
-			if ai_kit["air"] and randf() < 0.3:
+			if ai_kit["air"] and frng.randf() < 0.3:
 				return {"hold": ["jump", away], "air": true, "air_in": false}
 			return {"hold": [away]}
 		if dist > want * 1.4:
 			return {"hold": [toward]}
 		if dist > melee:
-			return {"hold": ["down"]} if randf() < 0.3 else {}   # wait for the gadget, duck under high shots
+			return {"hold": ["down"]} if frng.randf() < 0.3 else {}   # wait for the gadget, duck under high shots
 	# cornered: jump gadgets vault right over the enemy
 	var cornered := (cpu.pos.x < wall_l + 130.0 * cpu.scale and toward == "right") or (cpu.pos.x > wall_r - 130.0 * cpu.scale and toward == "left")
-	if cornered and dist < 220.0 * cpu.scale and ai_kit["air"] and cpu.on_ground and randf() < 0.3 + ai_smart * 0.4:
+	if cornered and dist < 220.0 * cpu.scale and ai_kit["air"] and cpu.on_ground and frng.randf() < 0.3 + ai_smart * 0.4:
 		return {"hold": ["jump", toward], "air": true, "air_in": true}
 	# 6) jumpers come in from above
-	if ai_kit["air"] and can_kick and dist > melee and dist < 420.0 and randf() < 0.35:
+	if ai_kit["air"] and can_kick and dist > melee and dist < 420.0 and frng.randf() < 0.35:
 		return {"hold": ["jump", toward], "air": true, "air_in": true}
 	# 7) close the distance
 	if dist > melee:
@@ -1745,8 +1756,8 @@ func ai_decide(dist: float, toward: String, away: String) -> Dictionary:
 			plan["tap"] = "jump_press"
 		return plan
 	# 8) up close
-	if cpu.has_gadget("thorns") and not threatened and randf() < 0.3:
-		return {"hold": ["down"]} if randf() < 0.3 else {}   # spiky bots stand there and dare you to hit the spikes
+	if cpu.has_gadget("thorns") and not threatened and frng.randf() < 0.3:
+		return {"hold": ["down"]} if frng.randf() < 0.3 else {}   # spiky bots stand there and dare you to hit the spikes
 	var atk := 0.68 if aggro else 0.55
 	if cpu.style == "tank":
 		atk = 0.45
@@ -1780,7 +1791,7 @@ func ai_melee() -> float:
 func ai_charge_plan(can_punch: bool, can_kick: bool) -> Dictionary:
 	if cpu.power < cpu.power_max * 0.45 or not cpu.on_ground:
 		return {}
-	var btn := "punch" if can_punch and (not can_kick or randf() < 0.5) else ("kick" if can_kick else "")
+	var btn := "punch" if can_punch and (not can_kick or frng.randf() < 0.5) else ("kick" if can_kick else "")
 	if btn == "":
 		return {}
 	return {"tap": btn, "hold": [btn + "_held"], "keep": CHARGE_MAX + 0.05}
@@ -1807,17 +1818,17 @@ func ai_pick_special(dist: float, threatened: bool = false, punish: bool = false
 		return ""
 	# situational moves (anti-air, counters, punishes) get used much more often than "just because"
 	var gate := 0.35 + ai_smart * 0.45 if best_score >= 3.0 else 0.1 + ai_smart * 0.2
-	if not punish and randf() > gate:
+	if not punish and frng.randf() > gate:
 		return ""
 	var pick := best
-	if randf() > 0.4 + ai_smart * 0.5:
-		var r := randf() * total
+	if frng.randf() > 0.4 + ai_smart * 0.5:
+		var r := frng.randf() * total
 		for id in scores:
 			r -= scores[id]
 			if r <= 0.0:
 				pick = id
 				break
-	ai_special_cd = randf_range(1.6, 3.5) - ai_smart
+	ai_special_cd = frng.randf_range(1.6, 3.5) - ai_smart
 	return pick
 
 
@@ -1917,27 +1928,27 @@ func ai_use_gadgets(dist: float, threatened: bool, toward: String) -> Dictionary
 	var lined_up := absf(player.pos.y - cpu.pos.y) < 120.0
 	var g := {}
 	g = ai_gadget("shield")
-	if not g.is_empty() and threatened and dist < 200.0 * cpu.scale and randf() < 0.4 + ai_smart * 0.4:
+	if not g.is_empty() and threatened and dist < 200.0 * cpu.scale and frng.randf() < 0.4 + ai_smart * 0.4:
 		use_gadget(cpu, g)
 		return {"hold": [toward]}   # walk through their attack behind the bubble
 	g = ai_gadget("bite")
-	if not g.is_empty() and absf(player.pos.x - cpu.pos.x) < body_half(cpu) + body_half(player) + BITE_REACH * 0.8 * cpu.scale and randf() < 0.3 + ai_smart * 0.4:
+	if not g.is_empty() and absf(player.pos.x - cpu.pos.x) < body_half(cpu) + body_half(player) + BITE_REACH * 0.8 * cpu.scale and frng.randf() < 0.3 + ai_smart * 0.4:
 		use_gadget(cpu, g)   # (1.107) close enough to bite
 		return {}
 	g = ai_gadget("fan")
-	if not g.is_empty() and (player.target != "" or player.weak != "" or threatened) and randf() < 0.2 + ai_smart * 0.3:
+	if not g.is_empty() and (player.target != "" or player.weak != "" or threatened) and frng.randf() < 0.2 + ai_smart * 0.3:
 		use_gadget(cpu, g)
 		return {}
 	g = ai_gadget("trunk")
-	if not g.is_empty() and cpu.trunk_t < 0.0 and trunk_pick(cpu) >= 0 and lined_up and randf() < 0.5:
+	if not g.is_empty() and cpu.trunk_t < 0.0 and trunk_pick(cpu) >= 0 and lined_up and frng.randf() < 0.5:
 		use_gadget(cpu, g)
 		return {}
 	g = ai_gadget("steam_burst")
-	if not g.is_empty() and (threatened or player.target != "") and randf() < 0.25 + ai_smart * 0.3:
+	if not g.is_empty() and (threatened or player.target != "") and frng.randf() < 0.25 + ai_smart * 0.3:
 		use_gadget(cpu, g)   # (1.98) hide in the steam when you're lining it up
 		return {}
 	g = ai_gadget("emp")
-	if not g.is_empty() and dist < 200.0 and (player.blocking or threatened or randf() < 0.35):
+	if not g.is_empty() and dist < 200.0 and (player.blocking or threatened or frng.randf() < 0.35):
 		use_gadget(cpu, g)
 		return {"hold": [toward], "follow": "punch"}   # stunned enemy: go hit it
 	g = ai_gadget("grapple")
@@ -1946,14 +1957,14 @@ func ai_use_gadgets(dist: float, threatened: bool, toward: String) -> Dictionary
 		return {"follow": "punch"}   # reel in, then punch
 	for id in ["cannon", "laser", "rocket_fist"]:
 		g = ai_gadget(id)
-		if not g.is_empty() and dist > 170.0 and lined_up and player.invuln_t <= 0.0 and randf() < 0.35 + ai_smart * 0.5:
+		if not g.is_empty() and dist > 170.0 and lined_up and player.invuln_t <= 0.0 and frng.randf() < 0.35 + ai_smart * 0.5:
 			use_gadget(cpu, g)
 			return {}
 	g = ai_gadget("booster")
 	if g.is_empty():
 		g = ai_gadget("flame_dash")
 	var whiffed: bool = ATTACKS.has(player.state) and player.timer > ATTACKS[player.state]["startup"] + ATTACKS[player.state]["active"]
-	if not g.is_empty() and dist > 160.0 and dist < 620.0 and lined_up and (whiffed or player.stun_t > 0.0 or randf() < 0.45):
+	if not g.is_empty() and dist > 160.0 and dist < 620.0 and lined_up and (whiffed or player.stun_t > 0.0 or frng.randf() < 0.45):
 		use_gadget(cpu, g)
 		return {"follow": "kick"}
 	g = ai_gadget("overcharge")
@@ -1994,13 +2005,13 @@ func ai_pick_target() -> void:
 	match cpu.ai_level:
 		1:
 			# rookies: now and then, at whatever catches the eye
-			if cpu.target == "" and randf() < 0.25:
+			if cpu.target == "" and frng.randf() < 0.25:
 				var opts: Array = []
 				for slot in BODY_PARTS:
 					if slot != "torso" and player.alive(slot):
 						opts.append(slot)
 				if not opts.is_empty():
-					want = opts[randi() % opts.size()]
+					want = opts[frng.randi() % opts.size()]
 		2:
 			want = cpu.weak
 		3:
@@ -2053,6 +2064,19 @@ func log_beat(delta: float) -> void:
 
 
 func _process(delta: float) -> void:
+	if demo_move != "" or not replay.is_empty() or simming:
+		tick(delta)
+		return
+	# (1.145) fixed ticks: as many STEPs as the frame covered (a slow frame catches up, at most 8)
+	step_acc = minf(step_acc + delta, STEP * 8.0)
+	if step_acc < STEP:
+		return
+	while step_acc >= STEP:
+		step_acc -= STEP
+		tick(STEP)
+
+
+func tick(delta: float) -> void:
 	if demo_move != "":
 		demo_process(delta)
 		return
@@ -2119,7 +2143,7 @@ func _process(delta: float) -> void:
 			p_ins[k] = move_only(p_ins[k])
 		for k2 in team_c.size():
 			var tw := walkin_for(1)
-			if k2 == 0 and str(tw.get("taunt", "")) != "" and not team_c[0].taunted and count_t > 0.6 and randf() < 0.02:
+			if k2 == 0 and str(tw.get("taunt", "")) != "" and not team_c[0].taunted and count_t > 0.6 and frng.randf() < 0.02:
 				team_c[0].taunted = true   # a world pilot taunts back now and then
 				team_c[0].taunt_t = 1.4
 		# (1.71) the enemy walks steadily up to its mark and settles there. It used to roll the dice
@@ -2269,25 +2293,25 @@ func update_effects(delta: float) -> void:
 		if f.state == "ko":
 			continue
 		for slot in BODY_PARTS:
-			if slot != "torso" and f.alive(slot) and f.ratio(slot) < 0.3 and randf() < delta * 2.5:
+			if slot != "torso" and f.alive(slot) and f.ratio(slot) < 0.3 and frng.randf() < delta * 2.5:
 				smoke.append({"pos": to_world_point(f, RobotArt.part_center(f.get_look(), slot)), "t": 0.0, "dark": false, "k": 0.6, "_r": 1})
 		# a hurt core smokes: a wisp under half, thick black smoke and sparks under a quarter
 		if f.alive("torso"):
 			var cr: float = f.ratio("torso")
-			var top: Vector2 = to_world_point(f, Vector2(randf_range(-12, 12), RobotArt.geom(f.get_look())["top"] + 6.0))
+			var top: Vector2 = to_world_point(f, Vector2(frng.randf_range(-12, 12), RobotArt.geom(f.get_look())["top"] + 6.0))
 			if cr < 0.25:
-				if randf() < delta * 14.0:
+				if frng.randf() < delta * 14.0:
 					smoke.append({"pos": top, "t": 0.0, "dark": true, "k": 1.6, "_r": 1})
-				if randf() < delta * 3.0:
-					add_spark(top + Vector2(randf_range(-20, 20), randf_range(-10, 20)), Color(1.0, 0.75, 0.3), 9.0)
+				if frng.randf() < delta * 3.0:
+					add_spark(top + Vector2(frng.randf_range(-20, 20), frng.randf_range(-10, 20)), Color(1.0, 0.75, 0.3), 9.0)
 					sparks[-1]["_r"] = 1
-			elif cr < 0.5 and randf() < delta * 4.0:
+			elif cr < 0.5 and frng.randf() < delta * 4.0:
 				smoke.append({"pos": top, "t": 0.0, "dark": false, "k": 0.8, "_r": 1})
-		if f.burn_t > 0.0 and randf() < delta * 6.0:
+		if f.burn_t > 0.0 and frng.randf() < delta * 6.0:
 			smoke.append({"pos": f.pos + Vector2(-f.facing * 20.0, -90.0 * f.scale), "t": 0.0, "dark": true, "_r": 1})
 	for s in smoke:
 		s["t"] += delta
-		s["pos"] += Vector2(randf_range(-10, 10), -40.0) * delta
+		s["pos"] += Vector2(frng.randf_range(-10, 10), -40.0) * delta
 	smoke = smoke.filter(func(s): return s["t"] < 1.2)
 
 
@@ -2530,8 +2554,8 @@ func update_power(f: Fighter, delta: float) -> void:
 	f.idle_t += delta
 	if f.burn_t > 0.0:
 		f.burn_t -= delta
-		if randf() < delta * 14.0:
-			add_spark(f.pos + Vector2(randf_range(-30, 30), randf_range(-150, -60) * f.scale), POWER_COLOR, 10.0)
+		if frng.randf() < delta * 14.0:
+			add_spark(f.pos + Vector2(frng.randf_range(-30, 30), frng.randf_range(-150, -60) * f.scale), POWER_COLOR, 10.0)
 		if f.burn_t <= 0.0:
 			f.power = f.power_max * 0.35
 			f.idle_t = 0.0
@@ -2747,8 +2771,8 @@ func update_charge(f: Fighter, i: Dictionary, delta: float) -> bool:
 			spend(f, f.power_max * CHARGE_DRAIN * delta)
 			if f.power <= 0.0:
 				held = false   # the tank's dry: it goes now
-			if randf() < delta * (6.0 + 20.0 * k):
-				add_spark(visual_point(f, RobotArt.part_center(f.get_look(), f.attack_limb)) + Vector2(randf_range(-12, 12), randf_range(-12, 12)),
+			if frng.randf() < delta * (6.0 + 20.0 * k):
+				add_spark(visual_point(f, RobotArt.part_center(f.get_look(), f.attack_limb)) + Vector2(frng.randf_range(-12, 12), frng.randf_range(-12, 12)),
 						Color(1.0, 0.85, 0.3).lerp(Color(1.0, 0.35, 0.2), k), 10.0 + 14.0 * k)
 		if held:
 			return f.state == "charge"
@@ -2765,7 +2789,7 @@ func start_special(f: Fighter, id: String) -> void:
 	var m: Dictionary = Specials.MOVES[id]
 	f.state = "special"
 	pilot_jerk(f.team)
-	if randf() < 0.6:
+	if frng.randf() < 0.6:
 		pilot_say(f.team, "special", false, (tr(Specials.MOVES[id]["name"]) as String).to_upper() + "!" if not pilots.is_empty() and not pilots[f.team]["auto"] else tr("[ EXECUTE: %s ]") % (tr(Specials.MOVES[id]["name"]) as String).to_upper())
 	f.special_id = id
 	f.easy_sp = false
@@ -3093,8 +3117,8 @@ func update_fighter(f: Fighter, o: Fighter, i: Dictionary, delta: float) -> void
 	f.haste_t = maxf(0.0, f.haste_t - delta)
 	if f.steam_t > 0.0:
 		f.steam_t -= delta
-		if randf() < delta * 26.0:
-			smoke.append({"pos": f.pos + Vector2(randf_range(-55, 55), randf_range(-160, -20)) * f.scale, "t": 0.0, "dark": false, "steam": true, "k": randf_range(1.8, 2.8)})
+		if frng.randf() < delta * 26.0:
+			smoke.append({"pos": f.pos + Vector2(frng.randf_range(-55, 55), frng.randf_range(-160, -20)) * f.scale, "t": 0.0, "dark": false, "steam": true, "k": frng.randf_range(1.8, 2.8)})
 	if phase == "fight" and f.state != "ko" and f.pr_rate > 0.0 and f.pressure < 100.0:
 		f.pressure = minf(100.0, f.pressure + f.pr_rate * delta)
 		if f.pressure >= 100.0:
@@ -3107,8 +3131,8 @@ func update_fighter(f: Fighter, o: Fighter, i: Dictionary, delta: float) -> void
 			b["t"] -= delta
 			if f.alive(b["slot"]):
 				damage_part(f, b["slot"], b["dps"] * delta, true)
-				if randf() < delta * 12.0:
-					add_spark(visual_point(f, RobotArt.part_center(f.get_look(), b["slot"])) + Vector2(randf_range(-14, 14), randf_range(-14, 8)), Color(0.85, 0.85, 0.8) if b.get("crush", false) else Color(1.0, 0.5, 0.1), 12.0)
+				if frng.randf() < delta * 12.0:
+					add_spark(visual_point(f, RobotArt.part_center(f.get_look(), b["slot"])) + Vector2(frng.randf_range(-14, 14), frng.randf_range(-14, 8)), Color(0.85, 0.85, 0.8) if b.get("crush", false) else Color(1.0, 0.5, 0.1), 12.0)
 		f.burns = f.burns.filter(func(b): return b["t"] > 0.0)
 		check_ko(o, f)
 	if i["gadget"] >= 0 and i["gadget"] < gadget_buttons.size() and gadget_buttons[i["gadget"]]["owner"] == f:
@@ -3123,8 +3147,8 @@ func update_fighter(f: Fighter, o: Fighter, i: Dictionary, delta: float) -> void
 				# (1.99) through the wall of fire: it sets them burning
 				o.burns.append({"slot": "torso", "dps": 4.0 * f.gpow, "t": 6.0 if f.sets.has("hellfire") else 3.0})
 				popup(tr("SCORCHED"), o.pos + Vector2(0, -170.0 * o.scale), Color(1.0, 0.5, 0.15))
-		if f.boost_fire and randf() < 0.6:
-			add_spark(f.pos + Vector2(-f.facing * randf_range(20.0, 70.0), randf_range(-140.0, -40.0)) * Vector2(1.0, f.scale), Color(1.0, randf_range(0.35, 0.7), 0.1), randf_range(14.0, 26.0) * f.scale)
+		if f.boost_fire and frng.randf() < 0.6:
+			add_spark(f.pos + Vector2(-f.facing * frng.randf_range(20.0, 70.0), frng.randf_range(-140.0, -40.0)) * Vector2(1.0, f.scale), Color(1.0, frng.randf_range(0.35, 0.7), 0.1), frng.randf_range(14.0, 26.0) * f.scale)
 
 	update_power(f, delta)
 	if f.burn_t > 0.0:
@@ -3194,7 +3218,7 @@ func update_fighter(f: Fighter, o: Fighter, i: Dictionary, delta: float) -> void
 			f.state = "idle"
 			f.recovered_at = clock
 			if f.team == 1:
-				f.ai["timer"] = minf(f.ai.get("timer", 0.0), randf_range(0.02, 0.1) + f.ai.get("think", 0.4) * 0.15)   # react right after recovering
+				f.ai["timer"] = minf(f.ai.get("timer", 0.0), frng.randf_range(0.02, 0.1) + f.ai.get("think", 0.4) * 0.15)   # react right after recovering
 	elif f.state == "special":
 		update_special(f, o, delta)
 	elif ATTACKS.has(f.state):
@@ -3414,7 +3438,7 @@ func maker_step(f: Fighter) -> void:
 		"bounce":
 			add_spark(foot, Color(0.4, 0.85, 1.0), 10.0 * f.scale)
 		"lurch":
-			if randf() < 0.35:
+			if frng.randf() < 0.35:
 				var g2 := RobotArt.geom(f.get_look())
 				smoke.append({"pos": to_world_point(f, Vector2(-float(g2["tw"]) * 0.5, (g2["torso"] as Rect2).position.y + 10.0)), "t": 0.0, "dark": true, "k": 0.5})
 	if f.sets.has("volta") and phase == "fight":
@@ -3428,13 +3452,13 @@ func choose_part(att: Fighter, d: Fighter, zone_name: String, sure: bool = false
 	var zone: Dictionary = Specials.ZONES.get(zone_name, Specials.ZONES["any"])
 	var accuracy: float = (0.45 if att.target.begins_with("head") else 0.8) + att.ctrl.get("aim", 0.0) / 100.0 + att.aim_acc
 	if not touched.is_empty():
-		if att.target != "" and touched.has(att.target) and d.alive(att.target) and (sure or randf() < accuracy):
+		if att.target != "" and touched.has(att.target) and d.alive(att.target) and (sure or frng.randf() < accuracy):
 			return att.target
 		var tw := 0.0
 		for slot in touched:
 			if d.alive(slot):
 				tw += float(zone.get(slot, 0.1))
-		var rr := randf() * tw
+		var rr := frng.randf() * tw
 		for slot in touched:
 			if d.alive(slot):
 				rr -= float(zone.get(slot, 0.1))
@@ -3442,7 +3466,7 @@ func choose_part(att: Fighter, d: Fighter, zone_name: String, sure: bool = false
 					return slot
 		return "torso" if d.alive("torso") else str(touched[0])
 	if att.target != "" and d.alive(att.target) and (zone.has(att.target) or zone_name == "any"):
-		if sure or randf() < accuracy:
+		if sure or frng.randf() < accuracy:
 			return att.target
 	var total := 0.0
 	for slot in zone:
@@ -3450,7 +3474,7 @@ func choose_part(att: Fighter, d: Fighter, zone_name: String, sure: bool = false
 			total += zone[slot]
 	if total <= 0.0:
 		return "torso"
-	var r := randf() * total
+	var r := frng.randf() * total
 	for slot in zone:
 		if d.alive(slot):
 			r -= zone[slot]
@@ -3624,7 +3648,7 @@ func apply_hit(att: Fighter, d: Fighter, a: Dictionary, at: Vector2) -> void:
 				GameData.story_seen.append("big_special")   # (1.103) Tenryu notices
 	var touched: Array = a.get("touched", [])
 	var slot := choose_part(att, d, a.get("zone", "punch"), a.get("sure_aim", false), touched)
-	if d.bite_t > 0.0 and d.alive("head") and slot != "head" and randf() < BITE_RISK:
+	if d.bite_t > 0.0 and d.alive("head") and slot != "head" and frng.randf() < BITE_RISK:
 		slot = "head"   # (1.107) the jaw leaned in to bite: the head is out in front
 	var balled := BALL_STATES.has(d.state) and d.alive("torso")
 	if balled:
@@ -3668,12 +3692,12 @@ func apply_hit(att: Fighter, d: Fighter, a: Dictionary, at: Vector2) -> void:
 		shake = maxf(shake, 14.0)
 	# evasion: a clean miss
 	var dodge: float = minf(25.0, part_trait_sum(d, "dodge") * 0.6 + d.gtraits.get("dodge", 0.0))
-	if not blocked and not a.get("unblockable", false) and d.steam_t > 0.0 and randf() * 100.0 < STEAM_MISS:
+	if not blocked and not a.get("unblockable", false) and d.steam_t > 0.0 and frng.randf() * 100.0 < STEAM_MISS:
 		# (1.98) swinging blind into the steam
 		popup(tr("LOST IN THE STEAM"), d.pos + Vector2(0, -200.0 * d.scale), Color(0.9, 0.95, 1.0))
 		Sfx.play("swing", 0.2)
 		return
-	if not blocked and not a.get("unblockable", false) and randf() * 100.0 < dodge:
+	if not blocked and not a.get("unblockable", false) and frng.randf() * 100.0 < dodge:
 		popup(tr("DODGE"), d.pos + Vector2(0, -200.0 * d.scale), Color(0.7, 1.0, 1.0))
 		Sfx.play("swing", 0.2)
 		d.pos.x += att.facing * 20.0
@@ -3735,9 +3759,9 @@ func apply_hit(att: Fighter, d: Fighter, a: Dictionary, at: Vector2) -> void:
 		dmg *= 1.0 + COMBO_BONUS * minf(att.combo - 1, 6)
 		if att.combo >= 3:
 			pilot_say(att.team, "combo")
-		elif randf() < 0.35:
+		elif frng.randf() < 0.35:
 			pilot_say(att.team, "hit")
-		if randf() < 0.3:
+		if frng.randf() < 0.3:
 			pilot_say(d.team, "hurt")
 		if slot == att.target:
 			dmg *= 1.0 + att.best_aim() / 100.0
@@ -3757,11 +3781,11 @@ func apply_hit(att: Fighter, d: Fighter, a: Dictionary, at: Vector2) -> void:
 			d.pressure = maxf(0.0, d.pressure - dmg * 1.5)
 		# precision: critical hits
 		var crit: float = off_trait(att, src, "crit") + (5.0 if att.style == "striker" else 0.0)
-		if randf() * 100.0 < crit:
+		if frng.randf() * 100.0 < crit:
 			dmg *= 2.0
 			popup(tr("CRITICAL!"), hit_at + Vector2(0, -30), Color(1.0, 0.95, 0.3))
 		# reactive armor: this part may shrug it off
-		if randf() * 100.0 < limb_trait(d, slot, "reactive") * 2.0 / (1.0 if slot.begins_with("head") or slot == "torso" else 2.0):
+		if frng.randf() * 100.0 < limb_trait(d, slot, "reactive") * 2.0 / (1.0 if slot.begins_with("head") or slot == "torso" else 2.0):
 			dmg *= 0.25
 			popup(tr("DEFLECTED"), hit_at + Vector2(0, -30), Color(0.7, 0.8, 1.0))
 			add_spark(hit_at, Color(0.7, 0.8, 1.0), 30.0)
@@ -3776,7 +3800,7 @@ func apply_hit(att: Fighter, d: Fighter, a: Dictionary, at: Vector2) -> void:
 				dmg *= 1.0 - hov / 100.0
 		if balled:
 			dmg *= 1.0 - d.shell / 100.0
-			if randf() < 0.5:
+			if frng.randf() < 0.5:
 				popup(tr("SHELL"), hit_at + Vector2(0, -50), Color(0.95, 0.8, 0.5))
 		var part_dmg := dmg * (HEAD_FACTOR if slot.begins_with("head") else 1.0)
 		damage_part(d, slot, part_dmg, false, armor_k(att, src))
@@ -3812,12 +3836,12 @@ func apply_hit(att: Fighter, d: Fighter, a: Dictionary, at: Vector2) -> void:
 			att.slow_t = maxf(att.slow_t, frost)
 			add_spark(hit_at, Color(0.6, 0.85, 1.0), 30.0)
 		var vent := off_trait(att, src, "vent")
-		if vent > 0.0 and d.target != "" and randf() * 100.0 < vent:
+		if vent > 0.0 and d.target != "" and frng.randf() * 100.0 < vent:
 			# (1.98) a Piston Gauntlet puffs steam in their face: the crosshair comes off
 			d.target = ""
 			d.aim_cd = maxf(d.aim_cd, d.aim_time)
 			for k in 4:
-				smoke.append({"pos": hit_at + Vector2(randf_range(-20, 20), randf_range(-20, 10)), "t": 0.0, "dark": false, "steam": true, "k": 1.4})
+				smoke.append({"pos": hit_at + Vector2(frng.randf_range(-20, 20), frng.randf_range(-20, 10)), "t": 0.0, "dark": false, "steam": true, "k": 1.4})
 			popup(tr("STEAMED"), hit_at + Vector2(0, -60), Color(0.9, 0.95, 1.0))
 		var chill := off_trait(att, src, "chill")
 		if chill > 0.0:
@@ -3845,7 +3869,7 @@ func apply_hit(att: Fighter, d: Fighter, a: Dictionary, at: Vector2) -> void:
 		if swept:
 			# (1.107) Spider Legs: a sweep lands and the robot just shudders
 			d.squash = maxf(d.squash, 0.1)
-			if randf() < 0.5:
+			if frng.randf() < 0.5:
 				popup(tr("STEADY"), d.pos + Vector2(0, -40.0), Color(0.8, 0.75, 0.95))
 		elif balled:
 			if d.state == "curl":
@@ -3869,7 +3893,7 @@ func apply_hit(att: Fighter, d: Fighter, a: Dictionary, at: Vector2) -> void:
 				d.vel.y = a["launch"]
 				d.on_ground = false
 				d.knocked = not d.sets.has("oldiron")   # it lands on its back (Old Iron's set stays on its feet)
-			if randf() * 100.0 < off_trait(att, src, "stun") + (6.0 if att.sets.has("volta") else 0.0):
+			if frng.randf() * 100.0 < off_trait(att, src, "stun") + (6.0 if att.sets.has("volta") else 0.0):
 				d.timer = maxf(d.timer, 0.8)
 				d.stun_t = maxf(d.stun_t, 0.8)
 				popup(tr("SHOCKED!"), hit_at + Vector2(0, -30), Color(1.0, 1.0, 0.4))
@@ -4060,7 +4084,7 @@ func update_ball(f: Fighter, o: Fighter, i: Dictionary, delta: float) -> void:
 			f.timer -= delta
 			f.vel.x = f.facing * ROLL_SPEED * f.scale
 			f.roll_a += f.vel.x * delta / (34.0 * f.scale)
-			if randf() < delta * 14.0:
+			if frng.randf() < delta * 14.0:
 				add_spark(Vector2(f.pos.x - f.facing * 30.0 * f.scale, floor_y - 4.0), Color(0.75, 0.65, 0.5), 12.0 * f.scale)
 			var reach := body_half(f) + (body_half(o) if o != null else 0.0) + 30.0 * f.scale
 			if o != null and o.state != "ko" and not f.roll_hit and absf(o.pos.x - f.pos.x) < reach and absf(o.pos.y - f.pos.y) < 150.0 \
@@ -4107,7 +4131,7 @@ func bounce_off(f: Fighter) -> void:
 func steam_cloud(f: Fighter, t: float, lose_aim: bool) -> void:
 	f.steam_t = maxf(f.steam_t, t)
 	for k in 10:
-		smoke.append({"pos": f.pos + Vector2(randf_range(-60, 60), randf_range(-170, -20)) * f.scale, "t": randf_range(0.0, 0.3), "dark": false, "steam": true, "k": randf_range(2.0, 3.2)})
+		smoke.append({"pos": f.pos + Vector2(frng.randf_range(-60, 60), frng.randf_range(-170, -20)) * f.scale, "t": frng.randf_range(0.0, 0.3), "dark": false, "steam": true, "k": frng.randf_range(2.0, 3.2)})
 	if lose_aim:
 		for e in enemies_of(f):
 			if e.foe == f:
@@ -4232,7 +4256,7 @@ func rip_off(f: Fighter, slot: String, overkill: float = 0.0, force: int = -1) -
 		keep *= 0.4
 	if boom > 0.0:
 		keep = 0.15
-	var intact := randf() < keep
+	var intact := frng.randf() < keep
 	if force >= 0:
 		intact = force == 1   # (1.144) a finisher decides
 	f.ripped.append({"id": p["id"], "aimed": aimed, "slot": slot, "intact": intact, "fin": force >= 0})
@@ -4250,19 +4274,19 @@ func rip_off(f: Fighter, slot: String, overkill: float = 0.0, force: int = -1) -
 	var big := Vector2(70, 70) if slot.begins_with("leg") or slot == "torso" else Vector2(56, 56)
 	if intact:
 		# the real part flies off, bounces, and stays lying in the ring
-		debris.append({"pos": at, "vel": Vector2(-f.facing * randf_range(150, 350), randf_range(-650, -400)),
-				"rot": 0.0, "rv": randf_range(-10, 10), "size": big * f.scale, "color": p["color"], "def": d, "lie": true})
+		debris.append({"pos": at, "vel": Vector2(-f.facing * frng.randf_range(150, 350), frng.randf_range(-650, -400)),
+				"rot": 0.0, "rv": frng.randf_range(-10, 10), "size": big * f.scale, "color": p["color"], "def": d, "lie": true})
 		popup(tr("INTACT"), at + Vector2(0, -36), Color(0.6, 1.0, 0.7))
 	else:
 		# it shatters: shards in its colour, sparks and a puff of smoke
 		for k in 8:
-			debris.append({"pos": at + Vector2(randf_range(-14, 14), randf_range(-14, 14)), "vel": Vector2(randf_range(-420, 420), randf_range(-700, -250)),
-					"rot": randf() * TAU, "rv": randf_range(-20, 20), "size": Vector2(randf_range(8, 18), randf_range(5, 12)) * f.scale, "color": p["color"], "shard": true, "life": 1.6})
+			debris.append({"pos": at + Vector2(frng.randf_range(-14, 14), frng.randf_range(-14, 14)), "vel": Vector2(frng.randf_range(-420, 420), frng.randf_range(-700, -250)),
+					"rot": frng.randf() * TAU, "rv": frng.randf_range(-20, 20), "size": Vector2(frng.randf_range(8, 18), frng.randf_range(5, 12)) * f.scale, "color": p["color"], "shard": true, "life": 1.6})
 		for k in 5:
-			smoke.append({"pos": at + Vector2(randf_range(-16, 16), randf_range(-16, 16)), "t": 0.0, "dark": true, "k": 1.3})
+			smoke.append({"pos": at + Vector2(frng.randf_range(-16, 16), frng.randf_range(-16, 16)), "t": 0.0, "dark": true, "k": 1.3})
 		popup(tr("SHATTERED"), at + Vector2(0, -36), Color(1.0, 0.55, 0.4))
 	for k in 3:
-		add_spark(at + Vector2(randf_range(-20, 20), randf_range(-20, 20)), Color(1.0, 0.6, 0.2), 26.0)
+		add_spark(at + Vector2(frng.randf_range(-20, 20), frng.randf_range(-20, 20)), Color(1.0, 0.6, 0.2), 26.0)
 	# a rip plays in full when it's earned: your locked aim tore it off, it's the first of your career,
 	# it's their last arm or leg, or a strong (4-key) special did it
 	var hitter = f.last_hitter
@@ -5521,7 +5545,7 @@ func dummy_input(p_ins: Array, c_ins: Array) -> void:
 			if coming:
 				var key := "%s:%d" % [player.state, int(clock * 10.0) / 6]
 				if str(rand_guard.get("k", "")) != key:
-					rand_guard = {"k": key, "on": randf() < 0.5}
+					rand_guard = {"k": key, "on": frng.randf() < 0.5}
 				i["block"] = bool(rand_guard["on"])
 				i["down"] = low
 		"record":
@@ -5779,14 +5803,14 @@ func start_finisher(kind: String) -> void:
 	if kind == "spare":
 		fin_pose = "bow"
 		popup(tr("SPARED"), fin_lose.pos + Vector2(0, -200.0 * fin_lose.scale), GUI.GREEN)
-		pilot_say(0, "spare", true, tr(["Good fight.", "Get up. You fought well.", "That's enough. Respect."][randi() % 3]))
+		pilot_say(0, "spare", true, tr(["Good fight.", "Get up. You fought well.", "That's enough. Respect."][frng.randi() % 3]))
 		cheer = 2.0
 		Sfx.play("crowd_cheer", 0.1, -6.0)
 		rec_mark("spare", 60.0, "%s spares %s", [rec_name(fin_win), rec_name(fin_lose)], 2.0)
 	else:
 		var fd: Array = FINISHERS.get(fin_win.mk, FINISHERS[""])
 		fin_pose = str(fd[2]) if str(fd[2]) != "guard" else ""
-		pilot_say(0, "finish", true, tr(["Finish it!", "Scrap it!", "Lights out!"][randi() % 3]))
+		pilot_say(0, "finish", true, tr(["Finish it!", "Scrap it!", "Lights out!"][frng.randi() % 3]))
 		rec_mark("scrap", 150.0, "%s scraps %s", [rec_name(fin_win), rec_name(fin_lose)], 3.0)
 
 
@@ -5805,16 +5829,16 @@ func finisher_strike() -> void:
 	fin_quiet = true
 	rings.append({"pos": at, "t": 0.0, "color": col, "r": 220.0})
 	for k in 14:
-		add_spark(at + Vector2(randf_range(-60, 60), randf_range(-60, 60)), col, randf_range(18.0, 36.0))
+		add_spark(at + Vector2(frng.randf_range(-60, 60), frng.randf_range(-60, 60)), col, frng.randf_range(18.0, 36.0))
 	match fin_win.mk:
 		"oldiron", "nimbus":
 			for k in 8:
-				smoke.append({"pos": Vector2(fin_lose.pos.x + randf_range(-90, 90), floor_y - 10.0), "t": 0.0, "dark": false, "k": 1.6})
+				smoke.append({"pos": Vector2(fin_lose.pos.x + frng.randf_range(-90, 90), floor_y - 10.0), "t": 0.0, "dark": false, "k": 1.6})
 		"brassworks":
 			steam_cloud(fin_lose, 1.6, false)
 		"hellfire":
 			for k in 10:
-				smoke.append({"pos": at + Vector2(randf_range(-50, 50), randf_range(-40, 40)), "t": 0.0, "dark": true, "k": 1.5})
+				smoke.append({"pos": at + Vector2(frng.randf_range(-50, 50), frng.randf_range(-40, 40)), "t": 0.0, "dark": true, "k": 1.5})
 		"tenryu":
 			for k in 3:
 				rings.append({"pos": at, "t": -0.15 * k, "color": Color(1.0, 0.5 + 0.2 * k, 0.2), "r": 260.0 + k * 60.0})
@@ -6324,8 +6348,8 @@ func setup_pilots() -> void:
 	if theirs.is_empty():
 		theirs = random_pilot_look(str(opp["name"]))
 	pilots = [
-		{"team": 0, "look": mine, "auto": mine_auto, "bubble": "", "bubble_t": 0.0, "jerk": 0.0, "talk_cd": 0.0, "chatter_t": randf_range(5.0, 8.0)},
-		{"team": 1, "look": theirs, "auto": auto, "bubble": "", "bubble_t": 0.0, "jerk": 0.0, "talk_cd": 0.0, "chatter_t": randf_range(6.0, 9.0)},
+		{"team": 0, "look": mine, "auto": mine_auto, "bubble": "", "bubble_t": 0.0, "jerk": 0.0, "talk_cd": 0.0, "chatter_t": frng.randf_range(5.0, 8.0)},
+		{"team": 1, "look": theirs, "auto": auto, "bubble": "", "bubble_t": 0.0, "jerk": 0.0, "talk_cd": 0.0, "chatter_t": frng.randf_range(6.0, 9.0)},
 	]
 
 
@@ -6362,12 +6386,12 @@ func pilot_say(team: int, what: String, force: bool = false, custom: String = ""
 		var pool: Array = (PROGRAM_LINES if pd["auto"] else PILOT_LINES).get(what, [])
 		if pool.is_empty():
 			return
-		text = tr(pool[randi() % pool.size()])
+		text = tr(pool[frng.randi() % pool.size()])
 		if "%s" in text:
-			text = text % (str(randi_range(9, 12)) if pd["auto"] else team_robot(team).label)
+			text = text % (str(frng.randi_range(9, 12)) if pd["auto"] else team_robot(team).label)
 	pd["bubble"] = text
 	pd["bubble_t"] = 1.8
-	pd["talk_cd"] = randf_range(2.0, 3.2)
+	pd["talk_cd"] = frng.randf_range(2.0, 3.2)
 
 
 func pilot_jerk(team: int) -> void:
@@ -6383,7 +6407,7 @@ func update_pilots(delta: float) -> void:
 		if phase == "fight":
 			pd["chatter_t"] -= delta
 			if pd["chatter_t"] <= 0.0:
-				pd["chatter_t"] = randf_range(6.0, 10.0)
+				pd["chatter_t"] = frng.randf_range(6.0, 10.0)
 				var r := team_robot(pd["team"])
 				pilot_say(pd["team"], "low" if r.ratio("torso") < 0.3 else "chatter")
 
@@ -7750,7 +7774,7 @@ func try_taunt(f: Fighter) -> void:
 		return
 	f.taunted = true
 	f.taunt_t = 1.4
-	pilot_say(0, "taunt", false, tr(["Come on then!", "Is that it?", "Look at this junk.", "You're mine."][randi() % 4]))
+	pilot_say(0, "taunt", false, tr(["Come on then!", "Is that it?", "Look at this junk.", "You're mine."][frng.randi() % 4]))
 	var wid := int(opp.get("wid", -1))
 	if wid >= 0 and mode != "watch" and mode != "quick":
 		GameData.rel_add(wid, -3)
@@ -8640,9 +8664,9 @@ func setup_sim() -> void:
 		var f: Fighter = [fa, fb][k]
 		var o: Dictionary = [oa, ob][k]
 		f.foe = [fb, fa][k]
-		f.ai = {"timer": randf() * 0.3, "plan": {}, "think": maxf(THINK_MIN, float(o.get("think", 0.4)) * THINK_K),
+		f.ai = {"timer": frng.randf() * 0.3, "plan": {}, "think": maxf(THINK_MIN, float(o.get("think", 0.4)) * THINK_K),
 				"block": minf(0.85, float(o.get("block", 0.2))), "smart": float(o.get("smart", 0.0)),
-				"special_cd": 3.0 + randf(), "gadget_cd": 1.5 + randf(), "kit": {}}
+				"special_cd": 3.0 + frng.randf(), "gadget_cd": 1.5 + frng.randf(), "kit": {}}
 		set_aim_level(f, GameData.pilot_aim_level(o))
 		ai_load(f)
 		ai_build_kit()
@@ -8674,7 +8698,7 @@ func sim_run(budget_ms: float) -> bool:
 	var guard := 0
 	while not sim_done and Time.get_ticks_usec() - t0 < budget_ms * 1000.0:
 		sim_steer(SIM_DT)
-		_process(SIM_DT)
+		tick(SIM_DT)
 		guard += 1
 		if clock > FIGHT_TIME + 60.0 and not sim_done:
 			sim_finish()   # (never: the clock ends every fight)
