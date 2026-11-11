@@ -518,6 +518,8 @@ func _ready() -> void:
 			_on_open_setups()
 		"scout":
 			open_fight_popup()   # Gus explained scouting: back to the pre-fight window
+		"ghost":
+			open_ghosts()   # (1.146) back from a ghost fight: the result code to send
 		"":
 			pass
 		_:
@@ -6900,6 +6902,96 @@ func _on_guide_chip() -> void:
 
 
 ## Menu > Gus's list: every step, ticked or not.
+## (1.146) Ghost fights: send your ghost to a friend as a code, fight theirs, swap the results.
+var ghost_read := {}
+
+
+func open_ghosts() -> void:
+	var col := open_popup(tr("GHOST FIGHTS"))
+	var w := UI.px(15) * 28
+	var intro := GUI.text(tr("Send your ghost to a friend: your robot, fighting the way you fight. Paste theirs to fight it. Nothing in either career changes."), 14, GUI.MUTED)
+	intro.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	intro.custom_minimum_size.x = w
+	col.add_child(intro)
+	if GameData.ghost_last != "":
+		section(tr("SEND THE RESULT BACK"), col)
+		code_box(col, GameData.ghost_last, tr("Result code copied. Send it to them."))
+	section(tr("YOUR GHOST"), col)
+	var n := int(GameData.habits.get("n", 0))
+	col.add_child(GUI.text(tr("Learned from %d of your fights.") % n if n > 0 else tr("No fights to learn from yet: it fights like an average pilot."), 13, GUI.MUTED))
+	code_box(col, GameData.ghost_code(), tr("Ghost code copied. Paste it to a friend."))
+	section(tr("FIGHT A GHOST, OR READ A RESULT"), col)
+	var paste := LineEdit.new()
+	paste.placeholder_text = tr("Paste a code here")
+	paste.custom_minimum_size = Vector2(w, UI.tsz(16) + 22)
+	paste.add_theme_font_size_override("font_size", UI.tsz(14))
+	col.add_child(paste)
+	var out := VBoxContainer.new()
+	out.add_theme_constant_override("separation", 6)
+	var bar := action_bar(col)
+	var rb := row_button(bar, tr("Read it"), func():
+		for c in out.get_children():
+			c.queue_free()
+		var d := GameData.read_code(paste.text)
+		if d.has("error"):
+			out.add_child(GUI.text(tr(str(d["error"])), 14, GUI.RED))
+			Sfx.play("error")
+			return
+		Sfx.play("click")
+		if d["kind"] == "result":
+			out.add_child(GUI.text(GameData.take_result(d), 15, GUI.TEXT))
+			return
+		ghost_read = d
+		var card := GUI.text(tr("%s, piloted by %s") % [str(d.get("robot", "?")), str(d.get("pilot", "?"))], 17, GUI.HEAD)
+		card.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		out.add_child(card)
+		out.add_child(GUI.text(tr("%s · %d wins, %d losses") % [str(d.get("rank", "")), int(d.get("w", 0)), int(d.get("l", 0))], 13, GUI.MUTED))
+		var fb := UI.button(tr("Fight the ghost ›"), _on_fight_ghost, 17, Vector2(0, 52))
+		GUI.primary(fb)
+		out.add_child(fb), true, 140)
+	GUI.primary(rb)
+	col.add_child(out)
+	if not GameData.ghost_log.is_empty():
+		section(tr("GHOST LOG"), col)
+		for e in GameData.ghost_log.slice(0, 10):
+			var line := ""
+			if e.get("kind", "") == "fought":
+				line = (tr("You beat %s's ghost (%s) in %d s") if e.get("won", false) else tr("%s's ghost (%s) beat you in %d s")) % [str(e["pilot"]), str(e["robot"]), int(e.get("secs", 0))]
+			else:
+				line = (tr("Your ghost beat %s (%s) in %d s") if e.get("won", false) else tr("%s (%s) beat your ghost in %d s")) % [str(e["pilot"]), str(e["robot"]), int(e.get("secs", 0))]
+			var l := GUI.text(line, 13, GUI.GREEN if e.get("won", false) else GUI.RED)
+			l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+			col.add_child(l)
+
+
+## A long code: shown in a box you can select from, with a Copy button.
+func code_box(col: Control, code: String, copied: String) -> void:
+	var le := LineEdit.new()
+	le.text = code
+	le.editable = false
+	le.select_all_on_focus = true
+	le.custom_minimum_size = Vector2(UI.px(15) * 28, UI.tsz(14) + 20)
+	le.add_theme_font_size_override("font_size", UI.tsz(12))
+	col.add_child(le)
+	var bar := action_bar(col)
+	row_button(bar, tr("Copy"), func():
+		DisplayServer.clipboard_set(code)
+		Sfx.play("buy")
+		note(copied), true, 120)
+	bar.add_child(GUI.text(tr("%d characters") % code.length(), 12, GUI.MUTED))
+
+
+func _on_fight_ghost() -> void:
+	if ghost_read.is_empty():
+		return
+	GameData.flush_save()
+	GameData.start_ghost(ghost_read)
+	ghost_read = {}
+	close_popup()
+	Sfx.play("click")
+	Loading.go("res://fight.tscn")
+
+
 func open_guide_list() -> void:
 	var col := open_popup(tr("GUS'S LIST"))
 	var a := GUI.text(tr("Things to try in your first weeks."), 15, GUI.MUTED)
@@ -8289,6 +8381,7 @@ func _on_menu() -> void:
 						Loading.go("res://garage.tscn"))), 19, Vector2(0, 56)))
 	if not GameData.guide_asking():
 		col.add_child(UI.button(tr("Gus's list"), func(): close_popup(); open_guide_list(), 19, Vector2(0, 56)))
+	col.add_child(UI.button(tr("Ghost fights"), func(): close_popup(); open_ghosts(), 19, Vector2(0, 56)))   # (1.146)
 	# (1.126) the save as a file you keep: download it, upload it on the Load Game screen
 	col.add_child(UI.button(tr("Download save file"), func():
 		GameData.save_game()

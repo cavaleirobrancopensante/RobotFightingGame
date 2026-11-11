@@ -626,7 +626,10 @@ func _ready() -> void:
 			team_p[0].pilot_name = str(GameData.watch_robot(0).get("pilot", ""))
 			team_c[0].pilot_name = str(GameData.watch_robot(1).get("pilot", ""))
 		"quick":
-			pass
+			if GameData.quick.has("ghost"):
+				team_p[0].pilot_name = GameData.pilot_name
+				team_c[0].pilot_name = str(GameData.quick["ghost"].get("pilot", "?"))
+				team_c[0].rank_text = str(GameData.quick["ghost"].get("rank", ""))
 		"test":
 			team_p[0].pilot_name = GameData.pilot_name
 			team_c[0].pilot_name = "GUS"
@@ -2210,6 +2213,10 @@ func tick(delta: float) -> void:
 		if f.target != "" and (f.foe == null or not f.foe.alive(f.target)):
 			f.target = ""
 
+	if phase == "fight" and not team_p.is_empty():
+		hb_t += delta
+		if team_p[0].blocking:
+			hb_block += delta
 	update_effects(delta)
 	update_trail(delta)
 	update_pilots(delta)
@@ -2388,6 +2395,10 @@ func finish_match() -> void:
 		Sfx.play("victory")
 		show_post_card()
 		return
+	if mode == "quick" and GameData.quick.has("ghost"):
+		GameData.ghost_after(won, clock, team_p[0].ratio("torso") if team_p[0].alive("torso") else 0.0)   # (1.146)
+	if mode == "story" or mode == "pickup":
+		note_habits()
 	if mode == "quick" or mode == "test":
 		result = {"won": won, "reward": 0}
 		phase = "results"
@@ -2441,6 +2452,11 @@ func leave_after_results() -> void:
 		GameData.last_result = {}
 		Loading.go("res://garage.tscn")
 		return
+	if mode == "quick" and GameData.quick.has("ghost"):
+		GameData.quick = {}
+		GameData.open_action = "ghost"   # (1.146) back to the bay, the result code waiting
+		Loading.go("res://garage.tscn")
+		return
 	if mode == "quick":
 		GameData.quick = {}
 		get_tree().change_scene_to_file("res://main.tscn")
@@ -2482,6 +2498,10 @@ func quit_fight() -> void:
 			GameData.book("bets", int(b["stake"]))   # walked out: your live bets come back
 		live_bets = []
 		GameData.watching = {}   # walked out: the round will decide it on paper
+		Loading.go("res://garage.tscn")
+		return
+	if mode == "quick" and GameData.quick.has("ghost"):
+		GameData.quick = {}
 		Loading.go("res://garage.tscn")
 		return
 	if mode == "quick":
@@ -2608,7 +2628,9 @@ func start_attack(f: Fighter, attack: String, charge: float = 0.0) -> void:
 	pilot_jerk(f.team)
 	f.attack_limb = limb
 	if mode == "test" and f == player:
-		last_fd = frame_data(f, attack, limb)   # (1.141) the training room's readout
+		last_fd = frame_data(f, attack, limb)
+	if f.team == 0 and team_p.size() > 0 and f == team_p[0]:
+		hb_n["att"] = int(hb_n.get("att", 0)) + 1   # (1.146) habits   # (1.141) the training room's readout
 	f.charge_mult = 1.0 + (CHARGE_DMG - 1.0) * clampf(charge, 0.0, 1.0)
 	f.guard_break = charge >= 0.999
 	spend(f, attack_cost(f, attack, limb))
@@ -2726,6 +2748,8 @@ func switch_stance(f: Fighter) -> void:
 
 
 func launch_jump(f: Fighter) -> void:
+	if f == player and team_p.has(f):
+		hb_n["jump"] = int(hb_n.get("jump", 0)) + 1
 	var jump: float = JUMP_SPEED * (1.0 if f.legs() == 2 else 0.75) * (1.0 + f.ctrl.get("jump", 0.0))
 	if f.has_gadget("high_jump"):
 		jump *= 1.4
@@ -2793,6 +2817,8 @@ func start_special(f: Fighter, id: String) -> void:
 		pilot_say(f.team, "special", false, (tr(Specials.MOVES[id]["name"]) as String).to_upper() + "!" if not pilots.is_empty() and not pilots[f.team]["auto"] else tr("[ EXECUTE: %s ]") % (tr(Specials.MOVES[id]["name"]) as String).to_upper())
 	f.special_id = id
 	f.easy_sp = false
+	if team_p.size() > 0 and f == team_p[0]:
+		hb_n["sp"] = int(hb_n.get("sp", 0)) + 1   # (1.146) habits
 	f.attack_limb = f.next_limb(m["limb"]) if m.has("limb") else ""
 	f.aim_ang = aim_angle(f, str(m.get("pose", "")))
 	f.special_moment = false
@@ -5712,6 +5738,21 @@ func draw_frame_table() -> void:
 	ci.draw_string(font, Vector2(r.position.x + 16, r.end.y - 12), tr("HIT / BLOCK: frames ahead (+) or behind (-). Hits cancel on contact."), HORIZONTAL_ALIGNMENT_LEFT, w - 32.0, fs(12), GUI.MUTED)
 
 
+# ---------------------------------------------------------------- (1.146) habits, for your ghost
+var hb_t := 0.0
+var hb_block := 0.0
+var hb_n := {}
+
+
+## How you fought this one: share of the time behind your guard, attacks, specials and jumps a minute.
+func note_habits() -> void:
+	if hb_t < 20.0:
+		return
+	var mins := hb_t / 60.0
+	GameData.note_habits({"block": hb_block / hb_t, "apm": float(hb_n.get("att", 0)) / mins,
+			"spm": float(hb_n.get("sp", 0)) / mins, "jpm": float(hb_n.get("jump", 0)) / mins})
+
+
 # ---------------------------------------------------------------- (1.144) finishers and mercy
 # After an earned K.O. in a career fight, the winner gets FIN_OFFER seconds and two choices: SCRAP IT
 # (PUNCH or the button) or SPARE THEM (BLOCK or the button). Earned = the scan found their weak spot,
@@ -5919,6 +5960,8 @@ func draw_results() -> void:
 			lines.append([str(bl), Color(0.6, 1.0, 0.6) if str(bl).contains("+$") else Color(1.0, 0.55, 0.5)])
 		if result.get("posted", "") == "" and post_card == null:
 			lines.append([tr("A post about it is waiting on BotMedia."), Color(0.6, 0.85, 1.0)])
+	elif mode == "quick" and GameData.quick.has("ghost"):
+		lines.append([tr("Ghost fight, nothing saved. Send the result back: Menu > Ghost fights."), Color(0.8, 0.8, 0.85)])
 	elif mode == "quick":
 		lines.append([tr("Quick fight, nothing saved."), Color(0.8, 0.8, 0.85)])
 	elif mode == "test":
@@ -6329,7 +6372,9 @@ var pilots: Array = []   # one per side: {team, look, auto, bubble, bubble_t, je
 func setup_pilots() -> void:
 	var mine: Dictionary = GameData.pilot_look
 	var mine_auto := false
-	if mode == "quick":
+	if mode == "quick" and GameData.quick.has("ghost"):
+		mine = GameData.pilot_look   # (1.146) you against a ghost
+	elif mode == "quick":
 		mine = random_pilot_look(str(GameData.quick["player"]["name"]))
 	elif mode == "watch":
 		var lp := str(GameData.watch_robot(0).get("pilot", ""))
@@ -6345,6 +6390,9 @@ func setup_pilots() -> void:
 		var who := str(opp.get("pilot", ""))
 		auto = who == ""
 		theirs = Story.SPEAKERS.get(who, {}).get("face", {})
+	if mode == "quick" and GameData.quick.has("ghost") and GameData.quick["ghost"].get("look") is Dictionary:
+		theirs = GameData.quick["ghost"]["look"]
+		auto = false
 	if theirs.is_empty():
 		theirs = random_pilot_look(str(opp["name"]))
 	pilots = [
@@ -7725,6 +7773,8 @@ func announcer_line() -> String:
 # ---------------------------------------------------------------- (1.143) walk-in personality
 ## A corner's walk-in: yours from Bay > Style & paint, a world pilot's rolled from their id.
 func walkin_for(team: int) -> Dictionary:
+	if mode == "quick" and GameData.quick.has("ghost"):
+		return GameData.walkin if team == 0 else (GameData.quick["ghost"].get("walkin", {}) if GameData.quick["ghost"].get("walkin") is Dictionary else {})
 	if mode == "quick" or mode == "test" or mode == "replay":
 		return {}
 	if team == 0 and mode != "watch":

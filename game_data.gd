@@ -3,7 +3,7 @@ const PlayLog = preload("res://playlog.gd")   # (1.87) the playtest log
 
 # helper scripts, loaded by path so the game also runs without an editor scan
 ## The game's version, shown on the main menu. Bump it with every change (1.1, 1.2, ...).
-const VERSION := "1.145"
+const VERSION := "1.146"
 const Arena = preload("res://arena.gd")
 const I18n = preload("res://i18n.gd")
 const Catalog = preload("res://catalog.gd")
@@ -654,6 +654,10 @@ func new_game() -> void:
 	deliveries = []
 	morning_seen = ""
 	walkin = {}
+	habits = {}
+	ghost_id = ""
+	ghost_log = []
+	ghost_last = ""
 	candle_day = ""
 	mass_day = ""
 	guide_seen = {}
@@ -2397,7 +2401,7 @@ func fight_title() -> String:
 		"test":
 			return tr("TEST DRIVE")
 		"quick":
-			return tr("QUICK FIGHT")
+			return tr("GHOST FIGHT") if quick.has("ghost") else tr("QUICK FIGHT")
 		"watch":
 			var wev := watch_event()
 			return tr("%s VS %s") % [str(watch_robot(0)["pilot"]), str(watch_robot(1)["pilot"])] + " · " + (tr(str(wev["name"])).to_upper() if wev["stage"] == "cup" else tr(Career.STAGES[wev["stage"]]["short"]))
@@ -3063,6 +3067,10 @@ func next_day() -> void:
 const PATCH_HP := 0.4
 var patched_week := -1
 var morning_seen := ""   # (1.117) the day key of the last morning card you saw
+var habits := {}   # (1.146) how you fight, averaged over your fights: {n, block, apm, spm, jpm}
+var ghost_id := ""   # (1.146) your ghost's id (results that come back carry it)
+var ghost_log: Array = []   # (1.146) ghost fights and results: [{kind, pilot, robot, won, secs, y, w}]
+var ghost_last := ""   # (1.146) the result code of the ghost fight you just had, waiting to be sent back
 var walkin := {}   # (1.143) your robot's walk-in: {nick, line, pose, taunt, song} (see WALKIN_*)
 var candle_day := ""   # (1.137) the day key you last lit a candle at Our Lady of the Harbour
 var mass_day := ""     # (1.137) the day key of the last Mass you went to
@@ -4228,6 +4236,8 @@ func is_team_fight() -> bool:
 
 ## Specs for every enemy robot in the next fight (1 for normal fights).
 func current_opponent_team() -> Array:
+	if fight_mode() == "quick" and quick.has("enemy_spec"):
+		return [quick["enemy_spec"].duplicate(true)]   # (1.146) a ghost
 	if fight_mode() == "quick" and quick.has("enemies"):
 		var out: Array = []
 		for b in quick["enemies"]:
@@ -4250,6 +4260,8 @@ func fight_player_team() -> Array:
 		return ws
 	if fight_mode() == "test":
 		return [test_drive_spec()]
+	if fight_mode() == "quick" and quick.has("player_spec"):
+		return [quick["player_spec"].duplicate(true)]   # (1.146) you, against a ghost
 	if fight_mode() == "quick":
 		var out: Array = []
 		for b in quick.get("players", [quick["player"]]):
@@ -4944,6 +4956,8 @@ func fight_player_spec() -> Dictionary:
 
 
 func current_opponent_spec() -> Dictionary:
+	if fight_mode() == "quick" and quick.has("enemy_spec"):
+		return quick["enemy_spec"].duplicate(true)   # (1.146) a ghost
 	if fight_mode() == "quick":
 		return opponent_spec_from(quick["enemy"], 1.0)
 	return opponent_spec_from(current_opponent(), 1.0)
@@ -5858,7 +5872,7 @@ func save_game(path: String = "") -> bool:
 		"owned_chips": owned_chips, "chips": chips, "circuit": circuit, "circuit_offers": circuit_offers,
 		"circuits_won": circuits_won, "pickup": pickup, "setups": setups, "custom_parts": custom_parts,
 		"year": year, "week": week, "day": day, "rank": rank, "event": {}, "leagues": leagues, "title_seeds": title_seeds, "trophies": trophies, "career_stats": career_stats,
-		"pecking_k": pecking_k(), "style": style, "style_locked": style_locked, "shop_stock": shop_stock, "chip_stock": chip_stock, "scout": scout, "wingmen": wingmen, "sending": sending, "pilot_look": pilot_look, "owned_controllers": owned_controllers, "spare_controllers": spare_controllers, "techs": techs, "tech_fit": tech_fit, "tips_seen": tips_seen, "tips_log": tips_log, "h2h": h2h, "rivals": rivals, "rel": rel, "nemeses": nemeses, "pending_talk": pending_talk, "inbox": inbox, "inbox_seen": inbox_seen, "social": social, "pilot_at": pilot_at, "places_been": places_been, "catalogues": catalogues, "pilot_used": pilot_used, "film_index": film_index, "film_pending": film_pending, "films_seen": films_seen, "contracts": contracts, "alerts_unseen": alerts_unseen, "day_log": day_log, "ledger": ledger, "bet_log": bet_log, "patched_week": patched_week, "deliveries": deliveries, "morning_seen": morning_seen, "walkin": walkin, "candle_day": candle_day, "mass_day": mass_day, "guide_seen": guide_seen, "guide_mode": guide_mode, "loan": loan, "loan_free_at": loan_free_at, "gus_alerts": gus_alerts, "tour": tour, "streak": streak, "pub_seen": pub_seen, "digs_left": digs_left, "dig_luck": dig_luck, "bills_note": bills_note, "fight_log": fight_log, "bets": bets, "world": world,
+		"pecking_k": pecking_k(), "style": style, "style_locked": style_locked, "shop_stock": shop_stock, "chip_stock": chip_stock, "scout": scout, "wingmen": wingmen, "sending": sending, "pilot_look": pilot_look, "owned_controllers": owned_controllers, "spare_controllers": spare_controllers, "techs": techs, "tech_fit": tech_fit, "tips_seen": tips_seen, "tips_log": tips_log, "h2h": h2h, "rivals": rivals, "rel": rel, "nemeses": nemeses, "pending_talk": pending_talk, "inbox": inbox, "inbox_seen": inbox_seen, "social": social, "pilot_at": pilot_at, "places_been": places_been, "catalogues": catalogues, "pilot_used": pilot_used, "film_index": film_index, "film_pending": film_pending, "films_seen": films_seen, "contracts": contracts, "alerts_unseen": alerts_unseen, "day_log": day_log, "ledger": ledger, "bet_log": bet_log, "patched_week": patched_week, "deliveries": deliveries, "morning_seen": morning_seen, "walkin": walkin, "habits": habits, "ghost_id": ghost_id, "ghost_log": ghost_log, "ghost_last": ghost_last, "candle_day": candle_day, "mass_day": mass_day, "guide_seen": guide_seen, "guide_mode": guide_mode, "loan": loan, "loan_free_at": loan_free_at, "gus_alerts": gus_alerts, "tour": tour, "streak": streak, "pub_seen": pub_seen, "digs_left": digs_left, "dig_luck": dig_luck, "bills_note": bills_note, "fight_log": fight_log, "bets": bets, "world": world,
 	}
 	var f := FileAccess.open(slot_path(save_slot) if path == "" else path, FileAccess.WRITE)
 	if f == null:
@@ -5994,6 +6008,10 @@ func load_game(slot: int = -1, mine: bool = false) -> String:
 	morning_seen = str(data.get("morning_seen", ""))
 	candle_day = str(data.get("candle_day", ""))
 	walkin = data.get("walkin", {}) if typeof(data.get("walkin", {})) == TYPE_DICTIONARY else {}
+	habits = data.get("habits", {}) if typeof(data.get("habits", {})) == TYPE_DICTIONARY else {}
+	ghost_id = str(data.get("ghost_id", ""))
+	ghost_log = data.get("ghost_log", []) if typeof(data.get("ghost_log", [])) == TYPE_ARRAY else []
+	ghost_last = str(data.get("ghost_last", ""))
 	mass_day = str(data.get("mass_day", ""))
 	guide_seen = data.get("guide_seen", {}) if typeof(data.get("guide_seen", null)) == TYPE_DICTIONARY else {}
 	guide_mode = int(data.get("guide_mode", 1))   # saves before 1.132 had the tutorial on
@@ -6834,6 +6852,110 @@ func place_locked(place: String) -> String:
 	if place == "dojo" and rank_index() < 2 and not story_seen.has("tenryu_invite"):
 		return "Opens to Rust League pilots. Or land a big special move and they'll come to you."   # (1.103)
 	return ""
+
+
+# ---------------------------------------------------------------- (1.146) ghost fights
+# Your robot and how you fight, packed into a code you can send anyone (WhatsApp, a message): they
+# paste it and fight your ghost, a CPU that drives your robot with your habits. The fight can't
+# change anything in either career (it's a friendly, like a Quick Fight); it gives back a result
+# code they send you. No server: codes are gzip JSON in base64.
+const GHOST_PREFIX := "RFGHOST1:"
+const RESULT_PREFIX := "RFRESULT1:"
+const GHOST_LOG_KEEP := 30
+
+
+## After a career fight: fold how you fought into your habits (a running average).
+func note_habits(h: Dictionary) -> void:
+	var n := int(habits.get("n", 0))
+	var k := 1.0 / minf(float(n + 1), 8.0)   # the last eight fights or so
+	for key in ["block", "apm", "spm", "jpm"]:
+		habits[key] = lerpf(float(habits.get(key, h.get(key, 0.0))), float(h.get(key, 0.0)), k if n > 0 else 1.0)
+	habits["n"] = n + 1
+
+
+## The CPU settings that make a ghost fight like its owner.
+func ghost_ai(h: Dictionary, w: int, l: int) -> Dictionary:
+	var apm := float(h.get("apm", 30.0))
+	var rate := float(w) / maxf(1.0, float(w + l))
+	return {"think": clampf(0.7 - apm / 90.0, 0.2, 0.7), "block": clampf(float(h.get("block", 0.15)) * 2.5, 0.05, 0.8),
+			"smart": clampf(0.3 + rate * 0.6 + minf(0.15, float(w + l) / 200.0), 0.2, 0.95)}
+
+
+static func pack_code(prefix: String, d: Dictionary) -> String:
+	var raw := JSON.stringify(d).to_utf8_buffer()
+	return prefix + Marshalls.raw_to_base64(raw.compress(FileAccess.COMPRESSION_GZIP)) + "." + str(raw.size())
+
+
+## A code back into its data: {"kind": "ghost" / "result", ...}, or {"error": why}.
+static func read_code(text: String) -> Dictionary:
+	var t := text.strip_edges().replace("\n", "").replace(" ", "")
+	var kind := ""
+	for p in [[GHOST_PREFIX, "ghost"], [RESULT_PREFIX, "result"]]:
+		var at := t.find(str(p[0]))
+		if at >= 0:
+			t = t.substr(at + str(p[0]).length())
+			kind = str(p[1])
+	if kind == "":
+		return {"error": "That's not a ghost or a result code."}
+	var dot := t.rfind(".")
+	if dot < 0:
+		return {"error": "The code is cut short. Copy all of it."}
+	var size := int(t.substr(dot + 1))
+	var bytes := Marshalls.base64_to_raw(t.substr(0, dot))
+	if bytes.is_empty() or size <= 0 or size > 400000:
+		return {"error": "The code is cut short. Copy all of it."}
+	var raw := bytes.decompress(size, FileAccess.COMPRESSION_GZIP)
+	var d = JSON.parse_string(raw.get_string_from_utf8())
+	if typeof(d) != TYPE_DICTIONARY:
+		return {"error": "The code is cut short. Copy all of it."}
+	d["kind"] = kind
+	return d
+
+
+## Your ghost: your robot at full health with its chips, your pilot, your walk-in and your habits.
+func ghost_code() -> String:
+	if ghost_id == "":
+		ghost_id = "%x%x" % [randi(), Time.get_unix_time_from_system()]
+	var spec: Dictionary = Clips.plain(test_drive_spec())
+	return pack_code(GHOST_PREFIX, {"v": 1, "id": ghost_id, "pilot": pilot_name, "robot": robot_name, "look": Clips.plain(pilot_look),
+			"walkin": walkin, "spec": spec, "habits": habits, "rank": my_rank(), "w": wins, "l": losses, "game": VERSION})
+
+
+## Fight a ghost: you in your robot at full health, against it on its owner's habits.
+func start_ghost(g: Dictionary) -> void:
+	var ai := ghost_ai(g.get("habits", {}), int(g.get("w", 0)), int(g.get("l", 0)))
+	var es: Dictionary = g.get("spec", {})
+	quick = {"ghost": g, "player": {"name": robot_name}, "player_spec": test_drive_spec(),
+			"enemy": {"name": str(g.get("robot", "GHOST")), "pilot": str(g.get("pilot", "?")), "wid": -1, "body": str(es.get("body", "#888888")),
+				"think": ai["think"], "block": ai["block"], "smart": ai["smart"]},
+			"enemy_spec": es}
+
+
+## The fight's over: the code to send back to the ghost's owner, and a line in your log.
+func ghost_after(won: bool, secs: float, core: float) -> void:
+	var g: Dictionary = quick.get("ghost", {})
+	ghost_last = pack_code(RESULT_PREFIX, {"v": 1, "ghost": str(g.get("id", "")), "pilot": pilot_name, "robot": robot_name,
+			"vs": str(g.get("robot", "?")), "won": won, "secs": roundi(secs), "core": roundi(core * 100.0)})
+	ghost_log.push_front({"kind": "fought", "pilot": str(g.get("pilot", "?")), "robot": str(g.get("robot", "?")), "won": won, "secs": roundi(secs), "y": year, "w": week})
+	ghost_log = ghost_log.slice(0, GHOST_LOG_KEEP)
+	save_game()
+
+
+## A result code someone sent you: how they did against your ghost.
+func take_result(r: Dictionary) -> String:
+	if str(r.get("ghost", "")) != ghost_id or ghost_id == "":
+		return tr("That result is for someone else's ghost.")
+	for e in ghost_log:
+		if e.get("kind", "") == "result" and str(e.get("code", "")) == str(r.get("pilot", "")) + str(r.get("secs", "")) + str(r.get("core", "")):
+			return tr("You've already read that one.")
+	var you_won := not bool(r.get("won", false))
+	ghost_log.push_front({"kind": "result", "pilot": str(r.get("pilot", "?")), "robot": str(r.get("robot", "?")), "won": you_won,
+			"secs": int(r.get("secs", 0)), "y": year, "w": week, "code": str(r.get("pilot", "")) + str(r.get("secs", "")) + str(r.get("core", ""))})
+	ghost_log = ghost_log.slice(0, GHOST_LOG_KEEP)
+	save_game()
+	if you_won:
+		return tr("Your ghost beat %s in %d s.") % [str(r.get("pilot", "?")), int(r.get("secs", 0))]
+	return tr("%s beat your ghost in %d s, with %d%% of their core left.") % [str(r.get("pilot", "?")), int(r.get("secs", 0)), int(r.get("core", 0))]
 
 
 # ---------------------------------------------------------------- (1.144) finishers and mercy
